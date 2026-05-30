@@ -10,14 +10,18 @@ export const env = {
   metaPhoneNumberId: process.env.META_PHONE_NUMBER_ID || ""
 };
 
+function hasRealValue(value: string) {
+  return Boolean(value && !/sua-|seu-|crie-|id-do|id-da|aqui/i.test(value));
+}
+
 export function isSupabaseConfigured() {
-  return Boolean(env.supabaseUrl && env.supabaseAnonKey && env.supabaseUrl.includes("supabase.co"));
+  return Boolean(hasRealValue(env.supabaseUrl) && hasRealValue(env.supabaseAnonKey) && env.supabaseUrl.includes("supabase.co"));
 }
 
 export function isServerSupabaseConfigured() {
-  return Boolean(env.supabaseUrl && env.supabaseServiceRoleKey && env.supabaseUrl.includes("supabase.co"));
+  return Boolean(hasRealValue(env.supabaseUrl) && hasRealValue(env.supabaseServiceRoleKey) && env.supabaseUrl.includes("supabase.co"));
 }
 
 export function isMetaConfigured() {
-  return Boolean(env.metaWhatsappToken && env.metaPhoneNumberId);
+  return Boolean(hasRealValue(env.metaWhatsappToken) && hasRealValue(env.metaPhoneNumberId));
 }
