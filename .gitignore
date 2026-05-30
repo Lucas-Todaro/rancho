@@ -7,3 +7,5 @@ out
 .vercel
 *.log
 coverage
+*.tsbuildinfo
+.next-layout.js
