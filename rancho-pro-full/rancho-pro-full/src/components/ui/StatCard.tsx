@@ -13,11 +13,11 @@ export function StatCard({
   value: string | number;
   hint?: string;
   icon: LucideIcon;
-  tone?: "green" | "brown" | "blue" | "amber" | "red" | "slate";
+  tone?: "green" | "lime" | "blue" | "amber" | "red" | "slate";
 }) {
   const tones = {
     green: "from-emerald-500/16 to-emerald-500/4 text-emerald-700 dark:text-emerald-300",
-    brown: "from-orange-500/16 to-orange-500/4 text-orange-700 dark:text-orange-300",
+    lime: "from-lime-500/16 to-lime-500/4 text-lime-700 dark:text-lime-300",
     blue: "from-blue-500/16 to-blue-500/4 text-blue-700 dark:text-blue-300",
     amber: "from-amber-500/16 to-amber-500/4 text-amber-700 dark:text-amber-300",
     red: "from-red-500/16 to-red-500/4 text-red-700 dark:text-red-300",
@@ -25,14 +25,14 @@ export function StatCard({
   };
 
   return (
-    <div className="glass card-hover rounded-3xl p-5 shadow-soft">
+    <div className="glass card-hover rounded-lg p-5 shadow-soft">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</p>
           <h3 className="mt-2 text-2xl font-black tracking-tight md:text-3xl">{value}</h3>
           {hint ? <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{hint}</p> : null}
         </div>
-        <div className={cn("rounded-2xl bg-gradient-to-br p-3", tones[tone])}>
+        <div className={cn("rounded-lg bg-gradient-to-br p-3", tones[tone])}>
           <Icon className="h-6 w-6" />
         </div>
       </div>

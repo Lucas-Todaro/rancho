@@ -1,0 +1,172 @@
+"use client";
+
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import { isSupabaseConfigured } from "@/lib/env";
+import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
+import type { DataContext, UsuarioProfile } from "@/lib/types";
+
+type AuthContextValue = {
+  loading: boolean;
+  session: Session | null;
+  profile: UsuarioProfile | null;
+  error: string;
+  isDemo: boolean;
+  dataContext: DataContext;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  reloadProfile: () => Promise<void>;
+};
+
+const demoProfile: UsuarioProfile = {
+  id: DEMO_USUARIO_ID,
+  fazenda_id: DEMO_FAZENDA_ID,
+  nome: "Administrador Demo",
+  telefone: "5585999990000",
+  papel: "admin",
+  ativo: true,
+  fazenda: {
+    id: DEMO_FAZENDA_ID,
+    nome: "Fazenda Modelo",
+    slug: "fazenda-modelo",
+    timezone: "America/Fortaleza",
+    plano: "mvp",
+    ativa: true
+  }
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function fetchProfile(userId: string) {
+  if (!supabaseBrowser) return demoProfile;
+
+  const { data, error } = await supabaseBrowser
+    .from("usuarios")
+    .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error("Este login ainda nao esta vinculado a uma fazenda na tabela usuarios.");
+  }
+
+  const raw = data as unknown as UsuarioProfile & { fazenda?: UsuarioProfile["fazenda"] | UsuarioProfile["fazenda"][] };
+  return {
+    ...raw,
+    fazenda: Array.isArray(raw.fazenda) ? raw.fazenda[0] || null : raw.fazenda || null
+  } as UsuarioProfile;
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const configured = isSupabaseConfigured();
+  const [loading, setLoading] = useState(configured);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoProfile);
+  const [error, setError] = useState("");
+
+  async function loadProfile(nextSession?: Session | null) {
+    const activeSession = nextSession ?? session;
+    setError("");
+
+    if (!configured || !supabaseBrowser) {
+      setProfile(demoProfile);
+      return;
+    }
+
+    if (!activeSession?.user?.id) {
+      setProfile(null);
+      return;
+    }
+
+    try {
+      setProfile(await fetchProfile(activeSession.user.id));
+    } catch (err) {
+      setProfile(null);
+      setError(err instanceof Error ? err.message : "Nao foi possivel carregar o perfil.");
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function boot() {
+      if (!configured || !supabaseBrowser) {
+        if (mounted) {
+          setProfile(demoProfile);
+          setLoading(false);
+        }
+        return;
+      }
+
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!mounted) return;
+
+      setSession(data.session);
+      await loadProfile(data.session);
+      if (mounted) setLoading(false);
+    }
+
+    boot();
+
+    if (!supabaseBrowser) return () => { mounted = false; };
+
+    const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(async (_event, nextSession) => {
+      setSession(nextSession);
+      await loadProfile(nextSession);
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured]);
+
+  async function signIn(email: string, password: string) {
+    if (!supabaseBrowser) return;
+    setLoading(true);
+    setError("");
+    const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      setLoading(false);
+      throw new Error(signInError.message);
+    }
+    setSession(data.session);
+    await loadProfile(data.session);
+    setLoading(false);
+  }
+
+  async function signOut() {
+    if (!supabaseBrowser) return;
+    await supabaseBrowser.auth.signOut();
+    setSession(null);
+    setProfile(null);
+  }
+
+  const value = useMemo<AuthContextValue>(() => ({
+    loading,
+    session,
+    profile,
+    error,
+    isDemo: !configured,
+    dataContext: {
+      fazendaId: profile?.fazenda_id,
+      usuarioId: profile?.id
+    },
+    signIn,
+    signOut,
+    reloadProfile: () => loadProfile()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [configured, error, loading, profile, session]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const value = useContext(AuthContext);
+  if (!value) throw new Error("useAuth precisa estar dentro de AuthProvider.");
+  return value;
+}

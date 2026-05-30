@@ -4,7 +4,7 @@ export function BarChart({ data, suffix = "" }: { data: Array<{ label: string; v
   const max = Math.max(...data.map((item) => item.value), 1);
 
   if (!data.length) {
-    return <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Sem dados para exibir.</div>;
+    return <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Sem dados para exibir.</div>;
   }
 
   return (

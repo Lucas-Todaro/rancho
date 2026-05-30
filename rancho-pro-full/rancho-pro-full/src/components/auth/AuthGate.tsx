@@ -1,0 +1,49 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+
+export function AuthGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { loading, profile, error, isDemo } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !isDemo && !profile && pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [isDemo, loading, pathname, profile, router]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-900 dark:bg-slate-950 dark:text-white">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+          <p className="mt-4 font-bold">Carregando sua fazenda...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isDemo && !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-900 dark:bg-slate-950 dark:text-white">
+        <div className="max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+            <AlertCircle className="h-5 w-5" />
+            <strong>Acesso pendente</strong>
+          </div>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            {error || "Entre com um usuario vinculado a uma fazenda para acessar o sistema."}
+          </p>
+          <Link href="/login" className="btn btn-primary mt-5 w-full">Ir para login</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}

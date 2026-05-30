@@ -1,120 +1,40 @@
--- Estrutura compatível com o Rancho Pro Full.
--- Use somente se quiser criar tabelas do zero ou comparar com suas tabelas atuais.
+-- Rancho Pro espera o schema em portugues enviado pelo usuario.
+-- Este arquivo nao recria as tabelas; ele deixa lembretes uteis para projetos
+-- que ja aplicaram o schema principal no Supabase.
 
-create extension if not exists "pgcrypto";
+-- Realtime opcional para as telas atualizarem automaticamente.
+alter publication supabase_realtime add table public.lotes;
+alter publication supabase_realtime add table public.animais;
+alter publication supabase_realtime add table public.eventos_animal;
+alter publication supabase_realtime add table public.ordenhas;
+alter publication supabase_realtime add table public.estoque_itens;
+alter publication supabase_realtime add table public.transacoes_financeiras;
+alter publication supabase_realtime add table public.funcionarios;
+alter publication supabase_realtime add table public.registros_ponto;
+alter publication supabase_realtime add table public.folha_pagamento;
+alter publication supabase_realtime add table public.alertas;
 
-create table if not exists public.animals (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  tag_number text not null,
-  category text default 'vaca',
-  breed text,
-  birth_date date,
-  weight_kg numeric default 0,
-  reproductive_status text default 'normal',
-  health_status text default 'ok',
-  status text default 'ativo',
-  notes text,
-  created_at timestamptz default now()
-);
+-- Para o login funcionar com RLS, cada auth.users.id precisa ter uma linha em public.usuarios.
+-- Exemplo, ajuste os IDs antes de executar:
+--
+-- insert into public.usuarios (id, fazenda_id, nome, telefone, papel, ativo)
+-- values (
+--   'AUTH_USER_ID_AQUI',
+--   'FAZENDA_ID_AQUI',
+--   'Administrador',
+--   '5585999990000',
+--   'admin',
+--   true
+-- );
 
-create table if not exists public.milk_productions (
-  id uuid primary key default gen_random_uuid(),
-  animal_name text not null,
-  animal_tag text,
-  liters numeric not null default 0,
-  period text default 'manha',
-  produced_at date default current_date,
-  quality text default 'boa',
-  notes text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.stock_items (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  category text default 'material',
-  quantity numeric default 0,
-  unit text default 'unidades',
-  min_quantity numeric default 0,
-  cost numeric default 0,
-  supplier text,
-  expiration_date date,
-  notes text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.financial_entries (
-  id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('receita', 'despesa')),
-  amount numeric not null default 0,
-  category text,
-  description text,
-  due_date date default current_date,
-  status text default 'pago',
-  payment_method text default 'pix',
-  notes text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.employees (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  role text,
-  salary numeric default 0,
-  benefits numeric default 0,
-  phone text,
-  admission_date date,
-  status text default 'ativo',
-  notes text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.payrolls (
-  id uuid primary key default gen_random_uuid(),
-  employee_name text not null,
-  month text,
-  base_salary numeric default 0,
-  additions numeric default 0,
-  discounts numeric default 0,
-  benefits numeric default 0,
-  net_salary numeric default 0,
-  status text default 'aberta',
-  notes text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.activity_logs (
-  id uuid primary key default gen_random_uuid(),
-  action text not null,
-  actor text default 'Sistema',
-  description text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.notifications (
-  id uuid primary key default gen_random_uuid(),
-  title text not null,
-  message text,
-  level text default 'info',
-  created_at timestamptz default now()
-);
-
-create table if not exists public.whatsapp_sessions (
-  phone text primary key,
-  state text not null default 'idle',
-  payload jsonb default '{}'::jsonb,
-  updated_at timestamptz default now()
-);
-
-alter publication supabase_realtime add table public.animals;
-alter publication supabase_realtime add table public.milk_productions;
-alter publication supabase_realtime add table public.stock_items;
-alter publication supabase_realtime add table public.financial_entries;
-alter publication supabase_realtime add table public.employees;
-alter publication supabase_realtime add table public.payrolls;
-
--- Para começar rápido em ambiente de teste, você pode liberar leitura/escrita para anon.
--- Em produção, ajuste RLS por usuário/fazenda.
--- alter table public.animals enable row level security;
--- create policy "allow all anon animals" on public.animals for all using (true) with check (true);
+-- Para o WhatsApp descobrir a fazenda pelo telefone:
+--
+-- insert into public.whatsapp_usuarios (fazenda_id, telefone_e164, usuario_id, nome_exibicao, papel_bot, ativo)
+-- values (
+--   'FAZENDA_ID_AQUI',
+--   '5585999990000',
+--   'AUTH_USER_ID_AQUI',
+--   'Administrador',
+--   'admin',
+--   true
+-- );

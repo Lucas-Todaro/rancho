@@ -27,6 +27,13 @@ export function slug(value: string) {
 }
 
 export function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+export function nowLocalDatetime() {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
 export function currentMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;

@@ -11,9 +11,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        soil: "#7c4a1e",
         pasture: "#2f855a",
-        cream: "#fff7ed"
+        meadow: "#ecfdf5"
       },
       boxShadow: {
         soft: "0 24px 80px rgba(15, 23, 42, 0.08)"

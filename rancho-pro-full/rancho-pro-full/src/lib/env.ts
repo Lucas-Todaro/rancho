@@ -4,6 +4,7 @@ export const env = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   appName: process.env.NEXT_PUBLIC_APP_NAME || "Rancho Pro",
   farmName: process.env.NEXT_PUBLIC_FARM_NAME || "Fazenda Modelo",
+  defaultFazendaId: process.env.SUPABASE_DEFAULT_FAZENDA_ID || "",
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
   metaWhatsappToken: process.env.META_WHATSAPP_TOKEN || "",
   metaPhoneNumberId: process.env.META_PHONE_NUMBER_ID || ""

@@ -2,28 +2,61 @@
 
 import { Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { AnyRecord, ModuleConfig, ModuleField } from "@/lib/types";
+import type { AnyRecord, ModuleConfig, ModuleField, RelationOption } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function initialValues(config: ModuleConfig, editing?: AnyRecord | null) {
   return config.fields.reduce<AnyRecord>((acc, field) => {
-    acc[field.name] = editing?.[field.name] ?? field.defaultValue ?? "";
+    const value = editing?.[field.name] ?? field.defaultValue ?? "";
+    if (field.type === "month" && typeof value === "string") {
+      acc[field.name] = value.slice(0, 7);
+      return acc;
+    }
+    if (field.type === "datetime-local" && typeof value === "string") {
+      acc[field.name] = value.slice(0, 16);
+      return acc;
+    }
+    if (field.type === "checkbox") {
+      acc[field.name] = value === true || value === "true";
+      return acc;
+    }
+    acc[field.name] = value;
     return acc;
   }, {});
 }
 
-function FieldInput({ field, value, onChange }: { field: ModuleField; value: any; onChange: (value: any) => void }) {
-  if (field.type === "select") {
+function FieldInput({
+  field,
+  value,
+  onChange,
+  relationOptions
+}: {
+  field: ModuleField;
+  value: any;
+  onChange: (value: any) => void;
+  relationOptions?: RelationOption[];
+}) {
+  if (field.type === "select" || field.type === "relation") {
+    const options = field.type === "relation" ? relationOptions || [] : field.options || [];
     return (
       <select className="input" value={value ?? ""} onChange={(event) => onChange(event.target.value)} required={field.required}>
         <option value="">Selecione...</option>
-        {field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
     );
   }
 
   if (field.type === "textarea") {
     return <textarea className="input min-h-28 resize-y" value={value ?? ""} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} required={field.required} />;
+  }
+
+  if (field.type === "checkbox") {
+    return (
+      <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-sm font-bold dark:border-slate-800 dark:bg-slate-900/70">
+        <input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
+        Sim
+      </label>
+    );
   }
 
   const type = field.type === "currency" ? "number" : field.type;
@@ -37,13 +70,15 @@ export function ModuleForm({
   editing,
   onSubmit,
   onCancel,
-  busy
+  busy,
+  relationOptions = {}
 }: {
   config: ModuleConfig;
   editing: AnyRecord | null;
   onSubmit: (values: AnyRecord) => Promise<void>;
   onCancel: () => void;
   busy?: boolean;
+  relationOptions?: Record<string, RelationOption[]>;
 }) {
   const base = useMemo(() => initialValues(config, editing), [config, editing]);
   const [values, setValues] = useState<AnyRecord>(base);
@@ -55,8 +90,8 @@ export function ModuleForm({
   function update(name: string, value: any) {
     setValues((current) => {
       const next = { ...current, [name]: value };
-      if (config.key === "folha" && ["base_salary", "additions", "discounts", "benefits"].includes(name)) {
-        next.net_salary = Number(next.base_salary || 0) + Number(next.additions || 0) + Number(next.benefits || 0) - Number(next.discounts || 0);
+      if (config.key === "folha" && ["salario_base", "valor_horas_extras", "descontos", "adiantamentos"].includes(name)) {
+        next.total_liquido = Number(next.salario_base || 0) + Number(next.valor_horas_extras || 0) - Number(next.descontos || 0) - Number(next.adiantamentos || 0);
       }
       return next;
     });
@@ -67,20 +102,26 @@ export function ModuleForm({
     const normalized = { ...values };
     config.fields.forEach((field) => {
       if (["number", "currency"].includes(field.type)) normalized[field.name] = Number(normalized[field.name] || 0);
+      if (field.type === "month" && typeof normalized[field.name] === "string" && normalized[field.name].length === 7) {
+        normalized[field.name] = `${normalized[field.name]}-01`;
+      }
+      if (field.type === "datetime-local" && normalized[field.name]) {
+        normalized[field.name] = new Date(normalized[field.name]).toISOString();
+      }
     });
     await onSubmit(normalized);
     if (!editing) setValues(initialValues(config));
   }
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-3xl p-5 shadow-soft">
+    <form onSubmit={handleSubmit} className="glass rounded-lg p-5 shadow-soft">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-black">{editing ? "Editar registro" : "Novo registro"}</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Preencha os campos e salve para sincronizar.</p>
         </div>
         {editing ? (
-          <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 p-2 dark:border-slate-700">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
             <X className="h-4 w-4" />
           </button>
         ) : null}
@@ -89,7 +130,7 @@ export function ModuleForm({
         {config.fields.map((field) => (
           <label key={field.name} className={cn("space-y-2", field.type === "textarea" && "md:col-span-2")}>
             <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{field.label}{field.required ? " *" : ""}</span>
-            <FieldInput field={field} value={values[field.name]} onChange={(value) => update(field.name, value)} />
+            <FieldInput field={field} value={values[field.name]} onChange={(value) => update(field.name, value)} relationOptions={relationOptions[field.name]} />
           </label>
         ))}
       </div>

@@ -1,42 +1,78 @@
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 
+export const DEMO_FAZENDA_ID = "00000000-0000-4000-8000-000000000001";
+export const DEMO_USUARIO_ID = "00000000-0000-4000-8000-000000000002";
+
 export const mockData: Record<string, AnyRecord[]> = {
-  [TABLES.animals]: [
-    { id: "a1", name: "Estrela", tag_number: "B-042", category: "vaca", breed: "Girolando", birth_date: "2020-03-18", weight_kg: 520, reproductive_status: "prenha", health_status: "ok", status: "ativo", notes: "Alta produtividade", created_at: "2026-05-20" },
-    { id: "a2", name: "Mimosa", tag_number: "B-017", category: "vaca", breed: "Holandesa", birth_date: "2019-08-12", weight_kg: 610, reproductive_status: "normal", health_status: "ok", status: "ativo", notes: "Boa persistência de lactação", created_at: "2026-05-18" },
-    { id: "a3", name: "Thor", tag_number: "T-003", category: "touro", breed: "Gir", birth_date: "2021-02-04", weight_kg: 760, reproductive_status: "normal", health_status: "ok", status: "ativo", notes: "Reprodutor", created_at: "2026-05-10" }
+  [TABLES.fazendas]: [
+    {
+      id: DEMO_FAZENDA_ID,
+      nome: "Fazenda Modelo",
+      slug: "fazenda-modelo",
+      timezone: "America/Fortaleza",
+      plano: "mvp",
+      ativa: true,
+      created_at: "2026-05-01T08:00:00.000Z"
+    }
   ],
-  [TABLES.milkProductions]: [
-    { id: "p1", animal_name: "Estrela", animal_tag: "B-042", liters: 24.5, period: "manha", produced_at: "2026-05-30", quality: "boa", notes: "Ordenha normal" },
-    { id: "p2", animal_name: "Mimosa", animal_tag: "B-017", liters: 31.2, period: "manha", produced_at: "2026-05-30", quality: "boa", notes: "Excelente produção" },
-    { id: "p3", animal_name: "Estrela", animal_tag: "B-042", liters: 19.4, period: "tarde", produced_at: "2026-05-29", quality: "boa", notes: "" }
+  [TABLES.usuarios]: [
+    {
+      id: DEMO_USUARIO_ID,
+      fazenda_id: DEMO_FAZENDA_ID,
+      nome: "Administrador Demo",
+      telefone: "5585999990000",
+      papel: "admin",
+      ativo: true,
+      created_at: "2026-05-01T08:00:00.000Z"
+    }
   ],
-  [TABLES.stockItems]: [
-    { id: "s1", name: "Ração 22%", category: "racao", quantity: 18, unit: "sacos", min_quantity: 12, cost: 118, supplier: "Agro Minas", expiration_date: "2026-10-20", notes: "" },
-    { id: "s2", name: "Vacina clostridial", category: "vacina", quantity: 4, unit: "unidades", min_quantity: 8, cost: 47, supplier: "Vet Campo", expiration_date: "2026-07-01", notes: "Comprar urgente" },
-    { id: "s3", name: "Sal mineral", category: "racao", quantity: 9, unit: "sacos", min_quantity: 10, cost: 86, supplier: "Cooperativa", expiration_date: "2027-01-12", notes: "Estoque crítico" }
+  [TABLES.lotes]: [
+    { id: "lote-1", fazenda_id: DEMO_FAZENDA_ID, nome: "Lactacao 1", descricao: "Vacas em pico de producao", ativo: true, created_at: "2026-05-20T08:00:00.000Z" },
+    { id: "lote-2", fazenda_id: DEMO_FAZENDA_ID, nome: "Novilhas", descricao: "Animais em crescimento", ativo: true, created_at: "2026-05-18T08:00:00.000Z" }
   ],
-  [TABLES.financialEntries]: [
-    { id: "f1", type: "receita", amount: 14800, category: "Venda de leite", description: "Recebimento laticínio", due_date: "2026-05-28", status: "pago", payment_method: "pix", notes: "" },
-    { id: "f2", type: "despesa", amount: 3890, category: "Ração", description: "Compra de ração", due_date: "2026-05-24", status: "pago", payment_method: "boleto", notes: "" },
-    { id: "f3", type: "despesa", amount: 730, category: "Veterinário", description: "Atendimento rebanho", due_date: "2026-05-21", status: "pago", payment_method: "pix", notes: "" }
+  [TABLES.animais]: [
+    { id: "animal-1", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-042", categoria: "vaca", fase: "lactacao", raca: "Girolando", lote_id: "lote-1", data_nascimento: "2020-03-18", peso: 520, status: "ativo", observacoes: "Alta produtividade", created_by: DEMO_USUARIO_ID, created_at: "2026-05-20T08:00:00.000Z" },
+    { id: "animal-2", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-017", categoria: "vaca", fase: "lactacao", raca: "Holandesa", lote_id: "lote-1", data_nascimento: "2019-08-12", peso: 610, status: "ativo", observacoes: "Boa persistencia de lactacao", created_by: DEMO_USUARIO_ID, created_at: "2026-05-18T08:00:00.000Z" },
+    { id: "animal-3", fazenda_id: DEMO_FAZENDA_ID, brinco: "T-003", categoria: "touro", fase: "nao_aplicavel", raca: "Gir", lote_id: null, data_nascimento: "2021-02-04", peso: 760, status: "ativo", observacoes: "Reprodutor", created_by: DEMO_USUARIO_ID, created_at: "2026-05-10T08:00:00.000Z" }
   ],
-  [TABLES.employees]: [
-    { id: "e1", name: "João Silva", role: "Ordenhador", salary: 2400, benefits: 280, phone: "31999990000", admission_date: "2024-01-15", status: "ativo", notes: "Turno manhã" },
-    { id: "e2", name: "Maria Santos", role: "Tratadora", salary: 2200, benefits: 260, phone: "31988887777", admission_date: "2023-09-02", status: "ativo", notes: "Responsável por alimentação" }
+  [TABLES.eventosAnimal]: [
+    { id: "evento-1", fazenda_id: DEMO_FAZENDA_ID, animal_id: "animal-1", tipo: "vacina", data_evento: "2026-05-23T09:00:00.000Z", descricao: "Reforco sanitario", medicamento: "Clostridial", dose: "5 ml", custo: 47, created_at: "2026-05-23T09:00:00.000Z" }
   ],
-  [TABLES.payrolls]: [
-    { id: "r1", employee_name: "João Silva", month: "2026-05", base_salary: 2400, additions: 180, discounts: 96, benefits: 280, net_salary: 2764, status: "aberta", notes: "" },
-    { id: "r2", employee_name: "Maria Santos", month: "2026-05", base_salary: 2200, additions: 140, discounts: 88, benefits: 260, net_salary: 2512, status: "aberta", notes: "" }
+  [TABLES.ordenhas]: [
+    { id: "ordenha-1", fazenda_id: DEMO_FAZENDA_ID, animal_id: "animal-1", litros: 24.5, turno: "manha", destino: "tanque", origem: "web", ordenhado_em: "2026-05-30T08:00:00.000Z", observacoes: "Ordenha normal", registrado_por: DEMO_USUARIO_ID, created_at: "2026-05-30T08:05:00.000Z" },
+    { id: "ordenha-2", fazenda_id: DEMO_FAZENDA_ID, animal_id: "animal-2", litros: 31.2, turno: "manha", destino: "tanque", origem: "web", ordenhado_em: "2026-05-30T08:20:00.000Z", observacoes: "Excelente producao", registrado_por: DEMO_USUARIO_ID, created_at: "2026-05-30T08:25:00.000Z" },
+    { id: "ordenha-3", fazenda_id: DEMO_FAZENDA_ID, animal_id: "animal-1", litros: 19.4, turno: "tarde", destino: "tanque", origem: "whatsapp", ordenhado_em: "2026-05-29T16:30:00.000Z", observacoes: "", registrado_por: DEMO_USUARIO_ID, created_at: "2026-05-29T16:35:00.000Z" }
   ],
-  [TABLES.activityLogs]: [
-    { id: "l1", action: "Produção registrada", actor: "WhatsApp", description: "Estrela - 24,5 L", created_at: "2026-05-30T08:12:00" },
-    { id: "l2", action: "Estoque crítico", actor: "Sistema", description: "Vacina clostridial abaixo do mínimo", created_at: "2026-05-30T09:30:00" }
+  [TABLES.estoqueItens]: [
+    { id: "estoque-1", fazenda_id: DEMO_FAZENDA_ID, nome: "Racao 22%", categoria: "racao", unidade_medida: "sacos", quantidade_atual: 18, quantidade_minima: 12, valor_unitario: 118, fornecedor: "Agro Minas", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-15T08:00:00.000Z" },
+    { id: "estoque-2", fazenda_id: DEMO_FAZENDA_ID, nome: "Vacina clostridial", categoria: "medicamento", unidade_medida: "unidades", quantidade_atual: 4, quantidade_minima: 8, valor_unitario: 47, fornecedor: "Vet Campo", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-13T08:00:00.000Z" },
+    { id: "estoque-3", fazenda_id: DEMO_FAZENDA_ID, nome: "Sal mineral", categoria: "racao", unidade_medida: "sacos", quantidade_atual: 9, quantidade_minima: 10, valor_unitario: 86, fornecedor: "Cooperativa", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-12T08:00:00.000Z" }
   ],
-  [TABLES.notifications]: [
-    { id: "n1", title: "Vacina em estoque crítico", message: "Vacina clostridial está abaixo do mínimo", level: "warning", created_at: "2026-05-30T09:30:00" },
-    { id: "n2", title: "Produção atualizada", message: "Dashboard sincronizado com os registros de hoje", level: "success", created_at: "2026-05-30T10:15:00" }
+  [TABLES.estoqueMovimentacoes]: [],
+  [TABLES.transacoesFinanceiras]: [
+    { id: "fin-1", fazenda_id: DEMO_FAZENDA_ID, tipo: "entrada", data_transacao: "2026-05-28", valor: 14800, categoria: "Venda de leite", descricao: "Recebimento laticinio", metodo_pagamento: "pix", origem: "web", created_by: DEMO_USUARIO_ID, created_at: "2026-05-28T12:00:00.000Z" },
+    { id: "fin-2", fazenda_id: DEMO_FAZENDA_ID, tipo: "saida", data_transacao: "2026-05-24", valor: 3890, categoria: "Racao", descricao: "Compra de racao", metodo_pagamento: "boleto", origem: "web", created_by: DEMO_USUARIO_ID, created_at: "2026-05-24T12:00:00.000Z" },
+    { id: "fin-3", fazenda_id: DEMO_FAZENDA_ID, tipo: "saida", data_transacao: "2026-05-21", valor: 730, categoria: "Veterinario", descricao: "Atendimento rebanho", metodo_pagamento: "pix", origem: "web", created_by: DEMO_USUARIO_ID, created_at: "2026-05-21T12:00:00.000Z" }
   ],
-  [TABLES.whatsappSessions]: []
+  [TABLES.funcionarios]: [
+    { id: "func-1", fazenda_id: DEMO_FAZENDA_ID, nome: "Joao Silva", funcao: "Ordenhador", cpf: null, salario_base: 2400, data_admissao: "2024-01-15", contato_whatsapp: "5531999990000", carga_horaria_mensal: 220, valor_hora_extra: 18, ativo: true, created_at: "2024-01-15T08:00:00.000Z" },
+    { id: "func-2", fazenda_id: DEMO_FAZENDA_ID, nome: "Maria Santos", funcao: "Tratadora", cpf: null, salario_base: 2200, data_admissao: "2023-09-02", contato_whatsapp: "553188887777", carga_horaria_mensal: 220, valor_hora_extra: 16, ativo: true, created_at: "2023-09-02T08:00:00.000Z" }
+  ],
+  [TABLES.registrosPonto]: [
+    { id: "ponto-1", fazenda_id: DEMO_FAZENDA_ID, funcionario_id: "func-1", tipo: "entrada", registrado_em: "2026-05-30T06:00:00.000Z", origem: "web", observacao: "", created_by: DEMO_USUARIO_ID, created_at: "2026-05-30T06:00:00.000Z" }
+  ],
+  [TABLES.folhaPagamento]: [
+    { id: "folha-1", fazenda_id: DEMO_FAZENDA_ID, funcionario_id: "func-1", competencia: "2026-05-01", salario_base: 2400, horas_extras: 10, valor_horas_extras: 180, descontos: 96, adiantamentos: 0, total_liquido: 2484, status: "rascunho", pago_em: null, created_at: "2026-05-30T08:00:00.000Z" },
+    { id: "folha-2", fazenda_id: DEMO_FAZENDA_ID, funcionario_id: "func-2", competencia: "2026-05-01", salario_base: 2200, horas_extras: 8, valor_horas_extras: 140, descontos: 88, adiantamentos: 0, total_liquido: 2252, status: "rascunho", pago_em: null, created_at: "2026-05-30T08:00:00.000Z" }
+  ],
+  [TABLES.whatsappUsuarios]: [
+    { id: "wa-user-1", fazenda_id: DEMO_FAZENDA_ID, telefone_e164: "5531999990000", usuario_id: DEMO_USUARIO_ID, funcionario_id: "func-1", nome_exibicao: "Joao Silva", papel_bot: "funcionario", ativo: true, created_at: "2026-05-01T08:00:00.000Z" }
+  ],
+  [TABLES.whatsappSessoes]: [],
+  [TABLES.whatsappMensagens]: [],
+  [TABLES.alertas]: [
+    { id: "alerta-1", fazenda_id: DEMO_FAZENDA_ID, tipo: "estoque", severidade: "warning", titulo: "Vacina em estoque critico", descricao: "Vacina clostridial esta abaixo do minimo", resolvido: false, created_at: "2026-05-30T09:30:00.000Z" }
+  ],
+  [TABLES.auditoriaLogs]: []
 };

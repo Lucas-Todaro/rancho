@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, WhatsAppSession } from "@/lib/types";
@@ -7,8 +8,8 @@ const STATES = {
   IDLE: "idle",
   PROD_ANIMAL: "prod_animal",
   PROD_LITERS: "prod_liters",
-  ANIMAL_NAME: "animal_name",
   ANIMAL_TAG: "animal_tag",
+  ANIMAL_CATEGORY: "animal_category",
   ANIMAL_BREED: "animal_breed",
   ANIMAL_BIRTH: "animal_birth",
   FIN_VALUE: "fin_value",
@@ -20,47 +21,158 @@ function cleanNumber(value: string) {
   return Number(value.replace(/[^0-9,.-]/g, "").replace(",", "."));
 }
 
+async function resolveWhatsAppUser(phone: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return {
+      fazenda_id: env.defaultFazendaId || "",
+      whatsapp_usuario_id: null,
+      usuario_id: null
+    };
+  }
+
+  const { data: whatsappUser } = await supabase
+    .from(TABLES.whatsappUsuarios)
+    .select("id,fazenda_id,usuario_id,ativo")
+    .eq("telefone_e164", phone)
+    .eq("ativo", true)
+    .maybeSingle();
+
+  if (whatsappUser?.fazenda_id) {
+    return {
+      fazenda_id: whatsappUser.fazenda_id as string,
+      whatsapp_usuario_id: whatsappUser.id as string,
+      usuario_id: whatsappUser.usuario_id as string | null
+    };
+  }
+
+  if (env.defaultFazendaId) {
+    return {
+      fazenda_id: env.defaultFazendaId,
+      whatsapp_usuario_id: null,
+      usuario_id: null
+    };
+  }
+
+  const { data: firstFarm } = await supabase
+    .from(TABLES.fazendas)
+    .select("id")
+    .eq("ativa", true)
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    fazenda_id: (firstFarm?.id as string) || "",
+    whatsapp_usuario_id: null,
+    usuario_id: null
+  };
+}
+
 async function getSession(phone: string): Promise<WhatsAppSession> {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return { phone, state: STATES.IDLE, payload: {} };
+  const owner = await resolveWhatsAppUser(phone);
 
-  const { data } = await supabase.from(TABLES.whatsappSessions).select("*").eq("phone", phone).maybeSingle();
-  return data || { phone, state: STATES.IDLE, payload: {} };
+  if (!supabase || !owner.fazenda_id) {
+    return { phone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
+  }
+
+  const { data } = await supabase
+    .from(TABLES.whatsappSessoes)
+    .select("*")
+    .eq("telefone_e164", phone)
+    .maybeSingle();
+
+  if (!data) {
+    return { phone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
+  }
+
+  return {
+    phone,
+    fazendaId: data.fazenda_id,
+    whatsappUsuarioId: data.whatsapp_usuario_id,
+    usuarioId: owner.usuario_id,
+    state: data.etapa || STATES.IDLE,
+    payload: data.dados || {},
+    updated_at: data.updated_at
+  };
 }
 
 async function saveSession(session: WhatsAppSession) {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return;
+  if (!supabase || !session.fazendaId) return;
 
-  await supabase.from(TABLES.whatsappSessions).upsert({
-    phone: session.phone,
-    state: session.state,
-    payload: session.payload || {},
-    updated_at: new Date().toISOString()
-  }, { onConflict: "phone" });
+  await supabase.from(TABLES.whatsappSessoes).upsert({
+    fazenda_id: session.fazendaId,
+    whatsapp_usuario_id: session.whatsappUsuarioId,
+    telefone_e164: session.phone,
+    fluxo: session.state === STATES.IDLE ? null : "menu_principal",
+    etapa: session.state,
+    dados: session.payload || {},
+    status: "ativa",
+    ultimo_interacao_em: new Date().toISOString(),
+    expira_em: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  }, { onConflict: "telefone_e164" });
 }
 
-async function logActivity(action: string, actor: string, description: string) {
+async function logAudit(fazendaId: string, usuarioId: string | null | undefined, entidade: string, acao: string, depois: AnyRecord) {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-  await supabase.from(TABLES.activityLogs).insert({ action, actor, description, created_at: new Date().toISOString() });
+  if (!supabase || !fazendaId) return;
+
+  await supabase.from(TABLES.auditoriaLogs).insert({
+    fazenda_id: fazendaId,
+    usuario_id: usuarioId || null,
+    entidade,
+    acao,
+    depois,
+    origem: "whatsapp"
+  });
 }
 
 async function insertRecord(table: string, payload: AnyRecord) {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     console.log(`[WhatsApp demo insert] ${table}`, payload);
-    return;
+    return payload;
   }
-  const { error } = await supabase.from(table).insert(payload);
+
+  const { data, error } = await supabase.from(table).insert(payload).select("*").single();
   if (error) throw new Error(error.message);
+  return data;
+}
+
+async function findAnimal(fazendaId: string, text: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const term = text.trim();
+  const { data } = await supabase
+    .from(TABLES.animais)
+    .select("id,brinco,categoria")
+    .eq("fazenda_id", fazendaId)
+    .ilike("brinco", term)
+    .limit(1)
+    .maybeSingle();
+
+  return data;
+}
+
+async function ensureSession(phone: string) {
+  const session = await getSession(phone);
+  if (!session.fazendaId) {
+    await sendWhatsAppText(phone, "Nao encontrei uma fazenda para este telefone. Cadastre o numero em whatsapp_usuarios ou configure SUPABASE_DEFAULT_FAZENDA_ID.");
+    return null;
+  }
+  return session;
 }
 
 export async function sendMainMenu(phone: string) {
-  await saveSession({ phone, state: STATES.IDLE, payload: {} });
-  return sendWhatsAppButtons(phone, "Bem-vindo ao sistema da fazenda. Escolha uma opção:", [
-    { id: "MENU_PRODUCAO", title: "Cadastrar Produção" },
-    { id: "MENU_ANIMAL", title: "Cadastrar Animal" },
+  const session = await ensureSession(phone);
+  if (!session) return;
+
+  await saveSession({ ...session, state: STATES.IDLE, payload: {} });
+  return sendWhatsAppButtons(phone, "Bem-vindo ao sistema da fazenda. Escolha uma opcao:", [
+    { id: "MENU_PRODUCAO", title: "Ordenha" },
+    { id: "MENU_ANIMAL", title: "Animal" },
     { id: "MENU_FINANCEIRO", title: "Financeiro" }
   ]);
 }
@@ -70,113 +182,136 @@ export async function handleConversation(input: { phone: string; text: string; b
   const text = (input.text || "").trim();
   const command = input.buttonId || text.toUpperCase();
 
-  if (["OI", "OLÁ", "OLA", "MENU", "INICIO", "INÍCIO", "CANCELAR"].includes(command)) {
+  if (["OI", "OLA", "OLÁ", "MENU", "INICIO", "INÍCIO", "CANCELAR"].includes(command)) {
     return sendMainMenu(phone);
   }
 
+  const session = await ensureSession(phone);
+  if (!session) return;
+
   if (command === "MENU_PRODUCAO") {
-    await saveSession({ phone, state: STATES.PROD_ANIMAL, payload: {} });
-    return sendWhatsAppText(phone, "Qual vaca produziu leite? Envie o nome ou número do brinco.\n\nEx: Estrela ou B-042");
+    await saveSession({ ...session, state: STATES.PROD_ANIMAL, payload: {} });
+    return sendWhatsAppText(phone, "Qual animal foi ordenhado? Envie o numero do brinco.\n\nEx: B-042");
   }
 
   if (command === "MENU_ANIMAL") {
-    await saveSession({ phone, state: STATES.ANIMAL_NAME, payload: {} });
-    return sendWhatsAppText(phone, "Vamos cadastrar um animal. Qual é o nome?\n\nEx: Mimosa");
+    await saveSession({ ...session, state: STATES.ANIMAL_TAG, payload: {} });
+    return sendWhatsAppText(phone, "Vamos cadastrar um animal. Qual e o numero do brinco?\n\nEx: B-042");
   }
 
   if (command === "MENU_FINANCEIRO") {
-    await saveSession({ phone, state: STATES.IDLE, payload: {} });
+    await saveSession({ ...session, state: STATES.IDLE, payload: {} });
     return sendWhatsAppButtons(phone, "O que deseja registrar?", [
-      { id: "FIN_RECEITA", title: "Receita" },
-      { id: "FIN_DESPESA", title: "Despesa" },
+      { id: "FIN_ENTRADA", title: "Entrada" },
+      { id: "FIN_SAIDA", title: "Saida" },
       { id: "CANCELAR", title: "Cancelar" }
     ]);
   }
 
-  if (command === "FIN_RECEITA" || command === "FIN_DESPESA") {
-    await saveSession({ phone, state: STATES.FIN_VALUE, payload: { type: command === "FIN_RECEITA" ? "receita" : "despesa" } });
+  if (command === "FIN_ENTRADA" || command === "FIN_SAIDA") {
+    await saveSession({ ...session, state: STATES.FIN_VALUE, payload: { tipo: command === "FIN_ENTRADA" ? "entrada" : "saida" } });
     return sendWhatsAppText(phone, "Qual o valor?\n\nEx: 1500,00");
   }
 
-  const session = await getSession(phone);
-
   if (session.state === STATES.PROD_ANIMAL) {
-    await saveSession({ phone, state: STATES.PROD_LITERS, payload: { animal_name: text } });
-    return sendWhatsAppText(phone, `Certo. Quantos litros a vaca ${text} produziu?\n\nEx: 24,5`);
+    const animal = await findAnimal(session.fazendaId!, text);
+    if (!animal) {
+      return sendWhatsAppText(phone, "Nao encontrei esse brinco no rebanho. Envie um brinco cadastrado ou digite MENU para voltar.");
+    }
+
+    await saveSession({ ...session, state: STATES.PROD_LITERS, payload: { animal_id: animal.id, brinco: animal.brinco } });
+    return sendWhatsAppText(phone, `Certo. Quantos litros o animal ${animal.brinco} produziu?\n\nEx: 24,5`);
   }
 
   if (session.state === STATES.PROD_LITERS) {
-    const liters = cleanNumber(text);
-    if (!Number.isFinite(liters) || liters <= 0) return sendWhatsAppText(phone, "Valor inválido. Envie apenas a quantidade de litros. Ex: 24,5");
-    const animalName = session.payload?.animal_name || "Animal não informado";
-    await insertRecord(TABLES.milkProductions, {
-      animal_name: animalName,
-      liters,
-      period: "whatsapp",
-      produced_at: new Date().toISOString().slice(0, 10),
-      quality: "boa",
-      notes: `Registrado via WhatsApp por ${phone}`
-    });
-    await logActivity("Produção registrada", "WhatsApp", `${animalName} - ${liters} L`);
-    await sendWhatsAppText(phone, `✅ Produção registrada com sucesso!\n\nAnimal: ${animalName}\nLitros: ${liters} L`);
+    const litros = cleanNumber(text);
+    if (!Number.isFinite(litros) || litros <= 0) return sendWhatsAppText(phone, "Valor invalido. Envie apenas a quantidade de litros. Ex: 24,5");
+
+    const payload = {
+      fazenda_id: session.fazendaId,
+      animal_id: session.payload?.animal_id,
+      litros,
+      turno: "manha",
+      destino: "tanque",
+      origem: "whatsapp",
+      registrado_por: session.usuarioId || null,
+      observacoes: `Registrado via WhatsApp por ${phone}`
+    };
+
+    const inserted = await insertRecord(TABLES.ordenhas, payload);
+    await logAudit(session.fazendaId!, session.usuarioId, TABLES.ordenhas, "insert", inserted || payload);
+    await sendWhatsAppText(phone, `OK. Ordenha registrada.\n\nAnimal: ${session.payload?.brinco}\nLitros: ${litros} L`);
     return sendMainMenu(phone);
   }
 
-  if (session.state === STATES.ANIMAL_NAME) {
-    await saveSession({ phone, state: STATES.ANIMAL_TAG, payload: { name: text } });
-    return sendWhatsAppText(phone, "Qual é o número do brinco?\n\nEx: B-042");
+  if (session.state === STATES.ANIMAL_TAG) {
+    await saveSession({ ...session, state: STATES.ANIMAL_CATEGORY, payload: { brinco: text } });
+    return sendWhatsAppButtons(phone, "Qual e a categoria?", [
+      { id: "CAT_VACA", title: "Vaca" },
+      { id: "CAT_BEZERRO", title: "Bezerro" },
+      { id: "CAT_TOURO", title: "Touro" }
+    ]);
   }
 
-  if (session.state === STATES.ANIMAL_TAG) {
-    await saveSession({ phone, state: STATES.ANIMAL_BREED, payload: { ...session.payload, tag_number: text } });
-    return sendWhatsAppText(phone, "Qual é a raça?\n\nEx: Girolando");
+  if (session.state === STATES.ANIMAL_CATEGORY) {
+    const categoryMap: Record<string, string> = { CAT_VACA: "vaca", CAT_BEZERRO: "bezerro", CAT_TOURO: "touro" };
+    const categoria = categoryMap[command] || text.toLowerCase();
+    await saveSession({ ...session, state: STATES.ANIMAL_BREED, payload: { ...session.payload, categoria } });
+    return sendWhatsAppText(phone, "Qual e a raca?\n\nEx: Girolando");
   }
 
   if (session.state === STATES.ANIMAL_BREED) {
-    await saveSession({ phone, state: STATES.ANIMAL_BIRTH, payload: { ...session.payload, breed: text } });
-    return sendWhatsAppText(phone, "Qual é a data de nascimento?\n\nUse o formato AAAA-MM-DD. Ex: 2021-04-15");
+    await saveSession({ ...session, state: STATES.ANIMAL_BIRTH, payload: { ...session.payload, raca: text } });
+    return sendWhatsAppText(phone, "Qual e a data de nascimento?\n\nUse AAAA-MM-DD. Se nao souber, envie PULAR.");
   }
 
   if (session.state === STATES.ANIMAL_BIRTH) {
+    const birth = text.toUpperCase() === "PULAR" ? null : text;
     const payload: AnyRecord = {
-      ...session.payload,
-      birth_date: text,
-      category: "vaca",
+      fazenda_id: session.fazendaId,
+      brinco: session.payload?.brinco,
+      categoria: session.payload?.categoria || "outro",
+      fase: "nao_aplicavel",
+      raca: session.payload?.raca || null,
+      data_nascimento: birth,
       status: "ativo",
-      health_status: "ok",
-      reproductive_status: "normal",
-      notes: `Cadastrado via WhatsApp por ${phone}`
+      created_by: session.usuarioId || null,
+      observacoes: `Cadastrado via WhatsApp por ${phone}`
     };
-    await insertRecord(TABLES.animals, payload);
-    await logActivity("Animal cadastrado", "WhatsApp", `${payload.name} - ${payload.tag_number}`);
-    await sendWhatsAppText(phone, `✅ Animal cadastrado!\n\nNome: ${payload.name}\nBrinco: ${payload.tag_number}\nRaça: ${payload.breed}`);
+
+    const inserted = await insertRecord(TABLES.animais, payload);
+    await logAudit(session.fazendaId!, session.usuarioId, TABLES.animais, "insert", inserted || payload);
+    await sendWhatsAppText(phone, `OK. Animal cadastrado.\n\nBrinco: ${payload.brinco}\nCategoria: ${payload.categoria}\nRaca: ${payload.raca || "-"}`);
     return sendMainMenu(phone);
   }
 
   if (session.state === STATES.FIN_VALUE) {
-    const amount = cleanNumber(text);
-    if (!Number.isFinite(amount) || amount <= 0) return sendWhatsAppText(phone, "Valor inválido. Envie somente o valor. Ex: 1500,00");
-    await saveSession({ phone, state: STATES.FIN_CATEGORY, payload: { ...session.payload, amount } });
-    return sendWhatsAppText(phone, "Qual categoria?\n\nEx: Venda de leite, ração, veterinário");
+    const valor = cleanNumber(text);
+    if (!Number.isFinite(valor) || valor <= 0) return sendWhatsAppText(phone, "Valor invalido. Envie somente o valor. Ex: 1500,00");
+    await saveSession({ ...session, state: STATES.FIN_CATEGORY, payload: { ...session.payload, valor } });
+    return sendWhatsAppText(phone, "Qual categoria?\n\nEx: Venda de leite, racao, veterinario");
   }
 
   if (session.state === STATES.FIN_CATEGORY) {
-    await saveSession({ phone, state: STATES.FIN_DESCRIPTION, payload: { ...session.payload, category: text } });
-    return sendWhatsAppText(phone, "Digite uma descrição curta.\n\nEx: Recebimento do laticínio");
+    await saveSession({ ...session, state: STATES.FIN_DESCRIPTION, payload: { ...session.payload, categoria: text } });
+    return sendWhatsAppText(phone, "Digite uma descricao curta.\n\nEx: Recebimento do laticinio");
   }
 
   if (session.state === STATES.FIN_DESCRIPTION) {
     const payload: AnyRecord = {
-      ...session.payload,
-      description: text,
-      due_date: new Date().toISOString().slice(0, 10),
-      status: "pago",
-      payment_method: "whatsapp",
-      notes: `Registrado via WhatsApp por ${phone}`
+      fazenda_id: session.fazendaId,
+      tipo: session.payload?.tipo || "entrada",
+      valor: session.payload?.valor,
+      categoria: session.payload?.categoria,
+      descricao: text,
+      metodo_pagamento: "whatsapp",
+      origem: "whatsapp",
+      created_by: session.usuarioId || null
     };
-    await insertRecord(TABLES.financialEntries, payload);
-    await logActivity("Financeiro registrado", "WhatsApp", `${payload.type} - R$ ${payload.amount}`);
-    await sendWhatsAppText(phone, `✅ ${payload.type === "receita" ? "Receita" : "Despesa"} registrada!\n\nValor: R$ ${payload.amount}\nCategoria: ${payload.category}`);
+
+    const inserted = await insertRecord(TABLES.transacoesFinanceiras, payload);
+    await logAudit(session.fazendaId!, session.usuarioId, TABLES.transacoesFinanceiras, "insert", inserted || payload);
+    await sendWhatsAppText(phone, `OK. ${payload.tipo === "entrada" ? "Entrada" : "Saida"} registrada.\n\nValor: R$ ${payload.valor}\nCategoria: ${payload.categoria}`);
     return sendMainMenu(phone);
   }
 

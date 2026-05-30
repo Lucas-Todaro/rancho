@@ -1,22 +1,25 @@
-# Rancho Pro Full
+# Rancho Pro
 
-Aplicação web completa para gestão agropecuária com painel administrativo, CRUD dos módulos principais e webhook para WhatsApp via Meta Cloud API.
+Aplicacao web para gestao agropecuaria integrada ao schema Supabase enviado.
 
 ## O que vem pronto
 
-- Next.js + React + TypeScript + Tailwind CSS
-- Dashboard responsivo com cards e gráficos CSS
-- Gestão de rebanho
-- Produção leiteira
-- Estoque
-- Financeiro
-- Funcionários
-- Folha de pagamento
-- Relatórios
-- Central WhatsApp
-- Webhook `/api/whatsapp/webhook`
-- Modo demo: abre com dados falsos mesmo sem Supabase configurado
-- Integração Supabase: ao configurar `.env`, as telas passam a ler/inserir/deletar nas tabelas
+- Next.js, React, TypeScript e Tailwind CSS
+- Login com Supabase Auth
+- Contexto de fazenda pela tabela `usuarios`
+- Dashboard com indicadores reais
+- CRUD de lotes, rebanho, eventos, ordenhas, estoque, financeiro, funcionarios, ponto e folha
+- Relatorios imprimiveis
+- Central WhatsApp com webhook Meta Cloud API
+- Modo demo quando o Supabase nao esta configurado
+
+## Tabelas usadas
+
+O app esta mapeado para as tabelas:
+
+`fazendas`, `usuarios`, `lotes`, `animais`, `eventos_animal`, `ordenhas`, `estoque_itens`, `estoque_movimentacoes`, `transacoes_financeiras`, `funcionarios`, `registros_ponto`, `folha_pagamento`, `whatsapp_usuarios`, `whatsapp_sessoes`, `whatsapp_mensagens`, `alertas` e `auditoria_logs`.
+
+O mapa central fica em `src/lib/tables.ts`.
 
 ## Rodar localmente
 
@@ -28,24 +31,21 @@ npm run dev
 
 Acesse `http://localhost:3000`.
 
-## Deploy no Vercel
-
-1. Suba o projeto no GitHub.
-2. Importe no Vercel como projeto Next.js.
-3. Cadastre as variáveis de ambiente do `.env.example` em Settings > Environment Variables.
-4. Faça o deploy.
-
-## Ajustar nomes de tabelas
-
-O arquivo principal é:
+## Variaveis principais
 
 ```txt
-src/lib/tables.ts
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_DEFAULT_FAZENDA_ID=
+WHATSAPP_VERIFY_TOKEN=
+META_WHATSAPP_TOKEN=
+META_PHONE_NUMBER_ID=
 ```
 
-Se suas tabelas no Supabase tiverem nomes diferentes, altere ali. O sistema usa esse arquivo como mapa central.
+`SUPABASE_DEFAULT_FAZENDA_ID` e opcional, mas ajuda o webhook do WhatsApp quando um telefone ainda nao esta cadastrado em `whatsapp_usuarios`.
 
-## Webhook WhatsApp
+## WhatsApp
 
 Depois do deploy, configure na Meta:
 
@@ -53,8 +53,14 @@ Depois do deploy, configure na Meta:
 https://SEU-PROJETO.vercel.app/api/whatsapp/webhook
 ```
 
-O token de verificação precisa ser o mesmo valor de `WHATSAPP_VERIFY_TOKEN`.
+O fluxo atual registra:
 
-## Observação importante
+- ordenhas em `ordenhas`
+- animais em `animais`
+- entradas/saidas em `transacoes_financeiras`
+- estado da conversa em `whatsapp_sessoes`
+- auditoria em `auditoria_logs`
 
-Este projeto já vem pronto para produção inicial, mas como suas tabelas Supabase já existem, talvez seja necessário ajustar nomes de colunas em `src/lib/tables.ts` e nos módulos. Também incluí o arquivo `supabase-schema-compat.sql` caso você queira criar uma estrutura compatível do zero.
+## Observacao de seguranca
+
+Use `NEXT_PUBLIC_SUPABASE_ANON_KEY` no frontend. A `SUPABASE_SERVICE_ROLE_KEY` fica somente em rotas de backend e nunca deve ser exposta no navegador.
