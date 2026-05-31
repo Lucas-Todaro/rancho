@@ -38,6 +38,18 @@ function FieldInput({
 }) {
   if (field.type === "select" || field.type === "relation") {
     const options = field.type === "relation" ? relationOptions || [] : field.options || [];
+    if (field.name === "unidade_medida") {
+      return (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {options.map((option) => (
+            <label key={option.value} className={cn("flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold transition", value === option.value ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100" : "border-slate-200 bg-white/70 text-slate-600 hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300")}>
+              <input className="accent-emerald-700" type="radio" name={field.name} value={option.value} checked={value === option.value} onChange={(event) => onChange(event.target.value)} required={field.required} />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      );
+    }
     return (
       <select className="input" value={value ?? ""} onChange={(event) => onChange(event.target.value)} required={field.required}>
         <option value="">Selecione...</option>

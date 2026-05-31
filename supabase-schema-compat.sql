@@ -14,6 +14,29 @@ alter publication supabase_realtime add table public.registros_ponto;
 alter publication supabase_realtime add table public.folha_pagamento;
 alter publication supabase_realtime add table public.alertas;
 
+-- Permite excluir um item de estoque junto com seu historico de movimentacoes.
+-- Se o schema principal criou a FK sem cascade, a exclusao do item falha com:
+-- estoque_movimentacoes_item_id_fkey.
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.table_constraints
+    where constraint_schema = 'public'
+      and table_name = 'estoque_movimentacoes'
+      and constraint_name = 'estoque_movimentacoes_item_id_fkey'
+  ) then
+    alter table public.estoque_movimentacoes
+      drop constraint estoque_movimentacoes_item_id_fkey;
+  end if;
+
+  alter table public.estoque_movimentacoes
+    add constraint estoque_movimentacoes_item_id_fkey
+    foreign key (item_id)
+    references public.estoque_itens(id)
+    on delete cascade;
+end $$;
+
 -- Para o login funcionar com RLS, cada auth.users.id precisa ter uma linha em public.usuarios.
 -- Exemplo, ajuste os IDs antes de executar:
 --
