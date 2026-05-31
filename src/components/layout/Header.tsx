@@ -1,27 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { navGroups } from "@/components/layout/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
-
-const mobileLinks = [
-  ["/dashboard", "Dashboard"],
-  ["/lotes", "Lotes"],
-  ["/rebanho", "Rebanho"],
-  ["/eventos", "Eventos"],
-  ["/producao", "Produção"],
-  ["/estoque", "Estoque"],
-  ["/financeiro", "Financeiro"],
-  ["/funcionarios", "Funcionários"],
-  ["/ponto", "Ponto"],
-  ["/folha", "Folha"],
-  ["/relatorios", "Relatórios"],
-  ["/whatsapp", "WhatsApp"],
-  ["/configuracoes", "Configurações"]
-];
 
 const globalDestinations = [
   { href: "/dashboard", label: "Dashboard", helper: "Visão geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
@@ -54,6 +39,7 @@ function findDestinations(value: string) {
 
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const { profile, isDemo, signOut } = useAuth();
   const [dark, setDark] = useState(false);
   const [open, setOpen] = useState(false);
@@ -163,12 +149,57 @@ export function Header() {
       </div>
 
       {open ? (
-        <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 lg:hidden">
-          {mobileLinks.map(([href, label]) => (
-            <Link key={href} href={href} onClick={() => setOpen(false)} className={cn("rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold dark:bg-slate-800", "hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-200")}>
-              {label}
-            </Link>
-          ))}
+        <div className="mt-3 max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 lg:hidden">
+          <div className="mb-3 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 dark:bg-emerald-950/30">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Menu</p>
+              <p className="text-sm font-black text-slate-900 dark:text-slate-100">Áreas da fazenda</p>
+            </div>
+            <button
+              className="rounded-lg border border-emerald-200 bg-white/80 p-2 text-emerald-700 dark:border-emerald-900 dark:bg-slate-950/70 dark:text-emerald-200"
+              type="button"
+              onClick={() => setOpen(false)}
+              title="Fechar menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <nav className="space-y-4">
+            {navGroups.map((group) => (
+              <section key={group.label}>
+                <p className="mb-2 px-1 text-[0.68rem] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                  {group.label}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.items.map((item) => {
+                    const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex min-w-0 items-center gap-3 rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-800 dark:bg-slate-950/45 dark:text-slate-200 dark:hover:border-emerald-900 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-200",
+                          active && "border-emerald-200 bg-emerald-100 text-emerald-900 shadow-sm dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
+                        )}
+                      >
+                        <span className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400",
+                          active && "text-emerald-700 dark:text-emerald-200"
+                        )}>
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </nav>
         </div>
       ) : null}
     </header>

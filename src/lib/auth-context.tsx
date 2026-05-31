@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabaseBrowser } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/env";
 import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
 import type { DataContext, UsuarioProfile } from "@/lib/types";
@@ -39,6 +38,13 @@ const demoProfile: UsuarioProfile = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const AUTH_WAIT_LIMIT_MS = 12000;
 
+async function getSupabaseBrowser() {
+  const { supabaseBrowser } = await import("@/lib/supabase/browser");
+  return supabaseBrowser;
+}
+
+type SupabaseBrowserClient = NonNullable<Awaited<ReturnType<typeof getSupabaseBrowser>>>;
+
 async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -61,10 +67,8 @@ async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
   }
 }
 
-async function fetchProfile(userId: string) {
-  if (!supabaseBrowser) return demoProfile;
-
-  const { data, error } = await supabaseBrowser
+async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
+  const { data, error } = await client
     .from("usuarios")
     .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
     .eq("id", userId)
@@ -93,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const activeSession = nextSession ?? session;
     setError("");
 
-    if (!configured || !supabaseBrowser) {
+    if (!configured) {
       setProfile(demoProfile);
       return;
     }
@@ -103,8 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const client = await getSupabaseBrowser();
+    if (!client) {
+      setProfile(demoProfile);
+      return;
+    }
+
     const profileResult = await waitWithLimit(
-      fetchProfile(activeSession.user.id),
+      fetchProfile(activeSession.user.id, client),
       "A fazenda demorou para carregar. Confira sua internet e tente novamente."
     );
 
@@ -119,9 +129,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let unsubscribe: (() => void) | undefined;
 
     async function boot() {
-      if (!configured || !supabaseBrowser) {
+      if (!configured) {
         if (mounted) {
           setProfile(demoProfile);
           setLoading(false);
@@ -129,8 +140,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const client = await getSupabaseBrowser();
+      if (!mounted) return;
+
+      if (!client) {
+        setProfile(demoProfile);
+        setLoading(false);
+        return;
+      }
+
       const sessionResult = await waitWithLimit(
-        supabaseBrowser.auth.getSession(),
+        client.auth.getSession(),
         "Não foi possível confirmar seu acesso agora. Tente novamente."
       );
 
@@ -154,8 +174,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        if (!mounted) return;
-
         setSession(data.session);
         await loadProfile(data.session, { clearOnError: true });
       } catch (err) {
@@ -166,48 +184,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (mounted) setLoading(false);
       }
+
+      const { data: subscription } = client.auth.onAuthStateChange(async (_event, nextSession) => {
+        if (!mounted) return;
+        setSession(nextSession);
+
+        if (!nextSession) {
+          setProfile(null);
+          setError("");
+          setLoading(false);
+          return;
+        }
+
+        try {
+          await loadProfile(nextSession);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Sua sessão expirou. Entre novamente.");
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      });
+
+      unsubscribe = () => subscription.subscription.unsubscribe();
     }
 
-    boot();
-
-    if (!supabaseBrowser) return () => { mounted = false; };
-
-    const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(async (_event, nextSession) => {
+    boot().catch((err) => {
       if (!mounted) return;
-      setSession(nextSession);
-
-      if (!nextSession) {
-        setProfile(null);
-        setError("");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        await loadProfile(nextSession);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Sua sessão expirou. Entre novamente.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      setSession(null);
+      setProfile(null);
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o acesso agora.");
+      setLoading(false);
     });
 
     return () => {
       mounted = false;
-      subscription.subscription.unsubscribe();
+      unsubscribe?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configured]);
 
   async function signIn(email: string, password: string) {
-    if (!supabaseBrowser) return;
+    const client = await getSupabaseBrowser();
+    if (!client) return;
+
     setLoading(true);
     setError("");
     let signedIn = false;
 
     try {
       const signInResult = await waitWithLimit(
-        supabaseBrowser.auth.signInWithPassword({ email, password }),
+        client.auth.signInWithPassword({ email, password }),
         "A entrada demorou para responder. Tente novamente em instantes."
       );
 
@@ -221,7 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signedIn = true;
 
       const profileResult = await waitWithLimit(
-        fetchProfile(data.session.user.id),
+        fetchProfile(data.session.user.id, client),
         "A fazenda demorou para carregar. Tente novamente em instantes."
       );
 
@@ -240,8 +266,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
-    if (!supabaseBrowser) return;
-    await supabaseBrowser.auth.signOut();
+    const client = await getSupabaseBrowser();
+    if (!client) return;
+
+    await client.auth.signOut();
     setSession(null);
     setProfile(null);
     setError("");
