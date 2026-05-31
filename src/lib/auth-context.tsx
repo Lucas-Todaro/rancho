@@ -37,28 +37,15 @@ const demoProfile: UsuarioProfile = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const AUTH_TIMEOUT_MS = 10000;
-
-function withTimeout<T>(promise: PromiseLike<T>, message = "Tempo de conexao esgotado. Tente entrar novamente.") {
-  let timeoutId: ReturnType<typeof setTimeout>;
-
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), AUTH_TIMEOUT_MS);
-  });
-
-  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId));
-}
 
 async function fetchProfile(userId: string) {
   if (!supabaseBrowser) return demoProfile;
 
-  const { data, error } = await withTimeout(
-    supabaseBrowser
-      .from("usuarios")
-      .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
-      .eq("id", userId)
-      .maybeSingle()
-  );
+  const { data, error } = await supabaseBrowser
+    .from("usuarios")
+    .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
+    .eq("id", userId)
+    .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!data) {
@@ -79,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoProfile);
   const [error, setError] = useState("");
 
-  async function loadProfile(nextSession?: Session | null) {
+  async function loadProfile(nextSession?: Session | null, options: { clearOnError?: boolean } = {}) {
     const activeSession = nextSession ?? session;
     setError("");
 
@@ -96,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setProfile(await fetchProfile(activeSession.user.id));
     } catch (err) {
-      setProfile(null);
+      if (options.clearOnError) setProfile(null);
       setError(err instanceof Error ? err.message : "Nao foi possivel carregar o perfil.");
     }
   }
@@ -114,11 +101,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const { data } = await withTimeout(supabaseBrowser.auth.getSession());
+        const { data, error: sessionError } = await supabaseBrowser.auth.getSession();
+        if (sessionError) throw sessionError;
         if (!mounted) return;
 
         setSession(data.session);
-        await loadProfile(data.session);
+        await loadProfile(data.session, { clearOnError: true });
       } catch (err) {
         if (!mounted) return;
         setSession(null);
@@ -134,15 +122,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabaseBrowser) return () => { mounted = false; };
 
     const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(async (_event, nextSession) => {
+      if (!mounted) return;
       setSession(nextSession);
-      try {
-        await withTimeout(loadProfile(nextSession));
-      } catch (err) {
-        setSession(null);
+
+      if (!nextSession) {
         setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        await loadProfile(nextSession);
+      } catch (err) {
         setError(err instanceof Error ? err.message : "Sua sessao expirou. Entre novamente.");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     });
 
@@ -158,12 +152,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError("");
     try {
-      const { data, error: signInError } = await withTimeout(supabaseBrowser.auth.signInWithPassword({ email, password }));
+      const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({ email, password });
       if (signInError) throw new Error(signInError.message);
 
       setSession(data.session);
-      await withTimeout(loadProfile(data.session));
+      if (!data.session?.user?.id) throw new Error("Nao foi possivel iniciar a sessao.");
+      setProfile(await fetchProfile(data.session.user.id));
     } catch (err) {
+      setSession(null);
+      setProfile(null);
       setLoading(false);
       throw err instanceof Error ? err : new Error("Nao foi possivel entrar.");
     }
