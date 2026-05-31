@@ -37,6 +37,29 @@ const demoProfile: UsuarioProfile = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const AUTH_WAIT_LIMIT_MS = 12000;
+
+async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const value = await Promise.race([
+      Promise.resolve(promise),
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), AUTH_WAIT_LIMIT_MS);
+      })
+    ]);
+
+    return { ok: true as const, value };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err : new Error(message)
+    };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 async function fetchProfile(userId: string) {
   if (!supabaseBrowser) return demoProfile;
@@ -80,11 +103,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    try {
-      setProfile(await fetchProfile(activeSession.user.id));
-    } catch (err) {
+    const profileResult = await waitWithLimit(
+      fetchProfile(activeSession.user.id),
+      "A fazenda demorou para carregar. Confira sua internet e tente novamente."
+    );
+
+    if (profileResult.ok) {
+      setProfile(profileResult.value);
+      setError("");
+    } else {
       if (options.clearOnError) setProfile(null);
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar o perfil.");
+      setError(profileResult.error.message || "Nao foi possivel carregar os dados da fazenda.");
     }
   }
 
@@ -100,9 +129,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const sessionResult = await waitWithLimit(
+        supabaseBrowser.auth.getSession(),
+        "Nao foi possivel confirmar seu acesso agora. Tente novamente."
+      );
+
+      if (!mounted) return;
+
+      if (!sessionResult.ok) {
+        setSession(null);
+        setProfile(null);
+        setError(sessionResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: sessionError } = sessionResult.value;
+      if (sessionError) {
+        setSession(null);
+        setProfile(null);
+        setError(sessionError.message);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const { data, error: sessionError } = await supabaseBrowser.auth.getSession();
-        if (sessionError) throw sessionError;
         if (!mounted) return;
 
         setSession(data.session);
@@ -127,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!nextSession) {
         setProfile(null);
+        setError("");
         setLoading(false);
         return;
       }
@@ -151,16 +203,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabaseBrowser) return;
     setLoading(true);
     setError("");
+    let signedIn = false;
+
     try {
-      const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({ email, password });
+      const signInResult = await waitWithLimit(
+        supabaseBrowser.auth.signInWithPassword({ email, password }),
+        "A entrada demorou para responder. Tente novamente em instantes."
+      );
+
+      if (!signInResult.ok) throw signInResult.error;
+
+      const { data, error: signInError } = signInResult.value;
       if (signInError) throw new Error(signInError.message);
 
       setSession(data.session);
       if (!data.session?.user?.id) throw new Error("Nao foi possivel iniciar a sessao.");
-      setProfile(await fetchProfile(data.session.user.id));
+      signedIn = true;
+
+      const profileResult = await waitWithLimit(
+        fetchProfile(data.session.user.id),
+        "A fazenda demorou para carregar. Tente novamente em instantes."
+      );
+
+      if (!profileResult.ok) throw profileResult.error;
+      setProfile(profileResult.value);
+      setError("");
     } catch (err) {
-      setSession(null);
-      setProfile(null);
+      if (!signedIn) {
+        setSession(null);
+        setProfile(null);
+      }
       setLoading(false);
       throw err instanceof Error ? err : new Error("Nao foi possivel entrar.");
     }
@@ -172,6 +244,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabaseBrowser.auth.signOut();
     setSession(null);
     setProfile(null);
+    setError("");
+  }
+
+  async function retryProfile() {
+    setLoading(true);
+    try {
+      await loadProfile(undefined, { clearOnError: !profile });
+    } finally {
+      setLoading(false);
+    }
   }
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -186,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     signIn,
     signOut,
-    reloadProfile: () => loadProfile()
+    reloadProfile: retryProfile
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [configured, error, loading, profile, session]);
 
