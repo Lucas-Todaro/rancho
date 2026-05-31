@@ -33,6 +33,14 @@ export function stripBrazilCountryCode(value: string | number | null | undefined
   return digits;
 }
 
+export function normalizeBrazilianWhatsApp(value: string | number | null | undefined) {
+  const digits = onlyDigits(value).slice(0, 13);
+  if (!digits) return "";
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 export function formatCPF(value: string | number | null | undefined) {
   const digits = onlyDigits(value).slice(0, 11);
   return digits
@@ -58,19 +66,22 @@ export function isValidCPF(value: string | number | null | undefined) {
 }
 
 export function formatBrazilianPhone(value: string | number | null | undefined) {
-  const digits = stripBrazilCountryCode(value).slice(0, 11);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  const rawDigits = onlyDigits(value).slice(0, 13);
+  const digits = rawDigits.startsWith("55") ? rawDigits.slice(2, 13) : rawDigits.slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 2) return `+55 (${digits}`;
+  if (digits.length <= 7) return `+55 (${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `+55 (${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `+55 (${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 export function isValidBrazilianPhone(value: string | number | null | undefined) {
-  const digits = stripBrazilCountryCode(value);
-  if (!digits) return true;
-  if (digits.length !== 10 && digits.length !== 11) return false;
-  const ddd = Number(digits.slice(0, 2));
+  const digits = normalizeBrazilianWhatsApp(value);
+  if (digits.length !== 13 || !digits.startsWith("55")) return false;
+  const national = digits.slice(2);
+  const ddd = Number(national.slice(0, 2));
   if (ddd < 11 || ddd > 99) return false;
-  if (/^(\d)\1+$/.test(digits)) return false;
+  if (!national.slice(2).startsWith("9")) return false;
+  if (/^(\d)\1+$/.test(national)) return false;
   return true;
 }

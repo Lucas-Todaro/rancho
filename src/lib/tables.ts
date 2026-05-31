@@ -282,7 +282,7 @@ export const moduleConfigs: ModuleConfig[] = [
       { name: "cpf", label: "CPF", type: "text", placeholder: "Opcional" },
       { name: "salario_base", label: "Salário-base", type: "currency", defaultValue: 0 },
       { name: "data_admissao", label: "Admissão", type: "date", required: true, defaultValue: todayISO() },
-      { name: "contato_whatsapp", label: "WhatsApp", type: "tel", placeholder: "Ex: 5585999990000" },
+      { name: "contato_whatsapp", label: "WhatsApp", type: "tel", required: true, placeholder: "Ex: +55 (88) 99999-9999" },
       { name: "carga_horaria_mensal", label: "Carga mensal", type: "number", defaultValue: 220 },
       { name: "valor_hora_extra", label: "Valor hora extra", type: "currency", defaultValue: 0 },
       { name: "ativo", label: "Ativo", type: "checkbox", defaultValue: "true" }

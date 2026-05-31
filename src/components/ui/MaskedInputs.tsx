@@ -38,7 +38,7 @@ export function WhatsAppInput({ value, onChange, ...props }: InputProps) {
       {...props}
       className={props.className || "input"}
       inputMode="tel"
-      maxLength={15}
+      maxLength={19}
       value={value}
       onChange={(event) => onChange(formatBrazilianPhone(event.target.value))}
     />

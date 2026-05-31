@@ -1,3 +1,5 @@
+import { handleTwilioRanchoMessage } from "@/services/whatsapp/twilio";
+
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -38,7 +40,9 @@ export async function POST(request: Request) {
 
     console.log("[Twilio webhook]", { Body, From, To, MessageSid });
 
-    return xmlResponse(twiml(`Mensagem recebida no Rancho: ${escapeXml(Body)}`));
+    const responseMessage = await handleTwilioRanchoMessage({ Body, From, To, MessageSid });
+
+    return xmlResponse(twiml(escapeXml(responseMessage)));
   } catch (error) {
     console.error("[Twilio webhook]", error);
     return xmlResponse(twiml("Erro interno no Rancho. Tente novamente."));

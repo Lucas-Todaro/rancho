@@ -3,7 +3,7 @@
 import { Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CPFInput, CurrencyInput, WhatsAppInput } from "@/components/ui/MaskedInputs";
-import { formatBrazilianPhone, formatCPF, formatCurrencyForInput, isValidBrazilianPhone, isValidCPF, onlyDigits, parseCurrencyInput, stripBrazilCountryCode } from "@/lib/input-format";
+import { formatBrazilianPhone, formatCPF, formatCurrencyForInput, isValidBrazilianPhone, isValidCPF, normalizeBrazilianWhatsApp, onlyDigits, parseCurrencyInput } from "@/lib/input-format";
 import type { AnyRecord } from "@/lib/types";
 
 type EmployeeValues = {
@@ -65,8 +65,8 @@ export function EmployeeForm({
       return;
     }
 
-    if (values.contato_whatsapp && !isValidBrazilianPhone(values.contato_whatsapp)) {
-      setFormError("Informe um WhatsApp brasileiro válido com DDD.");
+    if (!isValidBrazilianPhone(values.contato_whatsapp)) {
+      setFormError("Informe um WhatsApp válido para o funcionário.");
       return;
     }
 
@@ -74,7 +74,7 @@ export function EmployeeForm({
       nome: values.nome,
       funcao: values.funcao,
       cpf: onlyDigits(values.cpf) || null,
-      contato_whatsapp: stripBrazilCountryCode(values.contato_whatsapp) || null,
+      contato_whatsapp: normalizeBrazilianWhatsApp(values.contato_whatsapp),
       salario_base: parseCurrencyInput(values.salario_base),
       data_admissao: values.data_admissao || null,
       carga_horaria_mensal: Number(values.carga_horaria_mensal || 0),
@@ -108,8 +108,8 @@ export function EmployeeForm({
             <input className="input" value={values.funcao} onChange={(event) => update("funcao", event.target.value)} required />
           </label>
           <label className="space-y-2">
-            <span className="text-sm font-bold">WhatsApp</span>
-            <WhatsAppInput value={values.contato_whatsapp} onChange={(value) => update("contato_whatsapp", value)} placeholder="(00) 00000-0000" />
+            <span className="text-sm font-bold">WhatsApp *</span>
+            <WhatsAppInput value={values.contato_whatsapp} onChange={(value) => update("contato_whatsapp", value)} placeholder="+55 (88) 99999-9999" required />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-bold">CPF</span>

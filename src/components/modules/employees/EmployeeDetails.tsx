@@ -7,6 +7,7 @@ import { CurrencyInput } from "@/components/ui/MaskedInputs";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { assertUniqueActiveEmployeeWhatsApp, syncEmployeeWhatsAppUser } from "@/services/whatsapp-users";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext } from "@/lib/types";
 import { currentMonth, formatCurrency, formatDate, nowLocalDatetime } from "@/lib/utils";
@@ -131,7 +132,10 @@ export function EmployeeDetails({
     setBusy(true);
     setError("");
     try {
-      await updateRecord(TABLES.funcionarios, employee.id, values);
+      const contato_whatsapp = await assertUniqueActiveEmployeeWhatsApp({ ...employee, ...values }, context);
+      const payload = { ...values, contato_whatsapp };
+      const saved = await updateRecord(TABLES.funcionarios, employee.id, payload);
+      await syncEmployeeWhatsAppUser({ ...employee, ...payload, ...saved }, context);
       notifyDashboardUpdated();
       setEditingEmployee(false);
       onChanged();

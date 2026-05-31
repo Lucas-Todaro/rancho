@@ -6,6 +6,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { assertUniqueActiveEmployeeWhatsApp, deactivateEmployeeWhatsAppUser, syncEmployeeWhatsAppUser } from "@/services/whatsapp-users";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
@@ -127,10 +128,16 @@ export function EmployeeScreen() {
     setBusy(true);
     setError("");
     try {
+      const baseEmployee = editing?.id ? { ...editing, ...values } : values;
+      const contato_whatsapp = await assertUniqueActiveEmployeeWhatsApp(baseEmployee, dataContext);
+      const payload = { ...values, contato_whatsapp };
+
       if (editing?.id) {
-        await updateRecord(TABLES.funcionarios, editing.id, values);
+        const saved = await updateRecord(TABLES.funcionarios, editing.id, payload);
+        await syncEmployeeWhatsAppUser({ ...editing, ...payload, ...saved, id: editing.id }, dataContext);
       } else {
-        await createRecord(TABLES.funcionarios, values, dataContext);
+        const saved = await createRecord(TABLES.funcionarios, payload, dataContext);
+        await syncEmployeeWhatsAppUser(saved, dataContext);
       }
       notifyDashboardUpdated();
       closeForm();
@@ -149,7 +156,15 @@ export function EmployeeScreen() {
     setBusy(true);
     setError("");
     try {
-      await updateRecord(TABLES.funcionarios, employee.id, { ativo: !active });
+      const nextEmployee = { ...employee, ativo: !active };
+      if (!active) await assertUniqueActiveEmployeeWhatsApp(nextEmployee, dataContext);
+
+      const saved = await updateRecord(TABLES.funcionarios, employee.id, { ativo: !active });
+      if (nextEmployee.ativo) {
+        await syncEmployeeWhatsAppUser({ ...nextEmployee, ...saved }, dataContext);
+      } else {
+        await deactivateEmployeeWhatsAppUser(employee, dataContext);
+      }
       notifyDashboardUpdated();
       await load();
     } catch (err) {
@@ -164,6 +179,7 @@ export function EmployeeScreen() {
       ativo: false,
       deleted_at: new Date().toISOString()
     });
+    await deactivateEmployeeWhatsAppUser(employee, dataContext);
   }
 
   async function removeEmployee(employee: AnyRecord) {
@@ -182,6 +198,7 @@ export function EmployeeScreen() {
         await softDeleteEmployee(employee);
       } else {
         try {
+          await deactivateEmployeeWhatsAppUser(employee, dataContext, { clearEmployeeLink: true });
           await deleteRecord(TABLES.funcionarios, employee.id);
         } catch {
           await softDeleteEmployee(employee);
