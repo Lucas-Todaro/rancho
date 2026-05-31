@@ -74,7 +74,7 @@ async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
     .eq("id", userId)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("Não foi possível carregar os dados da fazenda agora.");
   if (!data) {
     throw new Error("Este login ainda não está vinculado a uma fazenda. Fale com o administrador.");
   }

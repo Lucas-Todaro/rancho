@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("[WhatsApp webhook]", error);
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Erro interno" }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[WhatsApp webhook]", error instanceof Error ? error.message : "Erro interno");
+    }
+    return NextResponse.json({ ok: false, error: "Não foi possível processar a mensagem agora." }, { status: 500 });
   }
 }

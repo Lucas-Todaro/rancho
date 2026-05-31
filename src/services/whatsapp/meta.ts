@@ -13,8 +13,7 @@ export function isMetaConfigured() {
 
 async function sendPayload(payload: any) {
   if (!isMetaConfigured()) {
-    console.log("[WhatsApp demo]", JSON.stringify(payload, null, 2));
-    return { demo: true, payload };
+    return { demo: true, type: payload?.type || "unknown" };
   }
 
   const response = await fetch(`${apiBase}/${env.metaPhoneNumberId}/messages`, {

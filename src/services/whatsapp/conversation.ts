@@ -131,7 +131,6 @@ async function logAudit(fazendaId: string, usuarioId: string | null | undefined,
 async function insertRecord(table: string, payload: AnyRecord) {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
-    console.log(`[WhatsApp demo insert] ${table}`, payload);
     return payload;
   }
 

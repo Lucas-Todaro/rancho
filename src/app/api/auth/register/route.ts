@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (authError || !authData.user) {
-      return NextResponse.json({ error: authError?.message || "Não foi possível criar o usuário." }, { status: 400 });
+      return NextResponse.json({ error: "Não foi possível criar o usuário com esses dados." }, { status: 400 });
     }
 
     const userId = authData.user.id;
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (fazendaError || !fazenda) {
       await supabase.auth.admin.deleteUser(userId);
-      return NextResponse.json({ error: fazendaError?.message || "Não foi possível criar a fazenda." }, { status: 400 });
+      return NextResponse.json({ error: "Não foi possível criar a fazenda agora." }, { status: 400 });
     }
 
     const { error: usuarioError } = await supabase
@@ -75,17 +75,13 @@ export async function POST(request: NextRequest) {
     if (usuarioError) {
       await supabase.from("fazendas").delete().eq("id", fazenda.id);
       await supabase.auth.admin.deleteUser(userId);
-      return NextResponse.json({ error: usuarioError.message }, { status: 400 });
+      return NextResponse.json({ error: "Não foi possível vincular o usuário à fazenda." }, { status: 400 });
     }
 
+    return NextResponse.json({ ok: true });
+  } catch {
     return NextResponse.json({
-      ok: true,
-      userId,
-      fazendaId: fazenda.id
-    });
-  } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "Erro interno ao criar cadastro."
+      error: "Erro interno ao criar cadastro."
     }, { status: 500 });
   }
 }

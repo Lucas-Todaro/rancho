@@ -100,7 +100,9 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
   const { data, error } = await query;
 
   if (error) {
-    console.warn(`[Rancho] Falha ao ler ${tableName}. Usando demo.`, error.message);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[Rancho] Falha ao ler ${tableName}. Usando dados locais.`);
+    }
     const rows = mockData[tableName] || [];
     return sortLocal(filterLocalRows(tableName, rows, options), orderBy, ascending);
   }
