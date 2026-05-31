@@ -26,16 +26,16 @@ export function StatCard({
 
   return (
     <div className="glass card-hover flex h-full min-w-0 flex-col rounded-lg p-5 shadow-soft">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</p>
-          <h3 className="mt-2 max-w-full break-words text-2xl font-black leading-tight tracking-tight [overflow-wrap:anywhere] md:text-3xl">{value}</h3>
-          {hint ? <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{hint}</p> : null}
         </div>
         <div className={cn("shrink-0 rounded-lg bg-gradient-to-br p-3", tones[tone])}>
           <Icon className="h-6 w-6" />
         </div>
       </div>
+      <h3 className="mt-2 max-w-full truncate text-[clamp(1.08rem,1.55vw,1.55rem)] font-black leading-tight tracking-tight tabular-nums" title={String(value)}>{value}</h3>
+      {hint ? <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{hint}</p> : null}
       <div className="mt-4 flex min-w-0 items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
         <ArrowUpRight className="h-4 w-4 shrink-0" />
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">Acompanhamento ativo</span>

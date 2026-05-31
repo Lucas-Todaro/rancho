@@ -4,6 +4,7 @@ import { Activity, CalendarDays, ClipboardList, Heart, Plus, Stethoscope, Trendi
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { createRecord, listRecords } from "@/services/crud";
+import { notifyDashboardUpdated } from "@/services/dashboard";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
 import { formatCurrency, formatDate, formatNumber, nowLocalDatetime } from "@/lib/utils";
@@ -206,6 +207,7 @@ export function AnimalDetailModal({
         }, context);
       }
 
+      notifyDashboardUpdated();
       setShowForm(false);
       await loadDetails();
       onChanged();

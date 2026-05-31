@@ -6,7 +6,7 @@ import { BarChart } from "@/components/ui/BarChart";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { loadDashboardData } from "@/services/dashboard";
+import { loadDashboardData, onDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
 
@@ -71,6 +71,13 @@ export default function DashboardPage() {
   }, [farmId, userId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => onDashboardUpdated(load), [load]);
+
+  const profitLabel = formatCurrency(data.cards.profit);
+  const incomeLabel = formatCurrency(data.cards.income);
+  const expensesLabel = formatCurrency(data.cards.expenses);
+  const productionTodayLabel = formatNumber(data.cards.productionToday, " L");
+  const productionMonthLabel = formatNumber(data.cards.productionMonth, " L");
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -90,18 +97,18 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="rounded-lg border border-white/15 bg-white/10 p-5 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex min-w-0 items-center justify-between gap-4">
+              <div className="min-w-0">
                 <p className="text-sm text-emerald-100">Resultado do mês</p>
-                <h2 className="mt-2 text-4xl font-black">{formatCurrency(data.cards.profit)}</h2>
+                <h2 className="mt-2 max-w-full truncate text-[clamp(1.45rem,3vw,2.25rem)] font-black tabular-nums" title={profitLabel}>{profitLabel}</h2>
               </div>
-              <Activity className="h-10 w-10 text-lime-200" />
+              <Activity className="h-10 w-10 shrink-0 text-lime-200" />
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong>{formatCurrency(data.cards.income)}</strong></div>
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong>{formatCurrency(data.cards.expenses)}</strong></div>
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong>{formatNumber(data.cards.productionToday, " L")}</strong></div>
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong>{formatNumber(data.cards.productionMonth, " L")}</strong></div>
+              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong className="block truncate font-black tabular-nums" title={incomeLabel}>{incomeLabel}</strong></div>
+              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong className="block truncate font-black tabular-nums" title={expensesLabel}>{expensesLabel}</strong></div>
+              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong className="block truncate font-black tabular-nums" title={productionTodayLabel}>{productionTodayLabel}</strong></div>
+              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong className="block truncate font-black tabular-nums" title={productionMonthLabel}>{productionMonthLabel}</strong></div>
             </div>
           </div>
         </div>

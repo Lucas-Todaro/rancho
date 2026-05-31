@@ -4,6 +4,19 @@ import { TABLES } from "@/lib/tables";
 import { listRecords } from "@/services/crud";
 import type { DataContext } from "@/lib/types";
 
+const DASHBOARD_UPDATED_EVENT = "rancho:dashboard-updated";
+
+export function notifyDashboardUpdated() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(DASHBOARD_UPDATED_EVENT));
+}
+
+export function onDashboardUpdated(callback: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(DASHBOARD_UPDATED_EVENT, callback);
+  return () => window.removeEventListener(DASHBOARD_UPDATED_EVENT, callback);
+}
+
 export async function loadDashboardData(context?: DataContext) {
   const [animals, productions, stock, finance, employees, payrolls, alerts] = await Promise.all([
     listRecords(TABLES.animais, { ...context, orderBy: "created_at" }),
