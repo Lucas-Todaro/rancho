@@ -1,4 +1,4 @@
-import { env } from "@/lib/env";
+import { env, isMetaConfigured as isMetaEnvConfigured } from "@/lib/env";
 
 export type WhatsAppButton = {
   id: string;
@@ -8,7 +8,7 @@ export type WhatsAppButton = {
 const apiBase = "https://graph.facebook.com/v20.0";
 
 export function isMetaConfigured() {
-  return Boolean(env.metaWhatsappToken && env.metaPhoneNumberId);
+  return isMetaEnvConfigured();
 }
 
 async function sendPayload(payload: any) {

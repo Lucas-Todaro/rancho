@@ -24,6 +24,15 @@ const initialDraft = {
   ativo: true
 };
 
+const defaultOutboundMessage = [
+  "Olá! Aqui é o bot do Rancho.",
+  "Pode mandar frases como:",
+  "- Mimosa deu 15 litros hoje",
+  "- Vendi leite por 900 reais",
+  "- Comprei ração por 300",
+  "- João entrou às 7:30"
+].join("\n");
+
 function roleLabel(value: unknown) {
   return roleOptions.find((option) => option.value === roleFromDatabase(value))?.label || "Usuário";
 }
@@ -39,6 +48,7 @@ function roleToDatabase(value: string) {
 export default function WhatsAppPage() {
   const { dataContext, profile } = useAuth();
   const [phone, setPhone] = useState("");
+  const [outboundMessage, setOutboundMessage] = useState(defaultOutboundMessage);
   const [status, setStatus] = useState("");
   const [rows, setRows] = useState<AnyRecord[]>([]);
   const [draft, setDraft] = useState(initialDraft);
@@ -184,15 +194,18 @@ export default function WhatsAppPage() {
     }
   }
 
-  async function sendTest() {
-    setStatus("Enviando menu...");
+  async function sendMessage() {
+    setStatus("Enviando mensagem...");
     const response = await fetch("/api/whatsapp/send-test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: normalizeWhatsappNumber(phone) || phone })
+      body: JSON.stringify({
+        phone: normalizeWhatsappNumber(phone) || phone,
+        message: outboundMessage
+      })
     });
     const data = await response.json().catch(() => ({}));
-    setStatus(data.ok ? "Menu enviado. Confira o WhatsApp." : "Não foi possível enviar agora. Confira se o WhatsApp está ativo e autorizado.");
+    setStatus(data.ok ? "Mensagem enviada. Confira o WhatsApp." : data.error || "Não foi possível enviar agora.");
   }
 
   return (
@@ -331,17 +344,21 @@ export default function WhatsAppPage() {
         <div className="glass rounded-lg p-5 shadow-soft md:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Send className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-xl font-black">Enviar menu de teste</h2>
+            <h2 className="text-xl font-black">Enviar mensagem</h2>
           </div>
           <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-            Informe um telefone autorizado com DDI e DDD para receber o menu de atendimento.
+            Envie uma mensagem inicial ou um aviso para um WhatsApp autorizado.
           </p>
           <label className="space-y-2">
             <span className="text-sm font-bold">Telefone</span>
             <input className="input" value={phone} onChange={(event) => setPhone(formatBrazilianPhone(event.target.value))} placeholder="(00) 00000-0000" />
           </label>
-          <button className="btn btn-primary mt-4 w-full" onClick={sendTest} type="button" disabled={!phone.trim()}>
-            <MessageCircle className="h-4 w-4" /> Enviar menu
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-bold">Mensagem</span>
+            <textarea className="input min-h-28 resize-y" value={outboundMessage} onChange={(event) => setOutboundMessage(event.target.value)} />
+          </label>
+          <button className="btn btn-primary mt-4 w-full" onClick={sendMessage} type="button" disabled={!phone.trim() || !outboundMessage.trim()}>
+            <MessageCircle className="h-4 w-4" /> Enviar mensagem
           </button>
           {status ? <p className="mt-3 rounded-lg bg-slate-100 p-3 text-sm font-bold dark:bg-slate-900">{status}</p> : null}
         </div>

@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendMainMenu } from "@/services/whatsapp/conversation";
+import { sendOutboundWhatsAppText } from "@/services/whatsapp/outbound";
+
+const DEFAULT_MESSAGE = [
+  "Olá! Aqui é o bot do Rancho.",
+  "Você pode enviar frases como:",
+  "- Mimosa deu 15 litros hoje",
+  "- Vendi leite por 900 reais",
+  "- Comprei ração por 300",
+  "- João entrou às 7:30"
+].join("\n");
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone } = await request.json();
-    if (!phone) return NextResponse.json({ error: "Informe o telefone com DDI e DDD" }, { status: 400 });
-    await sendMainMenu(phone);
-    return NextResponse.json({ ok: true });
+    const { phone, message } = await request.json();
+    if (!phone) return NextResponse.json({ ok: false, error: "Informe o WhatsApp com DDD." }, { status: 400 });
+
+    const result = await sendOutboundWhatsAppText(phone, String(message || DEFAULT_MESSAGE));
+    return NextResponse.json({ ok: true, provider: result.provider });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[WhatsApp send-test]", error instanceof Error ? error.message : "Erro interno");
-    }
-    return NextResponse.json({ ok: false, error: "Não foi possível enviar o menu agora." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Não foi possível enviar a mensagem agora.";
+    if (process.env.NODE_ENV !== "production") console.error("[WhatsApp send-message]", message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

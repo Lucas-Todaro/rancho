@@ -4,6 +4,7 @@ import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber } from "@/lib/phone";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import {
+  BOT_EXAMPLES,
   mergeRanchoMessageData,
   normalizeRanchoText,
   parseRanchoMessage,
@@ -24,8 +25,23 @@ type BotSession = {
   dados: AnyRecord;
 };
 
-const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "ok", "pode", "isso", "certo", "1"]);
-const CANCEL_WORDS = new Set(["nao", "n", "cancelar", "cancela", "errado", "corrigir", "2"]);
+type SaveResult = {
+  response: string;
+  nextSession?: BotSession;
+  sessionData?: AnyRecord;
+};
+
+type MatchResult<T extends AnyRecord> = {
+  row: T;
+  exact: boolean;
+  score: number;
+};
+
+const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "ok", "pode", "pode salvar", "isso", "certo", "1"]);
+const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "refazer", "2"]);
+const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
+const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
+const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["CONSULTA_PRODUCAO", "CONSULTA_FINANCEIRO", "CONSULTA_ESTOQUE", "CONSULTA_FUNCIONARIO", "AJUDA"]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -38,6 +54,7 @@ function expirationIso() {
 function dateFromReference(reference?: string) {
   const date = new Date();
   if (reference === "ontem") date.setDate(date.getDate() - 1);
+  if (reference === "amanha") date.setDate(date.getDate() + 1);
   return date;
 }
 
@@ -45,16 +62,73 @@ function dateOnly(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+function dateOnlyFromReference(reference?: string) {
+  return dateOnly(dateFromReference(reference));
+}
+
+function isoFromReference(reference?: string, time?: string) {
+  const date = dateFromReference(reference);
+  if (time) {
+    const [hour, minute] = time.split(":").map(Number);
+    date.setHours(hour || 0, minute || 0, 0, 0);
+  }
+  return date.toISOString();
+}
+
+function dayRange(reference?: string) {
+  const date = dateFromReference(reference);
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
+}
+
+function formatNumber(value: number | string | null | undefined, suffix = "") {
+  return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(value || 0))}${suffix}`;
+}
+
+function isConfirmCommand(command: string) {
+  return CONFIRM_WORDS.has(command) || /\b(?:sim|confirma|confirmar|correto|pode salvar|pode|ok|certo|isso)\b/.test(command);
+}
+
+function isRejectCommand(command: string) {
+  return REJECT_WORDS.has(command) || /^(?:nao|n|errado|corrigir|refazer)\b/.test(command);
+}
+
+function isCancelCommand(command: string) {
+  return CANCEL_WORDS.has(command);
+}
+
+function isMenuCommand(command: string) {
+  return MENU_WORDS.has(command);
+}
+
 function confirmationText(parsed: ParsedRanchoMessage) {
-  return `Entendi: ${parsed.resumo}. Confirmar?\n1 - Confirmar\n2 - Corrigir`;
+  return `Entendi que você quer ${parsed.resumo}.\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
 }
 
 function missingText(parsed: ParsedRanchoMessage) {
-  return `Entendi que é ${intentLabel(parsed.tipo)}. ${parsed.perguntas_faltantes[0] || "Qual dado faltou?"}`;
+  return `Entendi que é ${intentLabel(parsed.tipo)}.\n${parsed.perguntas_faltantes[0] || "Qual dado faltou?"}`;
 }
 
 function unknownText() {
-  return "Não entendi com segurança. Tente assim:\n- vaca 12 pariu\n- vaca 15 deu 20 litros\n- apliquei aftosa na vaca 8\n- gastei 300 reais com ração";
+  return `Não consegui entender certinho. Você quer registrar produção, financeiro, estoque, funcionário ou ponto?\n\nExemplos:\n${BOT_EXAMPLES.join("\n")}`;
+}
+
+function helpText() {
+  return `Pode mandar do seu jeito. Eu entendo frases como:\n${BOT_EXAMPLES.join("\n")}\n\nAntes de salvar qualquer coisa, eu sempre vou pedir confirmação.`;
 }
 
 function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
@@ -63,9 +137,18 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     PARTO: "parto",
     VACINA_MEDICAMENTO: "vacina ou medicamento",
     MORTE: "morte de animal",
-    DESPESA: "despesa",
-    RECEITA_VENDA: "receita ou venda",
+    DESPESA: "saída financeira",
+    RECEITA_VENDA: "entrada financeira",
+    ESTOQUE_ENTRADA: "entrada de estoque",
+    ESTOQUE_SAIDA: "baixa de estoque",
+    PONTO_FUNCIONARIO: "registro de ponto",
+    CADASTRO_ANIMAL: "cadastro de animal",
+    CONSULTA_PRODUCAO: "consulta de produção",
+    CONSULTA_FINANCEIRO: "consulta financeira",
+    CONSULTA_ESTOQUE: "consulta de estoque",
+    CONSULTA_FUNCIONARIO: "consulta de funcionário",
     ORDEM_SERVICO: "ordem de serviço",
+    AJUDA: "ajuda",
     DESCONHECIDO: "uma mensagem"
   };
   return labels[tipo];
@@ -99,9 +182,7 @@ async function saveWhatsAppMessage(
     processada_em: nowIso()
   });
 
-  if (error) {
-    console.error("[Twilio webhook] Falha ao salvar mensagem", error.message);
-  }
+  if (error) console.error("[Twilio webhook] Falha ao salvar mensagem", error.message);
 }
 
 async function getSession(supabase: SupabaseAdmin, owner: WhatsAppOwner): Promise<BotSession> {
@@ -160,74 +241,138 @@ async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, t
   return data;
 }
 
+function matchKey(value: unknown) {
+  return normalizeRanchoText(String(value || "")).replace(/[^a-z0-9]/g, "");
+}
+
+function levenshtein(left: string, right: string) {
+  const costs = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let previous = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const next = left[i - 1] === right[j - 1]
+        ? costs[j - 1]
+        : Math.min(costs[j - 1], previous, costs[j]) + 1;
+      costs[j - 1] = previous;
+      previous = next;
+    }
+    costs[right.length] = previous;
+  }
+  return costs[right.length];
+}
+
+function scoreCandidate(term: string, candidate: string) {
+  const target = matchKey(term);
+  const option = matchKey(candidate);
+  if (!target || !option) return 0;
+  if (target === option) return 1;
+  if (option.includes(target)) return 0.92;
+  if (target.includes(option)) return 0.82;
+  const distance = levenshtein(target, option);
+  return 1 - distance / Math.max(target.length, option.length);
+}
+
+function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T) => Array<unknown>) {
+  const scored = rows
+    .map((row) => {
+      const rowScores = labels(row).map((label) => scoreCandidate(term, String(label || "")));
+      return { row, score: Math.max(...rowScores), exact: rowScores.some((score) => score === 1) };
+    })
+    .filter((item) => item.score >= 0.72)
+    .sort((left, right) => right.score - left.score);
+
+  return scored[0] as MatchResult<T> | undefined;
+}
+
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
-  const normalizedCode = normalizeRanchoText(code);
   const { data, error } = await supabase
     .from(TABLES.animais)
     .select("id,brinco,categoria,status")
     .eq("fazenda_id", owner.fazenda_id)
-    .ilike("brinco", `%${code}%`)
-    .limit(5);
+    .limit(1000);
 
   if (error) throw new Error(error.message);
-  const rows = data || [];
-  if (!rows.length) return null;
-
-  return rows.find((row) => normalizeRanchoText(String(row.brinco || "")) === normalizedCode)
-    || rows.find((row) => normalizeRanchoText(String(row.brinco || "")).endsWith(normalizedCode))
-    || rows[0];
+  return bestMatch((data || []) as AnyRecord[], code, (row) => [row.brinco]);
 }
 
-function pendingWithoutAnimal(pending: ParsedRanchoMessage): ParsedRanchoMessage {
-  return {
-    ...pending,
-    confianca: 0.65,
-    dados: { ...pending.dados, animal_codigo: undefined },
-    perguntas_faltantes: ["Qual foi o número do animal cadastrado?"]
-  };
+async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
+  const { data, error } = await supabase
+    .from(TABLES.estoqueItens)
+    .select("id,nome,quantidade_atual,unidade_medida,valor_unitario,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+  return bestMatch((data || []) as AnyRecord[], name, (row) => [row.nome]);
 }
 
-async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage) {
+async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
+  const { data, error } = await supabase
+    .from(TABLES.funcionarios)
+    .select("id,nome,funcao,ativo,deleted_at")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+  const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false && !row.deleted_at);
+  return bestMatch(activeRows, name, (row) => [row.nome]);
+}
+
+function pendingWithData(pending: ParsedRanchoMessage, dados: AnyRecord): ParsedRanchoMessage {
+  const text = `${pending.resumo} ${Object.values(dados).join(" ")}`;
+  return { ...mergeRanchoMessageData(pending, text), dados: { ...pending.dados, ...dados } };
+}
+
+async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
   const dados = pending.dados || {};
 
   if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(pending.tipo)) {
-    const animal = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
-    if (!animal) {
+    const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
+    if (!found) {
       return {
-        response: `Não encontrei o animal ${dados.animal_codigo || ""} no rebanho. Qual é o número do animal cadastrado?`,
-        nextSession: { etapa: "aguardando_dado" as const, dados: { pending: pendingWithoutAnimal(pending) } }
+        response: `Não encontrei o animal "${dados.animal_codigo || ""}" no rebanho. Me envie o brinco cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
       };
     }
+
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { animal_codigo: found.row.brinco });
+      return {
+        response: `Encontrei um animal parecido: ${found.row.brinco}. Quer usar esse animal?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const animal = found.row;
 
     if (pending.tipo === "PRODUCAO_LEITE") {
       await insertRealRecord(supabase, owner, TABLES.ordenhas, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         litros: Number(dados.litros),
-        ordenhado_em: nowIso(),
+        ordenhado_em: isoFromReference(dados.data_referencia),
         turno: dados.turno || "manha",
         destino: "tanque",
         origem: "whatsapp",
         registrado_por: owner.usuario_id || null,
         observacoes: `Registrado via WhatsApp (${owner.telefone_e164})`
       });
-      return { response: `Produção registrada: vaca ${animal.brinco}, ${dados.litros} litros.` };
+      return { response: `Pronto, registro salvo com sucesso.\nProdução: ${animal.brinco}, ${formatNumber(dados.litros, " L")}.` };
     }
 
     if (pending.tipo === "PARTO") {
-      const eventDate = dateFromReference(dados.data_referencia);
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         tipo: "parto",
-        data_evento: eventDate.toISOString(),
+        data_evento: isoFromReference(dados.data_referencia),
         descricao: `Parto registrado via WhatsApp para o animal ${animal.brinco}`,
         medicamento: null,
         dose: null,
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return { response: `Parto registrado para a vaca ${animal.brinco}.` };
+      return { response: `Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.` };
     }
 
     if (pending.tipo === "VACINA_MEDICAMENTO") {
@@ -236,23 +381,22 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         tipo,
-        data_evento: nowIso(),
+        data_evento: isoFromReference(dados.data_referencia),
         descricao: `${tipo === "vacina" ? "Vacina" : "Tratamento"} registrado via WhatsApp`,
         medicamento: dados.produto,
         dose: null,
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return { response: `${tipo === "vacina" ? "Vacina" : "Tratamento"} registrado para o animal ${animal.brinco}: ${dados.produto}.` };
+      return { response: `Pronto, registro salvo com sucesso.\n${tipo === "vacina" ? "Vacina" : "Tratamento"} em ${animal.brinco}: ${dados.produto}.` };
     }
 
     if (pending.tipo === "MORTE") {
-      const eventDate = dateFromReference(dados.data_referencia);
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         tipo: "observacao",
-        data_evento: eventDate.toISOString(),
+        data_evento: isoFromReference(dados.data_referencia),
         descricao: `Morte registrada via WhatsApp para o animal ${animal.brinco}`,
         medicamento: null,
         dose: null,
@@ -267,8 +411,21 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         .eq("fazenda_id", owner.fazenda_id);
       if (error) throw new Error(error.message);
 
-      return { response: `Morte registrada e animal ${animal.brinco} marcado como morto.` };
+      return { response: `Pronto, registro salvo com sucesso.\nAnimal ${animal.brinco} marcado como morto.` };
     }
+  }
+
+  if (pending.tipo === "CADASTRO_ANIMAL") {
+    await insertRealRecord(supabase, owner, TABLES.animais, {
+      fazenda_id: owner.fazenda_id,
+      brinco: dados.animal_codigo,
+      categoria: dados.categoria || "outro",
+      fase: "nao_aplicavel",
+      status: "ativo",
+      created_by: owner.usuario_id || null,
+      observacoes: "Cadastrado via WhatsApp"
+    });
+    return { response: `Pronto, animal cadastrado com sucesso.\nBrinco: ${dados.animal_codigo}.` };
   }
 
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {
@@ -276,7 +433,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
       fazenda_id: owner.fazenda_id,
       tipo,
-      data_transacao: dateOnly(),
+      data_transacao: dateOnlyFromReference(dados.data_referencia),
       valor: Number(dados.valor),
       categoria: dados.descricao || (tipo === "saida" ? "Despesa via WhatsApp" : "Receita via WhatsApp"),
       descricao: dados.descricao || pending.resumo,
@@ -284,11 +441,77 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       origem: "whatsapp",
       created_by: owner.usuario_id || null
     });
-    return { response: `${tipo === "saida" ? "Despesa" : "Receita"} registrada: R$ ${dados.valor}.` };
+    return { response: `Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.` };
+  }
+
+  if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
+    const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei "${dados.item_nome || ""}" no estoque. Me envie o nome do item cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { item_nome: undefined }) } }
+      };
+    }
+
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { item_nome: found.row.nome });
+      return {
+        response: `Encontrei um item parecido: ${found.row.nome}. Quer usar esse item?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const type = pending.tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida";
+    const current = Number(found.row.quantidade_atual || 0);
+    const quantity = Number(dados.quantidade || 0);
+    if (type === "saida" && quantity > current) {
+      return { response: `Não salvei. O saldo de ${found.row.nome} é ${formatNumber(current)} ${found.row.unidade_medida || ""}, menor que a baixa pedida.` };
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.estoqueMovimentacoes, {
+      fazenda_id: owner.fazenda_id,
+      item_id: found.row.id,
+      tipo: type,
+      quantidade: quantity,
+      valor_unitario: found.row.valor_unitario || null,
+      motivo: `Registrado via WhatsApp (${owner.telefone_e164})`,
+      responsavel_usuario_id: owner.usuario_id || null,
+      origem: "whatsapp"
+    });
+
+    return { response: `Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatNumber(quantity)} ${found.row.unidade_medida || ""} de ${found.row.nome}.` };
+  }
+
+  if (pending.tipo === "PONTO_FUNCIONARIO") {
+    const found = await findEmployee(supabase, owner, String(dados.funcionario_nome || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei o funcionário "${dados.funcionario_nome || ""}". Me envie o nome como está cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { funcionario_nome: undefined }) } }
+      };
+    }
+
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { funcionario_nome: found.row.nome });
+      return {
+        response: `Encontrei um funcionário parecido: ${found.row.nome}. Quer usar esse funcionário?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.registrosPonto, {
+      fazenda_id: owner.fazenda_id,
+      funcionario_id: found.row.id,
+      tipo: dados.ponto_tipo || "entrada",
+      registrado_em: isoFromReference(dados.data_referencia, dados.horario),
+      observacao: `Registrado via WhatsApp (${owner.telefone_e164})`,
+      origem: "whatsapp",
+      created_by: owner.usuario_id || null
+    });
+    return { response: `Pronto, ponto salvo com sucesso.\n${found.row.nome}: ${dados.ponto_tipo || "entrada"}${dados.horario ? ` às ${dados.horario}` : ""}.` };
   }
 
   if (pending.tipo === "ORDEM_SERVICO") {
-    // TODO: ligar este fluxo a uma tabela real de ordens de serviço quando ela existir no ERP.
     return {
       response: "Confirmação recebida. Ainda não existe uma tabela segura de ordens de serviço no Rancho, então não salvei como registro real.",
       sessionData: {
@@ -301,8 +524,86 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   return { response: unknownText() };
 }
 
+async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  if (parsed.tipo === "AJUDA") return helpText();
+
+  if (parsed.tipo === "CONSULTA_PRODUCAO") {
+    const range = parsed.dados.data_referencia === "mes" ? currentMonthRange() : dayRange(parsed.dados.data_referencia);
+    const { data, error } = await supabase
+      .from(TABLES.ordenhas)
+      .select("litros")
+      .eq("fazenda_id", owner.fazenda_id)
+      .gte("ordenhado_em", range.start)
+      .lt("ordenhado_em", range.end);
+    if (error) throw new Error(error.message);
+    const total = (data || []).reduce((sum, row) => sum + Number(row.litros || 0), 0);
+    return `Produção ${parsed.dados.data_referencia === "mes" ? "do mês" : "de hoje"}: ${formatNumber(total, " L")} em ${(data || []).length} registro(s).`;
+  }
+
+  if (parsed.tipo === "CONSULTA_FINANCEIRO") {
+    const range = currentMonthRange();
+    const { data, error } = await supabase
+      .from(TABLES.transacoesFinanceiras)
+      .select("tipo,valor")
+      .eq("fazenda_id", owner.fazenda_id)
+      .gte("data_transacao", dateOnly(new Date(range.start)))
+      .lt("data_transacao", dateOnly(new Date(range.end)));
+    if (error) throw new Error(error.message);
+    const entrada = (data || []).filter((row) => row.tipo === "entrada").reduce((sum, row) => sum + Number(row.valor || 0), 0);
+    const saida = (data || []).filter((row) => row.tipo === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
+    return `Financeiro do mês:\nEntradas: ${formatMoney(entrada)}\nSaídas: ${formatMoney(saida)}\nResultado: ${formatMoney(entrada - saida)}`;
+  }
+
+  if (parsed.tipo === "CONSULTA_ESTOQUE") {
+    if (parsed.dados.item_nome) {
+      const found = await findStockItem(supabase, owner, String(parsed.dados.item_nome));
+      if (found) return `Estoque de ${found.row.nome}: ${formatNumber(found.row.quantidade_atual)} ${found.row.unidade_medida || ""}.`;
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.estoqueItens)
+      .select("nome,quantidade_atual,quantidade_minima,unidade_medida")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    const critical = (data || []).filter((row) => Number(row.quantidade_atual || 0) <= Number(row.quantidade_minima || 0));
+    const examples = critical.slice(0, 3).map((row) => `- ${row.nome}: ${formatNumber(row.quantidade_atual)} ${row.unidade_medida || ""}`).join("\n");
+    return critical.length
+      ? `Você tem ${critical.length} item(ns) em atenção no estoque:\n${examples}`
+      : "Estoque consultado. Não encontrei itens abaixo do mínimo agora.";
+  }
+
+  if (parsed.tipo === "CONSULTA_FUNCIONARIO") {
+    if (parsed.dados.funcionario_nome) {
+      const found = await findEmployee(supabase, owner, String(parsed.dados.funcionario_nome));
+      if (found) return `${found.row.nome}: ${found.row.funcao || "função não informada"} - ${found.row.ativo === false ? "inativo" : "ativo"}.`;
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.funcionarios)
+      .select("id,ativo,deleted_at")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    const active = (data || []).filter((row) => row.ativo !== false && !row.deleted_at).length;
+    return `Funcionários ativos: ${active}.`;
+  }
+
+  return unknownText();
+}
+
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string) {
   const parsed = parseRanchoMessage(text);
+
+  if (CONSULT_INTENTS.has(parsed.tipo)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return handleConsultation(supabase, owner, parsed);
+  }
+
+  if (parsed.tipo === "DESCONHECIDO") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return unknownText();
+  }
 
   if (parsed.confianca >= 0.85) {
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
@@ -332,32 +633,42 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   return confirmationText(next);
 }
 
-async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, command: string) {
+async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, text: string, command: string) {
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return "Não encontrei uma confirmação pendente. Envie um novo registro.";
   }
 
-  if (CONFIRM_WORDS.has(command)) {
+  if (isConfirmCommand(command)) {
     const result = await saveConfirmedRecord(supabase, owner, pending);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
     return result.response;
   }
 
-  if (CANCEL_WORDS.has(command)) {
+  if (isRejectCommand(command)) {
+    const correction = normalizeRanchoText(text).replace(/^(?:nao|n|errado|corrigir|refazer|foi|era)\b\s*,?\s*/g, "").trim();
+    if (correction && correction !== command) {
+      const next = mergeRanchoMessageData(pending, correction);
+      if (next.perguntas_faltantes.length) {
+        await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
+        return missingText(next);
+      }
+
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+      return `Agora entendi:\n${confirmationText(next)}`;
+    }
+
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Cancelado. Nenhum registro real foi salvo.";
+    return "Tudo bem. Nada foi salvo. Me envie a informação novamente quando quiser.";
   }
 
-  return "Responda 1 para confirmar ou 2 para corrigir.";
+  return "Responda 1 para confirmar ou 2 para corrigir. Se quiser parar, envie cancelar.";
 }
 
 export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
   const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.";
-  }
+  if (!supabase) return "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.";
 
   const phone = normalizeWhatsappNumber(input.From) || input.From;
   const resolvedOwner = await resolveWhatsAppOwner(supabase, input.From);
@@ -391,11 +702,14 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
     const command = normalizeRanchoText(input.Body);
     const session = await getSession(supabase, owner);
 
-    if (CANCEL_WORDS.has(command) && session.etapa !== "aguardando_confirmacao") {
+    if (isMenuCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      response = "Cancelado. Envie um novo registro quando quiser.";
+      response = helpText();
+    } else if (isCancelCommand(command)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
     } else if (session.etapa === "aguardando_confirmacao") {
-      response = await handleConfirmation(supabase, owner, session, command);
+      response = await handleConfirmation(supabase, owner, session, input.Body, command);
     } else if (session.etapa === "aguardando_dado") {
       response = await handleMissingData(supabase, owner, session, input.Body);
     } else {

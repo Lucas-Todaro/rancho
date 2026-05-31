@@ -7,7 +7,10 @@ export const env = {
   defaultFazendaId: process.env.SUPABASE_DEFAULT_FAZENDA_ID || "",
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
   metaWhatsappToken: process.env.META_WHATSAPP_TOKEN || "",
-  metaPhoneNumberId: process.env.META_PHONE_NUMBER_ID || ""
+  metaPhoneNumberId: process.env.META_PHONE_NUMBER_ID || "",
+  twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || "",
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || "",
+  twilioWhatsappFrom: process.env.TWILIO_WHATSAPP_FROM || ""
 };
 
 function hasRealValue(value: string) {
@@ -24,4 +27,8 @@ export function isServerSupabaseConfigured() {
 
 export function isMetaConfigured() {
   return Boolean(hasRealValue(env.metaWhatsappToken) && hasRealValue(env.metaPhoneNumberId));
+}
+
+export function isTwilioConfigured() {
+  return Boolean(hasRealValue(env.twilioAccountSid) && hasRealValue(env.twilioAuthToken) && hasRealValue(env.twilioWhatsappFrom));
 }
