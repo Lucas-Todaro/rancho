@@ -1,3 +1,5 @@
+import { normalizePhoneNumber } from "@/lib/phone";
+
 export function onlyDigits(value: string | number | null | undefined) {
   return String(value ?? "").replace(/\D/g, "");
 }
@@ -34,7 +36,7 @@ export function stripBrazilCountryCode(value: string | number | null | undefined
 }
 
 export function normalizeBrazilianWhatsApp(value: string | number | null | undefined) {
-  const digits = onlyDigits(value).slice(0, 13);
+  const digits = normalizePhoneNumber(value).slice(0, 13);
   if (!digits) return "";
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) return digits;
   if (digits.length === 10 || digits.length === 11) return `55${digits}`;

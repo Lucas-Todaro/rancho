@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
+import { normalizePhoneNumber } from "@/lib/phone";
 import {
   mergeRanchoMessageData,
   normalizeRanchoText,
@@ -38,21 +39,6 @@ type BotSession = {
 
 const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "ok", "pode", "isso", "certo", "1"]);
 const CANCEL_WORDS = new Set(["nao", "n", "cancelar", "cancela", "errado", "corrigir", "2"]);
-
-function normalizeTwilioPhone(value: string) {
-  return value.replace(/^whatsapp:/i, "").replace(/\D/g, "");
-}
-
-function phoneVariants(value: string) {
-  const withoutPrefix = value.replace(/^whatsapp:/i, "");
-  const digits = normalizeTwilioPhone(value);
-  return Array.from(new Set([
-    value,
-    withoutPrefix,
-    digits,
-    digits ? `+${digits}` : ""
-  ].filter(Boolean)));
-}
 
 function nowIso() {
   return new Date().toISOString();
@@ -99,11 +85,13 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
 }
 
 async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Promise<ResolveWhatsAppOwnerResult> {
-  const variants = phoneVariants(from);
+  const normalizedPhone = normalizePhoneNumber(from);
+  console.log("[Twilio webhook] telefone", { original: from, normalizado: normalizedPhone });
+
   const { data, error } = await supabase
     .from(TABLES.whatsappUsuarios)
     .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,ativo")
-    .in("telefone_e164", variants)
+    .eq("telefone_e164", normalizedPhone)
     .eq("ativo", true)
     .limit(1)
     .maybeSingle();
@@ -131,7 +119,7 @@ async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Prom
       whatsapp_usuario_id: data.id as string,
       funcionario_id: data.funcionario_id as string,
       usuario_id: (data.usuario_id as string | null) || null,
-      telefone_e164: (data.telefone_e164 as string) || normalizeTwilioPhone(from),
+      telefone_e164: normalizePhoneNumber((data.telefone_e164 as string) || normalizedPhone),
       nome_exibicao: data.nome_exibicao as string | null
     }
   };
@@ -425,7 +413,7 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
     return "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.";
   }
 
-  const phone = normalizeTwilioPhone(input.From) || input.From;
+  const phone = normalizePhoneNumber(input.From) || input.From;
   const resolvedOwner = await resolveWhatsAppOwner(supabase, input.From);
   const owner = resolvedOwner.owner;
 
