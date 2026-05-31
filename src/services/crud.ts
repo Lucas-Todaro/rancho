@@ -9,6 +9,7 @@ type ListOptions = DataContext & {
   orderBy?: string;
   ascending?: boolean;
   select?: string;
+  filters?: Array<{ column: string; value: string | number | boolean | null | undefined }>;
 };
 
 function withId(tableName: string, record: AnyRecord, context?: DataContext): AnyRecord {
@@ -61,14 +62,24 @@ function sortLocal(rows: AnyRecord[], orderBy = "created_at", ascending = false)
   });
 }
 
+function filterLocalRows(tableName: string, rows: AnyRecord[], options: ListOptions) {
+  const scoped = options.fazendaId && FARM_SCOPED_TABLES.has(tableName)
+    ? rows.filter((row) => row.fazenda_id === options.fazendaId)
+    : rows;
+
+  return (options.filters || []).reduce((current, filter) => {
+    if (filter.value === undefined) return current;
+    if (filter.value === null) return current.filter((row) => row[filter.column] == null);
+    return current.filter((row) => String(row[filter.column]) === String(filter.value));
+  }, scoped);
+}
+
 export async function listRecords(tableName: string, options: ListOptions = {}): Promise<AnyRecord[]> {
-  const { orderBy = "created_at", ascending = false, fazendaId, select = "*" } = options;
+  const { orderBy = "created_at", ascending = false, fazendaId, select = "*", filters = [] } = options;
 
   if (!supabaseBrowser) {
     const rows = mockData[tableName] || [];
-    const scoped = fazendaId && FARM_SCOPED_TABLES.has(tableName)
-      ? rows.filter((row) => row.fazenda_id === fazendaId)
-      : rows;
+    const scoped = filterLocalRows(tableName, rows, options);
     return sortLocal(scoped, orderBy, ascending);
   }
 
@@ -81,12 +92,17 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
     query = query.eq("fazenda_id", fazendaId);
   }
 
+  filters.forEach((filter) => {
+    if (filter.value === undefined) return;
+    query = filter.value === null ? query.is(filter.column, null) : query.eq(filter.column, filter.value);
+  });
+
   const { data, error } = await query;
 
   if (error) {
     console.warn(`[Rancho] Falha ao ler ${tableName}. Usando demo.`, error.message);
     const rows = mockData[tableName] || [];
-    return sortLocal(rows, orderBy, ascending);
+    return sortLocal(filterLocalRows(tableName, rows, options), orderBy, ascending);
   }
 
   return (data || []) as AnyRecord[];

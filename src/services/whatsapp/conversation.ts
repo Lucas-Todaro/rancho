@@ -159,7 +159,7 @@ async function findAnimal(fazendaId: string, text: string) {
 async function ensureSession(phone: string) {
   const session = await getSession(phone);
   if (!session.fazendaId) {
-    await sendWhatsAppText(phone, "Nao encontrei uma fazenda para este telefone. Cadastre o numero em whatsapp_usuarios ou configure SUPABASE_DEFAULT_FAZENDA_ID.");
+    await sendWhatsAppText(phone, "Não encontrei uma fazenda para este telefone. Fale com o administrador para liberar o acesso.");
     return null;
   }
   return session;
@@ -170,7 +170,7 @@ export async function sendMainMenu(phone: string) {
   if (!session) return;
 
   await saveSession({ ...session, state: STATES.IDLE, payload: {} });
-  return sendWhatsAppButtons(phone, "Bem-vindo ao sistema da fazenda. Escolha uma opcao:", [
+  return sendWhatsAppButtons(phone, "Bem-vindo ao sistema da fazenda. Escolha uma opção:", [
     { id: "MENU_PRODUCAO", title: "Ordenha" },
     { id: "MENU_ANIMAL", title: "Animal" },
     { id: "MENU_FINANCEIRO", title: "Financeiro" }
@@ -191,19 +191,19 @@ export async function handleConversation(input: { phone: string; text: string; b
 
   if (command === "MENU_PRODUCAO") {
     await saveSession({ ...session, state: STATES.PROD_ANIMAL, payload: {} });
-    return sendWhatsAppText(phone, "Qual animal foi ordenhado? Envie o numero do brinco.\n\nEx: B-042");
+    return sendWhatsAppText(phone, "Qual animal foi ordenhado? Envie o número do brinco.\n\nEx: B-042");
   }
 
   if (command === "MENU_ANIMAL") {
     await saveSession({ ...session, state: STATES.ANIMAL_TAG, payload: {} });
-    return sendWhatsAppText(phone, "Vamos cadastrar um animal. Qual e o numero do brinco?\n\nEx: B-042");
+    return sendWhatsAppText(phone, "Vamos cadastrar um animal. Qual é o número do brinco?\n\nEx: B-042");
   }
 
   if (command === "MENU_FINANCEIRO") {
     await saveSession({ ...session, state: STATES.IDLE, payload: {} });
     return sendWhatsAppButtons(phone, "O que deseja registrar?", [
       { id: "FIN_ENTRADA", title: "Entrada" },
-      { id: "FIN_SAIDA", title: "Saida" },
+      { id: "FIN_SAIDA", title: "Saída" },
       { id: "CANCELAR", title: "Cancelar" }
     ]);
   }
@@ -216,7 +216,7 @@ export async function handleConversation(input: { phone: string; text: string; b
   if (session.state === STATES.PROD_ANIMAL) {
     const animal = await findAnimal(session.fazendaId!, text);
     if (!animal) {
-      return sendWhatsAppText(phone, "Nao encontrei esse brinco no rebanho. Envie um brinco cadastrado ou digite MENU para voltar.");
+      return sendWhatsAppText(phone, "Não encontrei esse brinco no rebanho. Envie um brinco cadastrado ou digite MENU para voltar.");
     }
 
     await saveSession({ ...session, state: STATES.PROD_LITERS, payload: { animal_id: animal.id, brinco: animal.brinco } });
@@ -225,7 +225,7 @@ export async function handleConversation(input: { phone: string; text: string; b
 
   if (session.state === STATES.PROD_LITERS) {
     const litros = cleanNumber(text);
-    if (!Number.isFinite(litros) || litros <= 0) return sendWhatsAppText(phone, "Valor invalido. Envie apenas a quantidade de litros. Ex: 24,5");
+    if (!Number.isFinite(litros) || litros <= 0) return sendWhatsAppText(phone, "Valor inválido. Envie apenas a quantidade de litros. Ex: 24,5");
 
     const payload = {
       fazenda_id: session.fazendaId,
@@ -246,7 +246,7 @@ export async function handleConversation(input: { phone: string; text: string; b
 
   if (session.state === STATES.ANIMAL_TAG) {
     await saveSession({ ...session, state: STATES.ANIMAL_CATEGORY, payload: { brinco: text } });
-    return sendWhatsAppButtons(phone, "Qual e a categoria?", [
+    return sendWhatsAppButtons(phone, "Qual é a categoria?", [
       { id: "CAT_VACA", title: "Vaca" },
       { id: "CAT_BEZERRO", title: "Bezerro" },
       { id: "CAT_TOURO", title: "Touro" }
@@ -257,12 +257,12 @@ export async function handleConversation(input: { phone: string; text: string; b
     const categoryMap: Record<string, string> = { CAT_VACA: "vaca", CAT_BEZERRO: "bezerro", CAT_TOURO: "touro" };
     const categoria = categoryMap[command] || text.toLowerCase();
     await saveSession({ ...session, state: STATES.ANIMAL_BREED, payload: { ...session.payload, categoria } });
-    return sendWhatsAppText(phone, "Qual e a raca?\n\nEx: Girolando");
+    return sendWhatsAppText(phone, "Qual é a raça?\n\nEx: Girolando");
   }
 
   if (session.state === STATES.ANIMAL_BREED) {
     await saveSession({ ...session, state: STATES.ANIMAL_BIRTH, payload: { ...session.payload, raca: text } });
-    return sendWhatsAppText(phone, "Qual e a data de nascimento?\n\nUse AAAA-MM-DD. Se nao souber, envie PULAR.");
+    return sendWhatsAppText(phone, "Qual é a data de nascimento?\n\nUse AAAA-MM-DD. Se não souber, envie PULAR.");
   }
 
   if (session.state === STATES.ANIMAL_BIRTH) {
@@ -281,20 +281,20 @@ export async function handleConversation(input: { phone: string; text: string; b
 
     const inserted = await insertRecord(TABLES.animais, payload);
     await logAudit(session.fazendaId!, session.usuarioId, TABLES.animais, "insert", inserted || payload);
-    await sendWhatsAppText(phone, `OK. Animal cadastrado.\n\nBrinco: ${payload.brinco}\nCategoria: ${payload.categoria}\nRaca: ${payload.raca || "-"}`);
+    await sendWhatsAppText(phone, `OK. Animal cadastrado.\n\nBrinco: ${payload.brinco}\nCategoria: ${payload.categoria}\nRaça: ${payload.raca || "-"}`);
     return sendMainMenu(phone);
   }
 
   if (session.state === STATES.FIN_VALUE) {
     const valor = cleanNumber(text);
-    if (!Number.isFinite(valor) || valor <= 0) return sendWhatsAppText(phone, "Valor invalido. Envie somente o valor. Ex: 1500,00");
+    if (!Number.isFinite(valor) || valor <= 0) return sendWhatsAppText(phone, "Valor inválido. Envie somente o valor. Ex: 1500,00");
     await saveSession({ ...session, state: STATES.FIN_CATEGORY, payload: { ...session.payload, valor } });
-    return sendWhatsAppText(phone, "Qual categoria?\n\nEx: Venda de leite, racao, veterinario");
+    return sendWhatsAppText(phone, "Qual categoria?\n\nEx: Venda de leite, ração, veterinário");
   }
 
   if (session.state === STATES.FIN_CATEGORY) {
     await saveSession({ ...session, state: STATES.FIN_DESCRIPTION, payload: { ...session.payload, categoria: text } });
-    return sendWhatsAppText(phone, "Digite uma descricao curta.\n\nEx: Recebimento do laticinio");
+    return sendWhatsAppText(phone, "Digite uma descrição curta.\n\nEx: Recebimento do laticínio");
   }
 
   if (session.state === STATES.FIN_DESCRIPTION) {
@@ -311,7 +311,7 @@ export async function handleConversation(input: { phone: string; text: string; b
 
     const inserted = await insertRecord(TABLES.transacoesFinanceiras, payload);
     await logAudit(session.fazendaId!, session.usuarioId, TABLES.transacoesFinanceiras, "insert", inserted || payload);
-    await sendWhatsAppText(phone, `OK. ${payload.tipo === "entrada" ? "Entrada" : "Saida"} registrada.\n\nValor: R$ ${payload.valor}\nCategoria: ${payload.categoria}`);
+    await sendWhatsAppText(phone, `OK. ${payload.tipo === "entrada" ? "Entrada" : "Saída"} registrada.\n\nValor: R$ ${payload.valor}\nCategoria: ${payload.categoria}`);
     return sendMainMenu(phone);
   }
 

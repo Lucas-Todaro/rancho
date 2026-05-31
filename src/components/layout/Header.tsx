@@ -12,31 +12,31 @@ const mobileLinks = [
   ["/lotes", "Lotes"],
   ["/rebanho", "Rebanho"],
   ["/eventos", "Eventos"],
-  ["/producao", "Producao"],
+  ["/producao", "Produção"],
   ["/estoque", "Estoque"],
   ["/financeiro", "Financeiro"],
-  ["/funcionarios", "Funcionarios"],
+  ["/funcionarios", "Funcionários"],
   ["/ponto", "Ponto"],
   ["/folha", "Folha"],
-  ["/relatorios", "Relatorios"],
+  ["/relatorios", "Relatórios"],
   ["/whatsapp", "WhatsApp"],
-  ["/configuracoes", "Configuracoes"]
+  ["/configuracoes", "Configurações"]
 ];
 
 const globalDestinations = [
-  { href: "/dashboard", label: "Dashboard", helper: "Visao geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
+  { href: "/dashboard", label: "Dashboard", helper: "Visão geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
   { href: "/lotes", label: "Lotes", helper: "Grupos e manejo do rebanho", keywords: ["lote", "piquete", "manejo", "grupo"] },
   { href: "/rebanho", label: "Rebanho", helper: "Animais, brincos e fases", keywords: ["animal", "animais", "brinco", "vaca", "boi", "rebanho"] },
   { href: "/eventos", label: "Eventos", helper: "Vacinas, partos e tratamentos", keywords: ["evento", "vacina", "parto", "doenca", "tratamento", "pesagem"] },
-  { href: "/producao", label: "Producao", helper: "Ordenhas e litros de leite", keywords: ["leite", "ordenha", "litros", "producao"] },
-  { href: "/estoque", label: "Estoque", helper: "Racao, medicamentos e insumos", keywords: ["estoque", "racao", "medicamento", "insumo", "equipamento"] },
-  { href: "/financeiro", label: "Financeiro", helper: "Entradas, saidas e caixa", keywords: ["dinheiro", "receita", "despesa", "financeiro", "caixa"] },
-  { href: "/funcionarios", label: "Funcionarios", helper: "Equipe e contatos", keywords: ["funcionario", "equipe", "colaborador", "contato"] },
-  { href: "/ponto", label: "Ponto", helper: "Entradas e saidas da equipe", keywords: ["ponto", "entrada", "saida", "horario"] },
+  { href: "/producao", label: "Produção", helper: "Ordenhas e litros de leite", keywords: ["leite", "ordenha", "litros", "producao"] },
+  { href: "/estoque", label: "Estoque", helper: "Ração, medicamentos e insumos", keywords: ["estoque", "racao", "medicamento", "insumo", "equipamento"] },
+  { href: "/financeiro", label: "Financeiro", helper: "Entradas, saídas e caixa", keywords: ["dinheiro", "receita", "despesa", "financeiro", "caixa"] },
+  { href: "/funcionarios", label: "Funcionários", helper: "Equipe e contatos", keywords: ["funcionario", "equipe", "colaborador", "contato"] },
+  { href: "/ponto", label: "Ponto", helper: "Entradas e saídas da equipe", keywords: ["ponto", "entrada", "saida", "horario"] },
   { href: "/folha", label: "Folha", helper: "Pagamentos e descontos", keywords: ["folha", "salario", "pagamento", "desconto"] },
-  { href: "/relatorios", label: "Relatorios", helper: "Resumo para impressao", keywords: ["relatorio", "pdf", "imprimir", "resultado"] },
+  { href: "/relatorios", label: "Relatórios", helper: "Resumo para impressão", keywords: ["relatorio", "pdf", "imprimir", "resultado"] },
   { href: "/whatsapp", label: "WhatsApp", helper: "Atendimento e menu de teste", keywords: ["whatsapp", "mensagem", "chat", "telefone"] },
-  { href: "/configuracoes", label: "Configuracoes", helper: "Conta e preferencias", keywords: ["configuracao", "preferencia", "conta", "perfil"] }
+  { href: "/configuracoes", label: "Configurações", helper: "Conta e preferências", keywords: ["configuracao", "preferencia", "conta", "perfil"] }
 ];
 
 function normalizeSearch(value: string) {
@@ -103,7 +103,7 @@ export function Header() {
             <Search className="h-4 w-4 text-slate-400" />
             <input
               className="w-full bg-transparent text-sm outline-none"
-              placeholder="Buscar atalho: animal, estoque, funcionario..."
+              placeholder="Buscar atalho: animal, estoque, funcionário..."
               value={globalSearch}
               onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
               onChange={(event) => {

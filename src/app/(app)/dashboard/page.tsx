@@ -1,7 +1,7 @@
 "use client";
 
 import { Activity, AlertTriangle, Banknote, Droplets, PackageOpen, PawPrint, TrendingDown, TrendingUp, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
@@ -55,20 +55,22 @@ const emptyDashboard: DashboardViewData = {
 
 export default function DashboardPage() {
   const { dataContext, profile } = useAuth();
+  const farmId = dataContext.fazendaId;
+  const userId = dataContext.usuarioId;
   const [data, setData] = useState(emptyDashboard);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const dashboard = await loadDashboardData(dataContext);
+      const dashboard = await loadDashboardData({ fazendaId: farmId, usuarioId: userId });
       setData(dashboard);
     } finally {
       setLoading(false);
     }
-  }
+  }, [farmId, userId]);
 
-  useEffect(() => { load(); }, [dataContext.fazendaId]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -80,7 +82,7 @@ export default function DashboardPage() {
               {profile?.fazenda?.nome || "Controle da fazenda"} em tempo real.
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-emerald-100">
-              Acompanhe rebanho, leite, estoque, financeiro, equipe e pagamentos em uma visao simples para o dia a dia.
+              Acompanhe rebanho, leite, estoque, financeiro, equipe e pagamentos em uma visão simples para o dia a dia.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <button onClick={load} className="btn bg-white text-emerald-950" type="button">{loading ? "Atualizando..." : "Atualizar painel"}</button>
@@ -90,16 +92,16 @@ export default function DashboardPage() {
           <div className="rounded-lg border border-white/15 bg-white/10 p-5 backdrop-blur-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-emerald-100">Resultado do mes</p>
+                <p className="text-sm text-emerald-100">Resultado do mês</p>
                 <h2 className="mt-2 text-4xl font-black">{formatCurrency(data.cards.profit)}</h2>
               </div>
               <Activity className="h-10 w-10 text-lime-200" />
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong>{formatCurrency(data.cards.income)}</strong></div>
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saidas</p><strong>{formatCurrency(data.cards.expenses)}</strong></div>
+              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong>{formatCurrency(data.cards.expenses)}</strong></div>
               <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong>{formatNumber(data.cards.productionToday, " L")}</strong></div>
-              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mes</p><strong>{formatNumber(data.cards.productionMonth, " L")}</strong></div>
+              <div className="rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong>{formatNumber(data.cards.productionMonth, " L")}</strong></div>
             </div>
           </div>
         </div>
@@ -108,18 +110,18 @@ export default function DashboardPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total de animais" value={data.cards.totalAnimals} hint="Rebanho cadastrado" icon={PawPrint} tone="green" />
         <StatCard title="Animais ativos" value={data.cards.activeAnimals} hint="Status ativo" icon={PawPrint} tone="green" />
-        <StatCard title="Producao diaria" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" />
-        <StatCard title="Entrada do mes" value={formatCurrency(data.cards.income)} hint="Transacoes de entrada" icon={TrendingUp} tone="green" />
-        <StatCard title="Saida do mes" value={formatCurrency(data.cards.expenses)} hint="Transacoes de saida" icon={TrendingDown} tone="red" />
-        <StatCard title="Resultado do mes" value={formatCurrency(data.cards.profit)} hint="Entradas menos saidas" icon={Banknote} tone="amber" />
-        <StatCard title="Estoque critico" value={data.cards.criticalStock} hint="Itens abaixo do minimo" icon={PackageOpen} tone="red" />
-        <StatCard title="Funcionarios ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" />
+        <StatCard title="Produção diária" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" />
+        <StatCard title="Entrada do mês" value={formatCurrency(data.cards.income)} hint="Transações de entrada" icon={TrendingUp} tone="green" />
+        <StatCard title="Saída do mês" value={formatCurrency(data.cards.expenses)} hint="Transações de saída" icon={TrendingDown} tone="red" />
+        <StatCard title="Resultado do mês" value={formatCurrency(data.cards.profit)} hint="Entradas menos saídas" icon={Banknote} tone="amber" />
+        <StatCard title="Estoque crítico" value={data.cards.criticalStock} hint="Itens abaixo do mínimo" icon={PackageOpen} tone="red" />
+        <StatCard title="Funcionários ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="glass rounded-lg p-5 shadow-soft">
-          <h2 className="text-xl font-black">Producao por dia</h2>
-          <p className="mb-6 mt-1 text-sm text-slate-500 dark:text-slate-400">Evolucao recente da producao leiteira.</p>
+          <h2 className="text-xl font-black">Produção por dia</h2>
+          <p className="mb-6 mt-1 text-sm text-slate-500 dark:text-slate-400">Evolução recente da produção leiteira.</p>
           <BarChart data={data.charts.productionByDay} suffix=" L" />
         </div>
         <div className="glass rounded-lg p-5 shadow-soft">
@@ -139,10 +141,10 @@ export default function DashboardPage() {
             <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
               <p className="font-black">{item.nome}</p>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                Atual: {item.quantidade_atual} {item.unidade_medida} | Minimo: {item.quantidade_minima}
+                Atual: {item.quantidade_atual} {item.unidade_medida} | Mínimo: {item.quantidade_minima}
               </p>
             </div>
-          )) : <p className="text-sm text-slate-500">Nenhum item critico no momento.</p>}
+          )) : <p className="text-sm text-slate-500">Nenhum item crítico no momento.</p>}
         </div>
       </section>
     </div>

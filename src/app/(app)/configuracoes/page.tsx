@@ -10,8 +10,8 @@ type Health = { meta: boolean };
 const roleLabels: Record<string, string> = {
   admin: "Administrador",
   gerente: "Gerente",
-  funcionario: "Funcionario",
-  veterinario: "Veterinario",
+  funcionario: "Funcionário",
+  veterinario: "Veterinário",
   contador: "Contador"
 };
 
@@ -28,24 +28,24 @@ export default function ConfiguracoesPage() {
       icon: Building2,
       title: "Fazenda",
       value: profile?.fazenda?.nome || "Minha fazenda",
-      description: "Nome usado nos paineis, relatorios e atendimentos."
+      description: "Nome usado nos painéis, relatórios e atendimentos."
     },
     {
       icon: UserRound,
       title: "Conta",
       value: profile?.nome || "Administrador",
-      description: roleLabels[profile?.papel || ""] || "Usuario"
+      description: roleLabels[profile?.papel || ""] || "Usuário"
     },
     {
       icon: ShieldCheck,
       title: "Acesso",
       value: "Protegido por login",
-      description: "Cada usuario entra com seu proprio e-mail e senha."
+      description: "Cada usuário entra com seu próprio e-mail e senha."
     },
     {
       icon: MessageCircle,
       title: "WhatsApp",
-      value: health?.meta ? "Pronto para uso" : "Aguardando ativacao",
+      value: health?.meta ? "Pronto para uso" : "Aguardando ativação",
       description: "Envio de mensagens e menus para o telefone da fazenda."
     }
   ];
@@ -54,9 +54,9 @@ export default function ConfiguracoesPage() {
     <div className="animate-fade-in space-y-6">
       <div>
         <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-          <Settings2 className="h-4 w-4" /> Configuracoes
+          <Settings2 className="h-4 w-4" /> Configurações
         </div>
-        <h1 className="text-3xl font-black tracking-tight md:text-4xl">Preferencias do sistema</h1>
+        <h1 className="text-3xl font-black tracking-tight md:text-4xl">Preferências do sistema</h1>
         <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">
           Ajustes simples para acompanhar sua fazenda, sua conta e os recursos mais usados no dia a dia.
         </p>
@@ -81,15 +81,15 @@ export default function ConfiguracoesPage() {
           <div className="mb-5 flex items-center gap-3">
             <Palette className="h-6 w-6 text-emerald-600" />
             <div>
-              <h2 className="text-xl font-black">Experiencia de uso</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Preferencias que deixam o sistema mais confortavel.</p>
+              <h2 className="text-xl font-black">Experiência de uso</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Preferências que deixam o sistema mais confortável.</p>
             </div>
           </div>
           <div className="space-y-3">
             {[
-              "Alterne entre tema claro e escuro pelo botao no topo.",
-              "Use a busca global para chegar rapido em qualquer area.",
-              "Abra relatorios e escolha imprimir ou salvar em PDF.",
+              "Alterne entre tema claro e escuro pelo botão no topo.",
+              "Use a busca global para chegar rápido em qualquer área.",
+              "Abra relatórios e escolha imprimir ou salvar em PDF.",
               "Use os filtros das listas para encontrar registros sem procurar linha por linha."
             ].map((item) => (
               <div key={item} className="flex gap-3 rounded-lg border border-slate-200/70 bg-white/65 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/55">
@@ -104,12 +104,12 @@ export default function ConfiguracoesPage() {
           <div className="mb-5 flex items-center gap-3">
             <Clock3 className="h-6 w-6 text-blue-600" />
             <div>
-              <h2 className="text-xl font-black">Areas ativas</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Principais controles disponiveis para a fazenda.</p>
+              <h2 className="text-xl font-black">Áreas ativas</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Principais controles disponíveis para a fazenda.</p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {["Rebanho", "Producao", "Estoque", "Financeiro", "Equipe", "Relatorios"].map((item) => (
+            {["Rebanho", "Produção", "Estoque", "Financeiro", "Equipe", "Relatórios"].map((item) => (
               <div key={item} className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-900">
                 {item}
               </div>
@@ -120,7 +120,7 @@ export default function ConfiguracoesPage() {
               <Badge tone={health?.meta ? "success" : "warning"}>{health?.meta ? "WhatsApp ativo" : "WhatsApp pendente"}</Badge>
             </div>
             <p className="text-emerald-900 dark:text-emerald-100">
-              Quando o WhatsApp estiver ativo, os menus de atendimento ajudam a registrar informacoes da rotina com menos digitacao.
+              Quando o WhatsApp estiver ativo, os menus de atendimento ajudam a registrar informações da rotina com menos digitação.
             </p>
           </div>
         </section>

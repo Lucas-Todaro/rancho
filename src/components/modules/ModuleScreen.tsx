@@ -1,16 +1,47 @@
 "use client";
 
-import * as Icons from "lucide-react";
-import { Plus, RefreshCw, type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  Activity,
+  ClipboardList,
+  Clock3,
+  Database,
+  Droplets,
+  Layers3,
+  PackageOpen,
+  PawPrint,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Users,
+  Wallet,
+  type LucideIcon
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
-import { AnimalDetailModal } from "@/components/modules/AnimalDetailModal";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+
+const AnimalDetailModal = dynamic(
+  () => import("@/components/modules/AnimalDetailModal").then((module) => module.AnimalDetailModal),
+  { ssr: false }
+);
+
+const moduleIcons: Record<string, LucideIcon> = {
+  Layers3,
+  PawPrint,
+  ClipboardList,
+  Droplets,
+  PackageOpen,
+  Wallet,
+  Users,
+  Clock3,
+  Receipt
+};
 
 function calcStat(rows: AnyRecord[], stat: NonNullable<ModuleConfig["quickStats"]>[number]) {
   if (stat.mode === "count") return rows.length;
@@ -40,6 +71,9 @@ function exportCsv(filename: string, rows: AnyRecord[], fields: ModuleConfig["fi
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const { dataContext } = useAuth();
+  const farmId = dataContext.fazendaId;
+  const userId = dataContext.usuarioId;
+  const queryContext = useMemo(() => ({ fazendaId: farmId, usuarioId: userId }), [farmId, userId]);
   const [rows, setRows] = useState<AnyRecord[]>([]);
   const [relationOptions, setRelationOptions] = useState<Record<string, RelationOption[]>>({});
   const [search, setSearch] = useState("");
@@ -49,16 +83,16 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const Icon = ((Icons as any)[config.icon] || Icons.Database) as LucideIcon;
+  const Icon = moduleIcons[config.icon] || Database;
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const relationFields = config.fields.filter((field) => field.type === "relation" && field.relation);
       const [data, relationPairs] = await Promise.all([
-        listRecords(config.tableName, { orderBy: config.orderBy, fazendaId: dataContext.fazendaId, usuarioId: dataContext.usuarioId }),
-        Promise.all(relationFields.map(async (field) => [field.name, await loadRelationOptions(field, dataContext)] as const))
+        listRecords(config.tableName, { orderBy: config.orderBy, fazendaId: queryContext.fazendaId, usuarioId: queryContext.usuarioId }),
+        Promise.all(relationFields.map(async (field) => [field.name, await loadRelationOptions(field, queryContext)] as const))
       ]);
       setRows(data);
       setRelationOptions(Object.fromEntries(relationPairs));
@@ -67,19 +101,23 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [config.fields, config.orderBy, config.tableName, queryContext]);
 
   useEffect(() => {
     load();
     return subscribeTable(config.tableName, load);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.tableName, dataContext.fazendaId]);
+  }, [config.tableName, load]);
+
+  const searchableRows = useMemo(
+    () => rows.map((row) => ({ row, text: JSON.stringify(row).toLowerCase() })),
+    [rows]
+  );
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return rows;
-    return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(term));
-  }, [rows, search]);
+    return searchableRows.filter((item) => item.text.includes(term)).map((item) => item.row);
+  }, [rows, search, searchableRows]);
 
   async function submit(values: AnyRecord) {
     setBusy(true);
@@ -132,7 +170,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {(config.quickStats || []).map((stat, index) => (
-          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Icons.Activity : Icon} tone={index % 2 ? "blue" : "green"} />
+          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Activity : Icon} tone={index % 2 ? "blue" : "green"} />
         ))}
       </div>
 

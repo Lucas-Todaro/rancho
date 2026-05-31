@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Rancho Pro",
-  description: "Sistema completo de gestao agropecuaria com painel, relatorios e WhatsApp"
+  description: "Sistema completo de gestão agropecuária com painel, relatórios e WhatsApp"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

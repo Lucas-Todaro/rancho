@@ -72,7 +72,7 @@ async function fetchProfile(userId: string) {
 
   if (error) throw new Error(error.message);
   if (!data) {
-    throw new Error("Este login ainda nao esta vinculado a uma fazenda. Fale com o administrador.");
+    throw new Error("Este login ainda não está vinculado a uma fazenda. Fale com o administrador.");
   }
 
   const raw = data as unknown as UsuarioProfile & { fazenda?: UsuarioProfile["fazenda"] | UsuarioProfile["fazenda"][] };
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError("");
     } else {
       if (options.clearOnError) setProfile(null);
-      setError(profileResult.error.message || "Nao foi possivel carregar os dados da fazenda.");
+      setError(profileResult.error.message || "Não foi possível carregar os dados da fazenda.");
     }
   }
 
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const sessionResult = await waitWithLimit(
         supabaseBrowser.auth.getSession(),
-        "Nao foi possivel confirmar seu acesso agora. Tente novamente."
+        "Não foi possível confirmar seu acesso agora. Tente novamente."
       );
 
       if (!mounted) return;
@@ -162,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
         setSession(null);
         setProfile(null);
-        setError(err instanceof Error ? err.message : "Sua sessao expirou. Entre novamente.");
+        setError(err instanceof Error ? err.message : "Sua sessão expirou. Entre novamente.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -186,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await loadProfile(nextSession);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Sua sessao expirou. Entre novamente.");
+        setError(err instanceof Error ? err.message : "Sua sessão expirou. Entre novamente.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (signInError) throw new Error(signInError.message);
 
       setSession(data.session);
-      if (!data.session?.user?.id) throw new Error("Nao foi possivel iniciar a sessao.");
+      if (!data.session?.user?.id) throw new Error("Não foi possível iniciar a sessão.");
       signedIn = true;
 
       const profileResult = await waitWithLimit(
@@ -234,7 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
       }
       setLoading(false);
-      throw err instanceof Error ? err : new Error("Nao foi possivel entrar.");
+      throw err instanceof Error ? err : new Error("Não foi possível entrar.");
     }
     setLoading(false);
   }

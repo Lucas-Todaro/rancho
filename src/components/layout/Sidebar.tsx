@@ -24,15 +24,15 @@ const nav = [
   { href: "/lotes", label: "Lotes", icon: Layers3 },
   { href: "/rebanho", label: "Rebanho", icon: PawPrint },
   { href: "/eventos", label: "Eventos", icon: ClipboardList },
-  { href: "/producao", label: "Producao", icon: Droplets },
+  { href: "/producao", label: "Produção", icon: Droplets },
   { href: "/estoque", label: "Estoque", icon: PackageOpen },
   { href: "/financeiro", label: "Financeiro", icon: Wallet },
-  { href: "/funcionarios", label: "Funcionarios", icon: Users },
+  { href: "/funcionarios", label: "Funcionários", icon: Users },
   { href: "/ponto", label: "Ponto", icon: Clock3 },
   { href: "/folha", label: "Folha", icon: Receipt },
-  { href: "/relatorios", label: "Relatorios", icon: BarChart3 },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { href: "/whatsapp", label: "WhatsApp", icon: Bot },
-  { href: "/configuracoes", label: "Configuracoes", icon: Settings }
+  { href: "/configuracoes", label: "Configurações", icon: Settings }
 ];
 
 export function Sidebar() {
@@ -46,7 +46,7 @@ export function Sidebar() {
         </div>
         <div>
           <p className="text-lg font-black leading-none">Rancho Pro</p>
-          <p className="mt-1 text-xs font-semibold text-emerald-100">Gestao agropecuaria</p>
+          <p className="mt-1 text-xs font-semibold text-emerald-100">Gestão agropecuária</p>
         </div>
       </Link>
 

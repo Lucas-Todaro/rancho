@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, Eye, Pencil, Search, Trash2, X } from "lucide-react";
+import { useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -9,7 +10,7 @@ function renderCell(value: any, field: ModuleField, lookups?: Record<string, Rec
   if (field.type === "currency") return formatCurrency(value);
   if (field.type === "date" || field.type === "datetime-local" || field.type === "month") return formatDate(value);
   if (field.type === "number") return String(value ?? 0);
-  if (field.type === "checkbox") return value ? <Badge tone="success">Sim</Badge> : <Badge tone="default">Nao</Badge>;
+  if (field.type === "checkbox") return value ? <Badge tone="success">Sim</Badge> : <Badge tone="default">Não</Badge>;
   if (field.type === "relation") return lookups?.[field.name]?.[String(value)] || String(value ?? "-");
   if (field.type === "select") {
     const label = field.options?.find((option) => option.value === value)?.label || value || "-";
@@ -46,21 +47,21 @@ export function DataTable({
   onExport: () => void;
   relationOptions?: Record<string, RelationOption[]>;
 }) {
-  const visibleFields = fields.filter((field) => field.tableVisible !== false).slice(0, 8);
-  const lookups = Object.entries(relationOptions).reduce<Record<string, Record<string, string>>>((acc, [field, options]) => {
+  const visibleFields = useMemo(() => fields.filter((field) => field.tableVisible !== false).slice(0, 8), [fields]);
+  const lookups = useMemo(() => Object.entries(relationOptions).reduce<Record<string, Record<string, string>>>((acc, [field, options]) => {
     acc[field] = Object.fromEntries(options.map((option) => [option.value, option.label]));
     return acc;
-  }, {});
+  }, {}), [relationOptions]);
 
   return (
     <div className="glass rounded-lg p-4 shadow-soft md:p-5">
       <div className="mb-4 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/45">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <label className="relative flex-1 md:max-w-xl">
-            <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Filtro rapido</span>
+            <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Filtro rápido</span>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input className="input input-with-icon input-with-clear" placeholder="Pesquisar por nome, codigo ou descricao..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              <input className="input input-with-icon input-with-clear" placeholder="Pesquisar por nome, código ou descrição..." value={search} onChange={(event) => setSearch(event.target.value)} />
               {search ? (
                 <button className="absolute right-2 top-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100" onClick={() => setSearch("")} type="button" title="Limpar busca">
                   <X className="h-4 w-4" />
@@ -78,7 +79,7 @@ export function DataTable({
           <thead className="bg-slate-50/80 dark:bg-slate-900/70">
             <tr>
               {visibleFields.map((field) => <th key={field.name}>{field.label}</th>)}
-              <th>Acoes</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody>

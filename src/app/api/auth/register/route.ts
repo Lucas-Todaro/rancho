@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (authError || !authData.user) {
-      return NextResponse.json({ error: authError?.message || "Nao foi possivel criar o usuario." }, { status: 400 });
+      return NextResponse.json({ error: authError?.message || "Não foi possível criar o usuário." }, { status: 400 });
     }
 
     const userId = authData.user.id;
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (fazendaError || !fazenda) {
       await supabase.auth.admin.deleteUser(userId);
-      return NextResponse.json({ error: fazendaError?.message || "Nao foi possivel criar a fazenda." }, { status: 400 });
+      return NextResponse.json({ error: fazendaError?.message || "Não foi possível criar a fazenda." }, { status: 400 });
     }
 
     const { error: usuarioError } = await supabase

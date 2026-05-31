@@ -28,7 +28,7 @@ export async function recordStockMovement({
   const current = Number(item.quantidade_atual || 0);
 
   if (type === "saida" && quantity > current) {
-    throw new Error("Nao ha saldo suficiente para essa retirada.");
+    throw new Error("Não há saldo suficiente para essa retirada.");
   }
 
   await createRecord(TABLES.estoqueMovimentacoes, {

@@ -45,7 +45,7 @@ export default function LoginPage() {
       await signIn(email, password);
       router.replace("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel entrar.");
+      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
     } finally {
       setBusy(false);
     }
@@ -67,7 +67,7 @@ export default function LoginPage() {
       }
 
       if (health && !health.supabaseServer) {
-        throw new Error("Cadastro automatico indisponivel agora. Fale com o administrador.");
+        throw new Error("Cadastro automático indisponível agora. Fale com o administrador.");
       }
 
       const response = await fetch("/api/auth/register", {
@@ -78,14 +78,14 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Nao foi possivel criar a conta.");
+        throw new Error(data.error || "Não foi possível criar a conta.");
       }
 
       setSuccess("Conta criada. Entrando...");
       await signIn(email, password);
       router.replace("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel criar a conta.");
+      setError(err instanceof Error ? err.message : "Não foi possível criar a conta.");
     } finally {
       setBusy(false);
     }
@@ -107,7 +107,7 @@ export default function LoginPage() {
           <p className="mt-4 text-emerald-100">
             {mode === "login"
               ? "Entre com seu e-mail e senha para acessar apenas os dados da sua fazenda."
-              : "Informe seus dados, crie a fazenda e entre no painel para comecar."}
+              : "Informe seus dados, crie a fazenda e entre no painel para começar."}
           </p>
         </div>
 
@@ -166,7 +166,7 @@ export default function LoginPage() {
 
               {health && !health.supabaseServer ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  Cadastro automatico ainda nao esta liberado. Fale com o administrador para ativar.
+                  Cadastro automático ainda não está liberado. Fale com o administrador para ativar.
                 </div>
               ) : null}
 
@@ -211,7 +211,7 @@ export default function LoginPage() {
 
               <button className="btn btn-primary w-full" type="submit" disabled={busy || loading || Boolean(health && !health.supabaseServer)}>
                 <UserPlus className="h-4 w-4" />
-                {busy ? "Criando..." : health && !health.supabaseServer ? "Cadastro indisponivel" : "Criar conta e entrar"}
+                {busy ? "Criando..." : health && !health.supabaseServer ? "Cadastro indisponível" : "Criar conta e entrar"}
               </button>
             </form>
           )}

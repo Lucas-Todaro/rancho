@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, PackageOpen, Pencil, Plus, RefreshCw, Scale, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
@@ -20,7 +20,7 @@ type StockAction = {
 const actionCopy = {
   entrada: {
     title: "Adicionar ao estoque",
-    subtitle: "Use quando chegou uma compra, doacao ou reposicao.",
+    subtitle: "Use quando chegou uma compra, doação ou reposição.",
     button: "Adicionar quantidade",
     icon: ArrowUpCircle,
     tone: "text-emerald-700"
@@ -34,18 +34,32 @@ const actionCopy = {
   },
   ajuste: {
     title: "Ajustar saldo",
-    subtitle: "Use quando a contagem fisica esta diferente do sistema.",
+    subtitle: "Use quando a contagem física está diferente do sistema.",
     button: "Salvar novo saldo",
     icon: Scale,
     tone: "text-blue-700"
   }
 };
 
+const stockCategoryLabels: Record<string, string> = {
+  racao: "Ração",
+  medicamento: "Medicamento",
+  insumo: "Insumo",
+  equipamento: "Equipamento",
+  outro: "Outro"
+};
+
+const movementLabels: Record<string, string> = {
+  entrada: "entrada",
+  saida: "saída",
+  ajuste: "ajuste"
+};
+
 function exportStockCsv(rows: AnyRecord[]) {
-  const header = ["Produto", "Categoria", "Unidade", "Quantidade atual", "Quantidade minima", "Valor unitario", "Fornecedor"];
+  const header = ["Produto", "Categoria", "Unidade", "Quantidade atual", "Quantidade mínima", "Valor unitário", "Fornecedor"];
   const body = rows.map((row) => [
     row.nome,
-    row.categoria,
+    stockCategoryLabels[String(row.categoria)] || row.categoria,
     row.unidade_medida,
     row.quantidade_atual,
     row.quantidade_minima,
@@ -127,18 +141,18 @@ function StockActionModal({
             <input className="input" type="number" step="0.001" min="0" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
           </label>
           <label className="space-y-2">
-            <span className="text-sm font-bold">Valor unitario</span>
+            <span className="text-sm font-bold">Valor unitário</span>
             <input className="input" type="number" step="0.01" min="0" value={unitValue} onChange={(event) => setUnitValue(event.target.value)} />
           </label>
         </div>
 
         <label className="mt-4 block space-y-2">
           <span className="text-sm font-bold">Motivo</span>
-          <textarea className="input min-h-24 resize-y" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex: compra de racao, uso no trato, contagem fisica..." />
+          <textarea className="input min-h-24 resize-y" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex: compra de ração, uso no trato, contagem física..." />
         </label>
 
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
-          <span className="font-bold text-emerald-900 dark:text-emerald-100">Depois da acao: </span>
+          <span className="font-bold text-emerald-900 dark:text-emerald-100">Depois da ação: </span>
           {formatNumber(nextQuantity)} {action.item.unidade_medida || ""}
         </div>
 
@@ -161,7 +175,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -173,26 +187,43 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       setItems(nextItems);
       setMovements(nextMovements);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar o estoque.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o estoque.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [dataContext.fazendaId, dataContext.usuarioId]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataContext.fazendaId]);
+  }, [load]);
+
+  const searchableItems = useMemo(
+    () => items.map((item) => ({ item, text: JSON.stringify(item).toLowerCase() })),
+    [items]
+  );
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return items;
 
-    return items.filter((item) => JSON.stringify(item).toLowerCase().includes(term));
-  }, [items, search]);
+    return searchableItems.filter((item) => item.text.includes(term)).map((item) => item.item);
+  }, [items, search, searchableItems]);
 
-  const estimatedValue = items.reduce((sum, item) => sum + Number(item.quantidade_atual || 0) * Number(item.valor_unitario || 0), 0);
-  const criticalCount = items.filter((item) => Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0)).length;
+  const estimatedValue = useMemo(
+    () => items.reduce((sum, item) => sum + Number(item.quantidade_atual || 0) * Number(item.valor_unitario || 0), 0),
+    [items]
+  );
+  const criticalCount = useMemo(
+    () => items.filter((item) => Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0)).length,
+    [items]
+  );
+  const lastMovementByItem = useMemo(() => {
+    const entries = new Map<string, AnyRecord>();
+    movements.forEach((movement) => {
+      if (movement.item_id && !entries.has(movement.item_id)) entries.set(movement.item_id, movement);
+    });
+    return entries;
+  }, [movements]);
 
   async function submitItem(values: AnyRecord) {
     setBusy(true);
@@ -206,7 +237,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar o item.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o item.");
     } finally {
       setBusy(false);
     }
@@ -228,7 +259,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       setAction(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel registrar a movimentacao.");
+      setError(err instanceof Error ? err.message : "Não foi possível registrar a movimentação.");
     } finally {
       setBusy(false);
     }
@@ -243,14 +274,10 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       await deleteRecord(TABLES.estoqueItens, item.id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel excluir.");
+      setError(err instanceof Error ? err.message : "Não foi possível excluir.");
     } finally {
       setBusy(false);
     }
-  }
-
-  function lastMovement(itemId: string) {
-    return movements.find((movement) => movement.item_id === itemId);
   }
 
   return (
@@ -260,7 +287,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
           <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
             <PackageOpen className="h-4 w-4" /> Estoque
           </div>
-          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Gestao de Estoque</h1>
+          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Gestão de Estoque</h1>
           <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">
             Controle entradas, retiradas e ajustes de cada produto sem editar o saldo manualmente.
           </p>
@@ -277,8 +304,8 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard title="Itens cadastrados" value={items.length} hint="Produtos e insumos" icon={PackageOpen} tone="green" />
-        <StatCard title="Estoque critico" value={criticalCount} hint="Abaixo do minimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} />
-        <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitario" icon={Scale} tone="blue" />
+        <StatCard title="Estoque crítico" value={criticalCount} hint="Abaixo do mínimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} />
+        <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" />
       </div>
 
       <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
@@ -288,7 +315,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
           <div>
             <h2 className="text-xl font-black">Itens do estoque</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Use os botoes de cada item para adicionar, retirar ou ajustar saldo.
+              Use os botões de cada item para adicionar, retirar ou ajustar saldo.
             </p>
           </div>
           <input className="input md:max-w-sm" placeholder="Pesquisar item..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -299,7 +326,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
             const current = Number(item.quantidade_atual || 0);
             const minimum = Number(item.quantidade_minima || 0);
             const critical = current <= minimum;
-            const recentMovement = lastMovement(item.id);
+            const recentMovement = lastMovementByItem.get(item.id);
 
             return (
               <article key={item.id} className="rounded-lg border border-slate-200 bg-white/72 p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
@@ -310,13 +337,13 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
                       <Badge tone={critical ? "danger" : "success"}>{critical ? "Atenção" : "Ok"}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      {item.categoria || "Sem categoria"} • {item.fornecedor || "Sem fornecedor"}
+                      {stockCategoryLabels[String(item.categoria)] || item.categoria || "Sem categoria"} • {item.fornecedor || "Sem fornecedor"}
                     </p>
                   </div>
                   <div className="text-left md:text-right">
                     <p className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Saldo atual</p>
                     <p className="mt-1 text-2xl font-black">{formatNumber(current)} {item.unidade_medida}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Minimo: {formatNumber(minimum)} {item.unidade_medida}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Mínimo: {formatNumber(minimum)} {item.unidade_medida}</p>
                   </div>
                 </div>
 
@@ -335,9 +362,9 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
                 <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-slate-500 dark:text-slate-400">
                     {recentMovement ? (
-                      <span>Ultima movimentacao: {recentMovement.tipo} em {formatDate(recentMovement.created_at)}</span>
+                      <span>Última movimentação: {movementLabels[String(recentMovement.tipo)] || recentMovement.tipo} em {formatDate(recentMovement.created_at)}</span>
                     ) : (
-                      <span>Nenhuma movimentacao registrada ainda.</span>
+                      <span>Nenhuma movimentação registrada ainda.</span>
                     )}
                   </div>
                   <div className="flex gap-2">

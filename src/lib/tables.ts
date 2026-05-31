@@ -60,13 +60,13 @@ const animalCategories = [
 ];
 
 const animalPhases = [
-  { label: "Lactacao", value: "lactacao" },
+  { label: "Lactação", value: "lactacao" },
   { label: "Seca", value: "seca" },
   { label: "Gestante", value: "gestante" },
   { label: "Vazia", value: "vazia" },
   { label: "Crescimento", value: "crescimento" },
   { label: "Engorda", value: "engorda" },
-  { label: "Nao aplicavel", value: "nao_aplicavel" }
+  { label: "Não aplicável", value: "nao_aplicavel" }
 ];
 
 const animalStatus = [
@@ -87,8 +87,8 @@ export const moduleConfigs: ModuleConfig[] = [
     descriptionColumn: "descricao",
     orderBy: "created_at",
     fields: [
-      { name: "nome", label: "Nome do lote", type: "text", required: true, placeholder: "Ex: Lactacao 1" },
-      { name: "descricao", label: "Descricao", type: "textarea", tableVisible: false },
+      { name: "nome", label: "Nome do lote", type: "text", required: true, placeholder: "Ex: Lactação 1" },
+      { name: "descricao", label: "Descrição", type: "textarea", tableVisible: false },
       { name: "ativo", label: "Ativo", type: "checkbox", defaultValue: "true" }
     ],
     quickStats: [
@@ -98,18 +98,18 @@ export const moduleConfigs: ModuleConfig[] = [
   },
   {
     key: "rebanho",
-    title: "Gestao de Rebanho",
-    subtitle: "Animais, brincos, categorias, fases produtivas, lotes e historico individual.",
+    title: "Gestão de Rebanho",
+    subtitle: "Animais, brincos, categorias, fases produtivas, lotes e histórico individual.",
     tableName: TABLES.animais,
     icon: "PawPrint",
     primaryColumn: "brinco",
     descriptionColumn: "categoria",
     orderBy: "created_at",
     fields: [
-      { name: "brinco", label: "Numero do brinco", type: "text", required: true, placeholder: "Ex: B-042" },
+      { name: "brinco", label: "Número do brinco", type: "text", required: true, placeholder: "Ex: B-042" },
       { name: "categoria", label: "Categoria", type: "select", required: true, defaultValue: "vaca", options: animalCategories },
       { name: "fase", label: "Fase", type: "select", defaultValue: "nao_aplicavel", options: animalPhases },
-      { name: "raca", label: "Raca", type: "text", placeholder: "Ex: Girolando" },
+      { name: "raca", label: "Raça", type: "text", placeholder: "Ex: Girolando" },
       {
         name: "lote_id",
         label: "Lote",
@@ -119,18 +119,18 @@ export const moduleConfigs: ModuleConfig[] = [
       { name: "data_nascimento", label: "Nascimento", type: "date" },
       { name: "peso", label: "Peso kg", type: "number", defaultValue: 0 },
       { name: "status", label: "Status", type: "select", defaultValue: "ativo", options: animalStatus },
-      { name: "observacoes", label: "Historico / observacoes", type: "textarea", tableVisible: false }
+      { name: "observacoes", label: "Histórico / observações", type: "textarea", tableVisible: false }
     ],
     quickStats: [
       { label: "Animais", field: "id", mode: "count" },
       { label: "Ativos", field: "status", mode: "active" },
-      { label: "Peso medio", field: "peso", mode: "avg", suffix: " kg" }
+      { label: "Peso médio", field: "peso", mode: "avg", suffix: " kg" }
     ]
   },
   {
     key: "eventos",
     title: "Eventos do Animal",
-    subtitle: "Partos, vacinas, doencas, tratamentos, pesagens e observacoes do rebanho.",
+    subtitle: "Partos, vacinas, doenças, tratamentos, pesagens e observações do rebanho.",
     tableName: TABLES.eventosAnimal,
     icon: "ClipboardList",
     primaryColumn: "tipo",
@@ -147,15 +147,15 @@ export const moduleConfigs: ModuleConfig[] = [
       { name: "tipo", label: "Tipo", type: "select", required: true, defaultValue: "observacao", options: [
         { label: "Parto", value: "parto" },
         { label: "Vacina", value: "vacina" },
-        { label: "Doenca", value: "doenca" },
+        { label: "Doença", value: "doenca" },
         { label: "Tratamento", value: "tratamento" },
-        { label: "Inseminacao", value: "inseminacao" },
+        { label: "Inseminação", value: "inseminacao" },
         { label: "Pesagem", value: "pesagem" },
-        { label: "Observacao", value: "observacao" },
+        { label: "Observação", value: "observacao" },
         { label: "Outro", value: "outro" }
       ] },
       { name: "data_evento", label: "Data e hora", type: "datetime-local", defaultValue: nowLocalDatetime() },
-      { name: "descricao", label: "Descricao", type: "textarea" },
+      { name: "descricao", label: "Descrição", type: "textarea" },
       { name: "medicamento", label: "Medicamento", type: "text" },
       { name: "dose", label: "Dose", type: "text" },
       { name: "custo", label: "Custo", type: "currency", defaultValue: 0 }
@@ -167,7 +167,7 @@ export const moduleConfigs: ModuleConfig[] = [
   },
   {
     key: "producao",
-    title: "Producao Leiteira",
+    title: "Produção Leiteira",
     subtitle: "Ordenhas por animal, turnos, destino do leite e origem do registro.",
     tableName: TABLES.ordenhas,
     icon: "Droplets",
@@ -184,7 +184,7 @@ export const moduleConfigs: ModuleConfig[] = [
       },
       { name: "litros", label: "Litros", type: "number", required: true, defaultValue: 0 },
       { name: "turno", label: "Turno", type: "select", required: true, defaultValue: "manha", options: [
-        { label: "Manha", value: "manha" },
+        { label: "Manhã", value: "manha" },
         { label: "Tarde", value: "tarde" },
         { label: "Noite", value: "noite" }
       ] },
@@ -195,27 +195,27 @@ export const moduleConfigs: ModuleConfig[] = [
         { label: "Consumo", value: "consumo" },
         { label: "Descarte", value: "descarte" }
       ] },
-      { name: "observacoes", label: "Observacoes", type: "textarea", tableVisible: false }
+      { name: "observacoes", label: "Observações", type: "textarea", tableVisible: false }
     ],
     quickStats: [
       { label: "Registros", field: "id", mode: "count" },
       { label: "Total", field: "litros", mode: "sum", suffix: " L" },
-      { label: "Media", field: "litros", mode: "avg", suffix: " L" }
+      { label: "Média", field: "litros", mode: "avg", suffix: " L" }
     ]
   },
   {
     key: "estoque",
-    title: "Gestao de Estoque",
-    subtitle: "Racao, medicamentos, insumos, equipamentos, saldo atual e estoque minimo.",
+    title: "Gestão de Estoque",
+    subtitle: "Ração, medicamentos, insumos, equipamentos, saldo atual e estoque mínimo.",
     tableName: TABLES.estoqueItens,
     icon: "PackageOpen",
     primaryColumn: "nome",
     descriptionColumn: "categoria",
     orderBy: "created_at",
     fields: [
-      { name: "nome", label: "Produto / insumo", type: "text", required: true, placeholder: "Ex: Racao 22%" },
+      { name: "nome", label: "Produto / insumo", type: "text", required: true, placeholder: "Ex: Ração 22%" },
       { name: "categoria", label: "Categoria", type: "select", required: true, defaultValue: "racao", options: [
-        { label: "Racao", value: "racao" },
+        { label: "Ração", value: "racao" },
         { label: "Medicamento", value: "medicamento" },
         { label: "Insumo", value: "insumo" },
         { label: "Equipamento", value: "equipamento" },
@@ -223,20 +223,20 @@ export const moduleConfigs: ModuleConfig[] = [
       ] },
       { name: "unidade_medida", label: "Unidade", type: "text", required: true, defaultValue: "kg", placeholder: "kg, saco, L, unidade" },
       { name: "quantidade_atual", label: "Quantidade atual", type: "number", required: true, defaultValue: 0 },
-      { name: "quantidade_minima", label: "Quantidade minima", type: "number", defaultValue: 0 },
-      { name: "valor_unitario", label: "Valor unitario", type: "currency", defaultValue: 0 },
+      { name: "quantidade_minima", label: "Quantidade mínima", type: "number", defaultValue: 0 },
+      { name: "valor_unitario", label: "Valor unitário", type: "currency", defaultValue: 0 },
       { name: "fornecedor", label: "Fornecedor", type: "text" },
       { name: "ativo", label: "Ativo", type: "checkbox", defaultValue: "true" }
     ],
     quickStats: [
       { label: "Itens", field: "id", mode: "count" },
-      { label: "Criticos", field: "quantidade_atual", mode: "critical", compareField: "quantidade_minima" }
+      { label: "Críticos", field: "quantidade_atual", mode: "critical", compareField: "quantidade_minima" }
     ]
   },
   {
     key: "financeiro",
     title: "Financeiro",
-    subtitle: "Entradas, saidas, categorias, comprovantes e fluxo de caixa da fazenda.",
+    subtitle: "Entradas, saídas, categorias, comprovantes e fluxo de caixa da fazenda.",
     tableName: TABLES.transacoesFinanceiras,
     icon: "Wallet",
     primaryColumn: "descricao",
@@ -245,41 +245,41 @@ export const moduleConfigs: ModuleConfig[] = [
     fields: [
       { name: "tipo", label: "Tipo", type: "select", required: true, defaultValue: "entrada", options: [
         { label: "Entrada", value: "entrada" },
-        { label: "Saida", value: "saida" }
+        { label: "Saída", value: "saida" }
       ] },
       { name: "data_transacao", label: "Data", type: "date", defaultValue: todayISO() },
       { name: "valor", label: "Valor", type: "currency", required: true, defaultValue: 0 },
       { name: "categoria", label: "Categoria", type: "text", required: true, placeholder: "Ex: Venda de leite" },
-      { name: "descricao", label: "Descricao", type: "text", placeholder: "Ex: Recebimento do laticinio" },
+      { name: "descricao", label: "Descrição", type: "text", placeholder: "Ex: Recebimento do laticínio" },
       { name: "metodo_pagamento", label: "Forma de pagamento", type: "text", placeholder: "Pix, dinheiro, boleto..." }
     ],
     quickStats: [
       { label: "Entradas", field: "valor", mode: "moneyIn" },
-      { label: "Saidas", field: "valor", mode: "moneyOut" }
+      { label: "Saídas", field: "valor", mode: "moneyOut" }
     ]
   },
   {
     key: "funcionarios",
-    title: "Funcionarios",
-    subtitle: "Equipe, funcoes, admissao, salario base, contato e carga horaria.",
+    title: "Funcionários",
+    subtitle: "Equipe, funções, admissão, salário-base, contato e carga horária.",
     tableName: TABLES.funcionarios,
     icon: "Users",
     primaryColumn: "nome",
     descriptionColumn: "funcao",
     orderBy: "created_at",
     fields: [
-      { name: "nome", label: "Nome", type: "text", required: true, placeholder: "Ex: Joao Silva" },
-      { name: "funcao", label: "Funcao", type: "text", required: true, placeholder: "Ex: Ordenhador" },
+      { name: "nome", label: "Nome", type: "text", required: true, placeholder: "Ex: João Silva" },
+      { name: "funcao", label: "Função", type: "text", required: true, placeholder: "Ex: Ordenhador" },
       { name: "cpf", label: "CPF", type: "text", placeholder: "Opcional" },
-      { name: "salario_base", label: "Salario base", type: "currency", defaultValue: 0 },
-      { name: "data_admissao", label: "Admissao", type: "date", required: true, defaultValue: todayISO() },
+      { name: "salario_base", label: "Salário-base", type: "currency", defaultValue: 0 },
+      { name: "data_admissao", label: "Admissão", type: "date", required: true, defaultValue: todayISO() },
       { name: "contato_whatsapp", label: "WhatsApp", type: "tel", placeholder: "Ex: 5585999990000" },
       { name: "carga_horaria_mensal", label: "Carga mensal", type: "number", defaultValue: 220 },
       { name: "valor_hora_extra", label: "Valor hora extra", type: "currency", defaultValue: 0 },
       { name: "ativo", label: "Ativo", type: "checkbox", defaultValue: "true" }
     ],
     quickStats: [
-      { label: "Funcionarios", field: "id", mode: "count" },
+      { label: "Funcionários", field: "id", mode: "count" },
       { label: "Ativos", field: "ativo", mode: "active" },
       { label: "Folha base", field: "salario_base", mode: "sum" }
     ]
@@ -287,7 +287,7 @@ export const moduleConfigs: ModuleConfig[] = [
   {
     key: "ponto",
     title: "Registros de Ponto",
-    subtitle: "Entradas e saidas da equipe, inclusive registros vindos do WhatsApp.",
+    subtitle: "Entradas e saídas da equipe, inclusive registros vindos do WhatsApp.",
     tableName: TABLES.registrosPonto,
     icon: "Clock3",
     primaryColumn: "funcionario_id",
@@ -296,17 +296,17 @@ export const moduleConfigs: ModuleConfig[] = [
     fields: [
       {
         name: "funcionario_id",
-        label: "Funcionario",
+        label: "Funcionário",
         type: "relation",
         required: true,
         relation: { tableName: TABLES.funcionarios, labelColumn: "nome", descriptionColumn: "funcao", orderBy: "nome" }
       },
       { name: "tipo", label: "Tipo", type: "select", required: true, defaultValue: "entrada", options: [
         { label: "Entrada", value: "entrada" },
-        { label: "Saida", value: "saida" }
+        { label: "Saída", value: "saida" }
       ] },
       { name: "registrado_em", label: "Data e hora", type: "datetime-local", defaultValue: nowLocalDatetime() },
-      { name: "observacao", label: "Observacao", type: "textarea", tableVisible: false }
+      { name: "observacao", label: "Observação", type: "textarea", tableVisible: false }
     ],
     quickStats: [
       { label: "Registros", field: "id", mode: "count" }
@@ -315,7 +315,7 @@ export const moduleConfigs: ModuleConfig[] = [
   {
     key: "folha",
     title: "Folha de Pagamento",
-    subtitle: "Competencia mensal, horas extras, descontos, adiantamentos e status de pagamento.",
+    subtitle: "Competência mensal, horas extras, descontos, adiantamentos e status de pagamento.",
     tableName: TABLES.folhaPagamento,
     icon: "Receipt",
     primaryColumn: "funcionario_id",
@@ -324,18 +324,18 @@ export const moduleConfigs: ModuleConfig[] = [
     fields: [
       {
         name: "funcionario_id",
-        label: "Funcionario",
+        label: "Funcionário",
         type: "relation",
         required: true,
         relation: { tableName: TABLES.funcionarios, labelColumn: "nome", descriptionColumn: "funcao", orderBy: "nome" }
       },
-      { name: "competencia", label: "Competencia", type: "month", defaultValue: currentMonth() },
-      { name: "salario_base", label: "Salario base", type: "currency", defaultValue: 0 },
+      { name: "competencia", label: "Competência", type: "month", defaultValue: currentMonth() },
+      { name: "salario_base", label: "Salário-base", type: "currency", defaultValue: 0 },
       { name: "horas_extras", label: "Horas extras", type: "number", defaultValue: 0 },
       { name: "valor_horas_extras", label: "Valor horas extras", type: "currency", defaultValue: 0 },
       { name: "descontos", label: "Descontos", type: "currency", defaultValue: 0 },
       { name: "adiantamentos", label: "Adiantamentos", type: "currency", defaultValue: 0 },
-      { name: "total_liquido", label: "Total liquido", type: "currency", defaultValue: 0 },
+      { name: "total_liquido", label: "Total líquido", type: "currency", defaultValue: 0 },
       { name: "status", label: "Status", type: "select", defaultValue: "rascunho", options: [
         { label: "Rascunho", value: "rascunho" },
         { label: "Fechada", value: "fechada" },
@@ -346,7 +346,7 @@ export const moduleConfigs: ModuleConfig[] = [
     ],
     quickStats: [
       { label: "Registros", field: "id", mode: "count" },
-      { label: "Total liquido", field: "total_liquido", mode: "sum" }
+      { label: "Total líquido", field: "total_liquido", mode: "sum" }
     ]
   }
 ];

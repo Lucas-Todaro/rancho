@@ -1,7 +1,7 @@
 "use client";
 
 import { Activity, CalendarDays, ClipboardList, Heart, Plus, Stethoscope, TrendingUp, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { createRecord, listRecords } from "@/services/crud";
 import { TABLES } from "@/lib/tables";
@@ -11,18 +11,48 @@ import { formatCurrency, formatDate, formatNumber, nowLocalDatetime } from "@/li
 type Tab = "resumo" | "reproducao" | "timeline";
 
 const eventTypes = [
-  { label: "Observacao", value: "observacao" },
+  { label: "Observação", value: "observacao" },
   { label: "Vacina", value: "vacina" },
   { label: "Tratamento", value: "tratamento" },
   { label: "Pesagem", value: "pesagem" },
-  { label: "Inseminacao", value: "inseminacao" },
+  { label: "Inseminação", value: "inseminacao" },
   { label: "Parto", value: "parto" },
-  { label: "Doenca", value: "doenca" },
+  { label: "Doença", value: "doenca" },
   { label: "Outro", value: "outro" }
 ];
 
+const categoryLabels: Record<string, string> = {
+  vaca: "Vaca",
+  boi: "Boi",
+  bezerro: "Bezerro",
+  novilha: "Novilha",
+  touro: "Touro",
+  outro: "Outro"
+};
+
+const phaseLabels: Record<string, string> = {
+  lactacao: "Lactação",
+  seca: "Seca",
+  gestante: "Gestante",
+  vazia: "Vazia",
+  crescimento: "Crescimento",
+  engorda: "Engorda",
+  nao_aplicavel: "Não aplicável"
+};
+
+const statusLabels: Record<string, string> = {
+  ativo: "Ativo",
+  vendido: "Vendido",
+  morto: "Morto",
+  inativo: "Inativo"
+};
+
 function labelFromOptions(options: RelationOption[] | undefined, value: unknown) {
   return options?.find((option) => option.value === String(value))?.label || "";
+}
+
+function labelFromMap(map: Record<string, string>, value: unknown, fallback = "-") {
+  return map[String(value || "")] || String(value || fallback);
 }
 
 function startOfCurrentMonth() {
@@ -58,20 +88,29 @@ export function AnimalDetailModal({
     custo: ""
   });
 
-  async function loadDetails() {
-    const [allEvents, allProductions] = await Promise.all([
-      listRecords(TABLES.eventosAnimal, { orderBy: "data_evento", fazendaId: context.fazendaId, usuarioId: context.usuarioId }),
-      listRecords(TABLES.ordenhas, { orderBy: "ordenhado_em", fazendaId: context.fazendaId, usuarioId: context.usuarioId })
+  const loadDetails = useCallback(async () => {
+    const [animalEvents, animalProductions] = await Promise.all([
+      listRecords(TABLES.eventosAnimal, {
+        orderBy: "data_evento",
+        fazendaId: context.fazendaId,
+        usuarioId: context.usuarioId,
+        filters: [{ column: "animal_id", value: animal.id }]
+      }),
+      listRecords(TABLES.ordenhas, {
+        orderBy: "ordenhado_em",
+        fazendaId: context.fazendaId,
+        usuarioId: context.usuarioId,
+        filters: [{ column: "animal_id", value: animal.id }]
+      })
     ]);
 
-    setEvents(allEvents.filter((event) => event.animal_id === animal.id));
-    setProductions(allProductions.filter((production) => production.animal_id === animal.id));
-  }
+    setEvents(animalEvents);
+    setProductions(animalProductions);
+  }, [animal.id, context.fazendaId, context.usuarioId]);
 
   useEffect(() => {
-    loadDetails().catch((err) => setError(err instanceof Error ? err.message : "Nao foi possivel carregar a ficha."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animal.id, context.fazendaId]);
+    loadDetails().catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar a ficha."));
+  }, [loadDetails]);
 
   const metrics = useMemo(() => {
     const now = new Date();
@@ -104,7 +143,7 @@ export function AnimalDetailModal({
       id: `production-${production.id}`,
       date: production.ordenhado_em,
       title: "Ordenha",
-      text: `${formatNumber(production.litros, " L")} - ${production.turno || "turno nao informado"}`,
+      text: `${formatNumber(production.litros, " L")} - ${production.turno || "turno não informado"}`,
       tone: "producao"
     }));
 
@@ -145,14 +184,17 @@ export function AnimalDetailModal({
       await loadDetails();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel registrar o manejo.");
+      setError(err instanceof Error ? err.message : "Não foi possível registrar o manejo.");
     } finally {
       setBusy(false);
     }
   }
 
   const lote = labelFromOptions(relationOptions.lote_id, animal.lote_id) || "Sem lote";
-  const reproductiveStatus = animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactacao" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
+  const categoria = labelFromMap(categoryLabels, animal.categoria, "Animal");
+  const fase = labelFromMap(phaseLabels, animal.fase);
+  const status = labelFromMap(statusLabels, animal.status, "Ativo");
+  const reproductiveStatus = animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactação" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:p-6">
@@ -163,7 +205,7 @@ export function AnimalDetailModal({
               <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha 360</p>
               <h2 className="mt-2 text-4xl font-black tracking-tight">{animal.brinco || "Animal"}</h2>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                {animal.categoria || "Animal"} • {animal.fase || "fase nao informada"} • {lote}
+                {categoria} • {fase || "Fase não informada"} • {lote}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -181,7 +223,7 @@ export function AnimalDetailModal({
           <nav className="flex gap-6 overflow-auto">
             {[
               ["resumo", "Resumo"],
-              ["reproducao", "Reproducao"],
+              ["reproducao", "Reprodução"],
               ["timeline", "Timeline"]
             ].map(([value, label]) => (
               <button
@@ -204,20 +246,20 @@ export function AnimalDetailModal({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-900 dark:bg-blue-950/30">
                   <TrendingUp className="h-6 w-6 text-blue-700" />
-                  <p className="mt-4 text-sm font-black">Media leite/dia</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Ultimos 7 dias</p>
+                  <p className="mt-4 text-sm font-black">Média leite/dia</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 7 dias</p>
                   <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.dailyAverage, " L")}</h3>
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
                   <Activity className="h-6 w-6 text-emerald-700" />
-                  <p className="mt-4 text-sm font-black">Producao recente</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Ultimos 30 dias</p>
+                  <p className="mt-4 text-sm font-black">Produção recente</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 30 dias</p>
                   <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.production30, " L")}</h3>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
                   <Stethoscope className="h-6 w-6 text-amber-700" />
-                  <p className="mt-4 text-sm font-black">Custo de saude</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Mes atual</p>
+                  <p className="mt-4 text-sm font-black">Custo de saúde</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Mês atual</p>
                   <h3 className="mt-4 text-3xl font-black">{formatCurrency(metrics.monthCost)}</h3>
                 </div>
                 <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 dark:border-purple-900 dark:bg-purple-950/30">
@@ -233,7 +275,7 @@ export function AnimalDetailModal({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Caderno de manejo</p>
-                      <h3 className="mt-2 text-xl font-black">Saude e historico do animal</h3>
+                      <h3 className="mt-2 text-xl font-black">Saúde e histórico do animal</h3>
                     </div>
                     <button className="btn btn-secondary" type="button" onClick={() => openEventForm()}>
                       <Plus className="h-4 w-4" /> Registrar agora
@@ -242,7 +284,7 @@ export function AnimalDetailModal({
                   <div className="mt-5 grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Manejos</p><strong>{metrics.eventCount}</strong></div>
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Peso atual</p><strong>{formatNumber(animal.peso, " kg")}</strong></div>
-                    <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Status</p><strong>{animal.status || "ativo"}</strong></div>
+                    <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Status</p><strong>{status}</strong></div>
                   </div>
                 </section>
 
@@ -250,12 +292,12 @@ export function AnimalDetailModal({
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Dados do animal</p>
                   <div className="mt-4 space-y-3 text-sm">
                     {[
-                      ["Categoria", animal.categoria || "-"],
-                      ["Fase", animal.fase || "-"],
-                      ["Raca", animal.raca || "-"],
+                      ["Categoria", categoria],
+                      ["Fase", fase],
+                      ["Raça", animal.raca || "-"],
                       ["Lote", lote],
                       ["Nascimento", formatDate(animal.data_nascimento)],
-                      ["Observacoes", animal.observacoes || "-"]
+                      ["Observações", animal.observacoes || "-"]
                     ].map(([label, value]) => (
                       <div className="flex items-start justify-between gap-4 border-b border-emerald-200/70 pb-2 last:border-0 dark:border-emerald-900" key={label}>
                         <span className="text-slate-500 dark:text-slate-400">{label}</span>
@@ -273,17 +315,17 @@ export function AnimalDetailModal({
               <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 dark:border-purple-900 dark:bg-purple-950/30">
                 <div className="flex items-center gap-2 text-purple-800 dark:text-purple-200">
                   <Heart className="h-5 w-5" />
-                  <strong>Status Reprodutivo Atual</strong>
+                  <strong>Status reprodutivo atual</strong>
                 </div>
                 <h3 className="mt-4 text-3xl font-black">{reproductiveStatus}</h3>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Baseado na fase atual do cadastro do animal.</p>
               </div>
 
-              <button className="btn w-full bg-purple-600 text-white" type="button" onClick={() => openEventForm("inseminacao", "Cobertura / inseminacao registrada.")}>
-                Registrar cobertura / inseminacao
+              <button className="btn w-full bg-purple-600 text-white" type="button" onClick={() => openEventForm("inseminacao", "Cobertura / inseminação registrada.")}>
+                Registrar cobertura / inseminação
               </button>
-              <button className="btn w-full bg-blue-600 text-white" type="button" onClick={() => openEventForm("observacao", "Diagnostico reprodutivo: ")}>
-                Registrar diagnostico
+              <button className="btn w-full bg-blue-600 text-white" type="button" onClick={() => openEventForm("observacao", "Diagnóstico reprodutivo: ")}>
+                Registrar diagnóstico
               </button>
             </div>
           ) : null}
@@ -303,7 +345,7 @@ export function AnimalDetailModal({
                 </div>
               )) : (
                 <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-                  Nenhum registro no historico ainda.
+                  Nenhum registro no histórico ainda.
                 </div>
               )}
             </div>
@@ -339,7 +381,7 @@ export function AnimalDetailModal({
               </div>
 
               <label className="mt-4 block space-y-2">
-                <span className="text-sm font-bold">Descricao</span>
+                <span className="text-sm font-bold">Descrição</span>
                 <textarea className="input min-h-24 resize-y" value={draft.descricao} onChange={(event) => setDraft((current) => ({ ...current, descricao: event.target.value }))} />
               </label>
 
