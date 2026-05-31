@@ -3,12 +3,14 @@
 import { CalendarDays, Clock3, DollarSign, FileText, Pencil, Plus, Save, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { CurrencyInput } from "@/components/ui/MaskedInputs";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext } from "@/lib/types";
 import { currentMonth, formatCurrency, formatDate, nowLocalDatetime } from "@/lib/utils";
+import { formatBrazilianPhone, formatCPF, formatCurrencyForInput, parseCurrencyInput } from "@/lib/input-format";
 import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
 
 type Tab = "resumo" | "ponto" | "folha";
@@ -22,7 +24,7 @@ function monthKey(value: unknown) {
 }
 
 function payrollTotal(row: AnyRecord) {
-  return Number(row.salario_base || 0) + Number(row.valor_horas_extras || 0) - Number(row.descontos || 0) - Number(row.adiantamentos || 0);
+  return parseCurrencyInput(row.salario_base) + parseCurrencyInput(row.valor_horas_extras) - parseCurrencyInput(row.descontos) - parseCurrencyInput(row.adiantamentos);
 }
 
 export function EmployeeDetails({
@@ -51,11 +53,11 @@ export function EmployeeDetails({
   });
   const [payrollDraft, setPayrollDraft] = useState({
     competencia: currentMonth(),
-    salario_base: String(employee.salario_base ?? 0),
+    salario_base: formatCurrencyForInput(employee.salario_base),
     horas_extras: "0",
-    valor_horas_extras: "0",
-    descontos: "0",
-    adiantamentos: "0",
+    valor_horas_extras: formatCurrencyForInput(0),
+    descontos: formatCurrencyForInput(0),
+    adiantamentos: formatCurrencyForInput(0),
     status: "rascunho",
     pago_em: ""
   });
@@ -81,7 +83,7 @@ export function EmployeeDetails({
       setTimeEntries(nextTimeEntries);
       setPayrolls(nextPayrolls);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar a ficha.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a ficha.");
     } finally {
       setDetailsLoading(false);
     }
@@ -101,18 +103,18 @@ export function EmployeeDetails({
       setPayrollDraft((current) => ({
         ...current,
         competencia: currentMonth(),
-        salario_base: String(employee.salario_base ?? 0)
+        salario_base: formatCurrencyForInput(employee.salario_base)
       }));
       return;
     }
 
     setPayrollDraft({
       competencia: monthKey(currentPayroll.competencia) || currentMonth(),
-      salario_base: String(currentPayroll.salario_base ?? employee.salario_base ?? 0),
+      salario_base: formatCurrencyForInput(currentPayroll.salario_base ?? employee.salario_base ?? 0),
       horas_extras: String(currentPayroll.horas_extras ?? 0),
-      valor_horas_extras: String(currentPayroll.valor_horas_extras ?? 0),
-      descontos: String(currentPayroll.descontos ?? 0),
-      adiantamentos: String(currentPayroll.adiantamentos ?? 0),
+      valor_horas_extras: formatCurrencyForInput(currentPayroll.valor_horas_extras ?? 0),
+      descontos: formatCurrencyForInput(currentPayroll.descontos ?? 0),
+      adiantamentos: formatCurrencyForInput(currentPayroll.adiantamentos ?? 0),
       status: String(currentPayroll.status || "rascunho"),
       pago_em: String(currentPayroll.pago_em || "")
     });
@@ -134,7 +136,7 @@ export function EmployeeDetails({
       setEditingEmployee(false);
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar o funcionario.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o funcionário.");
     } finally {
       setBusy(false);
     }
@@ -157,7 +159,7 @@ export function EmployeeDetails({
       await loadDetails();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel registrar o ponto.");
+      setError(err instanceof Error ? err.message : "Não foi possível registrar o ponto.");
     } finally {
       setBusy(false);
     }
@@ -171,11 +173,11 @@ export function EmployeeDetails({
       const payload = {
         funcionario_id: employee.id,
         competencia: monthStart(payrollDraft.competencia),
-        salario_base: Number(payrollDraft.salario_base || 0),
+        salario_base: parseCurrencyInput(payrollDraft.salario_base),
         horas_extras: Number(payrollDraft.horas_extras || 0),
-        valor_horas_extras: Number(payrollDraft.valor_horas_extras || 0),
-        descontos: Number(payrollDraft.descontos || 0),
-        adiantamentos: Number(payrollDraft.adiantamentos || 0),
+        valor_horas_extras: parseCurrencyInput(payrollDraft.valor_horas_extras),
+        descontos: parseCurrencyInput(payrollDraft.descontos),
+        adiantamentos: parseCurrencyInput(payrollDraft.adiantamentos),
         total_liquido: payrollTotal(payrollDraft),
         status: payrollDraft.status,
         pago_em: payrollDraft.pago_em || null
@@ -192,7 +194,7 @@ export function EmployeeDetails({
       await loadDetails();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar a folha.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar a folha.");
     } finally {
       setBusy(false);
     }
@@ -204,10 +206,10 @@ export function EmployeeDetails({
         <header className="border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-cyan-50 p-5 dark:border-slate-800 dark:from-emerald-950/40 dark:via-slate-950 dark:to-cyan-950/20 md:p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha do funcionario</p>
-              <h2 className="mt-2 text-4xl font-black tracking-tight">{employee.nome || "Funcionario"}</h2>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha do funcionário</p>
+              <h2 className="mt-2 text-4xl font-black tracking-tight">{employee.nome || "Funcionário"}</h2>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                {employee.funcao || "Funcao nao informada"} - {employee.ativo !== false ? "Ativo" : "Inativo"}
+                {employee.funcao || "Função não informada"} - {employee.ativo !== false ? "Ativo" : "Inativo"}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -252,32 +254,32 @@ export function EmployeeDetails({
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
                   <DollarSign className="h-6 w-6 text-emerald-700" />
                   <p className="mt-4 text-sm font-black">Folha estimada</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Mes atual</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Mês atual</p>
                   {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-32" /> : <h3 className="mt-4 text-3xl font-black">{formatCurrency(estimatedPayroll)}</h3>}
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-900 dark:bg-blue-950/30">
                   <Clock3 className="h-6 w-6 text-blue-700" />
-                  <p className="mt-4 text-sm font-black">Pontos no mes</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Entradas e saidas</p>
+                  <p className="mt-4 text-sm font-black">Pontos no mês</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Entradas e saídas</p>
                   {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-20" /> : <h3 className="mt-4 text-3xl font-black">{pointThisMonth}</h3>}
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
                   <FileText className="h-6 w-6 text-amber-700" />
                   <p className="mt-4 text-sm font-black">Registros de folha</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Historico salvo</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Histórico salvo</p>
                   {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-20" /> : <h3 className="mt-4 text-3xl font-black">{payrolls.length}</h3>}
                 </div>
               </div>
 
               <section className="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Dados do funcionario</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Dados do funcionário</p>
                 <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
                   {[
-                    ["Cargo / funcao", employee.funcao || "-"],
-                    ["Salario-base", formatCurrency(employee.salario_base)],
-                    ["WhatsApp", employee.contato_whatsapp || "-"],
-                    ["CPF", employee.cpf || "-"],
-                    ["Admissao", formatDate(employee.data_admissao)],
+                    ["Cargo / função", employee.funcao || "-"],
+                    ["Salário-base", formatCurrency(employee.salario_base)],
+                    ["WhatsApp", employee.contato_whatsapp ? formatBrazilianPhone(employee.contato_whatsapp) : "-"],
+                    ["CPF", employee.cpf ? formatCPF(employee.cpf) : "-"],
+                    ["Admissão", formatDate(employee.data_admissao)],
                     ["Hora extra", formatCurrency(employee.valor_hora_extra)],
                     ["Carga mensal", `${employee.carga_horaria_mensal || 0}h`],
                     ["Status", employee.ativo !== false ? "Ativo" : "Inativo"]
@@ -311,7 +313,7 @@ export function EmployeeDetails({
                       <span className="text-sm font-bold">Tipo</span>
                       <select className="input" value={pointDraft.tipo} onChange={(event) => setPointDraft((current) => ({ ...current, tipo: event.target.value }))}>
                         <option value="entrada">Entrada</option>
-                        <option value="saida">Saida</option>
+                        <option value="saida">Saída</option>
                       </select>
                     </label>
                     <label className="space-y-2">
@@ -319,7 +321,7 @@ export function EmployeeDetails({
                       <input className="input" type="datetime-local" value={pointDraft.registrado_em} onChange={(event) => setPointDraft((current) => ({ ...current, registrado_em: event.target.value }))} />
                     </label>
                     <label className="space-y-2 md:col-span-1">
-                      <span className="text-sm font-bold">Observacao</span>
+                      <span className="text-sm font-bold">Observação</span>
                       <input className="input" value={pointDraft.observacao} onChange={(event) => setPointDraft((current) => ({ ...current, observacao: event.target.value }))} />
                     </label>
                   </div>
@@ -340,16 +342,16 @@ export function EmployeeDetails({
                   <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                     <div>
                       <div className="flex items-center gap-2">
-                        <strong>{entry.tipo === "saida" ? "Saida" : "Entrada"}</strong>
+                        <strong>{entry.tipo === "saida" ? "Saída" : "Entrada"}</strong>
                         <Badge tone={entry.tipo === "saida" ? "warning" : "success"}>{formatDate(entry.registrado_em)}</Badge>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{entry.observacao || "Sem observacao"}</p>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{entry.observacao || "Sem observação"}</p>
                     </div>
                     <Clock3 className="h-5 w-5 text-slate-400" />
                   </div>
                 )) : (
                   <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-                    Nenhum ponto registrado para este funcionario.
+                    Nenhum ponto registrado para este funcionário.
                   </div>
                 )}
               </div>
@@ -360,17 +362,17 @@ export function EmployeeDetails({
             <div className="space-y-5">
               <form onSubmit={submitPayroll} className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/55">
                 <div className="mb-4">
-                  <h3 className="text-xl font-black">Folha do funcionario</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Atualize o registro mensal sem criar lancamento financeiro duplicado.</p>
+                  <h3 className="text-xl font-black">Folha do funcionário</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Atualize o registro mensal sem criar lançamento financeiro duplicado.</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <label className="space-y-2">
-                    <span className="text-sm font-bold">Competencia</span>
+                    <span className="text-sm font-bold">Competência</span>
                     <input className="input" type="month" value={payrollDraft.competencia} onChange={(event) => setPayrollDraft((current) => ({ ...current, competencia: event.target.value }))} />
                   </label>
                   <label className="space-y-2">
-                    <span className="text-sm font-bold">Salario-base</span>
-                    <input className="input" type="number" step="0.01" value={payrollDraft.salario_base} onChange={(event) => setPayrollDraft((current) => ({ ...current, salario_base: event.target.value }))} />
+                    <span className="text-sm font-bold">Salário-base</span>
+                    <CurrencyInput value={payrollDraft.salario_base} onChange={(value) => setPayrollDraft((current) => ({ ...current, salario_base: value }))} />
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Horas extras</span>
@@ -378,15 +380,15 @@ export function EmployeeDetails({
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Valor horas extras</span>
-                    <input className="input" type="number" step="0.01" value={payrollDraft.valor_horas_extras} onChange={(event) => setPayrollDraft((current) => ({ ...current, valor_horas_extras: event.target.value }))} />
+                    <CurrencyInput value={payrollDraft.valor_horas_extras} onChange={(value) => setPayrollDraft((current) => ({ ...current, valor_horas_extras: value }))} />
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Descontos</span>
-                    <input className="input" type="number" step="0.01" value={payrollDraft.descontos} onChange={(event) => setPayrollDraft((current) => ({ ...current, descontos: event.target.value }))} />
+                    <CurrencyInput value={payrollDraft.descontos} onChange={(value) => setPayrollDraft((current) => ({ ...current, descontos: value }))} />
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Adiantamentos</span>
-                    <input className="input" type="number" step="0.01" value={payrollDraft.adiantamentos} onChange={(event) => setPayrollDraft((current) => ({ ...current, adiantamentos: event.target.value }))} />
+                    <CurrencyInput value={payrollDraft.adiantamentos} onChange={(value) => setPayrollDraft((current) => ({ ...current, adiantamentos: value }))} />
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Status</span>
@@ -402,7 +404,7 @@ export function EmployeeDetails({
                     <input className="input" type="date" value={payrollDraft.pago_em} onChange={(event) => setPayrollDraft((current) => ({ ...current, pago_em: event.target.value }))} />
                   </label>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
-                    <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">Total liquido</p>
+                    <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">Total líquido</p>
                     <strong className="mt-2 block text-2xl">{formatCurrency(payrollTotal(payrollDraft))}</strong>
                   </div>
                 </div>
@@ -432,7 +434,7 @@ export function EmployeeDetails({
                   </div>
                 )) : (
                   <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-                    Nenhuma folha registrada para este funcionario.
+                    Nenhuma folha registrada para este funcionário.
                   </div>
                 )}
               </div>

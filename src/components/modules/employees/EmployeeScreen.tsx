@@ -9,6 +9,7 @@ import { notifyDashboardUpdated } from "@/services/dashboard";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
+import { formatBrazilianPhone } from "@/lib/input-format";
 import { formatCurrency } from "@/lib/utils";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
 import { EmployeeDetails } from "@/components/modules/employees/EmployeeDetails";
@@ -23,12 +24,12 @@ function currentMonthKey() {
 }
 
 function exportEmployeesCsv(rows: AnyRecord[]) {
-  const header = ["Nome", "Funcao", "Salario", "WhatsApp", "Ativo"];
+  const header = ["Nome", "Função", "Salário", "WhatsApp", "Ativo"];
   const body = rows.map((row) => [
     row.nome,
     row.funcao,
-    row.salario_base,
-    row.contato_whatsapp,
+    formatCurrency(row.salario_base),
+    formatBrazilianPhone(row.contato_whatsapp),
     row.ativo !== false ? "Ativo" : "Inativo"
   ].map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","));
   const blob = new Blob([`${header.map((item) => `"${item}"`).join(",")}\n${body.join("\n")}`], { type: "text/csv;charset=utf-8" });
@@ -69,7 +70,7 @@ export function EmployeeScreen() {
       setPayrolls(nextPayrolls);
       setSelected((current) => current ? nextEmployees.find((employee) => employee.id === current.id) || null : null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel carregar funcionarios.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar funcionários.");
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ export function EmployeeScreen() {
       closeForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel salvar funcionario.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar funcionário.");
     } finally {
       setBusy(false);
     }
@@ -150,7 +151,7 @@ export function EmployeeScreen() {
       notifyDashboardUpdated();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel alterar o status.");
+      setError(err instanceof Error ? err.message : "Não foi possível alterar o status.");
     } finally {
       setBusy(false);
     }
@@ -161,11 +162,11 @@ export function EmployeeScreen() {
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-            <Users className="h-4 w-4" /> Funcionarios
+            <Users className="h-4 w-4" /> Funcionários
           </div>
-          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Funcionarios</h1>
+          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Funcionários</h1>
           <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">
-            Cadastre a equipe, acompanhe ponto e gerencie folha a partir da ficha de cada funcionario.
+            Cadastre a equipe, acompanhe ponto e gerencie folha a partir da ficha de cada funcionário.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -173,7 +174,7 @@ export function EmployeeScreen() {
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
           <button className="btn btn-primary" type="button" onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4" /> Novo funcionario
+            <Plus className="h-4 w-4" /> Novo funcionário
           </button>
         </div>
       </div>
@@ -181,10 +182,10 @@ export function EmployeeScreen() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Funcionarios" value={employees.length} hint="Total cadastrado" icon={Users} tone="green" loading={showPlaceholders} />
+        <StatCard title="Funcionários" value={employees.length} hint="Total cadastrado" icon={Users} tone="green" loading={showPlaceholders} />
         <StatCard title="Ativos" value={activeEmployees.length} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} />
-        <StatCard title="Folha estimada" value={formatCurrency(monthlyPayroll)} hint="Mes atual" icon={Wallet} tone="amber" loading={showPlaceholders} />
-        <StatCard title="Pontos no mes" value={pointsThisMonth} hint="Entradas e saidas" icon={Clock3} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Folha estimada" value={formatCurrency(monthlyPayroll)} hint="Mês atual" icon={Wallet} tone="amber" loading={showPlaceholders} />
+        <StatCard title="Pontos no mês" value={pointsThisMonth} hint="Entradas e saídas" icon={Clock3} tone="blue" loading={showPlaceholders} />
       </div>
 
       <section className="space-y-5">
@@ -194,7 +195,7 @@ export function EmployeeScreen() {
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 className="input input-with-icon"
-                placeholder="Buscar por nome, funcao, telefone ou status..."
+                placeholder="Buscar por nome, função, WhatsApp ou status..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -214,8 +215,8 @@ export function EmployeeScreen() {
             </button>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-            {showPlaceholders ? <Skeleton className="h-5 w-32" /> : <strong className="text-slate-800 dark:text-slate-100">{`${filteredEmployees.length} funcionarios`}</strong>}
-            <span>encontrados na visao atual.</span>
+            {showPlaceholders ? <Skeleton className="h-5 w-32" /> : <strong className="text-slate-800 dark:text-slate-100">{`${filteredEmployees.length} funcionários`}</strong>}
+            <span>encontrados na visão atual.</span>
           </div>
         </div>
 
@@ -231,7 +232,7 @@ export function EmployeeScreen() {
             />
           )) : (
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">
-              Nenhum funcionario cadastrado.
+              Nenhum funcionário cadastrado.
             </div>
           )}
         </div>

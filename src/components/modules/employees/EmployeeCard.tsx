@@ -47,7 +47,7 @@ export function EmployeeCard({
 }) {
   const active = employee.ativo !== false;
   const lastPointLabel = lastPoint
-    ? `${lastPoint.tipo === "saida" ? "Saida" : "Entrada"} em ${formatDate(lastPoint.registrado_em)}`
+    ? `${lastPoint.tipo === "saida" ? "Saída" : "Entrada"} em ${formatDate(lastPoint.registrado_em)}`
     : "Sem ponto registrado";
 
   return (
@@ -58,7 +58,7 @@ export function EmployeeCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-2xl font-black tracking-tight">{employee.nome || "Sem nome"}</h3>
-          <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{employee.funcao || "Sem funcao"}</p>
+          <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{employee.funcao || "Sem função"}</p>
         </div>
         <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
           {active ? "Ativo" : "Inativo"}
@@ -73,7 +73,7 @@ export function EmployeeCard({
 
       <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-4 text-center text-sm dark:border-slate-800">
         <div className="min-w-0">
-          <p className="text-slate-500 dark:text-slate-400">Salario</p>
+          <p className="text-slate-500 dark:text-slate-400">Salário</p>
           <strong className="mt-1 block truncate">{formatCurrency(employee.salario_base)}</strong>
         </div>
         <div className="min-w-0">
@@ -81,7 +81,7 @@ export function EmployeeCard({
           <strong className="mt-1 block truncate">{employee.carga_horaria_mensal || 0}h</strong>
         </div>
         <div className="min-w-0">
-          <p className="text-slate-500 dark:text-slate-400">Admissao</p>
+          <p className="text-slate-500 dark:text-slate-400">Admissão</p>
           <strong className="mt-1 block truncate">{formatDate(employee.data_admissao)}</strong>
         </div>
       </div>
@@ -95,10 +95,10 @@ export function EmployeeCard({
         <button className="btn flex-1 bg-emerald-600 text-white" type="button" onClick={(event) => { event.stopPropagation(); onView(employee); }}>
           <Eye className="h-4 w-4" /> Ver ficha
         </button>
-        <button className="rounded-lg border border-slate-200 p-3 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(employee); }} title="Editar funcionario">
+        <button className="rounded-lg border border-slate-200 p-3 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(employee); }} title="Editar funcionário">
           <Pencil className="h-4 w-4" />
         </button>
-        <button className="rounded-lg border border-amber-200 p-3 text-amber-700 transition hover:bg-amber-50 dark:border-amber-900 dark:hover:bg-amber-950" type="button" onClick={(event) => { event.stopPropagation(); onToggleActive(employee); }} title={active ? "Desativar funcionario" : "Ativar funcionario"}>
+        <button className="rounded-lg border border-amber-200 p-3 text-amber-700 transition hover:bg-amber-50 dark:border-amber-900 dark:hover:bg-amber-950" type="button" onClick={(event) => { event.stopPropagation(); onToggleActive(employee); }} title={active ? "Desativar funcionário" : "Ativar funcionário"}>
           <Power className="h-4 w-4" />
         </button>
       </div>
