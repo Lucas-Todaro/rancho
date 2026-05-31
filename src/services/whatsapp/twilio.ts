@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
-import { normalizePhoneNumber } from "@/lib/phone";
+import { normalizeWhatsappNumber } from "@/lib/phone";
+import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import {
   mergeRanchoMessageData,
   normalizeRanchoText,
@@ -16,20 +17,6 @@ type TwilioMessageInput = {
   From: string;
   To: string;
   MessageSid: string;
-};
-
-type WhatsAppOwner = {
-  fazenda_id: string;
-  whatsapp_usuario_id: string;
-  funcionario_id: string;
-  usuario_id: string | null;
-  telefone_e164: string;
-  nome_exibicao?: string | null;
-};
-
-type ResolveWhatsAppOwnerResult = {
-  owner: WhatsAppOwner | null;
-  reason?: "not_registered" | "no_farm" | "no_employee";
 };
 
 type BotSession = {
@@ -82,47 +69,6 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     DESCONHECIDO: "uma mensagem"
   };
   return labels[tipo];
-}
-
-async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Promise<ResolveWhatsAppOwnerResult> {
-  const normalizedPhone = normalizePhoneNumber(from);
-  console.log("[Twilio webhook] telefone", { original: from, normalizado: normalizedPhone });
-
-  const { data, error } = await supabase
-    .from(TABLES.whatsappUsuarios)
-    .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,ativo")
-    .eq("telefone_e164", normalizedPhone)
-    .eq("ativo", true)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (!data) return { owner: null, reason: "not_registered" };
-  if (!data.fazenda_id) return { owner: null, reason: "no_farm" };
-  if (!data.funcionario_id) return { owner: null, reason: "no_employee" };
-
-  const { data: employee, error: employeeError } = await supabase
-    .from(TABLES.funcionarios)
-    .select("id,ativo,deleted_at,fazenda_id")
-    .eq("id", data.funcionario_id)
-    .eq("fazenda_id", data.fazenda_id)
-    .maybeSingle();
-
-  if (employeeError) throw new Error(employeeError.message);
-  if (!employee || employee.ativo === false || employee.deleted_at) {
-    return { owner: null, reason: "not_registered" };
-  }
-
-  return {
-    owner: {
-      fazenda_id: data.fazenda_id as string,
-      whatsapp_usuario_id: data.id as string,
-      funcionario_id: data.funcionario_id as string,
-      usuario_id: (data.usuario_id as string | null) || null,
-      telefone_e164: normalizePhoneNumber((data.telefone_e164 as string) || normalizedPhone),
-      nome_exibicao: data.nome_exibicao as string | null
-    }
-  };
 }
 
 async function saveWhatsAppMessage(
@@ -413,7 +359,7 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
     return "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.";
   }
 
-  const phone = normalizePhoneNumber(input.From) || input.From;
+  const phone = normalizeWhatsappNumber(input.From) || input.From;
   const resolvedOwner = await resolveWhatsAppOwner(supabase, input.From);
   const owner = resolvedOwner.owner;
 
@@ -434,10 +380,12 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
   if (!owner) {
     if (resolvedOwner.reason === "no_farm") {
       response = "Seu WhatsApp está cadastrado, mas não está vinculado a uma fazenda. Fale com o administrador.";
-    } else if (resolvedOwner.reason === "no_employee") {
-      response = "Seu WhatsApp está cadastrado, mas não está vinculado a um funcionário. Fale com o administrador.";
+    } else if (resolvedOwner.reason === "farm_inactive") {
+      response = "O rancho vinculado a este WhatsApp está inativo. Fale com o administrador.";
+    } else if (resolvedOwner.reason === "user_inactive") {
+      response = "Este WhatsApp está vinculado a um usuário inativo. Fale com o administrador.";
     } else {
-      response = "Seu WhatsApp ainda não está cadastrado no Rancho. Fale com o administrador.";
+      response = "Não encontrei este WhatsApp cadastrado em nenhum rancho. Verifique se o número está correto nas Configurações ou fale com o suporte.";
     }
   } else {
     const command = normalizeRanchoText(input.Body);

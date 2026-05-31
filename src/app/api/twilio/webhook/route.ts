@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const To = params.get("To") || "";
     const MessageSid = params.get("MessageSid") || "";
 
-    console.log("[Twilio webhook]", { Body, From, To, MessageSid });
+    console.log("[Twilio webhook]", { From, To, MessageSid, hasBody: Boolean(Body) });
 
     const responseMessage = await handleTwilioRanchoMessage({ Body, From, To, MessageSid });
 

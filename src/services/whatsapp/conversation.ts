@@ -2,6 +2,8 @@ import { env } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, WhatsAppSession } from "@/lib/types";
+import { normalizeWhatsappNumber } from "@/lib/phone";
+import { resolveWhatsAppOwner } from "@/services/whatsapp/identity";
 import { sendWhatsAppButtons, sendWhatsAppText } from "@/services/whatsapp/meta";
 
 const STATES = {
@@ -22,6 +24,7 @@ function cleanNumber(value: string) {
 }
 
 async function resolveWhatsAppUser(phone: string) {
+  const normalizedPhone = normalizeWhatsappNumber(phone) || phone;
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return {
@@ -31,63 +34,43 @@ async function resolveWhatsAppUser(phone: string) {
     };
   }
 
-  const { data: whatsappUser } = await supabase
-    .from(TABLES.whatsappUsuarios)
-    .select("id,fazenda_id,usuario_id,ativo")
-    .eq("telefone_e164", phone)
-    .eq("ativo", true)
-    .maybeSingle();
-
-  if (whatsappUser?.fazenda_id) {
+  const resolved = await resolveWhatsAppOwner(supabase, normalizedPhone);
+  if (resolved.owner?.fazenda_id) {
     return {
-      fazenda_id: whatsappUser.fazenda_id as string,
-      whatsapp_usuario_id: whatsappUser.id as string,
-      usuario_id: whatsappUser.usuario_id as string | null
+      fazenda_id: resolved.owner.fazenda_id,
+      whatsapp_usuario_id: resolved.owner.whatsapp_usuario_id,
+      usuario_id: resolved.owner.usuario_id
     };
   }
-
-  if (env.defaultFazendaId) {
-    return {
-      fazenda_id: env.defaultFazendaId,
-      whatsapp_usuario_id: null,
-      usuario_id: null
-    };
-  }
-
-  const { data: firstFarm } = await supabase
-    .from(TABLES.fazendas)
-    .select("id")
-    .eq("ativa", true)
-    .limit(1)
-    .maybeSingle();
 
   return {
-    fazenda_id: (firstFarm?.id as string) || "",
+    fazenda_id: "",
     whatsapp_usuario_id: null,
     usuario_id: null
   };
 }
 
 async function getSession(phone: string): Promise<WhatsAppSession> {
+  const normalizedPhone = normalizeWhatsappNumber(phone) || phone;
   const supabase = getSupabaseAdmin();
-  const owner = await resolveWhatsAppUser(phone);
+  const owner = await resolveWhatsAppUser(normalizedPhone);
 
   if (!supabase || !owner.fazenda_id) {
-    return { phone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
+    return { phone: normalizedPhone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
   }
 
   const { data } = await supabase
     .from(TABLES.whatsappSessoes)
     .select("*")
-    .eq("telefone_e164", phone)
+    .eq("telefone_e164", normalizedPhone)
     .maybeSingle();
 
   if (!data) {
-    return { phone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
+    return { phone: normalizedPhone, fazendaId: owner.fazenda_id, whatsappUsuarioId: owner.whatsapp_usuario_id, usuarioId: owner.usuario_id, state: STATES.IDLE, payload: {} };
   }
 
   return {
-    phone,
+    phone: normalizedPhone,
     fazendaId: data.fazenda_id,
     whatsappUsuarioId: data.whatsapp_usuario_id,
     usuarioId: owner.usuario_id,
@@ -156,20 +139,22 @@ async function findAnimal(fazendaId: string, text: string) {
 }
 
 async function ensureSession(phone: string) {
-  const session = await getSession(phone);
+  const normalizedPhone = normalizeWhatsappNumber(phone) || phone;
+  const session = await getSession(normalizedPhone);
   if (!session.fazendaId) {
-    await sendWhatsAppText(phone, "Não encontrei uma fazenda para este telefone. Fale com o administrador para liberar o acesso.");
+    await sendWhatsAppText(normalizedPhone, "Não encontrei este WhatsApp cadastrado em nenhum rancho. Verifique se o número está correto nas Configurações ou fale com o suporte.");
     return null;
   }
   return session;
 }
 
 export async function sendMainMenu(phone: string) {
-  const session = await ensureSession(phone);
+  const normalizedPhone = normalizeWhatsappNumber(phone) || phone;
+  const session = await ensureSession(normalizedPhone);
   if (!session) return;
 
   await saveSession({ ...session, state: STATES.IDLE, payload: {} });
-  return sendWhatsAppButtons(phone, "Bem-vindo ao sistema da fazenda. Escolha uma opção:", [
+  return sendWhatsAppButtons(normalizedPhone, "Bem-vindo ao sistema da fazenda. Escolha uma opção:", [
     { id: "MENU_PRODUCAO", title: "Ordenha" },
     { id: "MENU_ANIMAL", title: "Animal" },
     { id: "MENU_FINANCEIRO", title: "Financeiro" }
@@ -177,7 +162,7 @@ export async function sendMainMenu(phone: string) {
 }
 
 export async function handleConversation(input: { phone: string; text: string; buttonId?: string }) {
-  const phone = input.phone;
+  const phone = normalizeWhatsappNumber(input.phone) || input.phone;
   const text = (input.text || "").trim();
   const command = input.buttonId || text.toUpperCase();
 

@@ -4,7 +4,7 @@ import { createRecord, listRecords, updateRecord } from "@/services/crud";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext } from "@/lib/types";
 import { isValidBrazilianPhone, normalizeBrazilianWhatsApp } from "@/lib/input-format";
-import { normalizePhoneNumber } from "@/lib/phone";
+import { whatsappNumbersMatch } from "@/lib/phone";
 
 const INVALID_WHATSAPP_MESSAGE = "Informe um WhatsApp válido para o funcionário.";
 const DUPLICATE_WHATSAPP_MESSAGE = "Já existe um funcionário ativo com este WhatsApp nesta fazenda.";
@@ -83,7 +83,7 @@ export async function syncEmployeeWhatsAppUser(employee: AnyRecord, context?: Da
 
   const rows = await findWhatsAppUserRows(employee, phone, context);
   const ownRow = rows.find((row) => row.funcionario_id === employee.id);
-  const reusablePhoneRow = rows.find((row) => normalizePhoneNumber(row.telefone_e164) === phone && (row.ativo === false || !row.funcionario_id));
+  const reusablePhoneRow = rows.find((row) => whatsappNumbersMatch(row.telefone_e164, phone) && (row.ativo === false || !row.funcionario_id));
   const target = ownRow || (employee.ativo !== false ? reusablePhoneRow : undefined);
 
   if (target?.id) {
