@@ -99,6 +99,23 @@ function formatNumber(value: number | string | null | undefined, suffix = "") {
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(value || 0))}${suffix}`;
 }
 
+function maskPhone(value: string) {
+  return value.length > 4 ? `***${value.slice(-4)}` : "***";
+}
+
+function botLog(event: string, owner: WhatsAppOwner, details: AnyRecord) {
+  const pending = details.pending as ParsedRanchoMessage | undefined;
+  console.log("[BOT FLOW]", {
+    event,
+    phone: maskPhone(owner.telefone_e164),
+    currentIntent: pending?.tipo || details.currentIntent,
+    status: details.status,
+    missingFields: pending?.perguntas_faltantes || details.missingFields,
+    nextStep: details.nextStep,
+    parser: details.parser
+  });
+}
+
 function isConfirmCommand(command: string) {
   return CONFIRM_WORDS.has(command) || /\b(?:sim|confirma|confirmar|correto|pode salvar|pode|ok|certo|isso)\b/.test(command);
 }
@@ -139,6 +156,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     MORTE: "morte de animal",
     DESPESA: "saída financeira",
     RECEITA_VENDA: "entrada financeira",
+    ESTOQUE_CADASTRO: "cadastro de item no estoque",
     ESTOQUE_ENTRADA: "entrada de estoque",
     ESTOQUE_SAIDA: "baixa de estoque",
     PONTO_FUNCIONARIO: "registro de ponto",
@@ -221,6 +239,11 @@ async function saveSession(supabase: SupabaseAdmin, owner: WhatsAppOwner, sessio
   }, { onConflict: "telefone_e164" });
 
   if (error) throw new Error(error.message);
+  botLog("session_update", owner, {
+    status: session.etapa,
+    pending: session.dados?.pending,
+    nextStep: session.etapa
+  });
 }
 
 async function logAudit(supabase: SupabaseAdmin, owner: WhatsAppOwner, entidade: string, acao: string, depois: AnyRecord) {
@@ -316,6 +339,14 @@ async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name:
   if (error) throw new Error(error.message);
   const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false && !row.deleted_at);
   return bestMatch(activeRows, name, (row) => [row.nome]);
+}
+
+function stockCategoryFromName(name: string) {
+  const normalized = normalizeRanchoText(name);
+  if (/\b(?:racao|ração|silagem|sal|farelo|milho)\b/.test(normalized)) return "racao";
+  if (/\b(?:vacina|remedio|remédio|medicamento|antibiotico|antibiótico)\b/.test(normalized)) return "medicamento";
+  if (/\b(?:luva|seringa|insumo)\b/.test(normalized)) return "insumo";
+  return "outro";
 }
 
 function pendingWithData(pending: ParsedRanchoMessage, dados: AnyRecord): ParsedRanchoMessage {
@@ -442,6 +473,28 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       created_by: owner.usuario_id || null
     });
     return { response: `Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.` };
+  }
+
+  if (pending.tipo === "ESTOQUE_CADASTRO") {
+    const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
+    if (found?.exact) {
+      return { response: `Não criei um novo item porque "${found.row.nome}" já existe no estoque.` };
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
+      fazenda_id: owner.fazenda_id,
+      nome: dados.item_nome,
+      categoria: stockCategoryFromName(String(dados.item_nome || "")),
+      unidade_medida: dados.unidade || "unidade",
+      quantidade_atual: Number(dados.quantidade || 0),
+      quantidade_minima: 0,
+      valor_unitario: 0,
+      fornecedor: null,
+      ativo: true,
+      created_by: owner.usuario_id || null
+    });
+
+    return { response: `Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatNumber(dados.quantidade)} ${dados.unidade || ""}.` };
   }
 
   if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
@@ -594,6 +647,12 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
 
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string) {
   const parsed = parseRanchoMessage(text);
+  botLog("nlp_general", owner, {
+    currentIntent: parsed.tipo,
+    status: "livre",
+    missingFields: parsed.perguntas_faltantes,
+    parser: "nlp_geral"
+  });
 
   if (CONSULT_INTENTS.has(parsed.tipo)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -605,7 +664,23 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return unknownText();
   }
 
+  if (parsed.perguntas_faltantes.length) {
+    botLog("missing_data", owner, {
+      pending: parsed,
+      status: "aguardando_dado",
+      nextStep: "pedir_dado"
+    });
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
+    return missingText(parsed);
+  }
+
   if (parsed.confianca >= 0.85) {
+    botLog("pending_confirmation", owner, {
+      currentIntent: parsed.tipo,
+      status: "aguardando_confirmacao",
+      missingFields: parsed.perguntas_faltantes,
+      nextStep: "confirmar"
+    });
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
     return confirmationText(parsed);
   }
@@ -624,6 +699,12 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   if (!pending?.tipo) return handleFreeText(supabase, owner, text);
 
   const next = mergeRanchoMessageData(pending, text);
+  botLog("contextual_reply", owner, {
+    pending: next,
+    status: "aguardando_dado",
+    parser: "contextual",
+    nextStep: next.perguntas_faltantes.length ? "pedir_dado" : "confirmar"
+  });
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
     return missingText(next);
@@ -641,6 +722,11 @@ async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   }
 
   if (isConfirmCommand(command)) {
+    botLog("confirmation", owner, {
+      pending,
+      status: "aguardando_confirmacao",
+      nextStep: "salvar"
+    });
     const result = await saveConfirmedRecord(supabase, owner, pending);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
     return result.response;

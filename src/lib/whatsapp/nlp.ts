@@ -7,6 +7,7 @@ export type RanchoIntent =
   | "MORTE"
   | "DESPESA"
   | "RECEITA_VENDA"
+  | "ESTOQUE_CADASTRO"
   | "ESTOQUE_ENTRADA"
   | "ESTOQUE_SAIDA"
   | "PONTO_FUNCIONARIO"
@@ -43,6 +44,7 @@ const questionByField: Record<string, string> = {
   descricao: "Qual é a descrição do registro?",
   item_nome: "Qual item do estoque?",
   quantidade: "Qual quantidade?",
+  unidade: "Qual unidade deseja usar? Exemplo: saco, kg ou unidade.",
   funcionario_nome: "Qual funcionário?",
   ponto_tipo: "Foi entrada ou saída?",
   categoria_animal: "Qual é a categoria do animal? Ex: vaca, bezerro ou touro."
@@ -95,6 +97,31 @@ const numberWords: Record<string, number> = {
 
 const animalWords = "(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)";
 const animalCategories = new Set(["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "animal"]);
+const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
+const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|unidades?)";
+
+export function normalizeAnimalCode(value: string | number | null | undefined) {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,;:!?()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+  if (!normalized) return undefined;
+
+  const labeled = normalized.match(/\b(?:VACA|ANIMAL|GADO|BOI|TOURO|BEZERRO|BEZERRA|NOVILHA|BRINCO|NUMERO|N)\s+([A-Z0-9]+(?:-[A-Z0-9]+)*)\b/);
+  if (labeled?.[1]) return labeled[1];
+
+  const compact = normalized.replace(/\s*-\s*/g, "-");
+  if (animalCodePattern.test(compact)) return compact;
+
+  const animalWithNumber = normalized.match(/\b(?:VACA|ANIMAL|BOI|TOURO|BEZERRO|BEZERRA|NOVILHA)\s+(\d+[A-Z0-9-]*)\b/);
+  if (animalWithNumber?.[1]) return animalWithNumber[1];
+
+  return undefined;
+}
 
 export function normalizeRanchoText(value: string) {
   return value
@@ -153,7 +180,11 @@ function numberMatches(text: string) {
 
   while (digitMatch) {
     const value = toNumber(digitMatch[0]);
-    if (value !== undefined) matches.push({ raw: digitMatch[0], value, index: digitMatch.index || 0 });
+    const index = digitMatch.index || 0;
+    const before = text[index - 1] || "";
+    const after = text[index + digitMatch[0].length] || "";
+    const isCodePart = /[a-z-]/i.test(before) || /[a-z-]/i.test(after);
+    if (value !== undefined && !isCodePart) matches.push({ raw: digitMatch[0], value, index });
     digitMatch = digitPattern.exec(text);
   }
 
@@ -208,6 +239,9 @@ function extractPointTime(text: string) {
 
 function candidateFromMatch(value?: string | null) {
   if (!value) return undefined;
+  const code = normalizeAnimalCode(value);
+  if (code) return code;
+
   const cleaned = normalizeRanchoText(value)
     .replace(new RegExp(`\\b${animalWords}\\b`, "g"), "")
     .replace(/\b(?:da|do|de|na|no|a|o|uma|um|para|pra|producao|ordenha)\b/g, "")
@@ -217,22 +251,25 @@ function candidateFromMatch(value?: string | null) {
 }
 
 function extractAnimalCode(text: string, intent?: RanchoIntent) {
+  const standalone = normalizeAnimalCode(text);
+  if (standalone && !/\s/.test(text.trim())) return standalone;
+
   const direct = text.match(new RegExp(`\\b${animalWords}\\s+(?:da|do|de|a|o)?\\s*([a-z0-9][a-z0-9-]*)\\b`));
   const directCandidate = candidateFromMatch(direct?.[1]);
-  if (directCandidate) return directCandidate.toUpperCase();
+  if (directCandidate) return normalizeAnimalCode(directCandidate) || directCandidate.toUpperCase();
 
   const productionNamed = text.match(/\b(?:producao|ordenha)\s+(?:da|do|de)?\s*([a-z0-9][a-z0-9-]*)\b/);
   const productionCandidate = candidateFromMatch(productionNamed?.[1]);
-  if (productionCandidate) return productionCandidate.toUpperCase();
+  if (productionCandidate) return normalizeAnimalCode(productionCandidate) || productionCandidate.toUpperCase();
 
   const beforeVerb = text.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu)\b/);
   const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]);
   if (beforeVerbCandidate && !/^(registra|registrar|lanca|lancar|anota|anotar)$/.test(beforeVerbCandidate)) {
-    return beforeVerbCandidate.toUpperCase();
+    return normalizeAnimalCode(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();
   }
 
   const beforeLiters = text.match(/^([a-z][a-z0-9-]*)\s+\d+(?:[,.]\d+)?\s*(?:l|lt|lts|litro|litros)?\b/);
-  if (beforeLiters?.[1] && intent === "PRODUCAO_LEITE") return beforeLiters[1].toUpperCase();
+  if (beforeLiters?.[1] && intent === "PRODUCAO_LEITE") return normalizeAnimalCode(beforeLiters[1]) || beforeLiters[1].toUpperCase();
 
   const numbers = numberMatches(text);
   if (intent === "PRODUCAO_LEITE" && numbers.length >= 2) return numbers[0].raw.toUpperCase();
@@ -308,8 +345,11 @@ function extractProduct(original: string, normalized: string) {
 }
 
 function extractStockItem(original: string) {
+  const called = original.match(/\b(?:chamado|chamada|nomeado|nomeada)\s+(.+?)(?:\s+no estoque|\s+na estoque|\s+para estoque|$)/i)?.[1];
+  if (called) return cleanAnswer(called);
+
   const cleaned = removeValueAndCommonWords(original)
-    .replace(/\b(?:adiciona|adicionar|adicionei|coloca|coloquei|entrada|entrou|estoque|baixa|baixar|retira|retirar|retirei|usei|saiu|sacos|saco|kg|quilo|quilos|unidade|unidades|caixa|caixas|dose|doses|medicamentos|remedios|remédios)\b/gi, " ")
+    .replace(/\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|item|registrar|consultar|consulta|ver|quanto|saldo|tem|baixo|minimo|mínimo|critico|crítico|adiciona|adicionar|adicionei|coloca|coloquei|entrada|entrou|estoque|baixa|baixar|retira|retirar|retirei|usei|saiu|sacos|saco|kg|quilo|quilos|unidade|unidades|caixa|caixas|dose|doses|medicamentos|remedios|remédios)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
   return cleaned || undefined;
@@ -324,6 +364,23 @@ function extractStockUnit(text: string) {
   if (/\bdoses?\b/.test(text)) return "dose";
   if (/\bunidades?\b/.test(text)) return "unidade";
   return undefined;
+}
+
+function extractStockQuantity(original: string) {
+  const normalized = normalizeRanchoText(original);
+  const numbers = numberMatches(normalized);
+  const unitPattern = new RegExp(`^\\s*${stockUnitWords}\\b`);
+
+  const withUnit = numbers.find((match) => unitPattern.test(normalized.slice(match.index + match.raw.length)));
+  if (withUnit) return withUnit.value;
+
+  const generic = numbers.find((match) => {
+    const tail = normalized.slice(match.index + match.raw.length);
+    const articleBeforeItem = /^(?:1|um|uma)$/.test(match.raw) && /^\s*item\b/.test(tail);
+    return !articleBeforeItem;
+  });
+
+  return generic?.value;
 }
 
 function extractEmployeeName(original: string, normalized: string) {
@@ -389,6 +446,8 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "RECEITA_VENDA") return `registrar entrada financeira${dados.valor ? ` de ${moneyText(dados.valor)}` : ""}${dados.descricao ? ` (${dados.descricao})` : ""}`;
 
+  if (tipo === "ESTOQUE_CADASTRO") return `cadastrar item no estoque${dados.item_nome ? `: ${dados.item_nome}` : ""}${dados.quantidade ? ` com quantidade inicial ${dados.quantidade}` : ""}${dados.unidade ? ` ${dados.unidade}` : ""}`;
+
   if (tipo === "ESTOQUE_ENTRADA") return `adicionar ${dados.quantidade || "?"} ${dados.unidade || ""} de ${dados.item_nome || "item"} ao estoque`;
 
   if (tipo === "ESTOQUE_SAIDA") return `dar baixa de ${dados.quantidade || "?"} ${dados.unidade || ""} de ${dados.item_nome || "item"} no estoque`;
@@ -435,8 +494,9 @@ function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !dados.valor) missing.push("valor");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !dados.descricao) missing.push("descricao");
-  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo) && !dados.item_nome) missing.push("item_nome");
-  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo) && !dados.quantidade) missing.push("quantidade");
+  if (["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo) && !dados.item_nome) missing.push("item_nome");
+  if (["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo) && !dados.quantidade) missing.push("quantidade");
+  if (["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo) && !dados.unidade) missing.push("unidade");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.ponto_tipo) missing.push("ponto_tipo");
   if (tipo === "CADASTRO_ANIMAL" && !dados.animal_codigo) missing.push("animal_codigo");
@@ -457,6 +517,17 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
 
   const isFinanceQuery = /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro)\b/.test(normalized) && /\b(?:financeiro|mes|mês|caixa|entradas|saidas|saídas|lucro)\b/.test(normalized);
   if (isFinanceQuery) return finalize("CONSULTA_FINANCEIRO", { data_referencia: extractDateReference(normalized) || "mes" }, [], 0.9);
+
+  const hasStockCreate = /\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|registrar)\b/.test(normalized)
+    && /\b(?:item|estoque|racao|ração|medicamento|remedio|remédio|insumo)\b/.test(normalized);
+  if (hasStockCreate) {
+    const dados = {
+      item_nome: extractStockItem(original),
+      quantidade: extractStockQuantity(original),
+      unidade: extractStockUnit(normalized)
+    };
+    return finalize("ESTOQUE_CADASTRO", dados, buildMissing("ESTOQUE_CADASTRO", dados), 0.86);
+  }
 
   const hasStockAction = /\b(?:adiciona|adicionar|adicionei|coloca|coloquei|entrada|entrou|repor|reposicao|reposição|baixa|baixar|retira|retirar|retirei|usei|saiu|saida|saída|consumi|descartei)\b/.test(normalized);
   const isStockQuery = !hasStockAction && /\b(?:consultar|ver|quanto|saldo|tem|estoque)\b/.test(normalized) && /\b(?:estoque|racao|ração|medicamento|insumo|sacos?)\b/.test(normalized);
@@ -480,7 +551,7 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   if (isStockOut) {
     const dados = {
       item_nome: extractStockItem(original),
-      quantidade: firstNumber(normalized),
+      quantidade: extractStockQuantity(original),
       unidade: extractStockUnit(normalized)
     };
     return finalize("ESTOQUE_SAIDA", dados, buildMissing("ESTOQUE_SAIDA", dados));
@@ -490,7 +561,7 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   if (isStockIn) {
     const dados = {
       item_nome: extractStockItem(original),
-      quantidade: firstNumber(normalized),
+      quantidade: extractStockQuantity(original),
       unidade: extractStockUnit(normalized)
     };
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
@@ -584,13 +655,37 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const normalized = normalizeRanchoText(original);
   const parsedAnswer = parseRanchoMessage(answer);
   const dados = { ...current.dados };
+  const expectedFields = buildMissing(current.tipo, dados);
+  const expectedField = expectedFields[0];
 
   if (parsedAnswer.tipo === current.tipo) Object.assign(dados, parsedAnswer.dados);
 
-  const animalCode = extractAnimalCode(normalized, current.tipo);
+  if (expectedField) {
+    const contextualNumber = firstNumber(normalized);
+    const contextualQuantity = extractStockQuantity(original);
+    const contextualAnimal = expectedField === "animal_codigo" ? normalizeAnimalCode(original) || extractAnimalCode(normalized, current.tipo) : undefined;
+
+    if (expectedField === "animal_codigo" && contextualAnimal) dados.animal_codigo = contextualAnimal;
+    if (expectedField === "litros" && contextualNumber) dados.litros = contextualNumber;
+    if (expectedField === "valor" && contextualNumber) dados.valor = contextualNumber;
+    if (expectedField === "quantidade" && contextualQuantity !== undefined) dados.quantidade = contextualQuantity;
+    if (expectedField === "unidade") dados.unidade = extractStockUnit(normalized) || original;
+    if (expectedField === "produto" && original) dados.produto = original;
+    if (expectedField === "item_nome" && original) dados.item_nome = extractStockItem(original) || original;
+    if (expectedField === "descricao" && original) dados.descricao = original;
+    if (expectedField === "funcionario_nome" && original) dados.funcionario_nome = original;
+    if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);
+    if (expectedField === "categoria_animal") dados.categoria = extractAnimalCategory(normalized) || original.toLowerCase();
+  }
+
+  const shortNumericAnswer = /^\d+(?:[,.]\d+)?$/.test(normalized);
+  const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL"].includes(current.tipo);
+  const animalCode = animalIntent && expectedField && expectedField !== "animal_codigo" && shortNumericAnswer
+    ? undefined
+    : animalIntent ? extractAnimalCode(normalized, current.tipo) : undefined;
   const liters = extractLiters(normalized);
   const value = extractMoneyValue(normalized);
-  const quantity = firstNumber(normalized);
+  const quantity = extractStockQuantity(original);
   const itemName = extractStockItem(original);
   const employeeName = extractEmployeeName(original, normalized);
   const pointType = extractPointType(normalized);
@@ -599,15 +694,15 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (animalCode) dados.animal_codigo = animalCode;
   if (liters && current.tipo === "PRODUCAO_LEITE") dados.litros = liters;
   if (value && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo)) dados.valor = value;
-  if (quantity && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.quantidade = quantity;
-  if (itemName && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.item_nome = itemName;
+  if (quantity && ["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.quantidade = quantity;
+  if (itemName && ["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.item_nome = itemName;
   if (employeeName && current.tipo === "PONTO_FUNCIONARIO") dados.funcionario_nome = employeeName;
   if (pointType && current.tipo === "PONTO_FUNCIONARIO") dados.ponto_tipo = pointType;
   if (pointTime && current.tipo === "PONTO_FUNCIONARIO") dados.horario = pointTime;
 
   if (!dados.turno) dados.turno = extractTurno(normalized);
   if (!dados.data_referencia) dados.data_referencia = extractDateReference(normalized);
-  if (!dados.unidade && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.unidade = extractStockUnit(normalized);
+  if (!dados.unidade && ["ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.unidade = extractStockUnit(normalized);
   if (!dados.produto && current.tipo === "VACINA_MEDICAMENTO") dados.produto = extractProduct(answer, normalized);
   if (!dados.descricao && ["DESPESA", "RECEITA_VENDA", "ORDEM_SERVICO"].includes(current.tipo)) dados.descricao = removeValueAndCommonWords(original) || original;
   if (!dados.categoria && current.tipo === "CADASTRO_ANIMAL") dados.categoria = extractAnimalCategory(normalized);

@@ -55,6 +55,7 @@ export default function WhatsAppPage() {
   const [editing, setEditing] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -195,17 +196,29 @@ export default function WhatsAppPage() {
   }
 
   async function sendMessage() {
-    setStatus("Enviando mensagem...");
-    const response = await fetch("/api/whatsapp/send-test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phone: normalizeWhatsappNumber(phone) || phone,
-        message: outboundMessage
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    setStatus(data.ok ? "Mensagem enviada. Confira o WhatsApp." : data.error || "Não foi possível enviar agora.");
+    if (!isValidBrazilianPhone(phone)) {
+      setStatus("Informe um WhatsApp válido com DDD.");
+      return;
+    }
+
+    setSending(true);
+    setStatus("Enviando...");
+    try {
+      const response = await fetch("/api/whatsapp/send-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: normalizeWhatsappNumber(phone) || phone,
+          message: outboundMessage
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      setStatus(response.ok && data.ok ? "Mensagem enviada. Confira o WhatsApp." : data.error || "Não foi possível enviar agora.");
+    } catch {
+      setStatus("Não foi possível enviar agora.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -357,8 +370,8 @@ export default function WhatsAppPage() {
             <span className="text-sm font-bold">Mensagem</span>
             <textarea className="input min-h-28 resize-y" value={outboundMessage} onChange={(event) => setOutboundMessage(event.target.value)} />
           </label>
-          <button className="btn btn-primary mt-4 w-full" onClick={sendMessage} type="button" disabled={!phone.trim() || !outboundMessage.trim()}>
-            <MessageCircle className="h-4 w-4" /> Enviar mensagem
+          <button className="btn btn-primary mt-4 w-full" onClick={sendMessage} type="button" disabled={sending || !phone.trim() || !outboundMessage.trim()}>
+            <MessageCircle className="h-4 w-4" /> {sending ? "Enviando..." : "Enviar mensagem"}
           </button>
           {status ? <p className="mt-3 rounded-lg bg-slate-100 p-3 text-sm font-bold dark:bg-slate-900">{status}</p> : null}
         </div>

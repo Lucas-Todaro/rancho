@@ -3,13 +3,27 @@ import { normalizeWhatsappNumber } from "@/lib/phone";
 import { sendWhatsAppText } from "@/services/whatsapp/meta";
 
 function twilioAddress(value: string) {
-  return value.startsWith("whatsapp:") ? value : `whatsapp:${value}`;
+  if (value.startsWith("whatsapp:")) return value;
+  const normalized = normalizeWhatsappNumber(value);
+  return `whatsapp:+${normalized}`;
+}
+
+function maskPhone(value: string) {
+  const normalized = normalizeWhatsappNumber(value);
+  if (!normalized) return "***";
+  return `***${normalized.slice(-4)}`;
 }
 
 async function sendTwilioWhatsAppText(to: string, body: string) {
+  console.log("[WhatsApp outbound]", {
+    provider: "twilio",
+    to: maskPhone(to),
+    messageLength: body.length
+  });
+
   const params = new URLSearchParams({
     From: twilioAddress(env.twilioWhatsappFrom),
-    To: twilioAddress(`+${to}`),
+    To: twilioAddress(to),
     Body: body
   });
 
@@ -24,8 +38,20 @@ async function sendTwilioWhatsAppText(to: string, body: string) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    console.error("[WhatsApp outbound error]", {
+      provider: "twilio",
+      to: maskPhone(to),
+      status: response.status,
+      message: data?.message
+    });
     throw new Error(data?.message || "Não foi possível enviar pelo Twilio.");
   }
+
+  console.log("[WhatsApp outbound ok]", {
+    provider: "twilio",
+    to: maskPhone(to),
+    status: response.status
+  });
 
   return { provider: "twilio", data };
 }
@@ -39,7 +65,16 @@ export async function sendOutboundWhatsAppText(phone: string, body: string) {
   }
 
   if (isMetaConfigured()) {
+    console.log("[WhatsApp outbound]", {
+      provider: "meta",
+      to: maskPhone(normalizedPhone),
+      messageLength: body.length
+    });
     const data = await sendWhatsAppText(normalizedPhone, body);
+    console.log("[WhatsApp outbound ok]", {
+      provider: "meta",
+      to: maskPhone(normalizedPhone)
+    });
     return { provider: "meta", data };
   }
 
