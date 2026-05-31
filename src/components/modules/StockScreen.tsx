@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, updateRecord } from "@/services/crud";
 import { recordStockMovement, type StockMovementType } from "@/services/stock";
 import { TABLES } from "@/lib/tables";
@@ -74,6 +75,39 @@ function exportStockCsv(rows: AnyRecord[]) {
   link.download = "estoque.csv";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function StockItemSkeleton() {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white/72 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-6 w-14 rounded-full" />
+          </div>
+          <Skeleton className="mt-3 h-4 w-56 max-w-full" />
+        </div>
+        <div className="min-w-0 md:w-36">
+          <Skeleton className="h-3 w-24 md:ml-auto" />
+          <Skeleton className="mt-3 h-8 w-32 md:ml-auto" />
+          <Skeleton className="mt-2 h-3 w-28 md:ml-auto" />
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <Skeleton className="h-11 rounded-lg" />
+        <Skeleton className="h-11 rounded-lg" />
+        <Skeleton className="h-11 rounded-lg" />
+      </div>
+      <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+        <Skeleton className="h-4 w-56 max-w-full" />
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-9 w-9 rounded-lg" />
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function StockActionModal({
@@ -224,6 +258,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     });
     return entries;
   }, [movements]);
+  const showPlaceholders = loading || Boolean(error && !items.length);
 
   async function submitItem(values: AnyRecord) {
     setBusy(true);
@@ -303,9 +338,9 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Itens cadastrados" value={items.length} hint="Produtos e insumos" icon={PackageOpen} tone="green" />
-        <StatCard title="Estoque crítico" value={criticalCount} hint="Abaixo do mínimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} />
-        <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" />
+        <StatCard title="Itens cadastrados" value={items.length} hint="Produtos e insumos" icon={PackageOpen} tone="green" loading={showPlaceholders} />
+        <StatCard title="Estoque crítico" value={criticalCount} hint="Abaixo do mínimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} loading={showPlaceholders} />
+        <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" loading={showPlaceholders} />
       </div>
 
       <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
@@ -322,7 +357,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         </div>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          {filteredItems.length ? filteredItems.map((item) => {
+          {showPlaceholders ? Array.from({ length: 4 }).map((_, index) => <StockItemSkeleton key={`stock-skeleton-${index}`} />) : filteredItems.length ? filteredItems.map((item) => {
             const current = Number(item.quantidade_atual || 0);
             const minimum = Number(item.quantidade_minima || 0);
             const critical = current <= minimum;
@@ -380,7 +415,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
             );
           }) : (
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-              {loading ? "Carregando estoque..." : "Nenhum item encontrado."}
+              Nenhum item encontrado.
             </div>
           )}
         </div>

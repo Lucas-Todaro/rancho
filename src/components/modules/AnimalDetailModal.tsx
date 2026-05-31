@@ -3,6 +3,7 @@
 import { Activity, CalendarDays, ClipboardList, Heart, Plus, Stethoscope, TrendingUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { TABLES } from "@/lib/tables";
@@ -85,6 +86,7 @@ export function AnimalDetailModal({
   const [events, setEvents] = useState<AnyRecord[]>([]);
   const [productions, setProductions] = useState<AnyRecord[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState({
@@ -97,23 +99,28 @@ export function AnimalDetailModal({
   });
 
   const loadDetails = useCallback(async () => {
-    const [animalEvents, animalProductions] = await Promise.all([
-      listRecords(TABLES.eventosAnimal, {
-        orderBy: "data_evento",
-        fazendaId: context.fazendaId,
-        usuarioId: context.usuarioId,
-        filters: [{ column: "animal_id", value: animal.id }]
-      }),
-      listRecords(TABLES.ordenhas, {
-        orderBy: "ordenhado_em",
-        fazendaId: context.fazendaId,
-        usuarioId: context.usuarioId,
-        filters: [{ column: "animal_id", value: animal.id }]
-      })
-    ]);
+    setDetailsLoading(true);
+    try {
+      const [animalEvents, animalProductions] = await Promise.all([
+        listRecords(TABLES.eventosAnimal, {
+          orderBy: "data_evento",
+          fazendaId: context.fazendaId,
+          usuarioId: context.usuarioId,
+          filters: [{ column: "animal_id", value: animal.id }]
+        }),
+        listRecords(TABLES.ordenhas, {
+          orderBy: "ordenhado_em",
+          fazendaId: context.fazendaId,
+          usuarioId: context.usuarioId,
+          filters: [{ column: "animal_id", value: animal.id }]
+        })
+      ]);
 
-    setEvents(animalEvents);
-    setProductions(animalProductions);
+      setEvents(animalEvents);
+      setProductions(animalProductions);
+    } finally {
+      setDetailsLoading(false);
+    }
   }, [animal.id, context.fazendaId, context.usuarioId]);
 
   useEffect(() => {
@@ -224,6 +231,8 @@ export function AnimalDetailModal({
   const status = labelFromMap(statusLabels, animal.status, "Ativo");
   const reproductiveStatus = animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactação" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
 
+  const showDetailPlaceholders = detailsLoading || Boolean(error && !events.length && !productions.length);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:p-6">
       <section className="flex max-h-[96vh] w-full max-w-6xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:rounded-lg">
@@ -276,19 +285,19 @@ export function AnimalDetailModal({
                   <TrendingUp className="h-6 w-6 text-blue-700" />
                   <p className="mt-4 text-sm font-black">Média leite/dia</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 7 dias</p>
-                  <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.dailyAverage, " L")}</h3>
+                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-28" /> : <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.dailyAverage, " L")}</h3>}
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
                   <Activity className="h-6 w-6 text-emerald-700" />
                   <p className="mt-4 text-sm font-black">Produção recente</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 30 dias</p>
-                  <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.production30, " L")}</h3>
+                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-28" /> : <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.production30, " L")}</h3>}
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
                   <Stethoscope className="h-6 w-6 text-amber-700" />
                   <p className="mt-4 text-sm font-black">Custo de saúde</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Mês atual</p>
-                  <h3 className="mt-4 text-3xl font-black">{formatCurrency(metrics.monthCost)}</h3>
+                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-32" /> : <h3 className="mt-4 text-3xl font-black">{formatCurrency(metrics.monthCost)}</h3>}
                 </div>
                 <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 dark:border-purple-900 dark:bg-purple-950/30">
                   <Heart className="h-6 w-6 text-purple-700" />
@@ -310,7 +319,7 @@ export function AnimalDetailModal({
                     </button>
                   </div>
                   <div className="mt-5 grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Manejos</p><strong>{metrics.eventCount}</strong></div>
+                    <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Manejos</p>{showDetailPlaceholders ? <Skeleton className="mt-2 h-5 w-12" /> : <strong>{metrics.eventCount}</strong>}</div>
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Peso atual</p><strong>{formatNumber(animal.peso, " kg")}</strong></div>
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Status</p><strong>{status}</strong></div>
                   </div>
@@ -360,7 +369,18 @@ export function AnimalDetailModal({
 
           {tab === "timeline" ? (
             <div className="space-y-3">
-              {timeline.length ? timeline.map((entry) => (
+              {showDetailPlaceholders ? Array.from({ length: 4 }).map((_, index) => (
+                <div key={`timeline-skeleton-${index}`} className="flex gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                  <Skeleton className="mt-1 h-3 w-3 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Skeleton className="h-5 w-28" />
+                      <Skeleton className="h-6 w-20 rounded-full" />
+                    </div>
+                    <Skeleton className="mt-3 h-4 w-64 max-w-full" />
+                  </div>
+                </div>
+              )) : timeline.length ? timeline.map((entry) => (
                 <div key={entry.id} className="flex gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                   <div className={`mt-1 h-3 w-3 rounded-full ${entry.tone === "producao" ? "bg-blue-500" : "bg-emerald-500"}`} />
                   <div>

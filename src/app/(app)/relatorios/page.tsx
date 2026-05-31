@@ -3,6 +3,7 @@
 import { FileText, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { loadDashboardData } from "@/services/dashboard";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -12,16 +13,38 @@ export default function RelatoriosPage() {
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const [data, setData] = useState<any>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadDashboardData({ fazendaId: farmId, usuarioId: userId }).then(setData);
+    setError("");
+    loadDashboardData({ fazendaId: farmId, usuarioId: userId })
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar os relatórios."));
   }, [farmId, userId]);
 
   function printReport() {
     window.print();
   }
 
-  if (!data) return <div className="glass rounded-lg p-8">Carregando relatórios...</div>;
+  if (!data) {
+    return (
+      <div className="animate-fade-in space-y-6">
+        {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">Não foi possível carregar os relatórios agora.</div> : null}
+        <div className="grid gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={`report-card-skeleton-${index}`} className="glass rounded-lg p-5">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-4 h-9 w-32" />
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="glass rounded-lg p-5"><Skeleton className="h-6 w-40" /><Skeleton className="mt-6 h-48 w-full" /></div>
+          <div className="glass rounded-lg p-5"><Skeleton className="h-6 w-40" /><Skeleton className="mt-6 h-48 w-full" /></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in space-y-6" id="report-content">

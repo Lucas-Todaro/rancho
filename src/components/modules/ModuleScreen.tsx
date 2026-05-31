@@ -22,6 +22,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { AnimalCards } from "@/components/modules/AnimalCards";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
@@ -92,6 +93,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [error, setError] = useState("");
 
   const Icon = moduleIcons[config.icon] || Database;
+  const showPlaceholders = loading || Boolean(error && !rows.length);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -190,7 +192,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {(config.quickStats || []).map((stat, index) => (
-          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Activity : Icon} tone={index % 2 ? "blue" : "green"} />
+          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Activity : Icon} tone={index % 2 ? "blue" : "green"} loading={showPlaceholders} />
         ))}
       </div>
 
@@ -200,7 +202,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">{config.key === "rebanho" ? "Animais do rebanho" : "Registros"}</h2>
             <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <Plus className="h-4 w-4" /> {loading ? "Carregando..." : config.key === "rebanho" ? `${rows.length} animais` : `${filteredRows.length} itens`}
+              <Plus className="h-4 w-4" /> {showPlaceholders ? <Skeleton className="h-4 w-20" /> : config.key === "rebanho" ? `${rows.length} animais` : `${filteredRows.length} itens`}
             </div>
           </div>
           {config.key === "rebanho" ? (
@@ -209,7 +211,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               search={search}
               setSearch={setSearch}
               relationOptions={relationOptions}
-              loading={loading}
+              loading={showPlaceholders}
               onDelete={remove}
               onEdit={setEditing}
               onView={setSelectedAnimal}
@@ -225,6 +227,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               onEdit={setEditing}
               onExport={() => exportCsv(config.key, filteredRows, config.fields)}
               relationOptions={relationOptions}
+              loading={showPlaceholders}
             />
           )}
         </div>

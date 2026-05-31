@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { loadDashboardData, onDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
@@ -53,18 +54,36 @@ const emptyDashboard: DashboardViewData = {
   productions: []
 };
 
+function ChartSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={`chart-skeleton-${index}`} className="grid grid-cols-[5rem_1fr_5rem] items-center gap-3">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-3 w-full rounded-full" />
+          <Skeleton className="h-4 w-14 justify-self-end" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { dataContext, profile } = useAuth();
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const [data, setData] = useState(emptyDashboard);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const dashboard = await loadDashboardData({ fazendaId: farmId, usuarioId: userId });
       setData(dashboard);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o painel.");
     } finally {
       setLoading(false);
     }
@@ -78,6 +97,10 @@ export default function DashboardPage() {
   const expensesLabel = formatCurrency(data.cards.expenses);
   const productionTodayLabel = formatNumber(data.cards.productionToday, " L");
   const productionMonthLabel = formatNumber(data.cards.productionMonth, " L");
+  const hasLoaded = data !== emptyDashboard;
+  const initialLoading = loading && !hasLoaded;
+  const initialError = Boolean(error && !hasLoaded);
+  const showPlaceholders = initialLoading || initialError;
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -97,44 +120,68 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="rounded-lg border border-white/15 bg-white/10 p-5 backdrop-blur-xl">
-            <div className="flex min-w-0 items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm text-emerald-100">Resultado do mês</p>
-                <h2 className="mt-2 max-w-full truncate text-[clamp(1.45rem,3vw,2.25rem)] font-black tabular-nums" title={profitLabel}>{profitLabel}</h2>
+            {initialLoading ? (
+              <>
+                <div className="flex min-w-0 items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <Skeleton className="h-4 w-32 bg-white/20" />
+                    <Skeleton className="mt-3 h-10 w-48 max-w-full bg-white/20" />
+                  </div>
+                  <Skeleton className="h-10 w-10 rounded-lg bg-white/20" />
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, index) => <Skeleton key={`hero-card-${index}`} className="h-20 rounded-lg bg-white/20" />)}
+                </div>
+              </>
+            ) : initialError ? (
+              <div className="rounded-lg border border-white/20 bg-white/10 p-4 text-sm font-bold text-white">
+                Não foi possível carregar os dados do painel agora.
               </div>
-              <Activity className="h-10 w-10 shrink-0 text-lime-200" />
-            </div>
-            <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
-              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong className="block truncate font-black tabular-nums" title={incomeLabel}>{incomeLabel}</strong></div>
-              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong className="block truncate font-black tabular-nums" title={expensesLabel}>{expensesLabel}</strong></div>
-              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong className="block truncate font-black tabular-nums" title={productionTodayLabel}>{productionTodayLabel}</strong></div>
-              <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong className="block truncate font-black tabular-nums" title={productionMonthLabel}>{productionMonthLabel}</strong></div>
-            </div>
+            ) : (
+              <>
+                <div className="flex min-w-0 items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm text-emerald-100">Resultado do mês</p>
+                    <h2 className="mt-2 max-w-full truncate text-[clamp(1.45rem,3vw,2.25rem)] font-black tabular-nums" title={profitLabel}>{profitLabel}</h2>
+                  </div>
+                  <Activity className="h-10 w-10 shrink-0 text-lime-200" />
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
+                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong className="block truncate font-black tabular-nums" title={incomeLabel}>{incomeLabel}</strong></div>
+                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong className="block truncate font-black tabular-nums" title={expensesLabel}>{expensesLabel}</strong></div>
+                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong className="block truncate font-black tabular-nums" title={productionTodayLabel}>{productionTodayLabel}</strong></div>
+                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong className="block truncate font-black tabular-nums" title={productionMonthLabel}>{productionMonthLabel}</strong></div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>
 
+      {error && hasLoaded ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">Não foi possível atualizar o painel agora. Os últimos dados carregados continuam visíveis.</div> : null}
+      {initialError ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">Não foi possível carregar o painel. Tente atualizar novamente em instantes.</div> : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total de animais" value={data.cards.totalAnimals} hint="Rebanho cadastrado" icon={PawPrint} tone="green" />
-        <StatCard title="Animais ativos" value={data.cards.activeAnimals} hint="Status ativo" icon={PawPrint} tone="green" />
-        <StatCard title="Produção diária" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" />
-        <StatCard title="Entrada do mês" value={formatCurrency(data.cards.income)} hint="Transações de entrada" icon={TrendingUp} tone="green" />
-        <StatCard title="Saída do mês" value={formatCurrency(data.cards.expenses)} hint="Transações de saída" icon={TrendingDown} tone="red" />
-        <StatCard title="Resultado do mês" value={formatCurrency(data.cards.profit)} hint="Entradas menos saídas" icon={Banknote} tone="amber" />
-        <StatCard title="Estoque crítico" value={data.cards.criticalStock} hint="Itens abaixo do mínimo" icon={PackageOpen} tone="red" />
-        <StatCard title="Funcionários ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" />
+        <StatCard title="Total de animais" value={data.cards.totalAnimals} hint="Rebanho cadastrado" icon={PawPrint} tone="green" loading={showPlaceholders} />
+        <StatCard title="Animais ativos" value={data.cards.activeAnimals} hint="Status ativo" icon={PawPrint} tone="green" loading={showPlaceholders} />
+        <StatCard title="Produção diária" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Entrada do mês" value={formatCurrency(data.cards.income)} hint="Transações de entrada" icon={TrendingUp} tone="green" loading={showPlaceholders} />
+        <StatCard title="Saída do mês" value={formatCurrency(data.cards.expenses)} hint="Transações de saída" icon={TrendingDown} tone="red" loading={showPlaceholders} />
+        <StatCard title="Resultado do mês" value={formatCurrency(data.cards.profit)} hint="Entradas menos saídas" icon={Banknote} tone="amber" loading={showPlaceholders} />
+        <StatCard title="Estoque crítico" value={data.cards.criticalStock} hint="Itens abaixo do mínimo" icon={PackageOpen} tone="red" loading={showPlaceholders} />
+        <StatCard title="Funcionários ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="glass rounded-lg p-5 shadow-soft">
           <h2 className="text-xl font-black">Produção por dia</h2>
           <p className="mb-6 mt-1 text-sm text-slate-500 dark:text-slate-400">Evolução recente da produção leiteira.</p>
-          <BarChart data={data.charts.productionByDay} suffix=" L" />
+          {showPlaceholders ? <ChartSkeleton /> : <BarChart data={data.charts.productionByDay} suffix=" L" />}
         </div>
         <div className="glass rounded-lg p-5 shadow-soft">
           <h2 className="text-xl font-black">Ranking por animal</h2>
           <p className="mb-6 mt-1 text-sm text-slate-500 dark:text-slate-400">Top brincos por volume registrado.</p>
-          <BarChart data={data.charts.animalRanking} suffix=" L" />
+          {showPlaceholders ? <ChartSkeleton /> : <BarChart data={data.charts.animalRanking} suffix=" L" />}
         </div>
       </section>
 
@@ -144,7 +191,12 @@ export default function DashboardPage() {
           <h2 className="text-xl font-black">Alertas de estoque</h2>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
-          {data.criticalStock.length ? data.criticalStock.map((item) => (
+          {showPlaceholders ? Array.from({ length: 3 }).map((_, index) => (
+            <div key={`stock-alert-skeleton-${index}`} className="rounded-lg border border-slate-200 bg-white/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="mt-3 h-4 w-48 max-w-full" />
+            </div>
+          )) : data.criticalStock.length ? data.criticalStock.map((item) => (
             <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
               <p className="font-black">{item.nome}</p>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">

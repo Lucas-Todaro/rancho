@@ -3,6 +3,7 @@
 import { Download, Eye, PawPrint, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AnyRecord, RelationOption } from "@/lib/types";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
@@ -39,6 +40,33 @@ function phaseTone(value: unknown) {
   if (value === "lactacao") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200";
   if (value === "vazia") return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200";
   return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200";
+}
+
+function AnimalCardSkeleton() {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-7 w-24" />
+          <Skeleton className="mt-2 h-4 w-16" />
+        </div>
+        <Skeleton className="h-7 w-20 rounded-full" />
+      </div>
+      <div className="my-8 flex justify-center">
+        <Skeleton className="h-24 w-24 rounded-full" />
+      </div>
+      <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Skeleton className="h-11 flex-1 rounded-lg" />
+        <Skeleton className="h-11 w-11 rounded-lg" />
+        <Skeleton className="h-11 w-11 rounded-lg" />
+      </div>
+    </article>
+  );
 }
 
 export function AnimalCards({
@@ -142,13 +170,13 @@ export function AnimalCards({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <strong className="text-slate-800 dark:text-slate-100">{loading ? "Carregando..." : `${filteredAnimals.length} animais`}</strong>
+          {loading ? <Skeleton className="h-5 w-28" /> : <strong className="text-slate-800 dark:text-slate-100">{`${filteredAnimals.length} animais`}</strong>}
           <span>encontrados na visão atual.</span>
         </div>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
-        {filteredAnimals.length ? filteredAnimals.map((animal) => {
+        {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalCardSkeleton key={`animal-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
           const lote = loteLookup[String(animal.lote_id || "")] || "Sem lote";
           const phase = displayLabel(phaseLabels, animal.fase, "Sem fase");
           const category = displayLabel(categoryLabels, animal.categoria, "Animal");
@@ -206,7 +234,7 @@ export function AnimalCards({
           );
         }) : (
           <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">
-            {loading ? "Carregando rebanho..." : "Nenhum animal encontrado com esses filtros."}
+            Nenhum animal encontrado com esses filtros.
           </div>
         )}
       </div>

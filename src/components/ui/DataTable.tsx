@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 function renderCell(value: any, field: ModuleField, lookups?: Record<string, Record<string, string>>) {
   if (field.type === "currency") return formatCurrency(value);
@@ -35,7 +36,8 @@ export function DataTable({
   onEdit,
   onView,
   onExport,
-  relationOptions = {}
+  relationOptions = {},
+  loading = false
 }: {
   rows: AnyRecord[];
   fields: ModuleField[];
@@ -46,6 +48,7 @@ export function DataTable({
   onView?: (row: AnyRecord) => void;
   onExport: () => void;
   relationOptions?: Record<string, RelationOption[]>;
+  loading?: boolean;
 }) {
   const visibleFields = useMemo(() => fields.filter((field) => field.tableVisible !== false).slice(0, 8), [fields]);
   const lookups = useMemo(() => Object.entries(relationOptions).reduce<Record<string, Record<string, string>>>((acc, [field, options]) => {
@@ -83,7 +86,21 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length ? rows.map((row) => (
+            {loading ? Array.from({ length: 5 }).map((_, rowIndex) => (
+              <tr key={`table-skeleton-${rowIndex}`}>
+                {visibleFields.map((field, fieldIndex) => (
+                  <td key={field.name}>
+                    <Skeleton className={`h-4 ${fieldIndex % 3 === 0 ? "w-28" : fieldIndex % 3 === 1 ? "w-20" : "w-36"}`} />
+                  </td>
+                ))}
+                <td>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-9 w-9 rounded-lg" />
+                    <Skeleton className="h-9 w-9 rounded-lg" />
+                  </div>
+                </td>
+              </tr>
+            )) : rows.length ? rows.map((row) => (
               <tr key={row.id} className={`${onView ? "cursor-pointer" : ""} hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10`} onClick={onView ? () => onView(row) : undefined}>
                 {visibleFields.map((field) => <td key={field.name}>{renderCell(row[field.name], field, lookups)}</td>)}
                 <td>
