@@ -101,7 +101,7 @@ export default function DashboardPage() {
   const initialLoading = loading && !hasLoaded;
   const initialError = Boolean(error && !hasLoaded);
   const showPlaceholders = initialLoading || initialError;
-//o
+//oi
   return (
     <div className="animate-fade-in space-y-8">
       <section className="overflow-hidden rounded-lg bg-emerald-900 p-6 text-white shadow-soft md:p-8">
