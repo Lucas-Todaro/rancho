@@ -49,7 +49,7 @@ end $$;
 --   'admin',
 --   true
 -- );
-
+--oi
 -- Para o WhatsApp descobrir a fazenda pelo telefone:
 --
 -- insert into public.whatsapp_usuarios (fazenda_id, telefone_e164, usuario_id, nome_exibicao, papel_bot, ativo)
