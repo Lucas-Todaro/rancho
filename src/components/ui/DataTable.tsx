@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Pencil, Search, Trash2 } from "lucide-react";
+import { Download, Pencil, Search, Trash2, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -51,15 +51,25 @@ export function DataTable({
   }, {});
 
   return (
-    <div className="glass rounded-lg p-4 shadow-soft">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="relative max-w-md flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="input pl-10" placeholder="Buscar registros..." value={search} onChange={(event) => setSearch(event.target.value)} />
+    <div className="glass rounded-lg p-4 shadow-soft md:p-5">
+      <div className="mb-4 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/45">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <label className="relative flex-1 md:max-w-xl">
+            <span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Filtro rapido</span>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input className="input input-with-icon input-with-clear" placeholder="Pesquisar por nome, codigo ou descricao..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              {search ? (
+                <button className="absolute right-2 top-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100" onClick={() => setSearch("")} type="button" title="Limpar busca">
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+          </label>
+          <button className="btn btn-secondary md:mb-0" onClick={onExport} type="button">
+            <Download className="h-4 w-4" /> Baixar planilha
+          </button>
         </div>
-        <button className="btn btn-secondary" onClick={onExport} type="button">
-          <Download className="h-4 w-4" /> Exportar CSV
-        </button>
       </div>
       <div className="table-wrap rounded-lg border border-slate-200/70 dark:border-slate-800">
         <table>

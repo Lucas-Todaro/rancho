@@ -37,7 +37,7 @@ export function StatCard({
         </div>
       </div>
       <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-        <ArrowUpRight className="h-4 w-4" /> Dados sincronizados
+        <ArrowUpRight className="h-4 w-4" /> Acompanhamento ativo
       </div>
     </div>
   );

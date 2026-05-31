@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json({
-        error: "Cadastro automatico precisa de SUPABASE_SERVICE_ROLE_KEY valida no .env.local."
+        error: "Cadastro automatico indisponivel agora. Fale com o administrador."
       }, { status: 503 });
     }
 

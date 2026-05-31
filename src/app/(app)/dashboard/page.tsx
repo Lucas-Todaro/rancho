@@ -75,16 +75,16 @@ export default function DashboardPage() {
       <section className="overflow-hidden rounded-lg bg-emerald-900 p-6 text-white shadow-soft md:p-8">
         <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
           <div>
-            <Badge tone="success">Sistema em tempo real</Badge>
+            <Badge tone="success">Painel da fazenda</Badge>
             <h1 className="mt-5 max-w-3xl text-4xl font-black tracking-tight md:text-5xl">
               {profile?.fazenda?.nome || "Controle da fazenda"} em tempo real.
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-emerald-100">
-              Rebanho, leite, estoque, financeiro, equipe e folha integrados ao Supabase com RLS por fazenda.
+              Acompanhe rebanho, leite, estoque, financeiro, equipe e pagamentos em uma visao simples para o dia a dia.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <button onClick={load} className="btn bg-white text-emerald-950" type="button">{loading ? "Atualizando..." : "Atualizar painel"}</button>
-              <a href="/whatsapp" className="btn border border-white/25 bg-white/10 text-white">Configurar WhatsApp</a>
+              <a href="/whatsapp" className="btn border border-white/25 bg-white/10 text-white">Abrir WhatsApp</a>
             </div>
           </div>
           <div className="rounded-lg border border-white/15 bg-white/10 p-5 backdrop-blur-xl">

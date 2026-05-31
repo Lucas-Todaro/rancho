@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  Bell,
   Bot,
   ClipboardList,
   Clock3,
@@ -67,12 +66,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
-        <div className="flex items-center gap-2 font-black">
-          <Bell className="h-4 w-4" /> Dica
-        </div>
-        <p className="mt-2 text-xs leading-relaxed">Configure o Supabase no .env e o app sai do modo demo automaticamente.</p>
-      </div>
     </aside>
   );
 }

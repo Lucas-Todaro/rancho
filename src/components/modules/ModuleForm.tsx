@@ -114,11 +114,11 @@ export function ModuleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-lg p-5 shadow-soft">
+    <form onSubmit={handleSubmit} className="glass rounded-lg p-5 shadow-soft md:p-6">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-black">{editing ? "Editar registro" : "Novo registro"}</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Preencha os campos e salve para sincronizar.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Preencha os campos principais e salve o registro.</p>
         </div>
         {editing ? (
           <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
@@ -126,9 +126,9 @@ export function ModuleForm({
           </button>
         ) : null}
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {config.fields.map((field) => (
-          <label key={field.name} className={cn("space-y-2", field.type === "textarea" && "md:col-span-2")}>
+          <label key={field.name} className={cn("space-y-2", field.type === "textarea" && "md:col-span-2 xl:col-span-3")}>
             <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{field.label}{field.required ? " *" : ""}</span>
             <FieldInput field={field} value={values[field.name]} onChange={(value) => update(field.name, value)} relationOptions={relationOptions[field.name]} />
           </label>

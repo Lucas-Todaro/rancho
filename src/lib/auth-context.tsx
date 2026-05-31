@@ -22,7 +22,7 @@ type AuthContextValue = {
 const demoProfile: UsuarioProfile = {
   id: DEMO_USUARIO_ID,
   fazenda_id: DEMO_FAZENDA_ID,
-  nome: "Administrador Demo",
+  nome: "Administrador",
   telefone: "5585999990000",
   papel: "admin",
   ativo: true,
@@ -37,19 +37,32 @@ const demoProfile: UsuarioProfile = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const AUTH_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: PromiseLike<T>, message = "Tempo de conexao esgotado. Tente entrar novamente.") {
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), AUTH_TIMEOUT_MS);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId));
+}
 
 async function fetchProfile(userId: string) {
   if (!supabaseBrowser) return demoProfile;
 
-  const { data, error } = await supabaseBrowser
-    .from("usuarios")
-    .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
-    .eq("id", userId)
-    .maybeSingle();
+  const { data, error } = await withTimeout(
+    supabaseBrowser
+      .from("usuarios")
+      .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
+      .eq("id", userId)
+      .maybeSingle()
+  );
 
   if (error) throw new Error(error.message);
   if (!data) {
-    throw new Error("Este login ainda nao esta vinculado a uma fazenda na tabela usuarios.");
+    throw new Error("Este login ainda nao esta vinculado a uma fazenda. Fale com o administrador.");
   }
 
   const raw = data as unknown as UsuarioProfile & { fazenda?: UsuarioProfile["fazenda"] | UsuarioProfile["fazenda"][] };
@@ -100,12 +113,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!mounted) return;
+      try {
+        const { data } = await withTimeout(supabaseBrowser.auth.getSession());
+        if (!mounted) return;
 
-      setSession(data.session);
-      await loadProfile(data.session);
-      if (mounted) setLoading(false);
+        setSession(data.session);
+        await loadProfile(data.session);
+      } catch (err) {
+        if (!mounted) return;
+        setSession(null);
+        setProfile(null);
+        setError(err instanceof Error ? err.message : "Sua sessao expirou. Entre novamente.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
     }
 
     boot();
@@ -114,8 +135,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
-      await loadProfile(nextSession);
-      setLoading(false);
+      try {
+        await withTimeout(loadProfile(nextSession));
+      } catch (err) {
+        setSession(null);
+        setProfile(null);
+        setError(err instanceof Error ? err.message : "Sua sessao expirou. Entre novamente.");
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -129,13 +157,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabaseBrowser) return;
     setLoading(true);
     setError("");
-    const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({ email, password });
-    if (signInError) {
+    try {
+      const { data, error: signInError } = await withTimeout(supabaseBrowser.auth.signInWithPassword({ email, password }));
+      if (signInError) throw new Error(signInError.message);
+
+      setSession(data.session);
+      await withTimeout(loadProfile(data.session));
+    } catch (err) {
       setLoading(false);
-      throw new Error(signInError.message);
+      throw err instanceof Error ? err : new Error("Nao foi possivel entrar.");
     }
-    setSession(data.session);
-    await loadProfile(data.session);
     setLoading(false);
   }
 

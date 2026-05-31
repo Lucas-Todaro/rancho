@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, Moon, Search, Sun, Wifi, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
@@ -17,13 +18,49 @@ const mobileLinks = [
   ["/funcionarios", "Funcionarios"],
   ["/ponto", "Ponto"],
   ["/folha", "Folha"],
-  ["/whatsapp", "WhatsApp"]
+  ["/relatorios", "Relatorios"],
+  ["/whatsapp", "WhatsApp"],
+  ["/configuracoes", "Configuracoes"]
 ];
 
+const globalDestinations = [
+  { href: "/dashboard", label: "Dashboard", helper: "Visao geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
+  { href: "/lotes", label: "Lotes", helper: "Grupos e manejo do rebanho", keywords: ["lote", "piquete", "manejo", "grupo"] },
+  { href: "/rebanho", label: "Rebanho", helper: "Animais, brincos e fases", keywords: ["animal", "animais", "brinco", "vaca", "boi", "rebanho"] },
+  { href: "/eventos", label: "Eventos", helper: "Vacinas, partos e tratamentos", keywords: ["evento", "vacina", "parto", "doenca", "tratamento", "pesagem"] },
+  { href: "/producao", label: "Producao", helper: "Ordenhas e litros de leite", keywords: ["leite", "ordenha", "litros", "producao"] },
+  { href: "/estoque", label: "Estoque", helper: "Racao, medicamentos e insumos", keywords: ["estoque", "racao", "medicamento", "insumo", "equipamento"] },
+  { href: "/financeiro", label: "Financeiro", helper: "Entradas, saidas e caixa", keywords: ["dinheiro", "receita", "despesa", "financeiro", "caixa"] },
+  { href: "/funcionarios", label: "Funcionarios", helper: "Equipe e contatos", keywords: ["funcionario", "equipe", "colaborador", "contato"] },
+  { href: "/ponto", label: "Ponto", helper: "Entradas e saidas da equipe", keywords: ["ponto", "entrada", "saida", "horario"] },
+  { href: "/folha", label: "Folha", helper: "Pagamentos e descontos", keywords: ["folha", "salario", "pagamento", "desconto"] },
+  { href: "/relatorios", label: "Relatorios", helper: "Resumo para impressao", keywords: ["relatorio", "pdf", "imprimir", "resultado"] },
+  { href: "/whatsapp", label: "WhatsApp", helper: "Atendimento e menu de teste", keywords: ["whatsapp", "mensagem", "chat", "telefone"] },
+  { href: "/configuracoes", label: "Configuracoes", helper: "Conta e preferencias", keywords: ["configuracao", "preferencia", "conta", "perfil"] }
+];
+
+function normalizeSearch(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function findDestinations(value: string) {
+  const term = normalizeSearch(value.trim());
+  if (!term) return [];
+
+  return globalDestinations
+    .filter((item) => normalizeSearch(`${item.label} ${item.helper} ${item.keywords.join(" ")}`).includes(term))
+    .slice(0, 6);
+}
+
 export function Header() {
+  const router = useRouter();
   const { profile, isDemo, signOut } = useAuth();
   const [dark, setDark] = useState(false);
   const [open, setOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const searchResults = useMemo(() => findDestinations(globalSearch), [globalSearch]);
 
   useEffect(() => {
     const saved = localStorage.getItem("rancho-theme");
@@ -39,6 +76,18 @@ export function Header() {
     document.documentElement.classList.toggle("dark", next);
   }
 
+  function goTo(href: string) {
+    setGlobalSearch("");
+    setSearchOpen(false);
+    router.push(href);
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const firstResult = findDestinations(globalSearch)[0];
+    if (firstResult) goTo(firstResult.href);
+  }
+
   return (
     <header className="no-print sticky top-0 z-20 border-b border-slate-200/60 bg-white/82 px-4 py-3 backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-950/78 md:px-8">
       <div className="flex items-center justify-between gap-4">
@@ -49,20 +98,60 @@ export function Header() {
           <strong>Rancho Pro</strong>
         </div>
 
-        <div className="hidden max-w-xl flex-1 items-center gap-3 rounded-lg border border-slate-200 bg-white/70 px-4 py-2 dark:border-slate-800 dark:bg-slate-900/70 lg:flex">
-          <Search className="h-4 w-4 text-slate-400" />
-          <input className="w-full bg-transparent text-sm outline-none" placeholder="Busca global: animal, estoque, funcionario..." />
-        </div>
+        <form onSubmit={submitSearch} className="relative hidden max-w-xl flex-1 lg:block">
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/75 px-4 py-2 shadow-sm transition focus-within:border-emerald-500/60 focus-within:ring-4 focus-within:ring-emerald-700/10 dark:border-slate-800 dark:bg-slate-900/70">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              className="w-full bg-transparent text-sm outline-none"
+              placeholder="Buscar atalho: animal, estoque, funcionario..."
+              value={globalSearch}
+              onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+              onChange={(event) => {
+                setGlobalSearch(event.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  const firstResult = findDestinations(event.currentTarget.value)[0];
+                  if (firstResult) {
+                    event.preventDefault();
+                    goTo(firstResult.href);
+                  }
+                }
+              }}
+            />
+          </div>
+
+          {searchOpen && globalSearch.trim() ? (
+            <div className="absolute left-0 right-0 top-12 z-30 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900">
+              {searchResults.length ? searchResults.map((item) => (
+                <button
+                  key={item.href}
+                  className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => goTo(item.href)}
+                  type="button"
+                >
+                  <span>
+                    <span className="block text-sm font-black">{item.label}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{item.helper}</span>
+                  </span>
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">Abrir</span>
+                </button>
+              )) : (
+                <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">Nenhum atalho encontrado.</div>
+              )}
+            </div>
+          ) : null}
+        </form>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className={cn("hidden items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold md:flex", !isDemo ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200")}>
-            <Wifi className="h-4 w-4" /> {!isDemo ? "Supabase online" : "Modo demo"}
-          </div>
-          <button onClick={toggleTheme} className="rounded-lg border border-slate-200 bg-white/70 p-2 dark:border-slate-800 dark:bg-slate-900/70" type="button" title="Tema">
+          <button onClick={toggleTheme} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title="Tema">
             {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
           {!isDemo ? (
-            <button onClick={signOut} className="rounded-lg border border-slate-200 bg-white/70 p-2 dark:border-slate-800 dark:bg-slate-900/70" type="button" title="Sair">
+            <button onClick={signOut} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title="Sair">
               <LogOut className="h-5 w-5" />
             </button>
           ) : null}
@@ -76,7 +165,7 @@ export function Header() {
       {open ? (
         <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 lg:hidden">
           {mobileLinks.map(([href, label]) => (
-            <Link key={href} href={href} onClick={() => setOpen(false)} className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold dark:bg-slate-800">
+            <Link key={href} href={href} onClick={() => setOpen(false)} className={cn("rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold dark:bg-slate-800", "hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-200")}>
               {label}
             </Link>
           ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, Printer } from "lucide-react";
+import { FileText, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
 import { loadDashboardData } from "@/services/dashboard";
@@ -19,17 +19,6 @@ export default function RelatoriosPage() {
     window.print();
   }
 
-  function exportHtml() {
-    const content = document.getElementById("report-content")?.innerHTML || "";
-    const blob = new Blob([`<html><body>${content}</body></html>`], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "relatorio-rancho.html";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   if (!data) return <div className="glass rounded-lg p-8">Carregando relatorios...</div>;
 
   return (
@@ -45,8 +34,7 @@ export default function RelatoriosPage() {
           </p>
         </div>
         <div className="no-print flex gap-3">
-          <button className="btn btn-secondary" onClick={exportHtml} type="button"><Download className="h-4 w-4" /> Exportar HTML</button>
-          <button className="btn btn-primary" onClick={printReport} type="button"><Printer className="h-4 w-4" /> Imprimir / PDF</button>
+          <button className="btn btn-primary" onClick={printReport} type="button"><Printer className="h-4 w-4" /> Imprimir ou salvar PDF</button>
         </div>
       </div>
 

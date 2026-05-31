@@ -130,12 +130,11 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {(config.quickStats || []).map((stat, index) => (
-          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Atualiza com o Realtime" icon={index % 2 ? Icons.Activity : Icon} tone={index % 2 ? "blue" : "green"} />
+          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Icons.Activity : Icon} tone={index % 2 ? "blue" : "green"} />
         ))}
-        <StatCard title="Tabela" value={config.tableName} hint="Mapeada no Supabase" icon={Icons.Database} tone="slate" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+      <div className="space-y-6">
         <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
         <div className="space-y-3">
           <div className="flex items-center justify-between">

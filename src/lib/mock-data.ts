@@ -20,7 +20,7 @@ export const mockData: Record<string, AnyRecord[]> = {
     {
       id: DEMO_USUARIO_ID,
       fazenda_id: DEMO_FAZENDA_ID,
-      nome: "Administrador Demo",
+      nome: "Administrador",
       telefone: "5585999990000",
       papel: "admin",
       ativo: true,
