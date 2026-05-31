@@ -1,13 +1,16 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
-import { normalizeWhatsappNumber } from "@/lib/phone";
+import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import { resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import {
   BOT_EXAMPLES,
+  formatStockUnit,
   mergeRanchoMessageData,
   normalizeRanchoText,
   parseRanchoMessage,
+  refreshRanchoMessage,
   type ParsedRanchoMessage
 } from "@/lib/whatsapp/nlp";
 
@@ -57,6 +60,7 @@ type MatchResult<T extends AnyRecord> = {
   row: T;
   exact: boolean;
   score: number;
+  ambiguousRows?: T[];
 };
 
 const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "ok", "pode", "pode salvar", "isso", "certo", "1"]);
@@ -121,8 +125,31 @@ function formatNumber(value: number | string | null | undefined, suffix = "") {
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(value || 0))}${suffix}`;
 }
 
+function formatStockAmount(quantity: number | string | null | undefined, unit: string | null | undefined) {
+  return `${formatNumber(quantity)} ${formatStockUnit(quantity, unit)}`.trim();
+}
+
 function maskPhone(value: string) {
   return value.length > 4 ? `***${value.slice(-4)}` : "***";
+}
+
+function isBotAdmin(owner: WhatsAppOwner) {
+  return owner.papel_bot === "admin";
+}
+
+function isValidBotPhone(value: string | number | null | undefined) {
+  const phone = normalizeWhatsappNumber(value);
+  if (phone.length !== 13 || !phone.startsWith("55")) return false;
+  const national = phone.slice(2);
+  const ddd = Number(national.slice(0, 2));
+  return ddd >= 11 && ddd <= 99 && national[2] === "9" && !/^(\d)\1+$/.test(national);
+}
+
+function formatWhatsappForBot(value: string | number | null | undefined) {
+  const phone = normalizeWhatsappNumber(value);
+  if (phone.length !== 13 || !phone.startsWith("55")) return phone || "";
+  const national = phone.slice(2);
+  return `+55 (${national.slice(0, 2)}) ${national.slice(2, 7)}-${national.slice(7)}`;
 }
 
 function botLog(event: string, owner: WhatsAppOwner, details: AnyRecord) {
@@ -178,9 +205,11 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     MORTE: "morte de animal",
     DESPESA: "saída financeira",
     RECEITA_VENDA: "entrada financeira",
+    CRIAR_ITEM_ESTOQUE: "criação de item no estoque",
     ESTOQUE_CADASTRO: "cadastro de item no estoque",
     ESTOQUE_ENTRADA: "entrada de estoque",
     ESTOQUE_SAIDA: "baixa de estoque",
+    CRIAR_FUNCIONARIO: "cadastro de funcionário",
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
     CONSULTA_PRODUCAO: "consulta de produção",
@@ -290,6 +319,11 @@ function matchKey(value: unknown) {
   return normalizeRanchoText(String(value || "")).replace(/[^a-z0-9]/g, "");
 }
 
+function numericKey(value: unknown) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits ? digits.replace(/^0+/, "") || "0" : "";
+}
+
 function levenshtein(left: string, right: string) {
   const costs = Array.from({ length: right.length + 1 }, (_, index) => index);
   for (let i = 1; i <= left.length; i += 1) {
@@ -311,6 +345,9 @@ function scoreCandidate(term: string, candidate: string) {
   const option = matchKey(candidate);
   if (!target || !option) return 0;
   if (target === option) return 1;
+  const targetNumeric = numericKey(term);
+  const optionNumeric = numericKey(candidate);
+  if (targetNumeric && optionNumeric && targetNumeric === optionNumeric) return 1;
   if (option.includes(target)) return 0.92;
   if (target.includes(option)) return 0.82;
   const distance = levenshtein(target, option);
@@ -332,12 +369,19 @@ function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
   const { data, error } = await supabase
     .from(TABLES.animais)
-    .select("id,brinco,categoria,status")
+    .select("id,brinco,categoria,status,raca,observacoes")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
   if (error) throw new Error(error.message);
-  return bestMatch((data || []) as AnyRecord[], code, (row) => [row.brinco]);
+  const resolved = resolveAnimalIdentifier(code, (data || []) as AnyRecord[]);
+  if (!resolved.row) return undefined;
+  return {
+    row: resolved.row,
+    exact: resolved.status === "matched" && resolved.exact,
+    score: resolved.score,
+    ambiguousRows: resolved.status === "ambiguous" ? resolved.rows : undefined
+  };
 }
 
 async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
@@ -348,7 +392,15 @@ async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name
     .limit(1000);
 
   if (error) throw new Error(error.message);
-  return bestMatch((data || []) as AnyRecord[], name, (row) => [row.nome]);
+  const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
+  const resolved = resolveStockItem(name, activeRows);
+  if (!resolved.row) return undefined;
+  return {
+    row: resolved.row,
+    exact: resolved.status === "matched" && resolved.exact,
+    score: resolved.score,
+    ambiguousRows: resolved.status === "ambiguous" ? resolved.rows : undefined
+  };
 }
 
 async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
@@ -372,8 +424,51 @@ function stockCategoryFromName(name: string) {
 }
 
 function pendingWithData(pending: ParsedRanchoMessage, dados: AnyRecord): ParsedRanchoMessage {
-  const text = `${pending.resumo} ${Object.values(dados).join(" ")}`;
-  return { ...mergeRanchoMessageData(pending, text), dados: { ...pending.dados, ...dados } };
+  return refreshRanchoMessage(pending, { ...pending.dados, ...dados });
+}
+
+async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = { ...(parsed.dados || {}) };
+  let changed = false;
+
+  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(parsed.tipo) && dados.animal_codigo) {
+    const found = await findAnimal(supabase, owner, String(dados.animal_codigo));
+    if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.9)) {
+      dados.animal_codigo = found.row.brinco;
+      dados.animal_id = found.row.id;
+      changed = true;
+    } else if (found?.ambiguousRows?.length) {
+      dados.animal_opcoes = found.ambiguousRows.map((row) => row.brinco);
+      dados.animal_referencia_nao_encontrada = dados.animal_codigo;
+      dados.animal_codigo = undefined;
+      changed = true;
+    } else if (!found) {
+      dados.animal_referencia_nao_encontrada = dados.animal_codigo;
+      dados.animal_codigo = undefined;
+      changed = true;
+    }
+  }
+
+  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE"].includes(parsed.tipo) && dados.item_nome) {
+    const found = await findStockItem(supabase, owner, String(dados.item_nome));
+    if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
+      dados.item_nome = found.row.nome;
+      dados.item_id = found.row.id;
+      dados.item_estoque_encontrado = true;
+      changed = true;
+    }
+
+    if (parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra && !found && !isBotAdmin(owner)) {
+      const financeData = {
+        valor: dados.valor,
+        descricao: dados.item_nome,
+        data_referencia: dados.data_referencia
+      };
+      return refreshRanchoMessage({ ...parsed, tipo: "DESPESA", dados: financeData }, financeData);
+    }
+  }
+
+  return changed ? refreshRanchoMessage(parsed, dados) : parsed;
 }
 
 async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
@@ -384,6 +479,14 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     if (!found) {
       return {
         response: `Não encontrei o animal "${dados.animal_codigo || ""}" no rebanho. Me envie o brinco cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
+      };
+    }
+
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => `- ${row.brinco}`).join("\n");
+      return {
+        response: `Encontrei mais de um animal parecido. Me envie o brinco correto:\n${options}`,
         nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
       };
     }
@@ -497,10 +600,30 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     return { response: `Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.` };
   }
 
-  if (pending.tipo === "ESTOQUE_CADASTRO") {
+  if (pending.tipo === "ESTOQUE_CADASTRO" || pending.tipo === "CRIAR_ITEM_ESTOQUE") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item." };
+    }
+
     const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
     if (found?.exact) {
       return { response: `Não criei um novo item porque "${found.row.nome}" já existe no estoque.` };
+    }
+
+    if (found?.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => `- ${row.nome}`).join("\n");
+      return {
+        response: `Encontrei itens parecidos. Me envie o nome exato do item novo ou use um existente:\n${options}`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { item_nome: undefined }) } }
+      };
+    }
+
+    if (found && found.score >= 0.86) {
+      const nextPending = pendingWithData(pending, { item_nome: found.row.nome });
+      return {
+        response: `Encontrei um item parecido: ${found.row.nome}. Quer usar esse item em vez de criar outro?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
     }
 
     await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
@@ -516,14 +639,29 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       created_by: owner.usuario_id || null
     });
 
-    return { response: `Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatNumber(dados.quantidade)} ${dados.unidade || ""}.` };
+    return { response: `Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatStockAmount(dados.quantidade, dados.unidade)}.` };
   }
 
   if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
     const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
     if (!found) {
+      if (pending.tipo === "ESTOQUE_ENTRADA" && dados.compra && isBotAdmin(owner)) {
+        return {
+          response: `Não encontrei "${dados.item_nome || ""}" no estoque. Deseja criar o item de estoque ou registrar apenas como despesa?\n1 - Criar item de estoque\n2 - Registrar apenas despesa`,
+          nextSession: { etapa: "aguardando_dado", dados: { pending, acao_pendente: "compra_item_nao_encontrado" } }
+        };
+      }
+
       return {
         response: `Não encontrei "${dados.item_nome || ""}" no estoque. Me envie o nome do item cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { item_nome: undefined }) } }
+      };
+    }
+
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => `- ${row.nome}`).join("\n");
+      return {
+        response: `Encontrei mais de um item parecido. Me envie o item correto:\n${options}`,
         nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { item_nome: undefined }) } }
       };
     }
@@ -540,7 +678,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     const current = Number(found.row.quantidade_atual || 0);
     const quantity = Number(dados.quantidade || 0);
     if (type === "saida" && quantity > current) {
-      return { response: `Não salvei. O saldo de ${found.row.nome} é ${formatNumber(current)} ${found.row.unidade_medida || ""}, menor que a baixa pedida.` };
+      return { response: `Não salvei. O saldo de ${found.row.nome} é ${formatStockAmount(current, found.row.unidade_medida)}, menor que a baixa pedida.` };
     }
 
     await insertRealRecord(supabase, owner, TABLES.estoqueMovimentacoes, {
@@ -554,7 +692,105 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       origem: "whatsapp"
     });
 
-    return { response: `Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatNumber(quantity)} ${found.row.unidade_medida || ""} de ${found.row.nome}.` };
+    if (pending.tipo === "ESTOQUE_ENTRADA" && dados.compra && dados.valor) {
+      await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+        fazenda_id: owner.fazenda_id,
+        tipo: "saida",
+        data_transacao: dateOnlyFromReference(dados.data_referencia),
+        valor: Number(dados.valor),
+        categoria: found.row.nome,
+        descricao: `Compra de ${found.row.nome} registrada via WhatsApp`,
+        metodo_pagamento: "whatsapp",
+        origem: "whatsapp",
+        created_by: owner.usuario_id || null
+      });
+
+      return {
+        response: `Pronto, registros salvos com sucesso.\nEntrada: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.\nDespesa: ${formatMoney(dados.valor)}.`
+      };
+    }
+
+    return { response: `Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.` };
+  }
+
+  if (pending.tipo === "CRIAR_FUNCIONARIO") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para cadastrar funcionários pelo bot. Peça para um administrador fazer esse cadastro." };
+    }
+
+    const phone = normalizeWhatsappNumber(dados.telefone);
+    if (!isValidBotPhone(phone)) {
+      return {
+        response: "Informe um WhatsApp válido para o funcionário.",
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { telefone: undefined }) } }
+      };
+    }
+
+    const { data: employees, error: employeesError } = await supabase
+      .from(TABLES.funcionarios)
+      .select("id,nome,contato_whatsapp,ativo,deleted_at")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(2000);
+    if (employeesError) throw new Error(employeesError.message);
+
+    const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
+      row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
+    ));
+    if (duplicateEmployee) {
+      return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
+    }
+
+    const { data: whatsappRows, error: whatsappError } = await supabase
+      .from(TABLES.whatsappUsuarios)
+      .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(2000);
+    if (whatsappError) throw new Error(whatsappError.message);
+
+    const activeWhatsapp = ((whatsappRows || []) as AnyRecord[]).find((row) => (
+      row.ativo !== false && whatsappNumbersMatch(phone, String(row.telefone_e164 || ""))
+    ));
+    if (activeWhatsapp) {
+      return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está ativo para ${activeWhatsapp.nome_exibicao || "outro usuário"}.` };
+    }
+
+    const employee = await insertRealRecord(supabase, owner, TABLES.funcionarios, {
+      fazenda_id: owner.fazenda_id,
+      nome: dados.funcionario_nome,
+      funcao: dados.funcao || "Funcionário",
+      contato_whatsapp: phone,
+      salario_base: 0,
+      data_admissao: dateOnly(),
+      carga_horaria_mensal: 220,
+      valor_hora_extra: 0,
+      ativo: true
+    });
+
+    const reusableWhatsapp = ((whatsappRows || []) as AnyRecord[]).find((row) => (
+      whatsappNumbersMatch(phone, String(row.telefone_e164 || "")) && (row.ativo === false || !row.funcionario_id)
+    ));
+    const whatsappPayload = {
+      fazenda_id: owner.fazenda_id,
+      telefone_e164: phone,
+      usuario_id: null,
+      funcionario_id: employee.id,
+      nome_exibicao: dados.funcionario_nome,
+      papel_bot: "funcionario",
+      ativo: true
+    };
+
+    if (reusableWhatsapp?.id) {
+      const { error } = await supabase
+        .from(TABLES.whatsappUsuarios)
+        .update(whatsappPayload)
+        .eq("id", reusableWhatsapp.id)
+        .eq("fazenda_id", owner.fazenda_id);
+      if (error) throw new Error(error.message);
+    } else {
+      await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
+    }
+
+    return { response: `Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${formatWhatsappForBot(phone)}.` };
   }
 
   if (pending.tipo === "PONTO_FUNCIONARIO") {
@@ -632,7 +868,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   if (parsed.tipo === "CONSULTA_ESTOQUE") {
     if (parsed.dados.item_nome) {
       const found = await findStockItem(supabase, owner, String(parsed.dados.item_nome));
-      if (found) return `Estoque de ${found.row.nome}: ${formatNumber(found.row.quantidade_atual)} ${found.row.unidade_medida || ""}.`;
+      if (found) return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.`;
     }
 
     const { data, error } = await supabase
@@ -642,7 +878,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
       .limit(1000);
     if (error) throw new Error(error.message);
     const critical = (data || []).filter((row) => Number(row.quantidade_atual || 0) <= Number(row.quantidade_minima || 0));
-    const examples = critical.slice(0, 3).map((row) => `- ${row.nome}: ${formatNumber(row.quantidade_atual)} ${row.unidade_medida || ""}`).join("\n");
+    const examples = critical.slice(0, 3).map((row) => `- ${row.nome}: ${formatStockAmount(row.quantidade_atual, row.unidade_medida)}`).join("\n");
     return critical.length
       ? `Você tem ${critical.length} item(ns) em atenção no estoque:\n${examples}`
       : "Estoque consultado. Não encontrei itens abaixo do mínimo agora.";
@@ -668,7 +904,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
 }
 
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
-  const parsed = parsedMessage || parseRanchoMessage(text);
+  const parsed = await enrichWithCatalog(supabase, owner, parsedMessage || parseRanchoMessage(text));
   botLog("nlp_general", owner, {
     currentIntent: parsed.tipo,
     status: "livre",
@@ -684,6 +920,16 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (parsed.tipo === "DESCONHECIDO") {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return unknownText();
+  }
+
+  if (parsed.tipo === "CRIAR_ITEM_ESTOQUE" && !isBotAdmin(owner)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item.";
+  }
+
+  if (parsed.tipo === "CRIAR_FUNCIONARIO" && !isBotAdmin(owner)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Você não tem permissão para cadastrar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
   }
 
   if (parsed.perguntas_faltantes.length) {
@@ -720,7 +966,34 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) return handleFreeText(supabase, owner, text);
 
-  const next = mergeRanchoMessageData(pending, text);
+  if (session.dados?.acao_pendente === "compra_item_nao_encontrado") {
+    const command = normalizeRanchoText(text);
+    if (command === "1" || /\b(?:criar|item|estoque)\b/.test(command)) {
+      const createData = {
+        item_nome: pending.dados.item_nome,
+        unidade: pending.dados.unidade,
+        quantidade: 0
+      };
+      const next = refreshRanchoMessage({ ...pending, tipo: "CRIAR_ITEM_ESTOQUE", dados: createData }, createData);
+      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ? "aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
+      return next.perguntas_faltantes.length ? missingText(next) : confirmationText(next);
+    }
+
+    if (command === "2" || /\b(?:despesa|financeiro)\b/.test(command)) {
+      const financeData = {
+        valor: pending.dados.valor,
+        descricao: pending.dados.item_nome,
+        data_referencia: pending.dados.data_referencia
+      };
+      const next = refreshRanchoMessage({ ...pending, tipo: "DESPESA", dados: financeData }, financeData);
+      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ? "aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
+      return next.perguntas_faltantes.length ? missingText(next) : confirmationText(next);
+    }
+
+    return "Responda 1 para criar o item de estoque ou 2 para registrar apenas como despesa.";
+  }
+
+  const next = await enrichWithCatalog(supabase, owner, mergeRanchoMessageData(pending, text));
   botLog("contextual_reply", owner, {
     pending: next,
     status: "aguardando_dado",

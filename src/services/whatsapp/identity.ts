@@ -11,6 +11,7 @@ export type WhatsAppOwner = {
   usuario_id: string | null;
   telefone_e164: string;
   nome_exibicao?: string | null;
+  papel_bot?: string | null;
   source: "whatsapp_usuarios";
 };
 
@@ -41,7 +42,7 @@ async function assertActiveFarm(supabase: SupabaseAdmin, fazendaId?: string | nu
 async function findWhatsAppUsers(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
   const { data, error } = await supabase
     .from(TABLES.whatsappUsuarios)
-    .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,ativo")
+    .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,papel_bot,ativo")
     .limit(2000);
 
   if (error) throw new Error(error.message);
@@ -72,6 +73,7 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
         usuario_id: (whatsappUser.usuario_id as string | null) || null,
         telefone_e164: normalizeWhatsappNumber(whatsappUser.telefone_e164 as string) || normalizedPhone,
         nome_exibicao: whatsappUser.nome_exibicao as string | null,
+        papel_bot: whatsappUser.papel_bot as string | null,
         source: "whatsapp_usuarios" as const
       };
 

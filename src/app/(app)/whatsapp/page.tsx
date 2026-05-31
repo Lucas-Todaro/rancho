@@ -119,6 +119,12 @@ export default function WhatsAppPage() {
     rows.find((row) => row.ativo !== false)?.telefone_e164
   ), [rows]);
 
+  const simulatedWhatsappUser = useMemo(() => {
+    const normalized = normalizeWhatsappNumber(botTestPhone);
+    if (!normalized) return null;
+    return rows.find((row) => row.ativo !== false && whatsappNumbersMatch(row.telefone_e164, normalized)) || null;
+  }, [botTestPhone, rows]);
+
   useEffect(() => {
     if (!botTestPhone && firstActiveWhatsapp) {
       setBotTestPhone(formatBrazilianPhone(firstActiveWhatsapp));
@@ -531,6 +537,15 @@ export default function WhatsAppPage() {
                 <span className="text-sm font-bold">Telefone simulado</span>
                 <input className="input" value={botTestPhone} onChange={(event) => setBotTestPhone(formatBrazilianPhone(event.target.value))} placeholder="5583999999999" />
               </label>
+              <div className="mt-2 rounded-lg border border-slate-200 bg-white/70 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/55">
+                {simulatedWhatsappUser ? (
+                  <p>
+                    Simulando: <strong>{simulatedWhatsappUser.nome_exibicao || formatBrazilianPhone(simulatedWhatsappUser.telefone_e164)}</strong> · {roleLabel(simulatedWhatsappUser.papel_bot)} · {formatBrazilianPhone(simulatedWhatsappUser.telefone_e164)}
+                  </p>
+                ) : (
+                  <p className="text-slate-500 dark:text-slate-400">Informe um WhatsApp ativo cadastrado para simular admin ou funcionário.</p>
+                )}
+              </div>
               <label className="mt-4 block space-y-2">
                 <span className="text-sm font-bold">Mensagem</span>
                 <textarea className="input min-h-28 resize-y" value={botTestMessage} onChange={(event) => setBotTestMessage(event.target.value)} placeholder="vaca B-002 deu 32 litros" />
