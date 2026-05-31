@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Pencil, Search, Trash2, X } from "lucide-react";
+import { Download, Eye, Pencil, Search, Trash2, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -32,6 +32,7 @@ export function DataTable({
   setSearch,
   onDelete,
   onEdit,
+  onView,
   onExport,
   relationOptions = {}
 }: {
@@ -41,6 +42,7 @@ export function DataTable({
   setSearch: (value: string) => void;
   onDelete: (id: string) => void;
   onEdit: (row: AnyRecord) => void;
+  onView?: (row: AnyRecord) => void;
   onExport: () => void;
   relationOptions?: Record<string, RelationOption[]>;
 }) {
@@ -76,19 +78,24 @@ export function DataTable({
           <thead className="bg-slate-50/80 dark:bg-slate-900/70">
             <tr>
               {visibleFields.map((field) => <th key={field.name}>{field.label}</th>)}
-              <th>Ações</th>
+              <th>Acoes</th>
             </tr>
           </thead>
           <tbody>
             {rows.length ? rows.map((row) => (
-              <tr key={row.id} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10">
+              <tr key={row.id} className={`${onView ? "cursor-pointer" : ""} hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10`} onClick={onView ? () => onView(row) : undefined}>
                 {visibleFields.map((field) => <td key={field.name}>{renderCell(row[field.name], field, lookups)}</td>)}
                 <td>
                   <div className="flex gap-2">
-                    <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" onClick={() => onEdit(row)} title="Editar" type="button">
+                    {onView ? (
+                      <button className="rounded-lg border border-emerald-200 p-2 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-200 dark:hover:bg-emerald-950" onClick={(event) => { event.stopPropagation(); onView(row); }} title="Ver detalhes" type="button">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); onEdit(row); }} title="Editar" type="button">
                       <Pencil className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" onClick={() => onDelete(row.id)} title="Excluir" type="button">
+                    <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" onClick={(event) => { event.stopPropagation(); onDelete(row.id); }} title="Excluir" type="button">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>

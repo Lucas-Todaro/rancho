@@ -43,6 +43,7 @@ export const FARM_SCOPED_TABLES = new Set<string>([
 export const CREATED_BY_FIELDS: Record<string, string> = {
   [TABLES.animais]: "created_by",
   [TABLES.estoqueItens]: "created_by",
+  [TABLES.estoqueMovimentacoes]: "responsavel_usuario_id",
   [TABLES.transacoesFinanceiras]: "created_by",
   [TABLES.registrosPonto]: "created_by",
   [TABLES.ordenhas]: "registrado_por",

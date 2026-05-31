@@ -4,6 +4,7 @@ import * as Icons from "lucide-react";
 import { Plus, RefreshCw, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
+import { AnimalDetailModal } from "@/components/modules/AnimalDetailModal";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
@@ -43,6 +44,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [relationOptions, setRelationOptions] = useState<Record<string, RelationOption[]>>({});
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AnyRecord | null>(null);
+  const [selectedAnimal, setSelectedAnimal] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -143,9 +145,29 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               <Plus className="h-4 w-4" /> {loading ? "Carregando..." : `${filteredRows.length} itens`}
             </div>
           </div>
-          <DataTable rows={filteredRows} fields={config.fields} search={search} setSearch={setSearch} onDelete={remove} onEdit={setEditing} onExport={() => exportCsv(config.key, filteredRows, config.fields)} relationOptions={relationOptions} />
+          <DataTable
+            rows={filteredRows}
+            fields={config.fields}
+            search={search}
+            setSearch={setSearch}
+            onDelete={remove}
+            onEdit={setEditing}
+            onView={config.key === "rebanho" ? setSelectedAnimal : undefined}
+            onExport={() => exportCsv(config.key, filteredRows, config.fields)}
+            relationOptions={relationOptions}
+          />
         </div>
       </div>
+
+      {selectedAnimal ? (
+        <AnimalDetailModal
+          animal={selectedAnimal}
+          context={dataContext}
+          relationOptions={relationOptions}
+          onClose={() => setSelectedAnimal(null)}
+          onChanged={load}
+        />
+      ) : null}
     </div>
   );
 }

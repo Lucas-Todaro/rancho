@@ -47,6 +47,7 @@ function preparePayload(tableName: string, values: AnyRecord, context?: DataCont
   if (tableName === TABLES.ordenhas && !payload.origem) payload.origem = "web";
   if (tableName === TABLES.registrosPonto && !payload.origem) payload.origem = "web";
   if (tableName === TABLES.transacoesFinanceiras && !payload.origem) payload.origem = "web";
+  if (tableName === TABLES.estoqueMovimentacoes && !payload.origem) payload.origem = "web";
 
   return payload;
 }
