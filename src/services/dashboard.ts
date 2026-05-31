@@ -46,7 +46,7 @@ export async function loadDashboardData(context?: DataContext) {
   const expenses = monthFinance.filter((item) => item.tipo === "saida").reduce((sum, item) => sum + Number(item.valor || 0), 0);
 
   const criticalStock = stock.filter((item) => Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0));
-  const activeEmployees = employees.filter((item) => item.ativo !== false);
+  const activeEmployees = employees.filter((item) => item.ativo !== false && !item.deleted_at);
   const payrollByEmployee = new Map(
     payrolls
       .filter((item) => String(item.competencia || "").slice(0, 7) === month)

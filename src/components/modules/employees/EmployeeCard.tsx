@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Eye, Pencil, Power, UserRound } from "lucide-react";
+import { Clock3, Eye, Pencil, Power, Trash2, UserRound } from "lucide-react";
 import type { AnyRecord } from "@/lib/types";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -37,13 +37,15 @@ export function EmployeeCard({
   lastPoint,
   onView,
   onEdit,
-  onToggleActive
+  onToggleActive,
+  onDelete
 }: {
   employee: AnyRecord;
   lastPoint?: AnyRecord;
   onView: (employee: AnyRecord) => void;
   onEdit: (employee: AnyRecord) => void;
   onToggleActive: (employee: AnyRecord) => void;
+  onDelete: (employee: AnyRecord) => void;
 }) {
   const active = employee.ativo !== false;
   const lastPointLabel = lastPoint
@@ -100,6 +102,9 @@ export function EmployeeCard({
         </button>
         <button className="rounded-lg border border-amber-200 p-3 text-amber-700 transition hover:bg-amber-50 dark:border-amber-900 dark:hover:bg-amber-950" type="button" onClick={(event) => { event.stopPropagation(); onToggleActive(employee); }} title={active ? "Desativar funcionário" : "Ativar funcionário"}>
           <Power className="h-4 w-4" />
+        </button>
+        <button className="rounded-lg border border-red-200 p-3 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(employee); }} title="Excluir funcionário">
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
     </article>

@@ -4,7 +4,7 @@ import { Download, Plus, RefreshCw, Search, Users, Wallet, X, Clock3 } from "luc
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
@@ -65,10 +65,11 @@ export function EmployeeScreen() {
         listRecords(TABLES.registrosPonto, { orderBy: "registrado_em", fazendaId: farmId, usuarioId: userId }),
         listRecords(TABLES.folhaPagamento, { orderBy: "competencia", fazendaId: farmId, usuarioId: userId })
       ]);
-      setEmployees(nextEmployees);
+      const visibleEmployees = nextEmployees.filter((employee) => !employee.deleted_at);
+      setEmployees(visibleEmployees);
       setTimeEntries(nextTimeEntries);
       setPayrolls(nextPayrolls);
-      setSelected((current) => current ? nextEmployees.find((employee) => employee.id === current.id) || null : null);
+      setSelected((current) => current ? visibleEmployees.find((employee) => employee.id === current.id) || null : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar funcionários.");
     } finally {
@@ -108,12 +109,13 @@ export function EmployeeScreen() {
   }, [employees, search]);
 
   const month = currentMonthKey();
+  const visibleEmployeeIds = useMemo(() => new Set(employees.map((employee) => employee.id)), [employees]);
   const activeEmployees = employees.filter((employee) => employee.ativo !== false);
   const monthlyPayroll = activeEmployees.reduce((sum, employee) => {
     const payroll = payrolls.find((row) => row.funcionario_id === employee.id && monthKey(row.competencia) === month);
     return sum + Number(payroll?.total_liquido ?? employee.salario_base ?? 0);
   }, 0);
-  const pointsThisMonth = timeEntries.filter((entry) => monthKey(entry.registrado_em) === month).length;
+  const pointsThisMonth = timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length;
   const showPlaceholders = loading || Boolean(error && !employees.length);
 
   function closeForm() {
@@ -152,6 +154,50 @@ export function EmployeeScreen() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível alterar o status.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function softDeleteEmployee(employee: AnyRecord) {
+    await updateRecord(TABLES.funcionarios, employee.id, {
+      ativo: false,
+      deleted_at: new Date().toISOString()
+    });
+  }
+
+  async function removeEmployee(employee: AnyRecord) {
+    const hasHistory = timeEntries.some((entry) => entry.funcionario_id === employee.id) || payrolls.some((row) => row.funcionario_id === employee.id);
+    const ok = window.confirm(
+      hasHistory
+        ? `Tem certeza que deseja excluir ${employee.nome}? Essa ação não poderá ser desfeita na lista principal, mas o histórico de ponto e folha será preservado.`
+        : `Tem certeza que deseja excluir ${employee.nome}? Essa ação não poderá ser desfeita.`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      if (hasHistory) {
+        await softDeleteEmployee(employee);
+      } else {
+        try {
+          await deleteRecord(TABLES.funcionarios, employee.id);
+        } catch {
+          await softDeleteEmployee(employee);
+        }
+      }
+
+      if (selected?.id === employee.id) setSelected(null);
+      notifyDashboardUpdated();
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setError(
+        /deleted_at|schema|column|cache|does not exist|não existe/i.test(message)
+          ? "Para excluir funcionários com histórico, aplique a SQL de soft delete no Supabase e tente novamente."
+          : "Não foi possível excluir o funcionário."
+      );
     } finally {
       setBusy(false);
     }
@@ -229,6 +275,7 @@ export function EmployeeScreen() {
               onView={setSelected}
               onEdit={(row) => { setEditing(row); setShowForm(true); }}
               onToggleActive={toggleActive}
+              onDelete={removeEmployee}
             />
           )) : (
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">

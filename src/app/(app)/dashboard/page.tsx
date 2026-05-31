@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Activity, AlertTriangle, Banknote, Droplets, PackageOpen, PawPrint, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
@@ -101,7 +102,6 @@ export default function DashboardPage() {
   const initialLoading = loading && !hasLoaded;
   const initialError = Boolean(error && !hasLoaded);
   const showPlaceholders = initialLoading || initialError;
-//oi
   return (
     <div className="animate-fade-in space-y-8">
       <section className="overflow-hidden rounded-lg bg-emerald-900 p-6 text-white shadow-soft md:p-8">
@@ -122,13 +122,13 @@ export default function DashboardPage() {
           <div className="rounded-lg border border-white/15 bg-white/10 p-5 backdrop-blur-xl">
             {initialLoading ? (
               <>
-                <div className="flex min-w-0 items-center justify-between gap-4">
+                <Link href="/financeiro" className="flex min-w-0 items-center justify-between gap-4 rounded-lg outline-none transition hover:bg-white/5 focus-visible:ring-4 focus-visible:ring-white/20">
                   <div className="min-w-0 flex-1">
                     <Skeleton className="h-4 w-32 bg-white/20" />
                     <Skeleton className="mt-3 h-10 w-48 max-w-full bg-white/20" />
                   </div>
                   <Skeleton className="h-10 w-10 rounded-lg bg-white/20" />
-                </div>
+                </Link>
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   {Array.from({ length: 4 }).map((_, index) => <Skeleton key={`hero-card-${index}`} className="h-20 rounded-lg bg-white/20" />)}
                 </div>
@@ -139,18 +139,18 @@ export default function DashboardPage() {
               </div>
             ) : (
               <>
-                <div className="flex min-w-0 items-center justify-between gap-4">
+                <Link href="/financeiro" className="flex min-w-0 items-center justify-between gap-4 rounded-lg outline-none transition hover:bg-white/5 focus-visible:ring-4 focus-visible:ring-white/20">
                   <div className="min-w-0">
                     <p className="text-sm text-emerald-100">Resultado do mês</p>
                     <h2 className="mt-2 max-w-full truncate text-[clamp(1.45rem,3vw,2.25rem)] font-black tabular-nums" title={profitLabel}>{profitLabel}</h2>
                   </div>
                   <Activity className="h-10 w-10 shrink-0 text-lime-200" />
-                </div>
+                </Link>
                 <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
-                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Entradas</p><strong className="block truncate font-black tabular-nums" title={incomeLabel}>{incomeLabel}</strong></div>
-                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Saídas</p><strong className="block truncate font-black tabular-nums" title={expensesLabel}>{expensesLabel}</strong></div>
-                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Hoje</p><strong className="block truncate font-black tabular-nums" title={productionTodayLabel}>{productionTodayLabel}</strong></div>
-                  <div className="min-w-0 rounded-lg bg-white/10 p-4"><p className="text-emerald-100">Mês</p><strong className="block truncate font-black tabular-nums" title={productionMonthLabel}>{productionMonthLabel}</strong></div>
+                  <Link href="/financeiro" className="min-w-0 rounded-lg bg-white/10 p-4 outline-none transition hover:bg-white/15 focus-visible:ring-4 focus-visible:ring-white/20"><p className="text-emerald-100">Entradas</p><strong className="block truncate font-black tabular-nums" title={incomeLabel}>{incomeLabel}</strong></Link>
+                  <Link href="/financeiro" className="min-w-0 rounded-lg bg-white/10 p-4 outline-none transition hover:bg-white/15 focus-visible:ring-4 focus-visible:ring-white/20"><p className="text-emerald-100">Saídas</p><strong className="block truncate font-black tabular-nums" title={expensesLabel}>{expensesLabel}</strong></Link>
+                  <Link href="/producao" className="min-w-0 rounded-lg bg-white/10 p-4 outline-none transition hover:bg-white/15 focus-visible:ring-4 focus-visible:ring-white/20"><p className="text-emerald-100">Hoje</p><strong className="block truncate font-black tabular-nums" title={productionTodayLabel}>{productionTodayLabel}</strong></Link>
+                  <Link href="/producao" className="min-w-0 rounded-lg bg-white/10 p-4 outline-none transition hover:bg-white/15 focus-visible:ring-4 focus-visible:ring-white/20"><p className="text-emerald-100">Mês</p><strong className="block truncate font-black tabular-nums" title={productionMonthLabel}>{productionMonthLabel}</strong></Link>
                 </div>
               </>
             )}
@@ -162,14 +162,14 @@ export default function DashboardPage() {
       {initialError ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">Não foi possível carregar o painel. Tente atualizar novamente em instantes.</div> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total de animais" value={data.cards.totalAnimals} hint="Rebanho cadastrado" icon={PawPrint} tone="green" loading={showPlaceholders} />
-        <StatCard title="Animais ativos" value={data.cards.activeAnimals} hint="Status ativo" icon={PawPrint} tone="green" loading={showPlaceholders} />
-        <StatCard title="Produção diária" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" loading={showPlaceholders} />
-        <StatCard title="Entrada do mês" value={formatCurrency(data.cards.income)} hint="Transações de entrada" icon={TrendingUp} tone="green" loading={showPlaceholders} />
-        <StatCard title="Saída do mês" value={formatCurrency(data.cards.expenses)} hint="Transações de saída" icon={TrendingDown} tone="red" loading={showPlaceholders} />
-        <StatCard title="Resultado do mês" value={formatCurrency(data.cards.profit)} hint="Entradas menos saídas" icon={Banknote} tone="amber" loading={showPlaceholders} />
-        <StatCard title="Estoque crítico" value={data.cards.criticalStock} hint="Itens abaixo do mínimo" icon={PackageOpen} tone="red" loading={showPlaceholders} />
-        <StatCard title="Funcionários ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Total de animais" value={data.cards.totalAnimals} hint="Rebanho cadastrado" icon={PawPrint} tone="green" loading={showPlaceholders} href="/rebanho" />
+        <StatCard title="Animais ativos" value={data.cards.activeAnimals} hint="Status ativo" icon={PawPrint} tone="green" loading={showPlaceholders} href="/rebanho" />
+        <StatCard title="Produção diária" value={formatNumber(data.cards.productionToday, " L")} hint="Litros registrados hoje" icon={Droplets} tone="blue" loading={showPlaceholders} href="/producao" />
+        <StatCard title="Entrada do mês" value={formatCurrency(data.cards.income)} hint="Transações de entrada" icon={TrendingUp} tone="green" loading={showPlaceholders} href="/financeiro" />
+        <StatCard title="Saída do mês" value={formatCurrency(data.cards.expenses)} hint="Transações de saída" icon={TrendingDown} tone="red" loading={showPlaceholders} href="/financeiro" />
+        <StatCard title="Resultado do mês" value={formatCurrency(data.cards.profit)} hint="Entradas menos saídas" icon={Banknote} tone="amber" loading={showPlaceholders} href="/financeiro" />
+        <StatCard title="Estoque crítico" value={data.cards.criticalStock} hint="Itens abaixo do mínimo" icon={PackageOpen} tone="red" loading={showPlaceholders} href="/estoque" />
+        <StatCard title="Funcionários ativos" value={data.cards.activeEmployees} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} href="/funcionarios" />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">

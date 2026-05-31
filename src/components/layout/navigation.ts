@@ -5,6 +5,7 @@ import {
   Droplets,
   Home,
   Layers3,
+  LifeBuoy,
   PackageOpen,
   PawPrint,
   Settings,
@@ -68,6 +69,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "Sistema",
     items: [
+      { href: "/suporte", label: "Suporte", icon: LifeBuoy },
       { href: "/configuracoes", label: "Configurações", icon: Settings }
     ]
   }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,8 @@ export function StatCard({
   hint,
   icon: Icon,
   tone = "green",
-  loading = false
+  loading = false,
+  href
 }: {
   title: string;
   value: string | number;
@@ -17,6 +19,7 @@ export function StatCard({
   icon: LucideIcon;
   tone?: "green" | "lime" | "blue" | "amber" | "red" | "slate";
   loading?: boolean;
+  href?: string;
 }) {
   const tones = {
     green: "from-emerald-500/16 to-emerald-500/4 text-emerald-700 dark:text-emerald-300",
@@ -27,8 +30,8 @@ export function StatCard({
     slate: "from-slate-500/16 to-slate-500/4 text-slate-700 dark:text-slate-300"
   };
 
-  return (
-    <div className="glass card-hover flex h-full min-w-0 flex-col rounded-lg p-5 shadow-soft">
+  const content = (
+    <>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</p>
@@ -52,6 +55,21 @@ export function StatCard({
         <ArrowUpRight className="h-4 w-4 shrink-0" />
         {loading ? <Skeleton className="h-4 w-36" /> : <span className="min-w-0 break-words [overflow-wrap:anywhere]">Acompanhamento ativo</span>}
       </div>
+    </>
+  );
+
+  const className = cn(
+    "glass card-hover flex h-full min-w-0 flex-col rounded-lg p-5 shadow-soft",
+    href && "cursor-pointer outline-none transition focus-visible:ring-4 focus-visible:ring-emerald-700/20"
+  );
+
+  return href ? (
+    <Link href={href} className={className} aria-label={`Abrir ${title}`}>
+      {content}
+    </Link>
+  ) : (
+    <div className={className}>
+      {content}
     </div>
   );
 }
