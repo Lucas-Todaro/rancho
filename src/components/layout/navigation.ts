@@ -2,13 +2,11 @@ import {
   BarChart3,
   Bot,
   ClipboardList,
-  Clock3,
   Droplets,
   Home,
   Layers3,
   PackageOpen,
   PawPrint,
-  Receipt,
   Settings,
   Users,
   Wallet,
@@ -59,8 +57,6 @@ export const navGroups: NavGroup[] = [
     label: "Equipe",
     items: [
       { href: "/funcionarios", label: "Funcionários", icon: Users },
-      { href: "/ponto", label: "Ponto", icon: Clock3 },
-      { href: "/folha", label: "Folha", icon: Receipt }
     ]
   },
   {

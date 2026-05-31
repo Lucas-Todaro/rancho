@@ -1,9 +1,5 @@
-import { notFound } from "next/navigation";
-import { ModuleScreen } from "@/components/modules/ModuleScreen";
-import { getModuleConfig } from "@/lib/tables";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  const config = getModuleConfig("folha");
-  if (!config) notFound();
-  return <ModuleScreen config={config} />;
+  redirect("/funcionarios");
 }

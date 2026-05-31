@@ -1,9 +1,5 @@
-import { notFound } from "next/navigation";
-import { ModuleScreen } from "@/components/modules/ModuleScreen";
-import { getModuleConfig } from "@/lib/tables";
+import { EmployeeScreen } from "@/components/modules/employees/EmployeeScreen";
 
 export default function Page() {
-  const config = getModuleConfig("funcionarios");
-  if (!config) notFound();
-  return <ModuleScreen config={config} />;
+  return <EmployeeScreen />;
 }

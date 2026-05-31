@@ -47,6 +47,14 @@ export async function loadDashboardData(context?: DataContext) {
 
   const criticalStock = stock.filter((item) => Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0));
   const activeEmployees = employees.filter((item) => item.ativo !== false);
+  const payrollByEmployee = new Map(
+    payrolls
+      .filter((item) => String(item.competencia || "").slice(0, 7) === month)
+      .map((item) => [item.funcionario_id, Number(item.total_liquido ?? item.salario_base ?? 0)])
+  );
+  const payrollExpense = activeEmployees.reduce((sum, employee) => {
+    return sum + Number(payrollByEmployee.get(employee.id) ?? employee.salario_base ?? 0);
+  }, 0);
   const activeAlerts = alerts.filter((item) => item.resolvido !== true);
 
   const dailyMap = productions.reduce<Record<string, number>>((acc, item) => {
@@ -80,8 +88,8 @@ export async function loadDashboardData(context?: DataContext) {
       productionToday,
       productionMonth,
       income,
-      expenses,
-      profit: income - expenses,
+      expenses: expenses + payrollExpense,
+      profit: income - expenses - payrollExpense,
       criticalStock: criticalStock.length,
       activeEmployees: activeEmployees.length,
       activeAlerts: activeAlerts.length
