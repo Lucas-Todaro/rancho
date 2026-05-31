@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, deleteRecord, listRecords, updateRecord } from "@/services/crud";
+import { createRecord, deleteRecord, deleteRecords, listRecords, updateRecord } from "@/services/crud";
 import { recordStockMovement, type StockMovementType } from "@/services/stock";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
@@ -307,13 +307,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     setBusy(true);
     setError("");
     try {
-      const relatedMovements = await listRecords(TABLES.estoqueMovimentacoes, {
-        orderBy: "created_at",
-        fazendaId: dataContext.fazendaId,
-        usuarioId: dataContext.usuarioId,
-        filters: [{ column: "item_id", value: item.id }]
-      });
-      await Promise.all(relatedMovements.map((movement) => deleteRecord(TABLES.estoqueMovimentacoes, movement.id)));
+      await deleteRecords(TABLES.estoqueMovimentacoes, [{ column: "item_id", value: item.id }]);
       await deleteRecord(TABLES.estoqueItens, item.id);
       await load();
     } catch (err) {

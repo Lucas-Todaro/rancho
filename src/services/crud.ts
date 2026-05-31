@@ -157,6 +157,26 @@ export async function deleteRecord(tableName: string, id: string) {
   return true;
 }
 
+export async function deleteRecords(tableName: string, filters: ListOptions["filters"] = []) {
+  if (!supabaseBrowser) {
+    const rows = mockData[tableName] || [];
+    const rowsToDelete = new Set(filterLocalRows(tableName, rows, { filters }).map((item) => item.id));
+    mockData[tableName] = rows.filter((item) => !rowsToDelete.has(item.id));
+    return true;
+  }
+
+  let query = supabaseBrowser.from(tableName).delete();
+
+  filters.forEach((filter) => {
+    if (filter.value === undefined) return;
+    query = filter.value === null ? query.is(filter.column, null) : query.eq(filter.column, filter.value);
+  });
+
+  const { error } = await query;
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function loadRelationOptions(field: ModuleField, context?: DataContext): Promise<RelationOption[]> {
   if (!field.relation) return [];
 
