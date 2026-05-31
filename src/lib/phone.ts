@@ -13,16 +13,40 @@ export function normalizeWhatsappNumber(value: string | number | null | undefine
   return digits;
 }
 
+function addBrazilianPhoneCandidate(candidates: Set<string>, value: string) {
+  if (!value) return;
+
+  candidates.add(value);
+
+  const national = value.startsWith("55") && (value.length === 12 || value.length === 13)
+    ? value.slice(2)
+    : value;
+
+  if (national.length !== 10 && national.length !== 11) return;
+
+  candidates.add(national);
+  candidates.add(`55${national}`);
+
+  if (national.length === 11 && national[2] === "9") {
+    const withoutNinthDigit = `${national.slice(0, 2)}${national.slice(3)}`;
+    candidates.add(withoutNinthDigit);
+    candidates.add(`55${withoutNinthDigit}`);
+  }
+
+  if (national.length === 10) {
+    const withNinthDigit = `${national.slice(0, 2)}9${national.slice(2)}`;
+    candidates.add(withNinthDigit);
+    candidates.add(`55${withNinthDigit}`);
+  }
+}
+
 export function whatsappNumberCandidates(value: string | number | null | undefined) {
   const raw = normalizePhoneNumber(value).replace(/^00/, "");
   const normalized = normalizeWhatsappNumber(value);
   const candidates = new Set<string>();
 
-  if (normalized) candidates.add(normalized);
-  if (raw) candidates.add(raw);
-  if (normalized.startsWith("55")) candidates.add(normalized.slice(2));
-  if (raw.startsWith("55")) candidates.add(raw.slice(2));
-  if (raw.length === 10 || raw.length === 11) candidates.add(`55${raw}`);
+  addBrazilianPhoneCandidate(candidates, normalized);
+  addBrazilianPhoneCandidate(candidates, raw);
 
   return Array.from(candidates).filter(Boolean);
 }
