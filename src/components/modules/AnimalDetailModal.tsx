@@ -60,6 +60,13 @@ function startOfCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
+function toDateOnly(value: string) {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
 export function AnimalDetailModal({
   animal,
   context,
@@ -170,15 +177,34 @@ export function AnimalDetailModal({
     setError("");
 
     try {
+      const eventDate = draft.data_evento ? new Date(draft.data_evento).toISOString() : new Date().toISOString();
+      const cost = Number(draft.custo || 0);
+
       await createRecord(TABLES.eventosAnimal, {
         animal_id: animal.id,
         tipo: draft.tipo,
-        data_evento: draft.data_evento ? new Date(draft.data_evento).toISOString() : new Date().toISOString(),
+        data_evento: eventDate,
         descricao: draft.descricao,
         medicamento: draft.medicamento,
         dose: draft.dose,
-        custo: Number(draft.custo || 0)
+        custo: cost
       }, context);
+
+      if (cost > 0) {
+        await createRecord(TABLES.transacoesFinanceiras, {
+          tipo: "saida",
+          data_transacao: toDateOnly(eventDate),
+          valor: cost,
+          categoria: "Saúde do rebanho",
+          descricao: [
+            `Manejo do animal ${animal.brinco || "sem brinco"}`,
+            eventTypes.find((type) => type.value === draft.tipo)?.label,
+            draft.descricao,
+            draft.medicamento ? `Medicamento: ${draft.medicamento}` : null
+          ].filter(Boolean).join(" - "),
+          metodo_pagamento: "Lançamento da ficha"
+        }, context);
+      }
 
       setShowForm(false);
       await loadDetails();

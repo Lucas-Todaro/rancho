@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
+import { AnimalCards } from "@/components/modules/AnimalCards";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
@@ -178,22 +179,35 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black">Registros</h2>
+            <h2 className="text-xl font-black">{config.key === "rebanho" ? "Animais do rebanho" : "Registros"}</h2>
             <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <Plus className="h-4 w-4" /> {loading ? "Carregando..." : `${filteredRows.length} itens`}
+              <Plus className="h-4 w-4" /> {loading ? "Carregando..." : config.key === "rebanho" ? `${rows.length} animais` : `${filteredRows.length} itens`}
             </div>
           </div>
-          <DataTable
-            rows={filteredRows}
-            fields={config.fields}
-            search={search}
-            setSearch={setSearch}
-            onDelete={remove}
-            onEdit={setEditing}
-            onView={config.key === "rebanho" ? setSelectedAnimal : undefined}
-            onExport={() => exportCsv(config.key, filteredRows, config.fields)}
-            relationOptions={relationOptions}
-          />
+          {config.key === "rebanho" ? (
+            <AnimalCards
+              rows={rows}
+              search={search}
+              setSearch={setSearch}
+              relationOptions={relationOptions}
+              loading={loading}
+              onDelete={remove}
+              onEdit={setEditing}
+              onView={setSelectedAnimal}
+              onExport={(animals) => exportCsv(config.key, animals, config.fields)}
+            />
+          ) : (
+            <DataTable
+              rows={filteredRows}
+              fields={config.fields}
+              search={search}
+              setSearch={setSearch}
+              onDelete={remove}
+              onEdit={setEditing}
+              onExport={() => exportCsv(config.key, filteredRows, config.fields)}
+              relationOptions={relationOptions}
+            />
+          )}
         </div>
       </div>
 
