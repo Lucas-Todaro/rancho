@@ -11,7 +11,7 @@ export type WhatsAppOwner = {
   usuario_id: string | null;
   telefone_e164: string;
   nome_exibicao?: string | null;
-  source: "whatsapp_usuarios" | "funcionarios" | "usuarios";
+  source: "whatsapp_usuarios";
 };
 
 export type ResolveWhatsAppOwnerResult = {
@@ -42,7 +42,6 @@ async function findWhatsAppUser(supabase: SupabaseAdmin, incomingCandidates: Set
   const { data, error } = await supabase
     .from(TABLES.whatsappUsuarios)
     .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,ativo")
-    .eq("ativo", true)
     .limit(500);
 
   if (error) throw new Error(error.message);
@@ -63,34 +62,25 @@ async function linkedEmployeeIsActive(supabase: SupabaseAdmin, employeeId?: stri
   return Boolean(data && data.ativo !== false && !data.deleted_at);
 }
 
-async function findEmployee(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
-  const { data, error } = await supabase
-    .from(TABLES.funcionarios)
-    .select("id,fazenda_id,nome,contato_whatsapp,ativo,deleted_at")
-    .eq("ativo", true)
-    .limit(500);
-
-  if (error) throw new Error(error.message);
-  return (data || []).find((row) => !row.deleted_at && matchesIncomingPhone(row.contato_whatsapp, incomingCandidates)) || null;
-}
-
-async function findUser(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
-  const { data, error } = await supabase
-    .from(TABLES.usuarios)
-    .select("id,fazenda_id,nome,telefone,papel,ativo")
-    .eq("ativo", true)
-    .limit(500);
-
-  if (error) throw new Error(error.message);
-  return (data || []).find((row) => matchesIncomingPhone(row.telefone, incomingCandidates)) || null;
-}
-
 export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Promise<ResolveWhatsAppOwnerResult> {
   const normalizedPhone = normalizeWhatsappNumber(from);
   const incomingCandidates = new Set(whatsappNumberCandidates(from));
 
   const whatsappUser = await findWhatsAppUser(supabase, incomingCandidates);
   if (whatsappUser) {
+    if (whatsappUser.ativo === false) {
+      console.log("[BOT AUTH]", {
+        fromRaw: from,
+        normalized: normalizedPhone,
+        source: "whatsapp_usuarios",
+        userFound: true,
+        ranchoFound: Boolean(whatsappUser.fazenda_id),
+        reason: "user_inactive"
+      });
+
+      return { owner: null, reason: "user_inactive" };
+    }
+
     const farmError = await assertActiveFarm(supabase, whatsappUser.fazenda_id as string | null);
     const inactiveLinkedEmployee = !farmError && !(await linkedEmployeeIsActive(
       supabase,
@@ -121,56 +111,6 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
       : inactiveLinkedEmployee
         ? { owner: null, reason: "user_inactive" }
         : { owner };
-  }
-
-  const employee = await findEmployee(supabase, incomingCandidates);
-  if (employee) {
-    const farmError = await assertActiveFarm(supabase, employee.fazenda_id as string | null);
-    const owner = farmError ? null : {
-      fazenda_id: employee.fazenda_id as string,
-      whatsapp_usuario_id: null,
-      funcionario_id: employee.id as string,
-      usuario_id: null,
-      telefone_e164: normalizeWhatsappNumber(employee.contato_whatsapp as string) || normalizedPhone,
-      nome_exibicao: employee.nome as string | null,
-      source: "funcionarios" as const
-    };
-
-    console.log("[BOT AUTH]", {
-      fromRaw: from,
-      normalized: normalizedPhone,
-      source: "funcionarios",
-      userFound: true,
-      ranchoFound: Boolean(owner?.fazenda_id),
-      reason: farmError || "ok"
-    });
-
-    return farmError ? { owner: null, reason: farmError } : { owner };
-  }
-
-  const user = await findUser(supabase, incomingCandidates);
-  if (user) {
-    const farmError = await assertActiveFarm(supabase, user.fazenda_id as string | null);
-    const owner = farmError ? null : {
-      fazenda_id: user.fazenda_id as string,
-      whatsapp_usuario_id: null,
-      funcionario_id: null,
-      usuario_id: user.id as string,
-      telefone_e164: normalizeWhatsappNumber(user.telefone as string) || normalizedPhone,
-      nome_exibicao: user.nome as string | null,
-      source: "usuarios" as const
-    };
-
-    console.log("[BOT AUTH]", {
-      fromRaw: from,
-      normalized: normalizedPhone,
-      source: "usuarios",
-      userFound: true,
-      ranchoFound: Boolean(owner?.fazenda_id),
-      reason: farmError || "ok"
-    });
-
-    return farmError ? { owner: null, reason: farmError } : { owner };
   }
 
   console.log("[BOT AUTH]", {

@@ -383,9 +383,9 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
     } else if (resolvedOwner.reason === "farm_inactive") {
       response = "O rancho vinculado a este WhatsApp está inativo. Fale com o administrador.";
     } else if (resolvedOwner.reason === "user_inactive") {
-      response = "Este WhatsApp está vinculado a um usuário inativo. Fale com o administrador.";
+      response = "Este WhatsApp está cadastrado, mas está inativo para usar o bot. Fale com o administrador do Rancho.";
     } else {
-      response = "Não encontrei este WhatsApp cadastrado em nenhum rancho. Verifique se o número está correto nas Configurações ou fale com o suporte.";
+      response = "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
     }
   } else {
     const command = normalizeRanchoText(input.Body);
