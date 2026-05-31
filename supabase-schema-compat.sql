@@ -36,7 +36,7 @@ begin
     references public.estoque_itens(id)
     on delete cascade;
 end $$;
---oi
+--o
 -- Para o login funcionar com RLS, cada auth.users.id precisa ter uma linha em public.usuarios.
 -- Exemplo, ajuste os IDs antes de executar:
 --
