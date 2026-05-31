@@ -301,11 +301,19 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   }
 
   async function removeItem(item: AnyRecord) {
-    const ok = window.confirm(`Excluir ${item.nome}?`);
+    const ok = window.confirm(`Excluir ${item.nome}? As movimentações desse item também serão removidas.`);
     if (!ok) return;
 
     setBusy(true);
+    setError("");
     try {
+      const relatedMovements = await listRecords(TABLES.estoqueMovimentacoes, {
+        orderBy: "created_at",
+        fazendaId: dataContext.fazendaId,
+        usuarioId: dataContext.usuarioId,
+        filters: [{ column: "item_id", value: item.id }]
+      });
+      await Promise.all(relatedMovements.map((movement) => deleteRecord(TABLES.estoqueMovimentacoes, movement.id)));
       await deleteRecord(TABLES.estoqueItens, item.id);
       await load();
     } catch (err) {
