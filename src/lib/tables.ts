@@ -221,7 +221,16 @@ export const moduleConfigs: ModuleConfig[] = [
         { label: "Equipamento", value: "equipamento" },
         { label: "Outro", value: "outro" }
       ] },
-      { name: "unidade_medida", label: "Unidade", type: "text", required: true, defaultValue: "kg", placeholder: "kg, saco, L, unidade" },
+      { name: "unidade_medida", label: "Unidade", type: "select", required: true, defaultValue: "kg", options: [
+        { label: "Quilo (kg)", value: "kg" },
+        { label: "Grama (g)", value: "g" },
+        { label: "Litro (L)", value: "L" },
+        { label: "Mililitro (ml)", value: "ml" },
+        { label: "Unidade", value: "unidade" },
+        { label: "Saco", value: "saco" },
+        { label: "Caixa", value: "caixa" },
+        { label: "Dose", value: "dose" }
+      ] },
       { name: "quantidade_atual", label: "Quantidade atual", type: "number", required: true, defaultValue: 0 },
       { name: "quantidade_minima", label: "Quantidade mínima", type: "number", defaultValue: 0 },
       { name: "valor_unitario", label: "Valor unitário", type: "currency", defaultValue: 0 },
