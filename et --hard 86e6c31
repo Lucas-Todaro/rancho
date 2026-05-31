@@ -1,0 +1,41 @@
+[33m9b33814[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m a
+[33m86e6c31[m Melhora NLP do bot WhatsApp
+[33ma4ba7ef[m Corrige comparacao de WhatsApp brasileiro
+[33mcb7185c[m mais erros
+[33me3eef9c[m zap error
+[33m4ee4f04[m Fix error number
+[33mb8383a3[m Update supabase-schema-compat.sql
+[33m211f106[m normalização de telefone
+[33m1d629ae[m Update supabase-schema-compat.sql
+[33me6f2c8f[m Setando bot whatsapp
+[33mc7c95ac[m Update supabase-schema-compat.sql
+[33m6c85452[m Correção webhook twilio
+[33m66b8caa[m Update supabase-schema-compat.sql
+[33m3305693[m Interatividade dashboard
+[33mf00535a[m Segurança e otimização
+[33m6747647[m Update page.tsx
+[33m8f319d7[m Merge branch 'main' of https://github.com/Lucas-Todaro/rancho
+[33m5029c84[m refatoração geral
+[33m7fb0823[m Update page.tsx
+[33m5125949[m alteração exibição funcionários
+[33m1855b6c[m Update page.tsx
+[33m8b78e65[m melhoria de gestao de estoque
+[33m8d9417b[m Update StockScreen.tsx
+[33m63b1245[m Adicionou checklist
+[33m794909c[m Adicionei
+[33m9657ac7[m .
+[33mfa1fb31[m .
+[33m099cc0d[m Fix error
+[33mf17dabf[m Otimizou
+[33m6090a9e[m damn
+[33me097de2[m z
+[33md547ce5[m Update auth-context.tsx
+[33ma7fedfc[m mudancas
+[33m6f2a994[m a
+[33m4c4fb1f[m Delete vercel.json
+[33mfd9375f[m a
+[33m8273c56[m Codex
+[33mc21af45[m a
+[33m86ac154[m Delete rancho-vercel-starter.zip
+[33ma3c3a51[m Add files via upload
+[33m0ca1762[m Initial commit
