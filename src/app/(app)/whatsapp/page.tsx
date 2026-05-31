@@ -33,6 +33,28 @@ const defaultOutboundMessage = [
   "- João entrou às 7:30"
 ].join("\n");
 
+type BotTestResult = {
+  respostaTexto: string;
+  intencaoDetectada: string | null;
+  confianca: number | null;
+  dadosExtraidos: AnyRecord | null;
+  estadoAnterior: string | null;
+  estadoNovo: string | null;
+  camposFaltantes: string[];
+  eventoConfirmado: boolean;
+  erro: string | null;
+};
+
+type BotTestHistoryItem = {
+  id: string;
+  telefone: string;
+  mensagem: string;
+  resposta: string;
+  horario: string;
+};
+
+const defaultBotTestMessage = "vaca B-002 deu 32 litros";
+
 function roleLabel(value: unknown) {
   return roleOptions.find((option) => option.value === roleFromDatabase(value))?.label || "Usuário";
 }
@@ -46,10 +68,15 @@ function roleToDatabase(value: string) {
 }
 
 export default function WhatsAppPage() {
-  const { dataContext, profile } = useAuth();
+  const { dataContext, profile, session } = useAuth();
   const [phone, setPhone] = useState("");
   const [outboundMessage, setOutboundMessage] = useState(defaultOutboundMessage);
   const [status, setStatus] = useState("");
+  const [botTestPhone, setBotTestPhone] = useState("");
+  const [botTestMessage, setBotTestMessage] = useState(defaultBotTestMessage);
+  const [botTestLoading, setBotTestLoading] = useState(false);
+  const [botTestResult, setBotTestResult] = useState<BotTestResult | null>(null);
+  const [botTestHistory, setBotTestHistory] = useState<BotTestHistoryItem[]>([]);
   const [rows, setRows] = useState<AnyRecord[]>([]);
   const [draft, setDraft] = useState(initialDraft);
   const [editing, setEditing] = useState<AnyRecord | null>(null);
@@ -87,6 +114,16 @@ export default function WhatsAppPage() {
     active: rows.filter((row) => row.ativo !== false).length,
     inactive: rows.filter((row) => row.ativo === false).length
   }), [rows]);
+
+  const firstActiveWhatsapp = useMemo(() => (
+    rows.find((row) => row.ativo !== false)?.telefone_e164
+  ), [rows]);
+
+  useEffect(() => {
+    if (!botTestPhone && firstActiveWhatsapp) {
+      setBotTestPhone(formatBrazilianPhone(firstActiveWhatsapp));
+    }
+  }, [botTestPhone, firstActiveWhatsapp]);
 
   function updateDraft(name: keyof typeof draft, value: string | boolean) {
     setDraft((current) => ({ ...current, [name]: value }));
@@ -218,6 +255,84 @@ export default function WhatsAppPage() {
       setStatus("Não foi possível enviar agora.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function simulateBotMessage() {
+    if (!canManage) return;
+    const normalizedPhone = normalizeWhatsappNumber(botTestPhone);
+    const text = botTestMessage.trim();
+
+    if (!normalizedPhone) {
+      setBotTestResult({
+        respostaTexto: "",
+        intencaoDetectada: null,
+        confianca: null,
+        dadosExtraidos: null,
+        estadoAnterior: null,
+        estadoNovo: null,
+        camposFaltantes: [],
+        eventoConfirmado: false,
+        erro: "Informe o telefone simulado."
+      });
+      return;
+    }
+
+    if (!text) {
+      setBotTestResult({
+        respostaTexto: "",
+        intencaoDetectada: null,
+        confianca: null,
+        dadosExtraidos: null,
+        estadoAnterior: null,
+        estadoNovo: null,
+        camposFaltantes: [],
+        eventoConfirmado: false,
+        erro: "Informe a mensagem para simular."
+      });
+      return;
+    }
+
+    setBotTestLoading(true);
+    try {
+      const response = await fetch("/api/whatsapp/testar-bot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        },
+        body: JSON.stringify({
+          telefone: normalizedPhone,
+          mensagem: text
+        })
+      });
+      const data = await response.json().catch(() => ({
+        respostaTexto: "",
+        erro: "Não foi possível ler a resposta do simulador."
+      }));
+      const result = data as BotTestResult;
+      setBotTestResult(result);
+      setBotTestHistory((current) => [{
+        id: crypto.randomUUID(),
+        telefone: normalizedPhone,
+        mensagem: text,
+        resposta: result.respostaTexto || result.erro || "Sem resposta.",
+        horario: new Date().toISOString()
+      }, ...current].slice(0, 8));
+    } catch {
+      setBotTestResult({
+        respostaTexto: "",
+        intencaoDetectada: null,
+        confianca: null,
+        dadosExtraidos: null,
+        estadoAnterior: null,
+        estadoNovo: null,
+        camposFaltantes: [],
+        eventoConfirmado: false,
+        erro: "Não foi possível simular agora."
+      });
+    } finally {
+      setBotTestLoading(false);
     }
   }
 
@@ -399,6 +514,99 @@ export default function WhatsAppPage() {
           </div>
         </div>
       </div>
+
+      {canManage ? (
+        <section className="glass rounded-lg p-5 shadow-soft md:p-6">
+          <div className="mb-5 flex items-center gap-3">
+            <Bot className="h-6 w-6 text-emerald-600" />
+            <div>
+              <h2 className="text-xl font-black">Modo teste do bot</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Simule mensagens de funcionários sem gastar limite do Twilio.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <label className="block space-y-2">
+                <span className="text-sm font-bold">Telefone simulado</span>
+                <input className="input" value={botTestPhone} onChange={(event) => setBotTestPhone(formatBrazilianPhone(event.target.value))} placeholder="5583999999999" />
+              </label>
+              <label className="mt-4 block space-y-2">
+                <span className="text-sm font-bold">Mensagem</span>
+                <textarea className="input min-h-28 resize-y" value={botTestMessage} onChange={(event) => setBotTestMessage(event.target.value)} placeholder="vaca B-002 deu 32 litros" />
+              </label>
+              <button className="btn btn-primary mt-4 w-full" onClick={simulateBotMessage} type="button" disabled={botTestLoading || !botTestPhone.trim() || !botTestMessage.trim()}>
+                <Bot className="h-4 w-4" /> {botTestLoading ? "Simulando..." : "Simular mensagem"}
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/55">
+              <h3 className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Resultado</h3>
+              {botTestResult ? (
+                <div className="mt-4 space-y-4">
+                  {botTestResult.erro ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{botTestResult.erro}</p> : null}
+                  {botTestResult.respostaTexto ? (
+                    <div>
+                      <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Resposta do bot</p>
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">{botTestResult.respostaTexto}</p>
+                    </div>
+                  ) : null}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Intenção</p>
+                      <p className="mt-1 break-words text-sm font-black">{botTestResult.intencaoDetectada || "-"}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Confiança</p>
+                      <p className="mt-1 text-sm font-black">{botTestResult.confianca === null ? "-" : `${Math.round(botTestResult.confianca * 100)}%`}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Confirmou</p>
+                      <p className="mt-1 text-sm font-black">{botTestResult.eventoConfirmado ? "Sim" : "Não"}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Estado anterior</p>
+                      <p className="mt-1 break-words text-sm font-black">{botTestResult.estadoAnterior || "-"}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Estado novo</p>
+                      <p className="mt-1 break-words text-sm font-black">{botTestResult.estadoNovo || "-"}</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-950">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Campos faltantes</p>
+                      <p className="mt-1 break-words text-sm font-black">{botTestResult.camposFaltantes.length ? botTestResult.camposFaltantes.join(", ") : "-"}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Dados extraídos</p>
+                    <pre className="mt-1 max-h-44 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{JSON.stringify(botTestResult.dadosExtraidos || {}, null, 2)}</pre>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Nenhuma simulação executada ainda.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Histórico da simulação</h3>
+            <div className="mt-3 space-y-3">
+              {botTestHistory.length ? botTestHistory.map((item) => (
+                <article key={item.id} className="rounded-lg border border-slate-200 bg-white/70 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/55">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong>{formatBrazilianPhone(item.telefone)}</strong>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.horario).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                  <p className="mt-2 text-slate-600 dark:text-slate-300">Você: {item.mensagem}</p>
+                  <p className="mt-1 whitespace-pre-wrap font-bold text-emerald-700 dark:text-emerald-300">Bot: {item.resposta}</p>
+                </article>
+              )) : (
+                <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">As mensagens simuladas aparecerão aqui nesta sessão.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {[

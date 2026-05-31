@@ -20,6 +20,28 @@ type TwilioMessageInput = {
   MessageSid: string;
 };
 
+export type ProcessWhatsappMessageInput = {
+  telefone: string;
+  mensagem: string;
+  provider: "twilio" | "simulador" | "meta" | "whatsapp";
+  modoTeste?: boolean;
+  messageSid?: string;
+  to?: string;
+  raw?: AnyRecord;
+};
+
+export type ProcessWhatsappMessageResult = {
+  respostaTexto: string;
+  intencaoDetectada: ParsedRanchoMessage["tipo"] | null;
+  confianca: number | null;
+  dadosExtraidos: AnyRecord | null;
+  estadoAnterior: BotSession["etapa"] | null;
+  estadoNovo: BotSession["etapa"] | null;
+  camposFaltantes: string[];
+  eventoConfirmado: boolean;
+  erro: string | null;
+};
+
 type BotSession = {
   etapa: "livre" | "aguardando_dado" | "aguardando_confirmacao";
   dados: AnyRecord;
@@ -645,8 +667,8 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   return unknownText();
 }
 
-async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string) {
-  const parsed = parseRanchoMessage(text);
+async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
+  const parsed = parsedMessage || parseRanchoMessage(text);
   botLog("nlp_general", owner, {
     currentIntent: parsed.tipo,
     status: "livre",
@@ -752,41 +774,104 @@ async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   return "Responda 1 para confirmar ou 2 para corrigir. Se quiser parar, envie cancelar.";
 }
 
-export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
+function ownerBlockedMessage(reason: Awaited<ReturnType<typeof resolveWhatsAppOwner>>["reason"]) {
+  if (reason === "no_farm") {
+    return "Seu WhatsApp está cadastrado, mas não está vinculado a uma fazenda. Fale com o administrador.";
+  }
+  if (reason === "farm_inactive") {
+    return "O rancho vinculado a este WhatsApp está inativo. Fale com o administrador.";
+  }
+  if (reason === "user_inactive") {
+    return "Este WhatsApp está cadastrado, mas está inativo para usar o bot. Fale com o administrador do Rancho.";
+  }
+  return "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
+}
+
+function pendingFromSession(session?: BotSession | null) {
+  return session?.dados?.pending as ParsedRanchoMessage | undefined;
+}
+
+function buildProcessResult(input: {
+  response: string;
+  parsed?: ParsedRanchoMessage;
+  previousSession?: BotSession | null;
+  nextSession?: BotSession | null;
+  eventConfirmed?: boolean;
+  error?: string | null;
+}): ProcessWhatsappMessageResult {
+  const detected = pendingFromSession(input.nextSession) || input.parsed || pendingFromSession(input.previousSession);
+  return {
+    respostaTexto: input.response,
+    intencaoDetectada: detected?.tipo || null,
+    confianca: typeof detected?.confianca === "number" ? detected.confianca : null,
+    dadosExtraidos: detected?.dados || null,
+    estadoAnterior: input.previousSession?.etapa || null,
+    estadoNovo: input.nextSession?.etapa || null,
+    camposFaltantes: detected?.perguntas_faltantes || [],
+    eventoConfirmado: Boolean(input.eventConfirmed),
+    erro: input.error || null
+  };
+}
+
+export async function processWhatsappMessage(input: ProcessWhatsappMessageInput): Promise<ProcessWhatsappMessageResult> {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.";
+  if (!supabase) {
+    return buildProcessResult({
+      response: "Não consegui acessar as configurações do Rancho agora. Tente novamente em instantes.",
+      error: "Supabase admin não configurado."
+    });
+  }
 
-  const phone = normalizeWhatsappNumber(input.From) || input.From;
-  const resolvedOwner = await resolveWhatsAppOwner(supabase, input.From);
-  const owner = resolvedOwner.owner;
+  const phone = normalizeWhatsappNumber(input.telefone) || input.telefone;
+  let owner: WhatsAppOwner | null = null;
+  let previousSession: BotSession | null = null;
+  let nextSession: BotSession | null = null;
+  let parsed: ParsedRanchoMessage | undefined;
+  let response = "";
+  let eventConfirmed = false;
 
-  await saveWhatsAppMessage(supabase, {
-    owner,
-    phone,
-    messageSid: input.MessageSid,
-    direction: "entrada",
-    body: input.Body,
-    raw: {
-      from: input.From,
-      to: input.To,
-      messageSid: input.MessageSid
+  try {
+    const resolvedOwner = await resolveWhatsAppOwner(supabase, input.telefone);
+    owner = resolvedOwner.owner;
+
+    if (!input.modoTeste) {
+      await saveWhatsAppMessage(supabase, {
+        owner,
+        phone,
+        messageSid: input.messageSid,
+        direction: "entrada",
+        body: input.mensagem,
+        raw: {
+          provider: input.provider,
+          modoTeste: Boolean(input.modoTeste),
+          from: input.telefone,
+          to: input.to,
+          messageSid: input.messageSid,
+          ...(input.raw || {})
+        }
+      });
     }
-  });
 
-  let response: string;
-  if (!owner) {
-    if (resolvedOwner.reason === "no_farm") {
-      response = "Seu WhatsApp está cadastrado, mas não está vinculado a uma fazenda. Fale com o administrador.";
-    } else if (resolvedOwner.reason === "farm_inactive") {
-      response = "O rancho vinculado a este WhatsApp está inativo. Fale com o administrador.";
-    } else if (resolvedOwner.reason === "user_inactive") {
-      response = "Este WhatsApp está cadastrado, mas está inativo para usar o bot. Fale com o administrador do Rancho.";
-    } else {
-      response = "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
+    if (!owner) {
+      response = ownerBlockedMessage(resolvedOwner.reason);
+      if (!input.modoTeste) {
+        await saveWhatsAppMessage(supabase, {
+          owner,
+          phone,
+          messageSid: input.messageSid,
+          direction: "saida",
+          body: response,
+          raw: {
+            provider: input.provider,
+            modoTeste: Boolean(input.modoTeste)
+          }
+        });
+      }
+      return buildProcessResult({ response });
     }
-  } else {
-    const command = normalizeRanchoText(input.Body);
-    const session = await getSession(supabase, owner);
+
+    const command = normalizeRanchoText(input.mensagem);
+    previousSession = await getSession(supabase, owner);
 
     if (isMenuCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -794,22 +879,103 @@ export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
     } else if (isCancelCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
-    } else if (session.etapa === "aguardando_confirmacao") {
-      response = await handleConfirmation(supabase, owner, session, input.Body, command);
-    } else if (session.etapa === "aguardando_dado") {
-      response = await handleMissingData(supabase, owner, session, input.Body);
+    } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && isConfirmCommand(command)) {
+      parsed = pendingFromSession(previousSession);
+      eventConfirmed = true;
+      await saveSession(supabase, owner, {
+        etapa: "livre",
+        dados: {
+          ultimo_teste_confirmado: parsed || null,
+          confirmado_em: nowIso(),
+          modo_teste: true
+        }
+      });
+      response = parsed
+        ? `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`
+        : "Confirmação recebida no modo teste. Nenhum registro real foi salvo.";
+    } else if (previousSession.etapa === "aguardando_confirmacao") {
+      parsed = pendingFromSession(previousSession);
+      eventConfirmed = isConfirmCommand(command);
+      response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command);
+    } else if (previousSession.etapa === "aguardando_dado") {
+      response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
     } else {
-      response = await handleFreeText(supabase, owner, input.Body);
+      parsed = parseRanchoMessage(input.mensagem);
+      response = await handleFreeText(supabase, owner, input.mensagem, parsed);
     }
-  }
 
-  await saveWhatsAppMessage(supabase, {
-    owner,
-    phone,
+    nextSession = await getSession(supabase, owner);
+
+    if (!input.modoTeste) {
+      await saveWhatsAppMessage(supabase, {
+        owner,
+        phone,
+        messageSid: input.messageSid,
+        direction: "saida",
+        body: response,
+        raw: {
+          provider: input.provider,
+          modoTeste: Boolean(input.modoTeste)
+        }
+      });
+    }
+
+    return buildProcessResult({
+      response,
+      parsed,
+      previousSession,
+      nextSession,
+      eventConfirmed
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro interno no Rancho.";
+    console.error("[BOT FLOW]", {
+      event: "process_error",
+      provider: input.provider,
+      modoTeste: Boolean(input.modoTeste),
+      phone: maskPhone(phone),
+      message
+    });
+    response = "Erro interno no Rancho. Tente novamente.";
+    if (!input.modoTeste) {
+      await saveWhatsAppMessage(supabase, {
+        owner,
+        phone,
+        messageSid: input.messageSid,
+        direction: "saida",
+        body: response,
+        raw: {
+          provider: input.provider,
+          modoTeste: Boolean(input.modoTeste),
+          erro: true
+        }
+      });
+    }
+    return buildProcessResult({
+      response,
+      parsed,
+      previousSession,
+      nextSession,
+      eventConfirmed,
+      error: message
+    });
+  }
+}
+
+export async function handleTwilioRanchoMessage(input: TwilioMessageInput) {
+  const result = await processWhatsappMessage({
+    telefone: input.From,
+    mensagem: input.Body,
+    provider: "twilio",
+    modoTeste: false,
     messageSid: input.MessageSid,
-    direction: "saida",
-    body: response
+    to: input.To,
+    raw: {
+      from: input.From,
+      to: input.To,
+      messageSid: input.MessageSid
+    }
   });
 
-  return response;
+  return result.respostaTexto;
 }
