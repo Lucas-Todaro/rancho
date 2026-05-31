@@ -38,79 +38,65 @@ async function assertActiveFarm(supabase: SupabaseAdmin, fazendaId?: string | nu
   return null;
 }
 
-async function findWhatsAppUser(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
+async function findWhatsAppUsers(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
   const { data, error } = await supabase
     .from(TABLES.whatsappUsuarios)
     .select("id,fazenda_id,usuario_id,funcionario_id,telefone_e164,nome_exibicao,ativo")
-    .limit(500);
+    .limit(2000);
 
   if (error) throw new Error(error.message);
-  return (data || []).find((row) => matchesIncomingPhone(row.telefone_e164, incomingCandidates)) || null;
-}
-
-async function linkedEmployeeIsActive(supabase: SupabaseAdmin, employeeId?: string | null, fazendaId?: string | null) {
-  if (!employeeId) return true;
-
-  const { data, error } = await supabase
-    .from(TABLES.funcionarios)
-    .select("id,ativo,deleted_at,fazenda_id")
-    .eq("id", employeeId)
-    .eq("fazenda_id", fazendaId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return Boolean(data && data.ativo !== false && !data.deleted_at);
+  return (data || []).filter((row) => matchesIncomingPhone(row.telefone_e164, incomingCandidates));
 }
 
 export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Promise<ResolveWhatsAppOwnerResult> {
   const normalizedPhone = normalizeWhatsappNumber(from);
   const incomingCandidates = new Set(whatsappNumberCandidates(from));
 
-  const whatsappUser = await findWhatsAppUser(supabase, incomingCandidates);
-  if (whatsappUser) {
-    if (whatsappUser.ativo === false) {
+  const whatsappUsers = await findWhatsAppUsers(supabase, incomingCandidates);
+  if (whatsappUsers.length > 0) {
+    let blockedReason: ResolveWhatsAppOwnerResult["reason"] = "user_inactive";
+
+    for (const whatsappUser of whatsappUsers) {
+      if (whatsappUser.ativo === false) continue;
+
+      const farmError = await assertActiveFarm(supabase, whatsappUser.fazenda_id as string | null);
+      if (farmError) {
+        blockedReason = farmError;
+        continue;
+      }
+
+      const owner = {
+        fazenda_id: whatsappUser.fazenda_id as string,
+        whatsapp_usuario_id: whatsappUser.id as string,
+        funcionario_id: (whatsappUser.funcionario_id as string | null) || null,
+        usuario_id: (whatsappUser.usuario_id as string | null) || null,
+        telefone_e164: normalizeWhatsappNumber(whatsappUser.telefone_e164 as string) || normalizedPhone,
+        nome_exibicao: whatsappUser.nome_exibicao as string | null,
+        source: "whatsapp_usuarios" as const
+      };
+
       console.log("[BOT AUTH]", {
         fromRaw: from,
         normalized: normalizedPhone,
         source: "whatsapp_usuarios",
         userFound: true,
-        ranchoFound: Boolean(whatsappUser.fazenda_id),
-        reason: "user_inactive"
+        ranchoFound: Boolean(owner.fazenda_id),
+        reason: "ok"
       });
 
-      return { owner: null, reason: "user_inactive" };
+      return { owner };
     }
-
-    const farmError = await assertActiveFarm(supabase, whatsappUser.fazenda_id as string | null);
-    const inactiveLinkedEmployee = !farmError && !(await linkedEmployeeIsActive(
-      supabase,
-      whatsappUser.funcionario_id as string | null,
-      whatsappUser.fazenda_id as string | null
-    ));
-    const owner = farmError || inactiveLinkedEmployee ? null : {
-      fazenda_id: whatsappUser.fazenda_id as string,
-      whatsapp_usuario_id: whatsappUser.id as string,
-      funcionario_id: (whatsappUser.funcionario_id as string | null) || null,
-      usuario_id: (whatsappUser.usuario_id as string | null) || null,
-      telefone_e164: normalizeWhatsappNumber(whatsappUser.telefone_e164 as string) || normalizedPhone,
-      nome_exibicao: whatsappUser.nome_exibicao as string | null,
-      source: "whatsapp_usuarios" as const
-    };
 
     console.log("[BOT AUTH]", {
       fromRaw: from,
       normalized: normalizedPhone,
       source: "whatsapp_usuarios",
       userFound: true,
-      ranchoFound: Boolean(owner?.fazenda_id),
-      reason: farmError || (inactiveLinkedEmployee ? "user_inactive" : "ok")
+      ranchoFound: whatsappUsers.some((row) => Boolean(row.fazenda_id)),
+      reason: blockedReason
     });
 
-    return farmError
-      ? { owner: null, reason: farmError }
-      : inactiveLinkedEmployee
-        ? { owner: null, reason: "user_inactive" }
-        : { owner };
+    return { owner: null, reason: blockedReason };
   }
 
   console.log("[BOT AUTH]", {

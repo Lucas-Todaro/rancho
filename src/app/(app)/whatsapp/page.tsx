@@ -14,7 +14,6 @@ import type { AnyRecord } from "@/lib/types";
 
 const roleOptions = [
   { value: "usuario", label: "Usuário" },
-  { value: "funcionario", label: "Funcionário" },
   { value: "admin", label: "Administrador" }
 ];
 
@@ -26,7 +25,15 @@ const initialDraft = {
 };
 
 function roleLabel(value: unknown) {
-  return roleOptions.find((option) => option.value === value)?.label || "Usuário";
+  return roleOptions.find((option) => option.value === roleFromDatabase(value))?.label || "Usuário";
+}
+
+function roleFromDatabase(value: unknown) {
+  return value === "admin" ? "admin" : "usuario";
+}
+
+function roleToDatabase(value: string) {
+  return value === "admin" ? "admin" : "funcionario";
 }
 
 export default function WhatsAppPage() {
@@ -79,7 +86,7 @@ export default function WhatsAppPage() {
     setDraft({
       nome: String(row.nome_exibicao || ""),
       whatsapp: formatBrazilianPhone(row.telefone_e164),
-      papel_bot: String(row.papel_bot || "usuario"),
+      papel_bot: roleFromDatabase(row.papel_bot),
       ativo: row.ativo !== false
     });
     setSuccess("");
@@ -117,7 +124,7 @@ export default function WhatsAppPage() {
       const payload = {
         telefone_e164: normalized,
         nome_exibicao: draft.nome.trim() || "Usuário do bot",
-        papel_bot: draft.papel_bot,
+        papel_bot: roleToDatabase(draft.papel_bot),
         ativo: draft.ativo
       };
 
