@@ -5,21 +5,22 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
 import { toDateOnlyString } from "@/lib/utils";
 
-const EVENT_FINANCE_ORIGIN_PREFIX = "evento_animal:";
+const EVENT_FINANCE_SOURCE_TYPE = "evento_animal";
+const EVENT_FINANCE_LEGACY_ORIGIN_PREFIX = "evento_animal:";
 
 const eventTypeLabels: Record<string, string> = {
   parto: "Parto",
   vacina: "Vacina",
-  doenca: "Doença",
+  doenca: "Doenca",
   tratamento: "Tratamento",
-  inseminacao: "Inseminação",
+  inseminacao: "Inseminacao",
   pesagem: "Pesagem",
-  observacao: "Observação",
+  observacao: "Observacao",
   outro: "Outro"
 };
 
-function eventFinanceOrigin(eventId: string) {
-  return `${EVENT_FINANCE_ORIGIN_PREFIX}${eventId}`;
+function legacyEventFinanceOrigin(eventId: string) {
+  return `${EVENT_FINANCE_LEGACY_ORIGIN_PREFIX}${eventId}`;
 }
 
 function eventCost(eventRecord: AnyRecord) {
@@ -36,36 +37,67 @@ function animalLabel(eventRecord: AnyRecord, animalOptions?: RelationOption[]) {
 }
 
 function financePayload(eventRecord: AnyRecord, animalOptions?: RelationOption[]) {
+  const eventId = String(eventRecord.id || "");
   const typeLabel = eventTypeLabels[String(eventRecord.tipo || "")] || String(eventRecord.tipo || "Evento");
 
   return {
     tipo: "saida",
     data_transacao: toDateOnlyString(eventRecord.data_evento),
     valor: eventCost(eventRecord),
-    categoria: "Saúde do rebanho",
+    categoria: "Evento do animal",
     descricao: [
-      `${typeLabel} do animal ${animalLabel(eventRecord, animalOptions)}`,
+      `Custo do evento: ${typeLabel} do animal ${animalLabel(eventRecord, animalOptions)}`,
       eventRecord.descricao,
       eventRecord.medicamento ? `Medicamento: ${eventRecord.medicamento}` : null
     ].filter(Boolean).join(" - "),
-    metodo_pagamento: "Lançamento de evento",
-    origem: eventFinanceOrigin(String(eventRecord.id))
+    metodo_pagamento: "Lancamento de evento",
+    origem: "web",
+    source_type: EVENT_FINANCE_SOURCE_TYPE,
+    source_id: eventId
   };
+}
+
+function sourceFilters(eventId: string) {
+  return [
+    { column: "source_type", value: EVENT_FINANCE_SOURCE_TYPE },
+    { column: "source_id", value: eventId }
+  ];
+}
+
+function scopedFilters(filters: Array<{ column: string; value: string }>, context?: DataContext) {
+  return context?.fazendaId ? [...filters, { column: "fazenda_id", value: context.fazendaId }] : filters;
+}
+
+async function findEventFinanceRecords(eventId: string, context: DataContext) {
+  const sourceRows = await listRecords(TABLES.transacoesFinanceiras, {
+    fazendaId: context.fazendaId,
+    usuarioId: context.usuarioId,
+    filters: sourceFilters(eventId)
+  });
+
+  const legacyRows = await listRecords(TABLES.transacoesFinanceiras, {
+    fazendaId: context.fazendaId,
+    usuarioId: context.usuarioId,
+    filters: [{ column: "origem", value: legacyEventFinanceOrigin(eventId) }]
+  });
+
+  const seen = new Set<string>();
+  return [...sourceRows, ...legacyRows].filter((record) => {
+    const id = String(record.id || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 export async function syncEventCostToFinance(eventRecord: AnyRecord, context: DataContext, animalOptions?: RelationOption[]) {
   const eventId = String(eventRecord.id || "");
   if (!eventId) return;
 
-  const origin = eventFinanceOrigin(eventId);
-  const existing = await listRecords(TABLES.transacoesFinanceiras, {
-    fazendaId: context.fazendaId,
-    usuarioId: context.usuarioId,
-    filters: [{ column: "origem", value: origin }]
-  });
+  const existing = await findEventFinanceRecords(eventId, context);
 
   if (eventCost(eventRecord) <= 0) {
-    if (existing.length) await deleteRecords(TABLES.transacoesFinanceiras, [{ column: "origem", value: origin }]);
+    await removeEventCostFromFinance(eventId, context);
     return;
   }
 
@@ -79,7 +111,8 @@ export async function syncEventCostToFinance(eventRecord: AnyRecord, context: Da
   await createRecord(TABLES.transacoesFinanceiras, payload, context);
 }
 
-export async function removeEventCostFromFinance(eventId: string) {
+export async function removeEventCostFromFinance(eventId: string, context?: DataContext) {
   if (!eventId) return;
-  await deleteRecords(TABLES.transacoesFinanceiras, [{ column: "origem", value: eventFinanceOrigin(eventId) }]);
+  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context));
+  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters([{ column: "origem", value: legacyEventFinanceOrigin(eventId) }], context));
 }

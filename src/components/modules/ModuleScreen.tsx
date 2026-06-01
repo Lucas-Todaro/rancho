@@ -180,7 +180,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       const deletedRow = rows.find((row) => String(row.id) === String(id));
       await deleteRecord(config.tableName, id);
       if (config.tableName === TABLES.eventosAnimal && deletedRow) {
-        await removeEventCostFromFinance(id);
+        await removeEventCostFromFinance(id, dataContext);
       }
       notifyDashboardUpdated();
       await load();

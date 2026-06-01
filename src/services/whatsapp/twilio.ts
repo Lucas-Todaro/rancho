@@ -564,7 +564,7 @@ async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: s
 async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string): Promise<StockLookupResult> {
   const { data, error } = await supabase
     .from(TABLES.estoqueItens)
-    .select("id,nome,descricao,categoria,quantidade_atual,unidade_medida,valor_unitario,ativo")
+    .select("id,nome,categoria,quantidade_atual,quantidade_minima,unidade_medida,valor_unitario,ativo")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
@@ -574,7 +574,7 @@ async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name
 
   const candidateRows = (resolved.rows?.length ? resolved.rows : resolved.row ? [resolved.row] : activeRows.slice(0, 8)) as AnyRecord[];
   const candidateNames = candidateRows
-    .map((row) => String(row.nome || row.descricao || row.id || ""))
+    .map((row) => String(row.nome || row.id || ""))
     .filter(Boolean)
     .slice(0, 8);
   const reason = !activeRows.length

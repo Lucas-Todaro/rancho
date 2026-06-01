@@ -692,6 +692,8 @@ const extraTests = [
   { phrase: "comprei 10 sacos de racbao por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei 10 sacos de ração de boi por R$ 300", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração de boi", valor: 300 } },
   { phrase: "comprei ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", missing: ["quantidade", "valor"] } },
+  { phrase: "cria um item chamado ração no estoque", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração", missing: ["unidade"] } },
+  { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE" } },
   { phrase: "recebi 900 do leite", expected: { tipo: "RECEITA_VENDA", valor: 900, descricao: "leite" } },
   { phrase: "vendi leite por 800 reais", expected: { tipo: "RECEITA_VENDA", valor: 800, descricao: "leite" } },
   { phrase: "despesa de 45 com energia", expected: { tipo: "DESPESA", valor: 45, descricao: "energia" } },
