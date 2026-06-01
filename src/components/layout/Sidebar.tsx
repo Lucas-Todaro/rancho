@@ -4,10 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PawPrint } from "lucide-react";
 import { navGroups } from "@/components/layout/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { canAccessPlatformAdmin } from "@/lib/platform-admin";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { profile } = useAuth();
+  const isPlatformAdmin = canAccessPlatformAdmin(profile);
+  const visibleGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.platformOnly || isPlatformAdmin) }))
+    .filter((group) => group.items.length);
 
   return (
     <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-72 overflow-y-auto border-r border-slate-200/70 bg-white/90 p-4 backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-950/85 lg:block">
@@ -22,7 +29,7 @@ export function Sidebar() {
       </Link>
 
       <nav className="space-y-6">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <section key={group.label}>
             <p className="px-3 text-[0.68rem] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
               {group.label}

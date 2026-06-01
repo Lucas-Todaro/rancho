@@ -70,6 +70,7 @@ export type UsuarioProfile = {
   papel: "dono" | "admin" | "gerente" | "funcionario" | "veterinario" | "contador" | "bot_only";
   ativo: boolean;
   is_internal_tester?: boolean;
+  is_platform_admin?: boolean;
   fazenda?: FazendaProfile | null;
 };
 

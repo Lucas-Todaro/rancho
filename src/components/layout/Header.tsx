@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { navGroups } from "@/components/layout/navigation";
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu";
 import { useAuth } from "@/lib/auth-context";
+import { canAccessPlatformAdmin } from "@/lib/platform-admin";
 import { cn } from "@/lib/utils";
 
 const globalDestinations = [
@@ -23,6 +24,7 @@ const globalDestinations = [
   { href: "/folha", label: "Folha", helper: "Pagamentos e descontos", keywords: ["folha", "salario", "pagamento", "desconto"] },
   { href: "/relatorios", label: "Relatórios", helper: "Resumo para impressão", keywords: ["relatorio", "pdf", "imprimir", "resultado"] },
   { href: "/whatsapp", label: "WhatsApp", helper: "Atendimento e menu de teste", keywords: ["whatsapp", "mensagem", "chat", "telefone"] },
+  { href: "/admin-interno", label: "Admin Interno", helper: "Clientes, ranchos e convites de donos", keywords: ["admin", "interno", "clientes", "fazendas", "ranchos"] },
   { href: "/suporte", label: "Suporte", helper: "Contato para dúvidas e problemas", keywords: ["suporte", "ajuda", "email", "problema", "duvida"] },
   { href: "/configuracoes", label: "Configurações", helper: "Conta e preferências", keywords: ["configuracao", "preferencia", "conta", "perfil"] }
 ];
@@ -48,8 +50,16 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const isPlatformAdmin = canAccessPlatformAdmin(profile);
+  const visibleGroups = useMemo(() => (
+    navGroups
+      .map((group) => ({ ...group, items: group.items.filter((item) => !item.platformOnly || isPlatformAdmin) }))
+      .filter((group) => group.items.length)
+  ), [isPlatformAdmin]);
 
-  const searchResults = useMemo(() => findDestinations(globalSearch), [globalSearch]);
+  const searchResults = useMemo(() => (
+    findDestinations(globalSearch).filter((item) => isPlatformAdmin || item.href !== "/admin-interno")
+  ), [globalSearch, isPlatformAdmin]);
 
   useEffect(() => {
     const saved = localStorage.getItem("rancho-theme");
@@ -73,7 +83,7 @@ export function Header() {
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const firstResult = findDestinations(globalSearch)[0];
+    const firstResult = searchResults[0];
     if (firstResult) goTo(firstResult.href);
   }
 
@@ -102,7 +112,7 @@ export function Header() {
               onFocus={() => setSearchOpen(true)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  const firstResult = findDestinations(event.currentTarget.value)[0];
+                  const firstResult = searchResults[0];
                   if (firstResult) {
                     event.preventDefault();
                     goTo(firstResult.href);
@@ -170,7 +180,7 @@ export function Header() {
           </div>
 
           <nav className="space-y-4">
-            {navGroups.map((group) => (
+            {visibleGroups.map((group) => (
               <section key={group.label}>
                 <p className="mb-2 px-1 text-[0.68rem] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                   {group.label}

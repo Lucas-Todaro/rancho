@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Bot,
+  Building2,
   ClipboardList,
   Droplets,
   GitBranch,
@@ -19,6 +20,7 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  platformOnly?: boolean;
 };
 
 export type NavGroup = {
@@ -71,6 +73,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "Sistema",
     items: [
+      { href: "/admin-interno", label: "Admin Interno", icon: Building2, platformOnly: true },
       { href: "/suporte", label: "Suporte", icon: LifeBuoy },
       { href: "/configuracoes", label: "Configurações", icon: Settings }
     ]

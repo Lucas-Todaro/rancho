@@ -27,6 +27,7 @@ const demoProfile: UsuarioProfile = {
   papel: "admin",
   ativo: true,
   is_internal_tester: false,
+  is_platform_admin: false,
   fazenda: {
     id: DEMO_FAZENDA_ID,
     nome: "Fazenda Modelo",
@@ -70,13 +71,22 @@ async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
 }
 
 async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
-  const profileSelect = "id,fazenda_id,nome,telefone,papel,ativo,is_internal_tester,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
+  const profileSelect = "id,fazenda_id,nome,telefone,papel,ativo,is_internal_tester,is_platform_admin,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
+  const internalTesterFallbackSelect = "id,fazenda_id,nome,telefone,papel,ativo,is_internal_tester,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
   const fallbackProfileSelect = "id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
   let result = await client
     .from("usuarios")
     .select(profileSelect)
     .eq("id", userId)
     .maybeSingle();
+
+  if (result.error && /is_platform_admin|schema cache|column/i.test(result.error.message)) {
+    result = await client
+      .from("usuarios")
+      .select(internalTesterFallbackSelect)
+      .eq("id", userId)
+      .maybeSingle();
+  }
 
   if (result.error && /is_internal_tester|schema cache|column/i.test(result.error.message)) {
     result = await client
