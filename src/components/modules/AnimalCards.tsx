@@ -42,7 +42,58 @@ function phaseTone(value: unknown) {
   if (value === "vazia") return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200";
   return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200";
 }
+function normalizeText(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
+function getAnimalSexTone(animal: AnyRecord, sexLabel?: string) {
+  const rawSex = normalizeText(
+    animal.sexo ||
+    animal.sex ||
+    animal.genero ||
+    animal.gender ||
+    sexLabel
+  );
+
+  const category = normalizeText(animal.categoria);
+
+  const isMale =
+    ["macho", "m", "male", "masculino"].includes(rawSex) ||
+    ["boi", "touro"].includes(category);
+
+  const isFemale =
+    ["femea", "f", "female", "feminino"].includes(rawSex) ||
+    ["vaca", "novilha"].includes(category);
+
+  if (isMale) {
+    return {
+      card: "border-blue-200 bg-blue-50/40 hover:border-blue-300 hover:bg-blue-50/70 dark:border-blue-900/60 dark:bg-blue-950/20 dark:hover:border-blue-800 dark:hover:bg-blue-950/35",
+      stripe: "bg-blue-300 dark:bg-blue-700",
+      icon: "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200",
+      badge: "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200"
+    };
+  }
+
+  if (isFemale) {
+    return {
+      card: "border-pink-200 bg-pink-50/40 hover:border-pink-300 hover:bg-pink-50/70 dark:border-pink-900/60 dark:bg-pink-950/20 dark:hover:border-pink-800 dark:hover:bg-pink-950/35",
+      stripe: "bg-pink-300 dark:bg-pink-700",
+      icon: "border-pink-200 bg-pink-100 text-pink-700 dark:border-pink-800 dark:bg-pink-950 dark:text-pink-200",
+      badge: "border-pink-200 bg-pink-100 text-pink-700 dark:border-pink-800 dark:bg-pink-950 dark:text-pink-200"
+    };
+  }
+
+  return {
+    card: "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950",
+    stripe: "bg-slate-200 dark:bg-slate-700",
+    icon: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+    badge: "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+  };
+}
 function AnimalCardSkeleton() {
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -185,17 +236,16 @@ export function AnimalCards({
           const category = displayLabel(categoryLabels, animal.categoria, "Animal");
           const status = displayLabel(statusLabels, animal.status, "Ativo");
           const sex = getAnimalSexInfo(animal);
+          const sexTone = getAnimalSexTone(animal, sex.label);
 
           return (
             <article
               key={animal.id}
-              className={`group relative min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 pl-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
-              onClick={() => onView(animal)}
+              className={`group relative min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 pl-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft ${sexTone.card}`}
             >
-              <span className={`absolute inset-y-0 left-0 w-1 ${sex.stripeClassName}`} aria-hidden="true" />
+              <span className={`group relative min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 pl-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft ${sexTone.card}`} />
               <div className="flex items-start gap-3">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${sex.iconClassName}`}>
-                  <PawPrint className="h-5 w-5" />
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${sexTone.icon}`}>
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-lg font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
@@ -207,7 +257,7 @@ export function AnimalCards({
                   <span className={`max-w-28 truncate rounded-full px-2.5 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
                     {phase}
                   </span>
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${sex.className}`}>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${sexTone.badge}`}>
                     {sex.label}
                   </span>
                 </div>
