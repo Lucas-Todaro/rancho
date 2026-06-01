@@ -35,11 +35,13 @@ function initialValues(employee?: AnyRecord | null): EmployeeValues {
 
 export function EmployeeForm({
   employee,
+  accessMode = "bot_only",
   busy,
   onClose,
   onSubmit
 }: {
   employee?: AnyRecord | null;
+  accessMode?: "bot_only" | "sistema" | "sistema_whatsapp";
   busy?: boolean;
   onClose: () => void;
   onSubmit: (values: AnyRecord) => Promise<void>;
@@ -47,6 +49,7 @@ export function EmployeeForm({
   const base = useMemo(() => initialValues(employee), [employee]);
   const [values, setValues] = useState<EmployeeValues>(base);
   const [formError, setFormError] = useState("");
+  const requiresWhatsApp = accessMode !== "sistema";
 
   useEffect(() => {
     setValues(base);
@@ -66,7 +69,12 @@ export function EmployeeForm({
       return;
     }
 
-    if (!isValidBrazilianPhone(values.contato_whatsapp)) {
+    if (values.contato_whatsapp && !isValidBrazilianPhone(values.contato_whatsapp)) {
+      setFormError("Informe um WhatsApp válido para o funcionário.");
+      return;
+    }
+
+    if (requiresWhatsApp && !isValidBrazilianPhone(values.contato_whatsapp)) {
       setFormError("Informe um WhatsApp válido para o funcionário.");
       return;
     }
@@ -75,7 +83,7 @@ export function EmployeeForm({
       nome: values.nome,
       funcao: values.funcao,
       cpf: onlyDigits(values.cpf) || null,
-      contato_whatsapp: normalizeBrazilianWhatsApp(values.contato_whatsapp),
+      contato_whatsapp: values.contato_whatsapp ? normalizeBrazilianWhatsApp(values.contato_whatsapp) : null,
       salario_base: parseCurrencyInput(values.salario_base),
       data_admissao: values.data_admissao || null,
       carga_horaria_mensal: Number(values.carga_horaria_mensal || 0),
@@ -89,8 +97,12 @@ export function EmployeeForm({
       <form onSubmit={submit} className="w-full max-w-4xl animate-fade-in rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950 md:p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black">{employee?.id ? "Editar funcionário" : "Novo funcionário"}</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Dados profissionais, salário e contato do colaborador.</p>
+            <h2 className="text-xl font-black">{employee?.id ? "Editar funcionário" : accessMode === "bot_only" ? "Cadastrar apenas WhatsApp" : "Novo funcionário"}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {accessMode === "bot_only" && !employee?.id
+                ? "Este funcionário não terá login no painel; ele poderá usar apenas o bot do WhatsApp se estiver ativo."
+                : "Dados profissionais, salário e contato do colaborador."}
+            </p>
           </div>
           <button className="rounded-lg border border-slate-200 p-2 dark:border-slate-800" type="button" onClick={onClose} title="Fechar">
             <X className="h-4 w-4" />
@@ -109,8 +121,8 @@ export function EmployeeForm({
             <input className="input" value={values.funcao} onChange={(event) => update("funcao", event.target.value)} required />
           </label>
           <label className="space-y-2">
-            <span className="text-sm font-bold">WhatsApp *</span>
-            <WhatsAppInput value={values.contato_whatsapp} onChange={(value) => update("contato_whatsapp", value)} placeholder="+55 (88) 99999-9999" required />
+            <span className="text-sm font-bold">WhatsApp {requiresWhatsApp ? "*" : ""}</span>
+            <WhatsAppInput value={values.contato_whatsapp} onChange={(value) => update("contato_whatsapp", value)} placeholder="+55 (88) 99999-9999" required={requiresWhatsApp} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-bold">CPF</span>

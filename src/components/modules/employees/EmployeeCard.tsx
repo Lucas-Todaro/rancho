@@ -4,6 +4,7 @@ import { Clock3, Eye, Pencil, Power, Trash2, UserRound } from "lucide-react";
 import type { AnyRecord } from "@/lib/types";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatBrazilianPhone } from "@/lib/input-format";
 
 export function EmployeeCardSkeleton() {
   return (
@@ -48,6 +49,9 @@ export function EmployeeCard({
   onDelete: (employee: AnyRecord) => void;
 }) {
   const active = employee.ativo !== false;
+  const hasSystemAccess = ["sistema", "sistema_whatsapp"].includes(String(employee.tipo_acesso || "")) || Boolean(employee.usuario_id || employee.email);
+  const hasWhatsApp = Boolean(employee.contato_whatsapp);
+  const accessLabel = hasSystemAccess && hasWhatsApp ? "Sistema + WhatsApp" : hasSystemAccess ? "Sistema" : "WhatsApp";
   const lastPointLabel = lastPoint
     ? `${lastPoint.tipo === "saida" ? "Saída" : "Entrada"} em ${formatDate(lastPoint.registrado_em)}`
     : "Sem ponto registrado";
@@ -61,6 +65,10 @@ export function EmployeeCard({
         <div className="min-w-0">
           <h3 className="truncate text-2xl font-black tracking-tight">{employee.nome || "Sem nome"}</h3>
           <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{employee.funcao || "Sem função"}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-black text-blue-700 dark:bg-blue-950 dark:text-blue-200">{accessLabel}</span>
+            {employee.convite_status ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800 dark:bg-amber-950 dark:text-amber-200">Convite {employee.convite_status}</span> : null}
+          </div>
         </div>
         <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
           {active ? "Ativo" : "Inativo"}
@@ -91,6 +99,11 @@ export function EmployeeCard({
       <div className="mt-4 flex min-w-0 items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
         <Clock3 className="h-4 w-4 shrink-0" />
         <span className="truncate">{lastPointLabel}</span>
+      </div>
+
+      <div className="mt-3 space-y-1 text-sm text-slate-500 dark:text-slate-400">
+        {employee.email ? <p className="truncate">E-mail: <strong className="text-slate-700 dark:text-slate-200">{employee.email}</strong></p> : null}
+        {employee.contato_whatsapp ? <p className="truncate">WhatsApp: <strong className="text-slate-700 dark:text-slate-200">{formatBrazilianPhone(employee.contato_whatsapp)}</strong></p> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

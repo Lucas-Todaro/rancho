@@ -94,10 +94,24 @@ async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
   }
 
   const raw = data as unknown as UsuarioProfile & { fazenda?: UsuarioProfile["fazenda"] | UsuarioProfile["fazenda"][] };
-  return {
+  const profile = {
     ...raw,
     fazenda: Array.isArray(raw.fazenda) ? raw.fazenda[0] || null : raw.fazenda || null
   } as UsuarioProfile;
+
+  if (!profile.ativo) {
+    throw new Error("Seu acesso ainda não está ativo. Entre em contato com o administrador do Rancho.");
+  }
+
+  if (profile.papel === "bot_only") {
+    throw new Error("Este cadastro é exclusivo para uso pelo WhatsApp. Solicite acesso ao administrador se precisar entrar no sistema.");
+  }
+
+  if (profile.fazenda && profile.fazenda.ativa === false) {
+    throw new Error("Este rancho está inativo. Entre em contato com o administrador do Rancho.");
+  }
+
+  return profile;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -271,10 +285,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(profileResult.value);
       setError("");
     } catch (err) {
-      if (!signedIn) {
-        setSession(null);
-        setProfile(null);
-      }
+      if (signedIn) await client.auth.signOut().catch(() => undefined);
+      setSession(null);
+      setProfile(null);
       setLoading(false);
       throw new Error(getFriendlyErrorMessage(err, "Não foi possível entrar."));
     }

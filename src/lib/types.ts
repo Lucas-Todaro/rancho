@@ -67,7 +67,7 @@ export type UsuarioProfile = {
   fazenda_id: string;
   nome: string;
   telefone?: string | null;
-  papel: "admin" | "gerente" | "funcionario" | "veterinario" | "contador";
+  papel: "dono" | "admin" | "gerente" | "funcionario" | "veterinario" | "contador" | "bot_only";
   ativo: boolean;
   is_internal_tester?: boolean;
   fazenda?: FazendaProfile | null;

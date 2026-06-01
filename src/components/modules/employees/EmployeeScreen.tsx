@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Plus, RefreshCw, Search, Users, Wallet, X, Clock3 } from "lucide-react";
+import { Download, MailPlus, MessageCircle, RefreshCw, Search, Users, Wallet, X, Clock3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -15,6 +15,7 @@ import { currentMonth, formatCurrency } from "@/lib/utils";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
 import { EmployeeDetails } from "@/components/modules/employees/EmployeeDetails";
 import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
+import { InviteEmployeeForm } from "@/components/modules/employees/InviteEmployeeForm";
 
 function monthKey(value: unknown) {
   return String(value || "").slice(0, 7);
@@ -25,12 +26,14 @@ function currentMonthKey() {
 }
 
 function exportEmployeesCsv(rows: AnyRecord[]) {
-  const header = ["Nome", "Função", "Salário", "WhatsApp", "Ativo"];
+  const header = ["Nome", "Função", "Salário", "E-mail", "WhatsApp", "Tipo de acesso", "Ativo"];
   const body = rows.map((row) => [
     row.nome,
     row.funcao,
     formatCurrency(row.salario_base),
+    row.email,
     formatBrazilianPhone(row.contato_whatsapp),
+    row.tipo_acesso || "bot_only",
     row.ativo !== false ? "Ativo" : "Inativo"
   ].map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","));
   const blob = new Blob([`${header.map((item) => `"${item}"`).join(",")}\n${body.join("\n")}`], { type: "text/csv;charset=utf-8" });
@@ -43,7 +46,7 @@ function exportEmployeesCsv(rows: AnyRecord[]) {
 }
 
 export function EmployeeScreen() {
-  const { dataContext } = useAuth();
+  const { dataContext, session, profile } = useAuth();
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const [employees, setEmployees] = useState<AnyRecord[]>([]);
@@ -51,6 +54,8 @@ export function EmployeeScreen() {
   const [payrolls, setPayrolls] = useState<AnyRecord[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [formAccessMode, setFormAccessMode] = useState<"bot_only" | "sistema" | "sistema_whatsapp">("bot_only");
   const [editing, setEditing] = useState<AnyRecord | null>(null);
   const [selected, setSelected] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,7 +109,10 @@ export function EmployeeScreen() {
     return employees.filter((employee) => [
       employee.nome,
       employee.funcao,
+      employee.email,
       employee.contato_whatsapp,
+      employee.tipo_acesso,
+      employee.convite_status,
       employee.ativo !== false ? "ativo" : "inativo"
     ].filter(Boolean).join(" ").toLowerCase().includes(term));
   }, [employees, search]);
@@ -118,26 +126,45 @@ export function EmployeeScreen() {
   }, 0);
   const pointsThisMonth = timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length;
   const showPlaceholders = loading || Boolean(error && !employees.length);
+  const canInvite = ["dono", "admin", "gerente"].includes(String(profile?.papel || ""));
 
   function closeForm() {
     setShowForm(false);
     setEditing(null);
+    setFormAccessMode("bot_only");
+  }
+
+  function openWhatsAppOnlyForm() {
+    setEditing(null);
+    setFormAccessMode("bot_only");
+    setShowForm(true);
   }
 
   async function submitEmployee(values: AnyRecord) {
     setBusy(true);
     setError("");
     try {
+      const accessMode = editing?.tipo_acesso || formAccessMode;
+      const hasWhatsApp = Boolean(values.contato_whatsapp);
       const baseEmployee = editing?.id ? { ...editing, ...values } : values;
-      const contato_whatsapp = await assertUniqueActiveEmployeeWhatsApp(baseEmployee, dataContext);
-      const payload = { ...values, contato_whatsapp };
+      const contato_whatsapp = hasWhatsApp ? await assertUniqueActiveEmployeeWhatsApp(baseEmployee, dataContext) : null;
+      const payload = {
+        ...values,
+        contato_whatsapp,
+        tipo_acesso: accessMode,
+        papel_sistema: accessMode === "bot_only" ? "bot_only" : editing?.papel_sistema || null
+      };
 
       if (editing?.id) {
         const saved = await updateRecord(TABLES.funcionarios, editing.id, payload);
-        await syncEmployeeWhatsAppUser({ ...editing, ...payload, ...saved, id: editing.id }, dataContext);
+        if (contato_whatsapp) {
+          await syncEmployeeWhatsAppUser({ ...editing, ...payload, ...saved, id: editing.id }, dataContext);
+        } else {
+          await deactivateEmployeeWhatsAppUser({ ...editing, ...payload, id: editing.id }, dataContext);
+        }
       } else {
         const saved = await createRecord(TABLES.funcionarios, payload, dataContext);
-        await syncEmployeeWhatsAppUser(saved, dataContext);
+        if (contato_whatsapp) await syncEmployeeWhatsAppUser(saved, dataContext);
       }
       notifyDashboardUpdated();
       closeForm();
@@ -156,11 +183,11 @@ export function EmployeeScreen() {
     setBusy(true);
     setError("");
     try {
-      const nextEmployee = { ...employee, ativo: !active };
-      if (!active) await assertUniqueActiveEmployeeWhatsApp(nextEmployee, dataContext);
+      const nextEmployee: AnyRecord = { ...employee, ativo: !active };
+      if (!active && nextEmployee.contato_whatsapp) await assertUniqueActiveEmployeeWhatsApp(nextEmployee, dataContext);
 
       const saved = await updateRecord(TABLES.funcionarios, employee.id, { ativo: !active });
-      if (nextEmployee.ativo) {
+      if (nextEmployee.ativo && nextEmployee.contato_whatsapp) {
         await syncEmployeeWhatsAppUser({ ...nextEmployee, ...saved }, dataContext);
       } else {
         await deactivateEmployeeWhatsAppUser(employee, dataContext);
@@ -236,8 +263,11 @@ export function EmployeeScreen() {
           <button className="btn btn-secondary" type="button" onClick={load}>
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
-          <button className="btn btn-primary" type="button" onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4" /> Novo funcionário
+          <button className="btn btn-secondary" type="button" onClick={openWhatsAppOnlyForm}>
+            <MessageCircle className="h-4 w-4" /> Cadastrar apenas WhatsApp
+          </button>
+          <button className="btn btn-primary" type="button" onClick={() => canInvite ? setShowInviteForm(true) : setError("Você não tem permissão para convidar funcionários.")}>
+            <MailPlus className="h-4 w-4" /> Convidar funcionário
           </button>
         </div>
       </div>
@@ -290,7 +320,11 @@ export function EmployeeScreen() {
               employee={employee}
               lastPoint={lastPointByEmployee.get(employee.id)}
               onView={setSelected}
-              onEdit={(row) => { setEditing(row); setShowForm(true); }}
+              onEdit={(row) => {
+                setEditing(row);
+                setFormAccessMode(row.tipo_acesso === "sistema_whatsapp" ? "sistema_whatsapp" : row.tipo_acesso === "sistema" ? "sistema" : "bot_only");
+                setShowForm(true);
+              }}
               onToggleActive={toggleActive}
               onDelete={removeEmployee}
             />
@@ -305,9 +339,19 @@ export function EmployeeScreen() {
       {showForm ? (
         <EmployeeForm
           employee={editing}
+          accessMode={formAccessMode}
           busy={busy}
           onClose={closeForm}
           onSubmit={submitEmployee}
+        />
+      ) : null}
+
+      {showInviteForm ? (
+        <InviteEmployeeForm
+          busy={busy}
+          session={session}
+          onClose={() => setShowInviteForm(false)}
+          onCreated={load}
         />
       ) : null}
 
