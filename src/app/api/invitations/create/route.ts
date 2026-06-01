@@ -19,7 +19,27 @@ function asText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function createInviteErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+
+  if (/contato_whatsapp|null value|not-null constraint/i.test(message)) {
+    return "A tabela de funcionários ainda exige WhatsApp para convites do sistema. Execute a migration 20260601004000_allow_system_invites_without_whatsapp.sql no Supabase e tente novamente.";
+  }
+
+  if (/convites|tipo_acesso|papel_sistema|convite_status|schema cache|column|relation/i.test(message)) {
+    return "A estrutura de convites ainda não está completa no Supabase. Execute as migrations de convites e tente novamente.";
+  }
+
+  if (/duplicate key|unique constraint|23505/i.test(message)) {
+    return "Já existe um convite pendente ou cadastro com esses dados. Atualize a lista e tente novamente.";
+  }
+
+  return "Não foi possível criar o convite agora. Tente novamente.";
+}
+
 export async function POST(request: NextRequest) {
+  let createdEmployeeId: string | null = null;
+
   try {
     const permission = await requireInvitationAdmin(request);
     if (!permission.ok) return permission.response;
@@ -61,6 +81,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (employeeError) throw new Error(employeeError.message);
+    createdEmployeeId = employee.id;
 
     const token = createInvitationToken();
     const tokenHash = hashInvitationToken(token);
@@ -94,6 +115,13 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Invitation create]", error);
-    return invitationError("Não foi possível criar o convite. Confira se a migration de convites foi aplicada.", 500);
+    if (createdEmployeeId) {
+      const permission = await requireInvitationAdmin(request).catch(() => null);
+      if (permission?.ok) {
+        await permission.supabase.from(TABLES.funcionarios).delete().eq("id", createdEmployeeId);
+      }
+    }
+
+    return invitationError(createInviteErrorMessage(error), 500);
   }
 }

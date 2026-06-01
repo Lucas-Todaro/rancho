@@ -9,6 +9,21 @@ type InviteResult = {
   message: string;
 };
 
+const roleDescriptions = {
+  funcionario: {
+    title: "Funcionário",
+    text: "Acessa apenas as rotinas operacionais liberadas, como consultas e registros do dia a dia."
+  },
+  gerente: {
+    title: "Gerente",
+    text: "Pode acompanhar a operação da fazenda e gerenciar cadastros do rancho, mas não deve ter controle total administrativo."
+  },
+  admin: {
+    title: "Administrador",
+    text: "Tem acesso amplo ao sistema, incluindo gestão de funcionários, convites, WhatsApp e configurações do rancho."
+  }
+};
+
 export function InviteEmployeeForm({
   busy,
   session,
@@ -103,6 +118,26 @@ export function InviteEmployeeForm({
               <option value="admin">Administrador</option>
             </select>
           </label>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">O que cada permissão libera</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {Object.entries(roleDescriptions).map(([key, item]) => (
+              <button
+                key={key}
+                className={`rounded-lg border p-3 text-left transition ${role === key ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/35" : "border-slate-200 bg-white/70 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/60"}`}
+                type="button"
+                onClick={() => setRole(key)}
+              >
+                <strong className="block text-sm text-slate-950 dark:text-white">{item.title}</strong>
+                <span className="mt-2 block text-xs leading-relaxed text-slate-600 dark:text-slate-300">{item.text}</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            O funcionário só cria a própria senha pelo link do convite. O administrador nunca define a senha dele.
+          </p>
         </div>
 
         {result ? (

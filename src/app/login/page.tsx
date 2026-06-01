@@ -2,9 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { LogIn, PawPrint, ShieldCheck } from "lucide-react";
+import { Mail, LogIn, PawPrint, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
+
+const SUPPORT_EMAIL = "projeto.fazenda00@gmail.com";
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Solicitação de acesso ao Rancho")}&body=${encodeURIComponent("Olá, gostaria de solicitar acesso ao sistema Rancho.\n\nNome:\nFazenda:\nTelefone:")}`;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -92,9 +95,11 @@ export default function LoginPage() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
               <strong className="block text-slate-900 dark:text-white">Precisa de acesso?</strong>
-              <span className="mt-1 block">Solicite um convite ao administrador do Rancho.</span>
-              <a className="mt-3 inline-flex font-black text-emerald-700 hover:text-emerald-800 dark:text-emerald-300" href="mailto:suporte@rancho.app">
-                Falar com suporte
+              <span className="mt-1 block">Solicite um convite ao administrador do Rancho ou fale com o suporte.</span>
+              <span className="mt-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">E-mail do suporte</span>
+              <span className="mt-1 block break-all font-black text-slate-900 dark:text-white">{SUPPORT_EMAIL}</span>
+              <a className="btn btn-secondary mt-4 w-full justify-center" href={SUPPORT_MAILTO}>
+                <Mail className="h-4 w-4" /> Enviar e-mail ao suporte
               </a>
             </div>
           </form>
