@@ -73,7 +73,7 @@ as $$
       and u.ativo is true
       and (
         u.is_platform_admin is true
-        or u.papel in ('super_admin', 'platform_admin')
+        or u.papel::text in ('super_admin', 'platform_admin')
       )
   );
 $$;
