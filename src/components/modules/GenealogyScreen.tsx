@@ -176,11 +176,28 @@ export function GenealogyScreen() {
     }
   }
 
-  function closeTree() {
+  const closeTree = useCallback(() => {
     setSelectedId("");
     setSuccess("");
     if (typeof window !== "undefined") window.history.replaceState(null, "", "/genealogia");
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeTree();
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeTree, selected]);
 
   async function saveGenealogy() {
     if (!selected) return;
@@ -276,23 +293,23 @@ export function GenealogyScreen() {
       </section>
 
       {selected && tree ? (
-        <section className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:p-6">
-          <div className="flex max-h-[96vh] w-full max-w-7xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:rounded-lg">
-            <header className="flex flex-col gap-3 border-b border-slate-200 p-5 dark:border-slate-800 md:flex-row md:items-start md:justify-between md:p-6">
+        <section aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-6" onMouseDown={closeTree} role="dialog">
+          <div className="relative z-10 flex max-h-[calc(100dvh-0.75rem)] min-h-0 w-full max-w-7xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:max-h-[min(92dvh,52rem)] md:rounded-lg" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="shrink-0 border-b border-slate-200 p-4 dark:border-slate-800 md:p-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Árvore genealógica</p>
-                <h2 className="mt-2 text-3xl font-black">{animalLabel(selected)}</h2>
+                <h2 className="mt-2 break-words text-2xl font-black md:text-3xl">{animalLabel(selected)}</h2>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Edite pai e mãe, e veja avós e filhos automaticamente.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 {success ? <Badge tone="success">{success}</Badge> : null}
-                <button className="rounded-lg border border-slate-200 p-3 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900" type="button" onClick={closeTree} title="Fechar">
+                <button className="ml-auto shrink-0 rounded-lg border border-slate-200 bg-white/80 p-3 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/80 dark:hover:bg-slate-900" type="button" onClick={closeTree} title="Fechar" aria-label="Fechar genealogia">
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </header>
 
-            <div className="overflow-y-auto p-5 md:p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
               <div className="overflow-x-auto pb-2">
                 <div className="mx-auto min-w-[48rem] max-w-5xl space-y-4">
                   <div className="grid grid-cols-4 gap-3">
@@ -348,9 +365,12 @@ export function GenealogyScreen() {
                   <span className="text-sm font-bold">Observações genealógicas</span>
                   <textarea className="input min-h-24 resize-y" value={draft.genealogia_observacoes} onChange={(event) => setDraft((current) => ({ ...current, genealogia_observacoes: event.target.value }))} placeholder="Ex: linhagem, origem, histórico familiar..." />
                 </label>
-                <button className="btn btn-primary mt-4" type="button" onClick={saveGenealogy} disabled={saving}>
-                  <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar alterações"}
-                </button>
+                <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button className="btn btn-secondary" type="button" onClick={closeTree}>Fechar</button>
+                  <button className="btn btn-primary" type="button" onClick={saveGenealogy} disabled={saving}>
+                    <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar alterações"}
+                  </button>
+                </div>
               </section>
             </div>
           </div>
