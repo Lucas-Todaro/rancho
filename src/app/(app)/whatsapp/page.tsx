@@ -74,6 +74,7 @@ export default function WhatsAppPage() {
   const [status, setStatus] = useState("");
   const [botTestPhone, setBotTestPhone] = useState("");
   const [botTestMessage, setBotTestMessage] = useState(defaultBotTestMessage);
+  const [botTestSaveReal, setBotTestSaveReal] = useState(false);
   const [botTestLoading, setBotTestLoading] = useState(false);
   const [botTestResult, setBotTestResult] = useState<BotTestResult | null>(null);
   const [botTestHistory, setBotTestHistory] = useState<BotTestHistoryItem[]>([]);
@@ -309,7 +310,8 @@ export default function WhatsAppPage() {
         },
         body: JSON.stringify({
           telefone: normalizedPhone,
-          mensagem: text
+          mensagem: text,
+          salvarReal: botTestSaveReal
         })
       });
       const data = await response.json().catch(() => ({
@@ -549,6 +551,20 @@ export default function WhatsAppPage() {
               <label className="mt-4 block space-y-2">
                 <span className="text-sm font-bold">Mensagem</span>
                 <textarea className="input min-h-28 resize-y" value={botTestMessage} onChange={(event) => setBotTestMessage(event.target.value)} placeholder="vaca B-002 deu 32 litros" />
+              </label>
+              <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={botTestSaveReal}
+                  onChange={(event) => setBotTestSaveReal(event.target.checked)}
+                />
+                <span>
+                  <strong className="block text-amber-900 dark:text-amber-100">Salvar registros reais no sistema</strong>
+                  <span className="mt-1 block text-amber-800 dark:text-amber-100">
+                    Atenção: com esta opção ativada, os testes vão alterar dados reais da fazenda.
+                  </span>
+                </span>
               </label>
               <button className="btn btn-primary mt-4 w-full" onClick={simulateBotMessage} type="button" disabled={botTestLoading || !botTestPhone.trim() || !botTestMessage.trim()}>
                 <Bot className="h-4 w-4" /> {botTestLoading ? "Simulando..." : "Simular mensagem"}

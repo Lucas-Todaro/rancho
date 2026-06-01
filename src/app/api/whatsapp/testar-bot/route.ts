@@ -61,7 +61,7 @@ async function assertCanUseSimulator(request: NextRequest, telefone: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { telefone, mensagem } = await request.json();
+    const { telefone, mensagem, salvarReal } = await request.json();
     const phone = String(telefone || "").trim();
     const text = String(mensagem || "").trim();
 
@@ -75,7 +75,8 @@ export async function POST(request: NextRequest) {
       telefone: phone,
       mensagem: text,
       provider: "simulador",
-      modoTeste: true
+      modoTeste: true,
+      salvarReal: Boolean(salvarReal)
     });
 
     return NextResponse.json(result);

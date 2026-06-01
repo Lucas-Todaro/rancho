@@ -28,6 +28,7 @@ export type ProcessWhatsappMessageInput = {
   mensagem: string;
   provider: "twilio" | "simulador" | "meta" | "whatsapp";
   modoTeste?: boolean;
+  salvarReal?: boolean;
   messageSid?: string;
   to?: string;
   raw?: AnyRecord;
@@ -54,6 +55,8 @@ type SaveResult = {
   response: string;
   nextSession?: BotSession;
   sessionData?: AnyRecord;
+  savedReal?: boolean;
+  savedTables?: string[];
 };
 
 type MatchResult<T extends AnyRecord> = {
@@ -345,6 +348,10 @@ async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, t
   return data;
 }
 
+function realSaveResult(response: string, savedTables: string[]): SaveResult {
+  return { response, savedReal: true, savedTables };
+}
+
 function matchKey(value: unknown) {
   return normalizeRanchoText(String(value || "")).replace(/[^a-z0-9]/g, "");
 }
@@ -569,7 +576,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         registrado_por: owner.usuario_id || null,
         observacoes: `Registrado via WhatsApp (${owner.telefone_e164})`
       });
-      return { response: `Pronto, registro salvo com sucesso.\nProdução: ${animal.brinco}, ${formatNumber(dados.litros, " L")}.` };
+      return realSaveResult(`Pronto, registro salvo com sucesso.\nProdução: ${animal.brinco}, ${formatNumber(dados.litros, " L")}.`, [TABLES.ordenhas]);
     }
 
     if (pending.tipo === "PARTO") {
@@ -584,7 +591,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return { response: `Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.` };
+      return realSaveResult(`Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.`, [TABLES.eventosAnimal]);
     }
 
     if (pending.tipo === "VACINA_MEDICAMENTO") {
@@ -600,7 +607,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return { response: `Pronto, registro salvo com sucesso.\n${tipo === "vacina" ? "Vacina" : "Tratamento"} em ${animal.brinco}: ${dados.produto}.` };
+      return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "vacina" ? "Vacina" : "Tratamento"} em ${animal.brinco}: ${dados.produto}.`, [TABLES.eventosAnimal]);
     }
 
     if (pending.tipo === "MORTE") {
@@ -623,7 +630,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         .eq("fazenda_id", owner.fazenda_id);
       if (error) throw new Error(error.message);
 
-      return { response: `Pronto, registro salvo com sucesso.\nAnimal ${animal.brinco} marcado como morto.` };
+      return realSaveResult(`Pronto, registro salvo com sucesso.\nAnimal ${animal.brinco} marcado como morto.`, [TABLES.eventosAnimal, TABLES.animais]);
     }
   }
 
@@ -637,7 +644,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       created_by: owner.usuario_id || null,
       observacoes: "Cadastrado via WhatsApp"
     });
-    return { response: `Pronto, animal cadastrado com sucesso.\nBrinco: ${dados.animal_codigo}.` };
+    return realSaveResult(`Pronto, animal cadastrado com sucesso.\nBrinco: ${dados.animal_codigo}.`, [TABLES.animais]);
   }
 
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {
@@ -668,7 +675,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       origem: "whatsapp",
       created_by: owner.usuario_id || null
     });
-    return { response: `Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.` };
+    return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
   }
 
   if (pending.tipo === "ESTOQUE_CADASTRO" || pending.tipo === "CRIAR_ITEM_ESTOQUE") {
@@ -710,7 +717,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       created_by: owner.usuario_id || null
     });
 
-    return { response: `Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatStockAmount(dados.quantidade, dados.unidade)}.` };
+    return realSaveResult(`Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatStockAmount(dados.quantidade, dados.unidade)}.`, [TABLES.estoqueItens]);
   }
 
   if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
@@ -806,12 +813,13 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         created_by: owner.usuario_id || null
       });
 
-      return {
-        response: `Pronto, registros salvos com sucesso.\nEntrada: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.\nDespesa: ${formatMoney(dados.valor)}.`
-      };
+      return realSaveResult(
+        `Pronto, registros salvos com sucesso.\nEntrada: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.\nDespesa: ${formatMoney(dados.valor)}.`,
+        [TABLES.estoqueMovimentacoes, TABLES.transacoesFinanceiras]
+      );
     }
 
-    return { response: `Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.` };
+    return realSaveResult(`Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.`, [TABLES.estoqueMovimentacoes]);
   }
 
   if (pending.tipo === "CRIAR_FUNCIONARIO") {
@@ -891,7 +899,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
     }
 
-    return { response: `Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${formatWhatsappForBot(phone)}.` };
+    return realSaveResult(`Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${formatWhatsappForBot(phone)}.`, [TABLES.funcionarios, TABLES.whatsappUsuarios]);
   }
 
   if (pending.tipo === "PONTO_FUNCIONARIO") {
@@ -920,7 +928,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       origem: "whatsapp",
       created_by: owner.usuario_id || null
     });
-    return { response: `Pronto, ponto salvo com sucesso.\n${found.row.nome}: ${dados.ponto_tipo || "entrada"}${dados.horario ? ` às ${dados.horario}` : ""}.` };
+    return realSaveResult(`Pronto, ponto salvo com sucesso.\n${found.row.nome}: ${dados.ponto_tipo || "entrada"}${dados.horario ? ` às ${dados.horario}` : ""}.`, [TABLES.registrosPonto]);
   }
 
   if (pending.tipo === "ORDEM_SERVICO") {
@@ -1110,7 +1118,14 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   return confirmationText(next);
 }
 
-async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, text: string, command: string) {
+async function handleConfirmation(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  session: BotSession,
+  text: string,
+  command: string,
+  options: { modoTesteSalvarReal?: boolean } = {}
+) {
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -1125,6 +1140,19 @@ async function handleConfirmation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     });
     const result = await saveConfirmedRecord(supabase, owner, pending);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
+
+    if (options.modoTesteSalvarReal && result.savedReal) {
+      console.log("[BOT TEST REAL SAVE]", {
+        tipo_registro: pending.tipo,
+        service: "saveConfirmedRecord",
+        tabelas: result.savedTables || [],
+        fazenda_id: owner.fazenda_id,
+        whatsapp_usuario_id: owner.whatsapp_usuario_id,
+        funcionario_id: owner.funcionario_id
+      });
+      return `Registro salvo no sistema com sucesso.\n${result.response}`;
+    }
+
     return result.response;
   }
 
@@ -1197,6 +1225,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
   }
 
   const phone = normalizeWhatsappNumber(input.telefone) || input.telefone;
+  const salvarRealNoTeste = Boolean(input.modoTeste && input.salvarReal);
   let owner: WhatsAppOwner | null = null;
   let previousSession: BotSession | null = null;
   let nextSession: BotSession | null = null;
@@ -1218,6 +1247,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         raw: {
           provider: input.provider,
           modoTeste: Boolean(input.modoTeste),
+          salvarReal: Boolean(input.salvarReal),
           from: input.telefone,
           to: input.to,
           messageSid: input.messageSid,
@@ -1237,7 +1267,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           body: response,
           raw: {
             provider: input.provider,
-            modoTeste: Boolean(input.modoTeste)
+            modoTeste: Boolean(input.modoTeste),
+            salvarReal: Boolean(input.salvarReal)
           }
         });
       }
@@ -1253,7 +1284,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (isCancelCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
-    } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && isConfirmCommand(command)) {
+    } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isConfirmCommand(command)) {
       parsed = pendingFromSession(previousSession);
       eventConfirmed = true;
       await saveSession(supabase, owner, {
@@ -1261,7 +1292,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         dados: {
           ultimo_teste_confirmado: parsed || null,
           confirmado_em: nowIso(),
-          modo_teste: true
+          modo_teste: true,
+          salvar_real: false
         }
       });
       response = parsed
@@ -1270,7 +1302,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
       eventConfirmed = isConfirmCommand(command);
-      response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command);
+      response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command, {
+        modoTesteSalvarReal: salvarRealNoTeste
+      });
     } else if (previousSession.etapa === "aguardando_dado") {
       response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
     } else {
@@ -1289,7 +1323,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         body: response,
         raw: {
           provider: input.provider,
-          modoTeste: Boolean(input.modoTeste)
+          modoTeste: Boolean(input.modoTeste),
+          salvarReal: Boolean(input.salvarReal)
         }
       });
     }
