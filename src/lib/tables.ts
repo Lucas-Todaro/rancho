@@ -238,6 +238,8 @@ export const moduleConfigs: ModuleConfig[] = [
         { label: "Grama (g)", value: "g" },
         { label: "Litro (L)", value: "L" },
         { label: "Mililitro (ml)", value: "ml" },
+        { label: "Arroba", value: "arroba" },
+        { label: "Tonelada", value: "tonelada" },
         { label: "Unidade", value: "unidade" },
         { label: "Saco", value: "saco" },
         { label: "Caixa", value: "caixa" },

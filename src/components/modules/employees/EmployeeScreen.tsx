@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
 import { formatBrazilianPhone } from "@/lib/input-format";
 import { currentMonth, formatCurrency } from "@/lib/utils";
+import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
 import { EmployeeDetails } from "@/components/modules/employees/EmployeeDetails";
 import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
@@ -128,6 +129,7 @@ export function EmployeeScreen() {
   const pointsThisMonth = timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length;
   const showPlaceholders = loading || Boolean(error && !employees.length);
   const canInvite = ["dono", "admin", "gerente"].includes(String(profile?.papel || ""));
+  const canManage = canManageData(profile);
 
   function closeForm() {
     setShowForm(false);
@@ -145,6 +147,7 @@ export function EmployeeScreen() {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       const accessMode = editing?.tipo_acesso || formAccessMode;
       const hasWhatsApp = Boolean(values.contato_whatsapp);
       const baseEmployee = editing?.id ? { ...editing, ...values } : values;
@@ -180,6 +183,10 @@ export function EmployeeScreen() {
   }
 
   async function toggleActive(employee: AnyRecord) {
+    if (!canManage) {
+      setError(PERMISSION_DENIED_MESSAGE);
+      return;
+    }
     const active = employee.ativo !== false;
     const ok = window.confirm(`${active ? "Desativar" : "Ativar"} ${employee.nome}?`);
     if (!ok) return;
@@ -215,6 +222,10 @@ export function EmployeeScreen() {
   }
 
   async function removeEmployee(employee: AnyRecord) {
+    if (!canManage) {
+      setError(PERMISSION_DENIED_MESSAGE);
+      return;
+    }
     const hasHistory = timeEntries.some((entry) => entry.funcionario_id === employee.id) || payrolls.some((row) => row.funcionario_id === employee.id);
     const ok = window.confirm(
       hasHistory
@@ -333,6 +344,7 @@ export function EmployeeScreen() {
               }}
               onToggleActive={toggleActive}
               onDelete={removeEmployee}
+              canManage={canManage}
             />
           )) : (
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">

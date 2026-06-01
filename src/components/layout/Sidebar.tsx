@@ -6,6 +6,7 @@ import { PawPrint } from "lucide-react";
 import { navGroups } from "@/components/layout/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { canAccessPlatformAdmin } from "@/lib/platform-admin";
+import { canViewPath } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -13,7 +14,7 @@ export function Sidebar() {
   const { profile } = useAuth();
   const isPlatformAdmin = canAccessPlatformAdmin(profile);
   const visibleGroups = navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => !item.platformOnly || isPlatformAdmin) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => (!item.platformOnly || isPlatformAdmin) && canViewPath(profile, item.href)) }))
     .filter((group) => group.items.length);
 
   return (

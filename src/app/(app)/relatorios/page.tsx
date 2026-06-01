@@ -1,12 +1,13 @@
 "use client";
 
-import { FileText, Printer } from "lucide-react";
+import { FileText, Printer, TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BarChart } from "@/components/ui/BarChart";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { loadDashboardData } from "@/services/dashboard";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { formatStockQuantity } from "@/lib/stock-format";
 
 export default function RelatoriosPage() {
   const { dataContext, profile } = useAuth();
@@ -73,7 +74,39 @@ export default function RelatoriosPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="glass rounded-lg p-5"><h2 className="mb-6 text-xl font-black">Produção por dia</h2><BarChart data={data.charts.productionByDay} suffix=" L" /></div>
         <div className="glass rounded-lg p-5"><h2 className="mb-6 text-xl font-black">Ranking de produtividade</h2><BarChart data={data.charts.animalRanking} suffix=" L" /></div>
+        <div className="glass rounded-lg p-5">
+          <div className="mb-6 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-emerald-600" />
+            <h2 className="text-xl font-black">Entradas por mês</h2>
+          </div>
+          <BarChart data={data.charts.incomeByMonth || []} />
+        </div>
+        <div className="glass rounded-lg p-5">
+          <div className="mb-6 flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-red-600" />
+            <h2 className="text-xl font-black">Saídas por mês</h2>
+          </div>
+          <BarChart data={data.charts.expensesByMonth || []} />
+        </div>
+        <div className="glass rounded-lg p-5"><h2 className="mb-6 text-xl font-black">Resultado financeiro</h2><BarChart data={data.charts.resultByMonth || []} /></div>
+        <div className="glass rounded-lg p-5"><h2 className="mb-6 text-xl font-black">Estoque por categoria</h2><BarChart data={data.charts.stockByCategory || []} /></div>
       </div>
+
+      <section className="glass rounded-lg p-5">
+        <h2 className="text-xl font-black">Itens abaixo do mínimo</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {data.criticalStock?.length ? data.criticalStock.slice(0, 6).map((item: any) => (
+            <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+              <strong>{item.nome}</strong>
+              <p className="mt-1 text-amber-800 dark:text-amber-200">
+                Atual: {formatStockQuantity(item.quantidade_atual, item.unidade_medida)} | Mínimo: {formatStockQuantity(item.quantidade_minima, item.unidade_medida)}
+              </p>
+            </div>
+          )) : (
+            <p className="text-sm text-slate-500">Ainda não há dados suficientes para gerar este gráfico.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

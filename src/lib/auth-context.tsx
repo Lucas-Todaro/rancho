@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { isSupabaseConfigured } from "@/lib/env";
 import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
@@ -40,6 +40,7 @@ const demoProfile: UsuarioProfile = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const AUTH_WAIT_LIMIT_MS = 12000;
+const BACKGROUND_PROFILE_REFRESH_MS = 60000;
 const ACCESS_DISABLED_MESSAGE = "Seu acesso foi desativado. Entre em contato com o administrador do Rancho.";
 const PROFILE_BLOCKING_MESSAGES = [
   ACCESS_DISABLED_MESSAGE,
@@ -141,8 +142,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoProfile);
   const [error, setError] = useState("");
+  const lastBackgroundRefreshAt = useRef(0);
+  const backgroundRefreshRunning = useRef(false);
 
-  async function loadProfile(nextSession?: Session | null, options: { clearOnError?: boolean } = {}) {
+  async function loadProfile(nextSession?: Session | null, options: { clearOnError?: boolean; silentOnError?: boolean } = {}) {
     const activeSession = nextSession ?? session;
     setError("");
 
@@ -179,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(message);
         return;
       }
+      if (options.silentOnError) return;
       if (options.clearOnError) setProfile(null);
       setError(message);
     }
@@ -317,16 +321,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!configured || !session?.user?.id) return;
 
-    function revalidateProfile() {
+    async function revalidateProfile() {
       if (document.visibilityState === "hidden") return;
-      void loadProfile(session, { clearOnError: true });
+      if (Date.now() - lastBackgroundRefreshAt.current < BACKGROUND_PROFILE_REFRESH_MS) return;
+      if (backgroundRefreshRunning.current) return;
+      lastBackgroundRefreshAt.current = Date.now();
+      backgroundRefreshRunning.current = true;
+      try {
+        await loadProfile(session, { clearOnError: false, silentOnError: true });
+      } finally {
+        backgroundRefreshRunning.current = false;
+      }
     }
 
-    window.addEventListener("focus", revalidateProfile);
     document.addEventListener("visibilitychange", revalidateProfile);
 
     return () => {
-      window.removeEventListener("focus", revalidateProfile);
       document.removeEventListener("visibilitychange", revalidateProfile);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -401,7 +411,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isDemo: !configured,
     dataContext: {
       fazendaId: profile?.fazenda_id,
-      usuarioId: profile?.id
+      usuarioId: profile?.id,
+      papel: profile?.papel
     },
     signIn,
     signOut,

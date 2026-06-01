@@ -39,7 +39,8 @@ export function EmployeeCard({
   onView,
   onEdit,
   onToggleActive,
-  onDelete
+  onDelete,
+  canManage = true
 }: {
   employee: AnyRecord;
   lastPoint?: AnyRecord;
@@ -47,6 +48,7 @@ export function EmployeeCard({
   onEdit: (employee: AnyRecord) => void;
   onToggleActive: (employee: AnyRecord) => void;
   onDelete: (employee: AnyRecord) => void;
+  canManage?: boolean;
 }) {
   const active = employee.ativo !== false;
   const hasSystemAccess = ["sistema", "sistema_whatsapp"].includes(String(employee.tipo_acesso || "")) || Boolean(employee.usuario_id || employee.email);
@@ -106,7 +108,7 @@ export function EmployeeCard({
         {employee.contato_whatsapp ? <p className="truncate">WhatsApp: <strong className="text-slate-700 dark:text-slate-200">{formatBrazilianPhone(employee.contato_whatsapp)}</strong></p> : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className={`mt-4 flex flex-wrap gap-2 ${canManage ? "" : "[&>button:not(:first-child)]:hidden"}`}>
         <button className="btn flex-1 bg-emerald-600 text-white" type="button" onClick={(event) => { event.stopPropagation(); onView(employee); }}>
           <Eye className="h-4 w-4" /> Ver ficha
         </button>

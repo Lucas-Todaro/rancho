@@ -32,6 +32,7 @@ import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 import { formatCurrency, formatNumber, toDateOnlyString } from "@/lib/utils";
 import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
+import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 
 const AnimalDetailModal = dynamic(
   () => import("@/components/modules/AnimalDetailModal").then((module) => module.AnimalDetailModal),
@@ -81,7 +82,7 @@ function dateOnly(value: unknown) {
 }
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
-  const { dataContext } = useAuth();
+  const { dataContext, profile } = useAuth();
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const queryContext = useMemo(() => ({ fazendaId: farmId, usuarioId: userId }), [farmId, userId]);
@@ -96,6 +97,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
 
   const Icon = moduleIcons[config.icon] || Database;
   const showPlaceholders = loading || Boolean(error && !rows.length);
+  const canManage = canManageData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +151,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await assertAnimalCanReceiveRecord(values);
       if (editing?.id) {
         await updateRecord(config.tableName, editing.id, values);
@@ -180,6 +183,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     if (!ok) return;
     setBusy(true);
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await deleteRecord(config.tableName, id);
       notifyDashboardUpdated();
       await load();
@@ -214,7 +218,13 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       </div>
 
       <div className="space-y-6">
-        <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
+        {canManage ? (
+          <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
+        ) : (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Seu perfil pode consultar esta área, mas não pode criar, editar ou excluir registros.
+          </div>
+        )}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">{config.key === "rebanho" ? "Animais do rebanho" : "Registros"}</h2>
@@ -230,9 +240,10 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               relationOptions={relationOptions}
               loading={showPlaceholders}
               onDelete={remove}
-              onEdit={setEditing}
+              onEdit={canManage ? setEditing : () => setError(PERMISSION_DENIED_MESSAGE)}
               onView={setSelectedAnimal}
               onExport={(animals) => exportCsv(config.key, animals, config.fields)}
+              canManage={canManage}
             />
           ) : (
             <DataTable
@@ -241,10 +252,11 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               search={search}
               setSearch={setSearch}
               onDelete={remove}
-              onEdit={setEditing}
+              onEdit={canManage ? setEditing : () => setError(PERMISSION_DENIED_MESSAGE)}
               onExport={() => exportCsv(config.key, filteredRows, config.fields)}
               relationOptions={relationOptions}
               loading={showPlaceholders}
+              canManage={canManage}
             />
           )}
         </div>

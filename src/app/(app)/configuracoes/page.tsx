@@ -113,6 +113,7 @@ export default function ConfiguracoesPage() {
     formato_data: "DD/MM/AAAA",
     unidade_leite: "litros",
     unidade_peso: "kg",
+    unidade_volume: "litro",
     tema: "sistema",
     tela_inicial: "/dashboard"
   });
@@ -169,6 +170,7 @@ export default function ConfiguracoesPage() {
         formato_data: String(userPreferences.formato_data || farmSettings.formato_data || "DD/MM/AAAA"),
         unidade_leite: String(userPreferences.unidade_leite || farmSettings.unidade_leite || "litros"),
         unidade_peso: String(userPreferences.unidade_peso || farmSettings.unidade_peso || "kg"),
+        unidade_volume: String(userPreferences.unidade_volume || farmSettings.unidade_volume || "litro"),
         tema: String(userPreferences.tema || farmSettings.tema || "sistema"),
         tela_inicial: String(userPreferences.tela_inicial || farmSettings.tela_inicial || "/dashboard")
       });
@@ -470,21 +472,36 @@ export default function ConfiguracoesPage() {
                 <Field label="Moeda padrão">
                   <select className="input" value={preferencesDraft.moeda} onChange={(event) => setPreferencesDraft((current) => ({ ...current, moeda: event.target.value }))}>
                     <option value="BRL">Real brasileiro (R$)</option>
+                    <option value="USD">Dólar americano (USD)</option>
+                    <option value="EUR">Euro (EUR)</option>
                   </select>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Moeda de exibição. Não converte valores antigos automaticamente.</p>
                 </Field>
                 <Field label="Formato de data">
                   <select className="input" value={preferencesDraft.formato_data} onChange={(event) => setPreferencesDraft((current) => ({ ...current, formato_data: event.target.value }))}>
                     <option value="DD/MM/AAAA">DD/MM/AAAA</option>
+                    <option value="DD/MM/AA">DD/MM/AA</option>
+                    <option value="AAAA-MM-DD">AAAA-MM-DD</option>
                   </select>
                 </Field>
                 <Field label="Unidade de leite">
                   <select className="input" value={preferencesDraft.unidade_leite} onChange={(event) => setPreferencesDraft((current) => ({ ...current, unidade_leite: event.target.value }))}>
                     <option value="litros">Litros</option>
+                    <option value="mililitros">Mililitros</option>
                   </select>
                 </Field>
                 <Field label="Unidade de peso">
                   <select className="input" value={preferencesDraft.unidade_peso} onChange={(event) => setPreferencesDraft((current) => ({ ...current, unidade_peso: event.target.value }))}>
                     <option value="kg">Quilogramas (kg)</option>
+                    <option value="g">Gramas (g)</option>
+                    <option value="arroba">Arroba</option>
+                    <option value="tonelada">Tonelada</option>
+                  </select>
+                </Field>
+                <Field label="Unidade de volume">
+                  <select className="input" value={preferencesDraft.unidade_volume} onChange={(event) => setPreferencesDraft((current) => ({ ...current, unidade_volume: event.target.value }))}>
+                    <option value="litro">Litro</option>
+                    <option value="mililitro">Mililitro</option>
                   </select>
                 </Field>
                 <Field label="Tema visual">
@@ -498,6 +515,7 @@ export default function ConfiguracoesPage() {
                   <select className="input" value={preferencesDraft.tela_inicial} onChange={(event) => setPreferencesDraft((current) => ({ ...current, tela_inicial: event.target.value }))}>
                     <option value="/dashboard">Dashboard</option>
                     <option value="/rebanho">Rebanho</option>
+                    <option value="/producao">Produção</option>
                     <option value="/estoque">Estoque</option>
                     <option value="/financeiro">Financeiro</option>
                     <option value="/funcionarios">Funcionários</option>

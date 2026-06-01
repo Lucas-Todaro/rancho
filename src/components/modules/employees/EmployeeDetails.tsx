@@ -15,6 +15,7 @@ import type { AnyRecord, DataContext } from "@/lib/types";
 import { currentMonth, formatCurrency, formatDate, nowLocalDatetime } from "@/lib/utils";
 import { formatBrazilianPhone, formatCPF, formatCurrencyForInput, parseCurrencyInput } from "@/lib/input-format";
 import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
+import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 
 type Tab = "resumo" | "ponto" | "folha";
 
@@ -41,7 +42,7 @@ export function EmployeeDetails({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const [tab, setTab] = useState<Tab>("resumo");
   const [timeEntries, setTimeEntries] = useState<AnyRecord[]>([]);
   const [payrolls, setPayrolls] = useState<AnyRecord[]>([]);
@@ -130,11 +131,13 @@ export function EmployeeDetails({
   );
   const estimatedPayroll = currentPayroll ? Number(currentPayroll.total_liquido ?? payrollTotal(currentPayroll)) : Number(employee.salario_base || 0);
   const showDetailPlaceholders = detailsLoading || Boolean(error && !timeEntries.length && !payrolls.length);
+  const canManage = canManageData(profile);
 
   async function submitEmployee(values: AnyRecord) {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       const hasWhatsApp = Boolean(values.contato_whatsapp);
       const contato_whatsapp = hasWhatsApp ? await assertUniqueActiveEmployeeWhatsApp({ ...employee, ...values }, context) : null;
       const payload = { ...values, contato_whatsapp };
@@ -160,6 +163,7 @@ export function EmployeeDetails({
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await createRecord(TABLES.registrosPonto, {
         funcionario_id: employee.id,
         tipo: pointDraft.tipo,
@@ -183,6 +187,7 @@ export function EmployeeDetails({
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       const payload = {
         funcionario_id: employee.id,
         competencia: monthStart(payrollDraft.competencia),
@@ -226,12 +231,12 @@ export function EmployeeDetails({
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button className="btn btn-primary" type="button" onClick={() => setShowPointForm(true)}>
+              {canManage ? <button className="btn btn-primary" type="button" onClick={() => setShowPointForm(true)}>
                 <Plus className="h-4 w-4" /> Registrar ponto
-              </button>
-              <button className="btn btn-secondary" type="button" onClick={() => setEditingEmployee(true)}>
+              </button> : null}
+              {canManage ? <button className="btn btn-secondary" type="button" onClick={() => setEditingEmployee(true)}>
                 <Pencil className="h-4 w-4" /> Editar dados
-              </button>
+              </button> : null}
               <button className="rounded-lg border border-slate-200 p-3 hover:bg-white dark:border-slate-800 dark:hover:bg-slate-900" type="button" onClick={onClose} title="Fechar">
                 <X className="h-5 w-5" />
               </button>

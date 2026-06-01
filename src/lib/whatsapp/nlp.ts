@@ -214,12 +214,15 @@ export function formatStockUnit(quantity: unknown, unit: string | null | undefin
     litro: "litro",
     litros: "litro",
     l: "litro",
-    kg: "kg",
-    quilo: "kg",
-    quilos: "kg",
-    g: "g",
-    grama: "g",
-    gramas: "g",
+    kg: "quilo",
+    quilo: "quilo",
+    quilos: "quilo",
+    g: "grama",
+    grama: "grama",
+    gramas: "grama",
+    ml: "mililitro",
+    mililitro: "mililitro",
+    mililitros: "mililitro",
     caixa: "caixa",
     caixas: "caixa"
   };
@@ -230,8 +233,9 @@ export function formatStockUnit(quantity: unknown, unit: string | null | undefin
     unidade: "unidades",
     litro: "litros",
     caixa: "caixas",
-    kg: "kg",
-    g: "g"
+    quilo: "quilos",
+    grama: "gramas",
+    mililitro: "mililitros"
   };
   const singular = singularByUnit[normalized] || normalized || "";
   return plural ? (pluralByUnit[singular] || singular) : singular;

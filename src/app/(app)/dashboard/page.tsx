@@ -8,6 +8,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatStockQuantity } from "@/lib/stock-format";
 import { loadDashboardData, onDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
@@ -200,7 +201,7 @@ export default function DashboardPage() {
             <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
               <p className="font-black">{item.nome}</p>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                Atual: {item.quantidade_atual} {item.unidade_medida} | Mínimo: {item.quantidade_minima}
+                Atual: {formatStockQuantity(item.quantidade_atual, item.unidade_medida)} | Mínimo: {formatStockQuantity(item.quantidade_minima, item.unidade_medida)}
               </p>
             </div>
           )) : <p className="text-sm text-slate-500">Nenhum item crítico no momento.</p>}

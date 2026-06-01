@@ -12,6 +12,8 @@ import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { formatStockQuantity } from "@/lib/stock-format";
+import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 
 type StockAction = {
   item: AnyRecord;
@@ -165,7 +167,7 @@ function StockActionModal({
         <div className="mt-5 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-900">
           <p className="font-black">{action.item.nome}</p>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            Saldo atual: {formatNumber(current)} {action.item.unidade_medida || ""}
+            Saldo atual: {formatStockQuantity(current, action.item.unidade_medida)}
           </p>
         </div>
 
@@ -187,7 +189,7 @@ function StockActionModal({
 
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
           <span className="font-bold text-emerald-900 dark:text-emerald-100">Depois da ação: </span>
-          {formatNumber(nextQuantity)} {action.item.unidade_medida || ""}
+          {formatStockQuantity(nextQuantity, action.item.unidade_medida)}
         </div>
 
         <button className="btn btn-primary mt-5 w-full" type="submit" disabled={busy}>
@@ -199,7 +201,7 @@ function StockActionModal({
 }
 
 export function StockScreen({ config }: { config: ModuleConfig }) {
-  const { dataContext } = useAuth();
+  const { dataContext, profile } = useAuth();
   const [items, setItems] = useState<AnyRecord[]>([]);
   const [movements, setMovements] = useState<AnyRecord[]>([]);
   const [search, setSearch] = useState("");
@@ -259,11 +261,13 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     return entries;
   }, [movements]);
   const showPlaceholders = loading || Boolean(error && !items.length);
+  const canManage = canManageData(profile);
 
   async function submitItem(values: AnyRecord) {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       if (editing?.id) {
         await updateRecord(TABLES.estoqueItens, editing.id, values);
         setEditing(null);
@@ -283,6 +287,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await recordStockMovement({
         item: action.item,
         type: action.type,
@@ -307,6 +312,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     setBusy(true);
     setError("");
     try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await deleteRecords(TABLES.estoqueMovimentacoes, [{ column: "item_id", value: item.id }]);
       await deleteRecord(TABLES.estoqueItens, item.id);
       await load();
@@ -345,7 +351,13 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" loading={showPlaceholders} />
       </div>
 
-      <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
+      {canManage ? (
+        <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          Seu perfil pode consultar o estoque, mas não pode criar, editar ou movimentar itens.
+        </div>
+      )}
 
       <section className="glass rounded-lg p-4 shadow-soft md:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -379,19 +391,19 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
                   </div>
                   <div className="text-left md:text-right">
                     <p className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Saldo atual</p>
-                    <p className="mt-1 text-2xl font-black">{formatNumber(current)} {item.unidade_medida}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Mínimo: {formatNumber(minimum)} {item.unidade_medida}</p>
+                    <p className="mt-1 text-2xl font-black">{formatStockQuantity(current, item.unidade_medida)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Mínimo: {formatStockQuantity(minimum, item.unidade_medida)}</p>
                   </div>
                 </div>
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  <button className="btn bg-emerald-600 text-white" type="button" onClick={() => setAction({ item, type: "entrada" })}>
+                  <button className="btn bg-emerald-600 text-white disabled:cursor-not-allowed disabled:opacity-60" type="button" onClick={() => setAction({ item, type: "entrada" })} disabled={!canManage}>
                     <Plus className="h-4 w-4" /> Adicionar
                   </button>
-                  <button className="btn border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" type="button" onClick={() => setAction({ item, type: "saida" })}>
+                  <button className="btn border border-red-200 bg-red-50 text-red-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" type="button" onClick={() => setAction({ item, type: "saida" })} disabled={!canManage}>
                     <ArrowDownCircle className="h-4 w-4" /> Remover
                   </button>
-                  <button className="btn btn-secondary" type="button" onClick={() => setAction({ item, type: "ajuste" })}>
+                  <button className="btn btn-secondary disabled:cursor-not-allowed disabled:opacity-60" type="button" onClick={() => setAction({ item, type: "ajuste" })} disabled={!canManage}>
                     <Scale className="h-4 w-4" /> Ajustar
                   </button>
                 </div>
@@ -405,12 +417,16 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={() => setEditing(item)} title="Editar item">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={() => removeItem(item)} title="Excluir item">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canManage ? (
+                      <>
+                        <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={() => setEditing(item)} title="Editar item">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={() => removeItem(item)} title="Excluir item">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </article>

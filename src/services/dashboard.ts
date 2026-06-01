@@ -76,6 +76,29 @@ export async function loadDashboardData(context?: DataContext) {
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
+  const financeByMonth = Object.entries(
+    finance.reduce<Record<string, { income: number; expenses: number }>>((acc, item) => {
+      const key = financialMonthKey(item) || "sem data";
+      if (!acc[key]) acc[key] = { income: 0, expenses: 0 };
+      if (isFinancialIncome(item)) acc[key].income += financialAmount(item);
+      if (isFinancialExpense(item)) acc[key].expenses += financialAmount(item);
+      return acc;
+    }, {})
+  )
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(-6);
+
+  const stockByCategory = Object.entries(
+    stock.reduce<Record<string, number>>((acc, item) => {
+      const key = String(item.categoria || "Sem categoria");
+      acc[key] = (acc[key] || 0) + Number(item.quantidade_atual || 0);
+      return acc;
+    }, {})
+  )
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
   return {
     animals,
     productions,
@@ -101,7 +124,15 @@ export async function loadDashboardData(context?: DataContext) {
         .sort(([left], [right]) => left.localeCompare(right))
         .slice(-8)
         .map(([label, value]) => ({ label: label === "sem data" ? label : formatDateBRShort(label), value })),
-      animalRanking
+      animalRanking,
+      incomeByMonth: financeByMonth.map(([label, values]) => ({ label, value: values.income })),
+      expensesByMonth: financeByMonth.map(([label, values]) => ({ label, value: values.expenses })),
+      resultByMonth: financeByMonth.map(([label, values]) => ({ label, value: values.income - values.expenses })),
+      stockByCategory,
+      criticalStock: criticalStock.map((item) => ({
+        label: String(item.nome || "Item"),
+        value: Number(item.quantidade_atual || 0)
+      })).slice(0, 6)
     },
     criticalStock,
     activeAlerts

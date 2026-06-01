@@ -266,7 +266,7 @@ export function GenealogyScreen() {
           const father = animalById.get(String(animal.pai_id || ""));
           const sex = getAnimalSexInfo(animal);
           return (
-            <article key={animal.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:border-slate-800 dark:bg-slate-950/70">
+            <article key={animal.id} className={`rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft ${sex.accentClassName}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-xl font-black">{animal.nome || animal.brinco || "Sem brinco"}</h2>

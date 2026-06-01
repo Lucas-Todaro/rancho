@@ -77,6 +77,7 @@ export type UsuarioProfile = {
 export type DataContext = {
   fazendaId?: string;
   usuarioId?: string;
+  papel?: UsuarioProfile["papel"];
 };
 
 export type RelationOption = {

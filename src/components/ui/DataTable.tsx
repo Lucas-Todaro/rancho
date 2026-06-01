@@ -1,14 +1,22 @@
 "use client";
 
-import { Download, Eye, Pencil, Search, Trash2, X } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Download, Eye, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 
-function renderCell(value: any, field: ModuleField, lookups?: Record<string, Record<string, string>>) {
-  if (field.type === "currency") return formatCurrency(value);
+function renderCell(row: AnyRecord, field: ModuleField, lookups?: Record<string, Record<string, string>>) {
+  const value = row[field.name];
+  const isIncome = isFinancialIncome(row);
+  const isExpense = isFinancialExpense(row);
+
+  if (field.type === "currency") {
+    const tone = isIncome ? "text-emerald-700 dark:text-emerald-300" : isExpense ? "text-red-700 dark:text-red-300" : "";
+    return <span className={`font-black tabular-nums ${tone}`}>{formatCurrency(value)}</span>;
+  }
   if (field.type === "date" || field.type === "datetime-local" || field.type === "month") return formatDate(value);
   if (field.type === "number") return String(value ?? 0);
   if (field.type === "checkbox") return value ? <Badge tone="success">Sim</Badge> : <Badge tone="default">Não</Badge>;
@@ -22,6 +30,15 @@ function renderCell(value: any, field: ModuleField, lookups?: Record<string, Rec
         : ["saida", "atrasado", "morto", "tratamento", "descartar", "cancelada"].includes(String(value))
           ? "danger"
           : "default";
+    if (field.name === "tipo" && (isIncome || isExpense)) {
+      const Icon = isIncome ? ArrowUpCircle : ArrowDownCircle;
+      return (
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${isIncome ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200"}`}>
+          <Icon className="h-3.5 w-3.5" />
+          {isIncome ? "Entrada" : "Saída"}
+        </span>
+      );
+    }
     return <Badge tone={tone as any}>{label}</Badge>;
   }
   return String(value ?? "-");
@@ -37,7 +54,8 @@ export function DataTable({
   onView,
   onExport,
   relationOptions = {},
-  loading = false
+  loading = false,
+  canManage = true
 }: {
   rows: AnyRecord[];
   fields: ModuleField[];
@@ -49,6 +67,7 @@ export function DataTable({
   onExport: () => void;
   relationOptions?: Record<string, RelationOption[]>;
   loading?: boolean;
+  canManage?: boolean;
 }) {
   const visibleFields = useMemo(() => fields.filter((field) => field.tableVisible !== false).slice(0, 8), [fields]);
   const lookups = useMemo(() => Object.entries(relationOptions).reduce<Record<string, Record<string, string>>>((acc, [field, options]) => {
@@ -102,7 +121,7 @@ export function DataTable({
               </tr>
             )) : rows.length ? rows.map((row) => (
               <tr key={row.id} className={`${onView ? "cursor-pointer" : ""} hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10`} onClick={onView ? () => onView(row) : undefined}>
-                {visibleFields.map((field) => <td key={field.name}>{renderCell(row[field.name], field, lookups)}</td>)}
+                {visibleFields.map((field) => <td key={field.name}>{renderCell(row, field, lookups)}</td>)}
                 <td>
                   <div className="flex gap-2">
                     {onView ? (
@@ -110,12 +129,16 @@ export function DataTable({
                         <Eye className="h-4 w-4" />
                       </button>
                     ) : null}
-                    <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); onEdit(row); }} title="Editar" type="button">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" onClick={(event) => { event.stopPropagation(); onDelete(row.id); }} title="Excluir" type="button">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canManage ? (
+                      <>
+                        <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); onEdit(row); }} title="Editar" type="button">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" onClick={(event) => { event.stopPropagation(); onDelete(row.id); }} title="Excluir" type="button">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </td>
               </tr>

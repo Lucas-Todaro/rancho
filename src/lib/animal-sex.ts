@@ -3,20 +3,24 @@ import type { AnyRecord } from "@/lib/types";
 type SexTone = {
   label: string;
   className: string;
+  accentClassName: string;
 };
 
 const sexStyles: Record<"female" | "male" | "unknown", SexTone> = {
   female: {
     label: "Fêmea",
-    className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/35 dark:text-rose-200"
+    className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/35 dark:text-rose-200",
+    accentClassName: "border-rose-200 bg-rose-50/45 dark:border-rose-900/70 dark:bg-rose-950/15"
   },
   male: {
     label: "Macho",
-    className: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-200"
+    className: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-200",
+    accentClassName: "border-sky-200 bg-sky-50/45 dark:border-sky-900/70 dark:bg-sky-950/15"
   },
   unknown: {
     label: "Sexo não informado",
-    className: "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/55 dark:text-slate-300"
+    className: "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/55 dark:text-slate-300",
+    accentClassName: "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/70"
   }
 };
 
@@ -31,8 +35,8 @@ export function getAnimalSexInfo(input: AnyRecord | string | null | undefined) {
 
   const normalized = normalize(value);
 
-  if (["femea", "vaca", "novilha", "bezerra"].includes(normalized)) return sexStyles.female;
-  if (["macho", "boi", "touro", "bezerro"].includes(normalized)) return sexStyles.male;
+  if (["f", "female", "femea", "vaca", "novilha", "bezerra"].includes(normalized)) return sexStyles.female;
+  if (["m", "male", "macho", "boi", "touro", "bezerro"].includes(normalized)) return sexStyles.male;
 
   return sexStyles.unknown;
 }

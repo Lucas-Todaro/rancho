@@ -8,6 +8,7 @@ import { navGroups } from "@/components/layout/navigation";
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu";
 import { useAuth } from "@/lib/auth-context";
 import { canAccessPlatformAdmin } from "@/lib/platform-admin";
+import { canViewPath } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 const globalDestinations = [
@@ -55,13 +56,13 @@ export function Header() {
   const isPlatformAdmin = canAccessPlatformAdmin(profile);
   const visibleGroups = useMemo(() => (
     navGroups
-      .map((group) => ({ ...group, items: group.items.filter((item) => !item.platformOnly || isPlatformAdmin) }))
+      .map((group) => ({ ...group, items: group.items.filter((item) => (!item.platformOnly || isPlatformAdmin) && canViewPath(profile, item.href)) }))
       .filter((group) => group.items.length)
-  ), [isPlatformAdmin]);
+  ), [isPlatformAdmin, profile]);
 
   const searchResults = useMemo(() => (
-    findDestinations(globalSearch).filter((item) => isPlatformAdmin || item.href !== "/admin-interno")
-  ), [globalSearch, isPlatformAdmin]);
+    findDestinations(globalSearch).filter((item) => (isPlatformAdmin || item.href !== "/admin-interno") && canViewPath(profile, item.href))
+  ), [globalSearch, isPlatformAdmin, profile]);
 
   useEffect(() => {
     const saved = localStorage.getItem("rancho-theme");

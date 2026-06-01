@@ -79,7 +79,8 @@ export function AnimalCards({
   onView,
   onEdit,
   onDelete,
-  onExport
+  onExport,
+  canManage = true
 }: {
   rows: AnyRecord[];
   search: string;
@@ -90,6 +91,7 @@ export function AnimalCards({
   onEdit: (row: AnyRecord) => void;
   onDelete: (id: string) => void;
   onExport: (rows: AnyRecord[]) => void;
+  canManage?: boolean;
 }) {
   const [loteFilter, setLoteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -189,7 +191,7 @@ export function AnimalCards({
           return (
             <article
               key={animal.id}
-              className="group min-w-0 cursor-pointer rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:border-slate-800 dark:bg-slate-950/70 dark:hover:border-emerald-800"
+              className={`group min-w-0 cursor-pointer rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
               onClick={() => onView(animal)}
             >
               <div className="flex items-start justify-between gap-3">
@@ -239,12 +241,16 @@ export function AnimalCards({
                 <button className="btn flex-1 bg-emerald-600 text-white" type="button" onClick={(event) => { event.stopPropagation(); onView(animal); }}>
                   <Eye className="h-4 w-4" /> Ver ficha
                 </button>
-                <button className="rounded-lg border border-slate-200 p-3 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button className="rounded-lg border border-red-200 p-3 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {canManage ? (
+                  <>
+                    <button className="rounded-lg border border-slate-200 p-3 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button className="rounded-lg border border-red-200 p-3 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : null}
               </div>
             </article>
           );
