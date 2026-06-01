@@ -232,8 +232,8 @@ export function AnimalDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:p-6">
-      <section className={`flex max-h-[96vh] w-full max-w-6xl animate-fade-in flex-col overflow-hidden rounded-t-lg border shadow-soft md:rounded-lg ${sex.accentClassName}`}>
-        <header className="border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-5 dark:border-slate-800 dark:from-emerald-950/40 dark:via-slate-950 dark:to-lime-950/20 md:p-6">
+      <section className="flex max-h-[96vh] w-full max-w-6xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white text-slate-950 shadow-soft dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 md:rounded-lg">
+        <header className="border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-5 dark:border-slate-800 dark:from-emerald-950 dark:via-slate-950 dark:to-lime-950 md:p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha 360</p>
@@ -258,7 +258,7 @@ export function AnimalDetailModal({
           </div>
         </header>
 
-        <div className="border-b border-slate-200 px-5 dark:border-slate-800 md:px-6">
+        <div className="border-b border-slate-200 bg-white px-5 dark:border-slate-800 dark:bg-slate-950 md:px-6">
           <nav className="flex gap-6 overflow-auto">
             {[
               ["resumo", "Resumo"],
@@ -277,7 +277,7 @@ export function AnimalDetailModal({
           </nav>
         </div>
 
-        <div className="overflow-y-auto p-5 md:p-6">
+        <div className="overflow-y-auto bg-white p-5 dark:bg-slate-950 md:p-6">
           {error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
 
           {tab === "resumo" ? (
@@ -310,7 +310,7 @@ export function AnimalDetailModal({
               </div>
 
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-                <section className="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+                <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Caderno de manejo</p>
@@ -327,7 +327,7 @@ export function AnimalDetailModal({
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Dados do animal</p>
                   <div className="mt-4 space-y-3 text-sm">
                     {[
@@ -405,7 +405,7 @@ export function AnimalDetailModal({
           ) : null}
 
           {showForm ? (
-            <form onSubmit={submitEvent} className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/55">
+            <form onSubmit={submitEvent} className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black">Novo registro de manejo</h3>
