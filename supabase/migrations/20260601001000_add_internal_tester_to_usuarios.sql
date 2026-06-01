@@ -11,13 +11,15 @@ as $$
 begin
   if tg_op = 'INSERT' then
     if new.is_internal_tester is true then
-      if coalesce(current_setting('role', true), '') not in ('service_role', 'postgres', 'supabase_admin') then
+      if coalesce(current_setting('app.internal_operation', true), '') <> 'true'
+        and coalesce(current_setting('role', true), '') not in ('service_role', 'postgres', 'supabase_admin') then
         raise exception 'Apenas operacoes internas podem alterar is_internal_tester.';
       end if;
     end if;
   elsif tg_op = 'UPDATE' then
     if old.is_internal_tester is distinct from new.is_internal_tester then
-      if coalesce(current_setting('role', true), '') not in ('service_role', 'postgres', 'supabase_admin') then
+      if coalesce(current_setting('app.internal_operation', true), '') <> 'true'
+        and coalesce(current_setting('role', true), '') not in ('service_role', 'postgres', 'supabase_admin') then
         raise exception 'Apenas operacoes internas podem alterar is_internal_tester.';
       end if;
     end if;
