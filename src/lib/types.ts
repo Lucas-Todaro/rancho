@@ -25,12 +25,14 @@ export type ModuleField = {
   label: string;
   type: FieldType;
   placeholder?: string;
+  helper?: string;
   required?: boolean;
   options?: FieldOption[];
   relation?: RelationConfig;
   defaultValue?: string | number;
   tableVisible?: boolean;
   summary?: boolean;
+  formOnly?: boolean;
 };
 
 export type ModuleConfig = {

@@ -8,6 +8,10 @@ import { cn } from "@/lib/utils";
 function initialValues(config: ModuleConfig, editing?: AnyRecord | null) {
   return config.fields.reduce<AnyRecord>((acc, field) => {
     const value = editing?.[field.name] ?? field.defaultValue ?? "";
+    if (field.formOnly && config.key === "producao" && field.name === "adicionar_ao_estoque") {
+      acc[field.name] = Boolean(editing?.estoque_item_id);
+      return acc;
+    }
     if (field.type === "month" && typeof value === "string") {
       acc[field.name] = value.slice(0, 7);
       return acc;
@@ -143,6 +147,7 @@ export function ModuleForm({
           <label key={field.name} className={cn("space-y-2", field.type === "textarea" && "md:col-span-2 xl:col-span-3")}>
             <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{field.label}{field.required ? " *" : ""}</span>
             <FieldInput field={field} value={values[field.name]} onChange={(value) => update(field.name, value)} relationOptions={relationOptions[field.name]} />
+            {field.helper ? <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{field.helper}</p> : null}
           </label>
         ))}
       </div>

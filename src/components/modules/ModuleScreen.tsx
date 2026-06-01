@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, deleteRecords, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
+import { removeProductionStockMovement, syncProductionStockMovement, validateProductionStockDestination } from "@/services/production-stock";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
@@ -77,6 +78,13 @@ function exportCsv(filename: string, rows: AnyRecord[], fields: ModuleConfig["fi
   link.download = `${filename}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function persistedFormValues(config: ModuleConfig, values: AnyRecord) {
+  return config.fields.reduce<AnyRecord>((acc, field) => {
+    if (!field.formOnly) acc[field.name] = values[field.name];
+    return acc;
+  }, {});
 }
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
@@ -152,16 +160,36 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await assertAnimalCanReceiveRecord(values);
+      if (config.tableName === TABLES.ordenhas) {
+        await validateProductionStockDestination(values, dataContext);
+      }
+
+      const payload = persistedFormValues(config, values);
+      if (config.tableName === TABLES.ordenhas) {
+        delete payload.estoque_item_id;
+        if (values.adicionar_ao_estoque) {
+          payload.estoque_item_id = values.estoque_item_id || null;
+        } else if (editing?.estoque_item_id) {
+          payload.estoque_item_id = null;
+        }
+      }
+
       if (editing?.id) {
-        const updated = await updateRecord(config.tableName, editing.id, values);
+        const updated = await updateRecord(config.tableName, editing.id, payload);
         if (config.tableName === TABLES.eventosAnimal) {
-          await syncEventCostToFinance(updated || { ...editing, ...values }, dataContext, relationOptions.animal_id);
+          await syncEventCostToFinance(updated || { ...editing, ...payload }, dataContext, relationOptions.animal_id);
+        }
+        if (config.tableName === TABLES.ordenhas) {
+          await syncProductionStockMovement(updated || { ...editing, ...payload, id: editing.id }, dataContext);
         }
         setEditing(null);
       } else {
-        const created = await createRecord(config.tableName, values, dataContext);
+        const created = await createRecord(config.tableName, payload, dataContext);
         if (config.tableName === TABLES.eventosAnimal) {
-          await syncEventCostToFinance(created || values, dataContext, relationOptions.animal_id);
+          await syncEventCostToFinance(created || payload, dataContext, relationOptions.animal_id);
+        }
+        if (config.tableName === TABLES.ordenhas) {
+          await syncProductionStockMovement(created || payload, dataContext);
         }
       }
       notifyDashboardUpdated();
@@ -188,6 +216,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       const deletedRow = rows.find((row) => String(row.id) === String(id));
+      if (config.tableName === TABLES.ordenhas) {
+        await removeProductionStockMovement(id, dataContext);
+      }
       await deleteRecord(config.tableName, id);
       if (config.tableName === TABLES.eventosAnimal && deletedRow) {
         await removeEventCostFromFinance(id, dataContext);

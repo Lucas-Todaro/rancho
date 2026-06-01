@@ -207,6 +207,23 @@ export const moduleConfigs: ModuleConfig[] = [
         { label: "Consumo", value: "consumo" },
         { label: "Descarte", value: "descarte" }
       ] },
+      {
+        name: "adicionar_ao_estoque",
+        label: "Adicionar esta produção ao estoque",
+        type: "checkbox",
+        defaultValue: "false",
+        tableVisible: false,
+        formOnly: true,
+        helper: "Selecione um destino apenas se quiser adicionar esta produção ao estoque."
+      },
+      {
+        name: "estoque_item_id",
+        label: "Item de estoque para receber o leite",
+        type: "relation",
+        tableVisible: false,
+        helper: "Prefira itens cadastrados em litros, como Leite Cru.",
+        relation: { tableName: TABLES.estoqueItens, labelColumn: "nome", descriptionColumn: "unidade_medida", orderBy: "nome" }
+      },
       { name: "observacoes", label: "Observações", type: "textarea", tableVisible: false }
     ],
     quickStats: [

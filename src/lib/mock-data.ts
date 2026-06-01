@@ -47,7 +47,8 @@ export const mockData: Record<string, AnyRecord[]> = {
   [TABLES.estoqueItens]: [
     { id: "estoque-1", fazenda_id: DEMO_FAZENDA_ID, nome: "Ração 22%", categoria: "racao", unidade_medida: "sacos", quantidade_atual: 18, quantidade_minima: 12, valor_unitario: 118, fornecedor: "Agro Minas", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-15T08:00:00.000Z" },
     { id: "estoque-2", fazenda_id: DEMO_FAZENDA_ID, nome: "Vacina clostridial", categoria: "medicamento", unidade_medida: "unidades", quantidade_atual: 4, quantidade_minima: 8, valor_unitario: 47, fornecedor: "Vet Campo", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-13T08:00:00.000Z" },
-    { id: "estoque-3", fazenda_id: DEMO_FAZENDA_ID, nome: "Sal mineral", categoria: "racao", unidade_medida: "sacos", quantidade_atual: 9, quantidade_minima: 10, valor_unitario: 86, fornecedor: "Cooperativa", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-12T08:00:00.000Z" }
+    { id: "estoque-3", fazenda_id: DEMO_FAZENDA_ID, nome: "Sal mineral", categoria: "racao", unidade_medida: "sacos", quantidade_atual: 9, quantidade_minima: 10, valor_unitario: 86, fornecedor: "Cooperativa", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-12T08:00:00.000Z" },
+    { id: "estoque-4", fazenda_id: DEMO_FAZENDA_ID, nome: "Leite Cru", categoria: "insumo", unidade_medida: "litro", quantidade_atual: 0, quantidade_minima: 0, valor_unitario: 0, fornecedor: "Produção própria", ativo: true, created_by: DEMO_USUARIO_ID, created_at: "2026-05-12T08:00:00.000Z" }
   ],
   [TABLES.estoqueMovimentacoes]: [],
   [TABLES.transacoesFinanceiras]: [

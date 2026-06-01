@@ -13,7 +13,9 @@ export async function recordStockMovement({
   quantity,
   unitValue,
   reason,
-  context
+  context,
+  sourceType,
+  sourceId
 }: {
   item: AnyRecord;
   type: StockMovementType;
@@ -21,6 +23,8 @@ export async function recordStockMovement({
   unitValue?: number;
   reason?: string;
   context: DataContext;
+  sourceType?: string;
+  sourceId?: string;
 }) {
   if (!item?.id) throw new Error("Escolha um item do estoque.");
   if (!quantity || quantity <= 0) throw new Error("Informe uma quantidade maior que zero.");
@@ -36,7 +40,8 @@ export async function recordStockMovement({
     tipo: type,
     quantidade: quantity,
     valor_unitario: unitValue || item.valor_unitario || null,
-    motivo: reason || null
+    motivo: reason || null,
+    ...(sourceType && sourceId ? { source_type: sourceType, source_id: sourceId } : {})
   }, context);
 
   if (!supabaseBrowser) {

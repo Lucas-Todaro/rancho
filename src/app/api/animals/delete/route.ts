@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
     }
     for (const milkingId of milkingIds) {
       await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.ordenhas, milkingId);
+      await deleteByColumn(permission.supabase, TABLES.estoqueMovimentacoes, "source_id", milkingId);
     }
 
     await deleteByColumn(permission.supabase, TABLES.ordenhas, "animal_id", id);
