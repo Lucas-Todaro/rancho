@@ -6,7 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(value: number | string | null | undefined) {
-  const numeric = Number(value || 0);
+  const parsed = typeof value === "number"
+    ? value
+    : Number(String(value ?? "0").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+  const numeric = Number.isFinite(parsed) ? parsed : 0;
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(numeric);
 }
 

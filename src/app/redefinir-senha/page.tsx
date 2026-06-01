@@ -26,6 +26,21 @@ export default function RedefinirSenhaPage() {
         return;
       }
 
+      try {
+        const code = new URLSearchParams(window.location.search).get("code");
+        if (code) {
+          const { error: exchangeError } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw exchangeError;
+          window.history.replaceState(null, "", "/redefinir-senha");
+        }
+      } catch (err) {
+        if (active) {
+          setError(getFriendlyErrorMessage(err, "Não foi possível validar o link de redefinição."));
+          setLoading(false);
+        }
+        return;
+      }
+
       const { data } = await supabaseBrowser.auth.getSession();
       if (!active) return;
       if (!data.session) {

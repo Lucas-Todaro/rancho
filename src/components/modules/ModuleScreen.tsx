@@ -25,12 +25,13 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
-import { formatCurrency, formatNumber, toDateOnlyString } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 
@@ -75,10 +76,6 @@ function exportCsv(filename: string, rows: AnyRecord[], fields: ModuleConfig["fi
   link.download = `${filename}.csv`;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function dateOnly(value: unknown) {
-  return toDateOnlyString(String(value || ""));
 }
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
@@ -154,19 +151,15 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await assertAnimalCanReceiveRecord(values);
       if (editing?.id) {
-        await updateRecord(config.tableName, editing.id, values);
+        const updated = await updateRecord(config.tableName, editing.id, values);
+        if (config.tableName === TABLES.eventosAnimal) {
+          await syncEventCostToFinance(updated || { ...editing, ...values }, dataContext, relationOptions.animal_id);
+        }
         setEditing(null);
       } else {
-        await createRecord(config.tableName, values, dataContext);
-        if (config.tableName === TABLES.eventosAnimal && Number(values.custo || 0) > 0) {
-          await createRecord(TABLES.transacoesFinanceiras, {
-            tipo: "saida",
-            data_transacao: dateOnly(values.data_evento),
-            valor: Number(values.custo || 0),
-            categoria: "Saúde do rebanho",
-            descricao: values.descricao || `Evento do animal ${values.animal_id || ""}`.trim(),
-            metodo_pagamento: "Lançamento de evento"
-          }, dataContext);
+        const created = await createRecord(config.tableName, values, dataContext);
+        if (config.tableName === TABLES.eventosAnimal) {
+          await syncEventCostToFinance(created || values, dataContext, relationOptions.animal_id);
         }
       }
       notifyDashboardUpdated();
@@ -184,7 +177,11 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     setBusy(true);
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
+      const deletedRow = rows.find((row) => String(row.id) === String(id));
       await deleteRecord(config.tableName, id);
+      if (config.tableName === TABLES.eventosAnimal && deletedRow) {
+        await removeEventCostFromFinance(id);
+      }
       notifyDashboardUpdated();
       await load();
     } catch (err) {

@@ -45,26 +45,26 @@ function phaseTone(value: unknown) {
 
 function AnimalCardSkeleton() {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <Skeleton className="h-7 w-24" />
+          <Skeleton className="h-6 w-24" />
           <Skeleton className="mt-2 h-4 w-16" />
         </div>
         <Skeleton className="h-7 w-20 rounded-full" />
       </div>
-      <div className="my-8 flex justify-center">
-        <Skeleton className="h-24 w-24 rounded-full" />
+      <div className="my-5 flex justify-center">
+        <Skeleton className="h-16 w-16 rounded-full" />
       </div>
       <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
       </div>
       <div className="mt-4 flex gap-2">
-        <Skeleton className="h-11 flex-1 rounded-lg" />
-        <Skeleton className="h-11 w-11 rounded-lg" />
-        <Skeleton className="h-11 w-11 rounded-lg" />
+        <Skeleton className="h-10 flex-1 rounded-lg" />
+        <Skeleton className="h-10 w-10 rounded-lg" />
+        <Skeleton className="h-10 w-10 rounded-lg" />
       </div>
     </article>
   );
@@ -180,7 +180,7 @@ export function AnimalCards({
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalCardSkeleton key={`animal-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
           const lote = loteLookup[String(animal.lote_id || "")] || "Sem lote";
           const phase = displayLabel(phaseLabels, animal.fase, "Sem fase");
@@ -191,12 +191,12 @@ export function AnimalCards({
           return (
             <article
               key={animal.id}
-              className={`group min-w-0 cursor-pointer rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
+              className={`group min-w-0 cursor-pointer rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
               onClick={() => onView(animal)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="truncate text-2xl font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
+                  <h3 className="truncate text-xl font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
                   <p className="mt-1 truncate text-sm font-bold text-slate-500 dark:text-slate-400">
                     {animal.nome ? `Código: ${animal.brinco || "Sem brinco"}` : status}
                   </p>
@@ -212,13 +212,13 @@ export function AnimalCards({
                 </div>
               </div>
 
-              <div className="my-8 flex justify-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition group-hover:bg-emerald-50 group-hover:text-emerald-600 dark:bg-slate-900 dark:group-hover:bg-emerald-950/40 dark:group-hover:text-emerald-200">
-                  <PawPrint className="h-11 w-11" />
+              <div className="my-5 flex justify-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-emerald-50 group-hover:text-emerald-600 dark:bg-slate-900 dark:ring-slate-800 dark:group-hover:bg-emerald-950/40 dark:group-hover:text-emerald-200">
+                  <PawPrint className="h-8 w-8" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 border-b border-slate-100 pb-4 text-center text-sm dark:border-slate-800 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 border-b border-slate-200/70 pb-4 text-center text-xs dark:border-slate-800 sm:grid-cols-4">
                 <div className="min-w-0">
                   <p className="text-slate-500 dark:text-slate-400">Categoria</p>
                   <strong className="mt-1 block truncate">{category}</strong>
@@ -243,10 +243,10 @@ export function AnimalCards({
                 </button>
                 {canManage ? (
                   <>
-                    <button className="rounded-lg border border-slate-200 p-3 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
+                    <button className="rounded-lg border border-slate-200 p-2.5 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
                       <Pencil className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg border border-red-200 p-3 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
+                    <button className="rounded-lg border border-red-200 p-2.5 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </>
@@ -255,7 +255,7 @@ export function AnimalCards({
             </article>
           );
         }) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">
+          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 xl:col-span-3">
             Nenhum animal encontrado com esses filtros.
           </div>
         )}

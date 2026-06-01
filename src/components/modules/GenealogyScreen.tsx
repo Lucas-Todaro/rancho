@@ -52,15 +52,15 @@ function TreeCard({ label, animal, active = false }: { label: string; animal?: A
 
   return (
     <div className={cn(
-      "min-w-48 rounded-lg border p-4 text-center shadow-sm",
+      "w-full min-w-0 rounded-lg border p-3 text-center shadow-sm",
       active
         ? "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40"
         : animal
           ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
           : "border-dashed border-slate-300 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900/50"
-    )}>
+      )}>
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <strong className="mt-2 block text-base text-slate-950 dark:text-slate-100">{animalLabel(animal)}</strong>
+      <strong className="mt-2 block truncate text-sm text-slate-950 dark:text-slate-100" title={animalLabel(animal)}>{animalLabel(animal)}</strong>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {animal?.categoria ? <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{categoryLabel(animal.categoria)}</span> : null}
         {animal ? <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${sex.className}`}>{sex.label}</span> : null}
@@ -260,16 +260,16 @@ export function GenealogyScreen() {
 
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalSkeleton key={`genealogy-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
           const mother = animalById.get(String(animal.mae_id || ""));
           const father = animalById.get(String(animal.pai_id || ""));
           const sex = getAnimalSexInfo(animal);
           return (
-            <article key={animal.id} className={`rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft ${sex.accentClassName}`}>
+            <article key={animal.id} className={`rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft ${sex.accentClassName}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="truncate text-xl font-black">{animal.nome || animal.brinco || "Sem brinco"}</h2>
+                  <h2 className="truncate text-lg font-black">{animal.nome || animal.brinco || "Sem brinco"}</h2>
                   <p className="mt-1 truncate text-sm font-bold text-slate-500 dark:text-slate-400">{animal.nome ? `Código: ${animal.brinco || "Sem brinco"}` : categoryLabel(animal.categoria)}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
@@ -282,15 +282,15 @@ export function GenealogyScreen() {
                 </div>
               </div>
 
-              <div className="my-5 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-900">
-                  <PawPrint className="h-8 w-8" />
+              <div className="my-4 flex justify-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/70 text-slate-400 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+                  <PawPrint className="h-7 w-7" />
                 </div>
               </div>
 
               <div className="grid gap-2 text-sm">
-                <div className="flex justify-between gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60"><span className="text-slate-500">Mãe</span><strong className="text-right">{animalLabel(mother)}</strong></div>
-                <div className="flex justify-between gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60"><span className="text-slate-500">Pai</span><strong className="text-right">{animalLabel(father)}</strong></div>
+                <div className="flex justify-between gap-3 rounded-lg bg-white/60 p-2.5 dark:bg-slate-900/60"><span className="text-slate-500">Mãe</span><strong className="truncate text-right">{animalLabel(mother)}</strong></div>
+                <div className="flex justify-between gap-3 rounded-lg bg-white/60 p-2.5 dark:bg-slate-900/60"><span className="text-slate-500">Pai</span><strong className="truncate text-right">{animalLabel(father)}</strong></div>
               </div>
 
               <button className="btn btn-primary mt-4 w-full" type="button" onClick={() => selectAnimal(animal)}>
@@ -299,53 +299,53 @@ export function GenealogyScreen() {
             </article>
           );
         }) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 xl:col-span-3">
+          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">
             Nenhum animal encontrado.
           </div>
         )}
       </section>
 
       {selected && tree ? (
-        <section aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 backdrop-blur-sm md:p-6" role="dialog">
-          <div className="mx-auto flex min-h-full w-full max-w-7xl items-start md:items-center">
-            <div className="my-2 w-full animate-fade-in overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:my-0">
-            <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 md:p-6">
+        <section aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-2 backdrop-blur-sm md:p-4" role="dialog">
+          <div className="mx-auto flex min-h-full w-full max-w-6xl items-start">
+            <div className="my-2 flex max-h-[94vh] w-full animate-fade-in flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950">
+            <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 md:p-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Árvore genealógica</p>
-                <h2 className="mt-2 break-words text-2xl font-black md:text-3xl">{animalLabel(selected)}</h2>
+                <h2 className="mt-2 break-words text-xl font-black md:text-2xl">{animalLabel(selected)}</h2>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Edite pai e mãe, e veja avós e filhos automaticamente.</p>
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 {success ? <Badge tone="success">{success}</Badge> : null}
-                <button className="ml-auto shrink-0 rounded-lg border border-slate-200 bg-white/80 p-3 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/80 dark:hover:bg-slate-900" type="button" onClick={closeTree} title="Fechar" aria-label="Fechar genealogia">
+                <button className="ml-auto shrink-0 rounded-lg border border-slate-200 bg-white/80 p-2.5 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/80 dark:hover:bg-slate-900" type="button" onClick={closeTree} title="Fechar" aria-label="Fechar genealogia">
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </header>
 
-            <div className="p-4 md:p-6">
-              <div className="overflow-x-auto pb-2">
-                <div className="mx-auto min-w-[48rem] max-w-5xl space-y-4">
-                  <div className="grid grid-cols-4 gap-3">
+            <div className="overflow-y-auto p-3 md:p-4">
+              <div className="pb-2">
+                <div className="mx-auto max-w-5xl space-y-3">
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                     <TreeCard label="Avó materna" animal={tree.maternalGrandmother} />
                     <TreeCard label="Avô materno" animal={tree.maternalGrandfather} />
                     <TreeCard label="Avó paterna" animal={tree.paternalGrandmother} />
                     <TreeCard label="Avô paterno" animal={tree.paternalGrandfather} />
                   </div>
-                  <div className="mx-auto h-6 w-px bg-emerald-200 dark:bg-emerald-900" />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="mx-auto h-3 w-px bg-emerald-200 dark:bg-emerald-900" />
+                  <div className="grid grid-cols-2 gap-2">
                     <TreeCard label="Mãe" animal={tree.mother} />
                     <TreeCard label="Pai" animal={tree.father} />
                   </div>
-                  <div className="mx-auto h-6 w-px bg-emerald-300 dark:bg-emerald-800" />
-                  <div className="flex justify-center">
+                  <div className="mx-auto h-3 w-px bg-emerald-300 dark:bg-emerald-800" />
+                  <div className="mx-auto w-full max-w-xs">
                     <TreeCard label="Animal selecionado" animal={selected} active />
                   </div>
-                  <div className="mx-auto h-6 w-px bg-emerald-300 dark:bg-emerald-800" />
+                  <div className="mx-auto h-3 w-px bg-emerald-300 dark:bg-emerald-800" />
                   <div>
                     <p className="mb-3 text-center text-xs font-black uppercase tracking-[0.16em] text-slate-400">Filhos / descendentes diretos</p>
                     {tree.children.length ? (
-                      <div className="grid gap-3 md:grid-cols-3">
+                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                         {tree.children.map((child) => <TreeCard key={child.id} label="Filho(a)" animal={child} />)}
                       </div>
                     ) : (
@@ -357,9 +357,9 @@ export function GenealogyScreen() {
                 </div>
               </div>
 
-              <section className="mt-6 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+              <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                 <h3 className="text-lg font-black">Editar genealogia</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-sm font-bold">Mãe</span>
                     <select className="input" value={draft.mae_id} onChange={(event) => setDraft((current) => ({ ...current, mae_id: event.target.value }))}>
@@ -377,7 +377,7 @@ export function GenealogyScreen() {
                 </div>
                 <label className="mt-4 block space-y-2">
                   <span className="text-sm font-bold">Observações genealógicas</span>
-                  <textarea className="input min-h-24 resize-y" value={draft.genealogia_observacoes} onChange={(event) => setDraft((current) => ({ ...current, genealogia_observacoes: event.target.value }))} placeholder="Ex: linhagem, origem, histórico familiar..." />
+                  <textarea className="input min-h-20 resize-y" value={draft.genealogia_observacoes} onChange={(event) => setDraft((current) => ({ ...current, genealogia_observacoes: event.target.value }))} placeholder="Ex: linhagem, origem, histórico familiar..." />
                 </label>
                 <div className="mt-4 flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:justify-end">
                   <button className="btn btn-secondary" type="button" onClick={closeTree}>Fechar</button>

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { listRecords, updateRecord } from "@/services/crud";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
+import { getPasswordResetRedirectUrl } from "@/lib/app-url";
 import type { AnyRecord } from "@/lib/types";
 import { formatBrazilianPhone, formatCPF, isValidBrazilianPhone, isValidCPF, onlyDigits, stripBrazilCountryCode } from "@/lib/input-format";
 
@@ -347,7 +348,7 @@ export default function ConfiguracoesPage() {
       const { supabaseBrowser } = await import("@/lib/supabase/browser");
       if (!supabaseBrowser) throw new Error("Supabase Auth não está configurado neste ambiente.");
       const { error: resetError } = await supabaseBrowser.auth.resetPasswordForEmail(session.user.email, {
-        redirectTo: `${window.location.origin}/redefinir-senha`
+        redirectTo: getPasswordResetRedirectUrl()
       });
       if (resetError) throw new Error(resetError.message);
       showSuccess("Link de redefinição enviado para o e-mail da conta.");

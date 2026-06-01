@@ -69,7 +69,7 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.58), transparent);
   animation: skeleton-shimmer 1.45s ease-in-out infinite;
 }
 .dark .skeleton-shimmer::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent); }

@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { syncEventCostToFinance } from "@/services/event-finance";
 import { getAnimalSexInfo } from "@/lib/animal-sex";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
-import { formatCurrency, formatDate, formatNumber, nowLocalDatetime, parseLocalDate, toDateOnlyString } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, nowLocalDatetime, parseLocalDate } from "@/lib/utils";
 import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 
 type Tab = "resumo" | "reproducao" | "timeline";
@@ -64,10 +65,6 @@ function labelFromMap(map: Record<string, string>, value: unknown, fallback = "-
 function startOfCurrentMonth() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
-function toDateOnly(value: string) {
-  return toDateOnlyString(value);
 }
 
 function dateTime(value: unknown) {
@@ -197,7 +194,7 @@ export function AnimalDetailModal({
       const eventDate = draft.data_evento ? new Date(draft.data_evento).toISOString() : new Date().toISOString();
       const cost = Number(draft.custo || 0);
 
-      await createRecord(TABLES.eventosAnimal, {
+      const created = await createRecord(TABLES.eventosAnimal, {
         animal_id: animal.id,
         tipo: draft.tipo,
         data_evento: eventDate,
@@ -207,21 +204,11 @@ export function AnimalDetailModal({
         custo: cost
       }, context);
 
-      if (cost > 0) {
-        await createRecord(TABLES.transacoesFinanceiras, {
-          tipo: "saida",
-          data_transacao: toDateOnly(eventDate),
-          valor: cost,
-          categoria: "Saúde do rebanho",
-          descricao: [
-            `Manejo do animal ${animal.brinco || "sem brinco"}`,
-            eventTypes.find((type) => type.value === draft.tipo)?.label,
-            draft.descricao,
-            draft.medicamento ? `Medicamento: ${draft.medicamento}` : null
-          ].filter(Boolean).join(" - "),
-          metodo_pagamento: "Lançamento da ficha"
-        }, context);
-      }
+      await syncEventCostToFinance(
+        created || { animal_id: animal.id, tipo: draft.tipo, data_evento: eventDate, descricao: draft.descricao, medicamento: draft.medicamento, custo: cost },
+        context,
+        [{ value: String(animal.id), label: animal.brinco || animal.nome || "Animal" }]
+      );
 
       notifyDashboardUpdated();
       setShowForm(false);

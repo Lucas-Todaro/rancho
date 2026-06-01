@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Loader2, Mail, LogIn, PawPrint, ShieldCheck, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { getPasswordResetRedirectUrl } from "@/lib/app-url";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 
 const SUPPORT_EMAIL = "projeto.fazenda00@gmail.com";
@@ -64,7 +65,7 @@ export default function LoginPage() {
       if (!supabaseBrowser) throw new Error("Supabase Auth não está configurado neste ambiente.");
 
       const { error: resetPasswordError } = await supabaseBrowser.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo: `${window.location.origin}/redefinir-senha`
+        redirectTo: getPasswordResetRedirectUrl()
       });
       if (resetPasswordError) throw resetPasswordError;
 
