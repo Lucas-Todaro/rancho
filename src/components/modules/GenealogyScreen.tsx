@@ -562,33 +562,35 @@ export function GenealogyScreen() {
       {selected && tree ? (
         <section
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/55 p-2 backdrop-blur-sm sm:p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/55 p-1 backdrop-blur-sm sm:p-2"
           role="dialog"
+          onClick={closeTree}
         >
-          <div className="flex h-[94vh] w-full max-w-[1500px] animate-fade-in flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-            <header className="shrink-0 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950 md:p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
-                    Árvore genealógica
-                  </p>
-                  <h2 className="mt-1 truncate text-xl font-black md:text-2xl">
-                    {animalLabel(selected)}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Visualize a família e edite pai, mãe e observações.
-                  </p>
-                </div>
+          <div
+            className="relative flex h-[98vh] w-full max-w-[1600px] animate-fade-in flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              className="absolute right-3 top-3 z-30 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-lg transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              type="button"
+              onClick={closeTree}
+              title="Fechar"
+              aria-label="Fechar genealogia"
+            >
+              <X className="h-5 w-5" />
+            </button>
 
-                <button
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
-                  type="button"
-                  onClick={closeTree}
-                  title="Fechar"
-                  aria-label="Fechar genealogia"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+            <header className="shrink-0 border-b border-slate-200 bg-white p-4 pr-16 dark:border-slate-800 dark:bg-slate-950 md:p-5 md:pr-20">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+                  Árvore genealógica
+                </p>
+                <h2 className="mt-1 truncate text-xl font-black md:text-2xl">
+                  {animalLabel(selected)}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Visualize a família e edite pai, mãe e observações.
+                </p>
               </div>
 
               {success ? <div className="mt-3"><Badge tone="success">{success}</Badge></div> : null}
