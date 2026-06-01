@@ -21,9 +21,14 @@ function asText(value: unknown) {
 
 function createInviteErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+  const missingRequiredColumn = message.match(/column "([^"]+)"/i)?.[1];
 
-  if (/contato_whatsapp|null value|not-null constraint/i.test(message)) {
+  if (/contato_whatsapp/i.test(message)) {
     return "A tabela de funcionários ainda exige WhatsApp para convites do sistema. Execute a migration 20260601004000_allow_system_invites_without_whatsapp.sql no Supabase e tente novamente.";
+  }
+
+  if (/null value|not-null constraint/i.test(message) && missingRequiredColumn) {
+    return `A tabela de funcionários ainda exige o campo "${missingRequiredColumn}" no convite. Atualize o projeto e as migrations no Supabase e tente novamente.`;
   }
 
   if (/convites|tipo_acesso|papel_sistema|convite_status|schema cache|column|relation/i.test(message)) {
@@ -68,6 +73,11 @@ export async function POST(request: NextRequest) {
       nome,
       funcao: cargo,
       email,
+      contato_whatsapp: null,
+      salario_base: 0,
+      data_admissao: new Date().toISOString().slice(0, 10),
+      carga_horaria_mensal: 220,
+      valor_hora_extra: 0,
       tipo_acesso: "sistema",
       papel_sistema: papel,
       convite_status: "pendente",
