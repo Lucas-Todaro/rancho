@@ -31,6 +31,7 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 import { formatCurrency, formatNumber, toDateOnlyString } from "@/lib/utils";
+import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 
 const AnimalDetailModal = dynamic(
   () => import("@/components/modules/AnimalDetailModal").then((module) => module.AnimalDetailModal),
@@ -130,10 +131,25 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     return searchableRows.filter((item) => item.text.includes(term)).map((item) => item.row);
   }, [rows, search, searchableRows]);
 
+  async function assertAnimalCanReceiveRecord(values: AnyRecord) {
+    const isAnimalRecord = config.tableName === TABLES.ordenhas || config.tableName === TABLES.eventosAnimal;
+    if (!isAnimalRecord || !values.animal_id) return;
+    const [animal] = await listRecords(TABLES.animais, {
+      fazendaId: dataContext.fazendaId,
+      usuarioId: dataContext.usuarioId,
+      filters: [{ column: "id", value: values.animal_id }]
+    });
+
+    if (animal && isAnimalInactiveForBot(animal)) {
+      throw new Error(animalBlockedMessage(animal, config.tableName === TABLES.ordenhas ? "PRODUCAO_LEITE" : "novas movimentações"));
+    }
+  }
+
   async function submit(values: AnyRecord) {
     setBusy(true);
     setError("");
     try {
+      await assertAnimalCanReceiveRecord(values);
       if (editing?.id) {
         await updateRecord(config.tableName, editing.id, values);
         setEditing(null);

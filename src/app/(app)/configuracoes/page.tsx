@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, Bot, Building2, KeyRound, Loader2, MessageCircle, Palette, Save, Settings2, ShieldCheck, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { CPFInput, WhatsAppInput } from "@/components/ui/MaskedInputs";
@@ -81,6 +82,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function ConfiguracoesPage() {
+  const router = useRouter();
   const { profile, session, isDemo, reloadProfile, signOut } = useAuth();
   const [health, setHealth] = useState<Health | null>(null);
   const [farm, setFarm] = useState<AnyRecord | null>(null);
@@ -89,6 +91,7 @@ export default function ConfiguracoesPage() {
   const [saving, setSaving] = useState<SaveKey | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const [farmDraft, setFarmDraft] = useState({
     nome: "",
@@ -342,7 +345,7 @@ export default function ConfiguracoesPage() {
       const { supabaseBrowser } = await import("@/lib/supabase/browser");
       if (!supabaseBrowser) throw new Error("Supabase Auth não está configurado neste ambiente.");
       const { error: resetError } = await supabaseBrowser.auth.resetPasswordForEmail(session.user.email, {
-        redirectTo: `${window.location.origin}/login`
+        redirectTo: `${window.location.origin}/redefinir-senha`
       });
       if (resetError) throw new Error(resetError.message);
       showSuccess("Link de redefinição enviado para o e-mail da conta.");
@@ -350,6 +353,19 @@ export default function ConfiguracoesPage() {
       setError(err instanceof Error ? err.message : "Não foi possível enviar o link de redefinição.");
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function handleSignOut() {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    setError("");
+    try {
+      await signOut();
+      router.replace("/login");
+    } catch {
+      setError("Não foi possível sair da conta. Tente novamente.");
+      setIsLoggingOut(false);
     }
   }
 
@@ -557,7 +573,12 @@ export default function ConfiguracoesPage() {
                 {saving === "security" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                 {saving === "security" ? "Enviando..." : "Enviar link de redefinição"}
               </button>
-              {!isDemo ? <button className="btn border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" type="button" onClick={signOut}>Sair da conta</button> : null}
+              {!isDemo ? (
+                <button className="btn border border-red-200 bg-red-50 text-red-700 disabled:cursor-not-allowed disabled:opacity-70 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" type="button" onClick={handleSignOut} disabled={isLoggingOut}>
+                  {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isLoggingOut ? "Saindo da conta..." : "Sair da conta"}
+                </button>
+              ) : null}
             </div>
           </div>
         </SectionShell>

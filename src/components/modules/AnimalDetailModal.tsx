@@ -12,6 +12,7 @@ import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
 import { formatCurrency, formatDate, formatNumber, nowLocalDatetime, parseLocalDate, toDateOnlyString } from "@/lib/utils";
+import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 
 type Tab = "resumo" | "reproducao" | "timeline";
 
@@ -189,6 +190,10 @@ export function AnimalDetailModal({
     setError("");
 
     try {
+      if (isAnimalInactiveForBot(animal)) {
+        throw new Error(animalBlockedMessage(animal, "novas movimentações"));
+      }
+
       const eventDate = draft.data_evento ? new Date(draft.data_evento).toISOString() : new Date().toISOString();
       const cost = Number(draft.custo || 0);
 

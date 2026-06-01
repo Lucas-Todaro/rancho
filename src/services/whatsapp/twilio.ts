@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import {
@@ -84,6 +85,7 @@ const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "r
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["CONSULTA_PRODUCAO", "CONSULTA_FINANCEIRO", "CONSULTA_ESTOQUE", "CONSULTA_FUNCIONARIO", "AJUDA"]);
+const ANIMAL_RECORD_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -212,6 +214,24 @@ function stockDecisionReason(parsed: ParsedRanchoMessage, found?: StockLookupRes
   if (found?.ambiguousRows?.length) return "item_ambiguo: pedir_confirmacao";
   if (found?.row && found.score >= 0.86) return "item_encontrado";
   return "item_nao_encontrado";
+}
+
+function botAnimalCheckLog(owner: WhatsAppOwner, parsed: ParsedRanchoMessage, animal: AnyRecord, canRegister: boolean) {
+  console.log("[BOT ANIMAL CHECK]", {
+    animal: animal.brinco || animal.nome || animal.id || null,
+    animal_id: animal.id || null,
+    status: animalStatusValue(animal) || null,
+    died_at: animalDeathDate(animal) || null,
+    canRegister,
+    intent: parsed.tipo,
+    motivo_bloqueio: canRegister ? null : "animal_morto_ou_inativo"
+  });
+}
+
+function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
+  const animal = parsed.dados?.animal_resolvido as AnyRecord | undefined;
+  if (!animal || !isAnimalInactiveForBot(animal)) return null;
+  return animalBlockedMessage(animal, parsed.tipo);
 }
 
 function isConfirmCommand(command: string) {
@@ -608,11 +628,14 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   const dados = { ...(parsed.dados || {}) };
   let changed = false;
 
-  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(parsed.tipo) && dados.animal_codigo) {
+  if (ANIMAL_RECORD_INTENTS.has(parsed.tipo) && dados.animal_codigo) {
     const found = await findAnimal(supabase, owner, String(dados.animal_codigo));
     if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.9)) {
       dados.animal_codigo = found.row.brinco;
       dados.animal_id = found.row.id;
+      dados.animal_status = animalStatusValue(found.row) || null;
+      dados.animal_resolvido = found.row;
+      botAnimalCheckLog(owner, parsed, found.row, !isAnimalInactiveForBot(found.row));
       changed = true;
     } else if (found?.ambiguousRows?.length) {
       dados.animal_opcoes = found.ambiguousRows.map((row) => row.brinco);
@@ -682,7 +705,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
   const dados = pending.dados || {};
 
-  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(pending.tipo)) {
+  if (ANIMAL_RECORD_INTENTS.has(pending.tipo)) {
     const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
     if (!found) {
       return {
@@ -708,6 +731,13 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     const animal = found.row;
+    botAnimalCheckLog(owner, pending, animal, !isAnimalInactiveForBot(animal));
+    if (isAnimalInactiveForBot(animal)) {
+      return {
+        response: animalBlockedMessage(animal, pending.tipo),
+        nextSession: { etapa: "livre", dados: {} }
+      };
+    }
 
     if (pending.tipo === "PRODUCAO_LEITE") {
       await insertRealRecord(supabase, owner, TABLES.ordenhas, {
@@ -1176,6 +1206,12 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return unknownText();
   }
 
+  const animalBlock = animalBlockFromParsed(parsed);
+  if (animalBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return animalBlock;
+  }
+
   if (parsed.tipo === "CRIAR_ITEM_ESTOQUE" && !isBotAdmin(owner)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item.";
@@ -1254,6 +1290,11 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     parser: "contextual",
     nextStep: next.perguntas_faltantes.length ? "pedir_dado" : "confirmar"
   });
+  const animalBlock = animalBlockFromParsed(next);
+  if (animalBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return animalBlock;
+  }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
     return missingText(next);

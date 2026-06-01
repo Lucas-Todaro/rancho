@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { Mail, LogIn, PawPrint, ShieldCheck } from "lucide-react";
+import { Loader2, Mail, LogIn, PawPrint, ShieldCheck, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 
@@ -16,6 +16,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
 
   useEffect(() => {
     if (!loading && (isDemo || profile)) router.replace("/dashboard");
@@ -37,6 +42,37 @@ export default function LoginPage() {
       setError(getFriendlyErrorMessage(err, "Não foi possível entrar."));
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openPasswordReset() {
+    setResetEmail(email);
+    setResetError("");
+    setResetSuccess("");
+    setResetOpen(true);
+  }
+
+  async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setResetBusy(true);
+    setResetError("");
+    setResetSuccess("");
+
+    try {
+      if (!resetEmail.trim()) throw new Error("Informe seu e-mail para receber o link de redefinição.");
+      const { supabaseBrowser } = await import("@/lib/supabase/browser");
+      if (!supabaseBrowser) throw new Error("Supabase Auth não está configurado neste ambiente.");
+
+      const { error: resetPasswordError } = await supabaseBrowser.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: `${window.location.origin}/redefinir-senha`
+      });
+      if (resetPasswordError) throw resetPasswordError;
+
+      setResetSuccess("Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.");
+    } catch (err) {
+      setResetError(getFriendlyErrorMessage(err, "Não foi possível enviar o link. Tente novamente."));
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -93,6 +129,10 @@ export default function LoginPage() {
               {busy ? "Entrando..." : "Entrar"}
             </button>
 
+            <button className="w-full text-center text-sm font-bold text-emerald-700 underline-offset-4 hover:underline dark:text-emerald-300" type="button" onClick={openPasswordReset}>
+              Esqueci minha senha
+            </button>
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
               <strong className="block text-slate-900 dark:text-white">Precisa de acesso?</strong>
               <span className="mt-1 block">Solicite um convite ao administrador do Rancho ou fale com o suporte.</span>
@@ -105,6 +145,44 @@ export default function LoginPage() {
           </form>
         </div>
       </section>
+
+      {resetOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <form onSubmit={handlePasswordReset} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900" noValidate>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black">Redefinir senha</h2>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Informe seu e-mail para receber o link de redefinição.</p>
+              </div>
+              <button className="rounded-lg border border-slate-200 p-2 dark:border-slate-800" type="button" onClick={() => setResetOpen(false)} title="Fechar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <label className="mt-5 block space-y-2">
+              <span className="text-sm font-bold">E-mail</span>
+              <input className="input" type="email" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} autoComplete="email" />
+            </label>
+
+            {resetError ? (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+                {resetError}
+              </div>
+            ) : null}
+
+            {resetSuccess ? (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+                {resetSuccess}
+              </div>
+            ) : null}
+
+            <button className="btn btn-primary mt-5 w-full" type="submit" disabled={resetBusy}>
+              {resetBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {resetBusy ? "Enviando..." : "Enviar link de redefinição"}
+            </button>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }

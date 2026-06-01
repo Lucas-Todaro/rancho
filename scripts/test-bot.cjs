@@ -41,6 +41,10 @@ const {
   resolveStockItem
 } = require("../src/lib/whatsapp/catalog.ts");
 const { normalizeWhatsappNumber } = require("../src/lib/phone.ts");
+const {
+  animalBlockedMessage,
+  isAnimalInactiveForBot
+} = require("../src/lib/whatsapp/animal-status.ts");
 
 const mockAnimals = [
   { id: "animal-b-002", brinco: "B-002" },
@@ -70,6 +74,12 @@ const mockStock = [
 const mockUsers = [
   { nome: "Dono", telefone: "5583999999999", admin: true, fazenda_id: "mock-fazenda-1" },
   { nome: "João", telefone: "5583888888888", admin: false, fazenda_id: "mock-fazenda-1" }
+];
+
+const animalStatusTests = [
+  { name: "bloqueia producao para animal morto", animal: { id: "animal-morto", brinco: "M-001", status: "morto" }, intent: "PRODUCAO_LEITE", responseIncludes: "morto/inativo" },
+  { name: "bloqueia vacina para animal inativo", animal: { id: "animal-inativo", brinco: "I-001", status: "inativo" }, intent: "VACINA_MEDICAMENTO", responseIncludes: "vacina ou medicamento" },
+  { name: "permite registro para animal ativo", animal: { id: "animal-ativo", brinco: "A-001", status: "ativo" }, intent: "PRODUCAO_LEITE", allowed: true }
 ];
 
 function hasValue(value) {
@@ -362,7 +372,7 @@ if (allTests.length < 90) {
   process.exit(1);
 }
 
-const results = allTests.map((test, index) => {
+const parserResults = allTests.map((test, index) => {
   try {
     const parsed = test.pending ? resolveParsed(mergeRanchoMessageData(test.pending(), test.phrase)) : parseResolved(test.phrase);
     const denied = adminActionDenied(test, parsed);
@@ -384,6 +394,22 @@ const results = allTests.map((test, index) => {
   }
 });
 
+const animalResults = animalStatusTests.map((test, index) => {
+  const blocked = isAnimalInactiveForBot(test.animal);
+  const response = blocked ? animalBlockedMessage(test.animal, test.intent) : "";
+  const ok = test.allowed ? !blocked : blocked && normalize(response).includes(normalize(test.responseIncludes));
+  return {
+    index: allTests.length + index + 1,
+    test,
+    parsed: null,
+    response,
+    ok,
+    failures: ok ? [] : [`status animal falhou: blocked=${blocked}, response=${response}`]
+  };
+});
+
+const results = [...parserResults, ...animalResults];
+
 const failed = results.filter((result) => !result.ok);
 const passed = results.length - failed.length;
 
@@ -395,7 +421,7 @@ console.log(`Falhos: ${failed.length}`);
 
 for (const result of failed) {
   console.log("\n--- Falha", result.index, "---");
-  console.log("Frase:", result.test.phrase);
+  console.log("Frase:", result.test.phrase || result.test.name);
   console.log("Esperado:", JSON.stringify(result.test.expected));
   console.log("Recebido:", result.parsed ? JSON.stringify({
     tipo: result.parsed.tipo,

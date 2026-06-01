@@ -377,7 +377,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const client = await getSupabaseBrowser();
     if (!client) return;
 
-    await client.auth.signOut();
+    const { error: signOutError } = await client.auth.signOut();
+    if (signOutError) throw signOutError;
     setSession(null);
     setProfile(null);
     setError("");

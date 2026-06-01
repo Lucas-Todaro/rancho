@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
+import { Loader2, LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { navGroups } from "@/components/layout/navigation";
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu";
@@ -50,6 +50,8 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const isPlatformAdmin = canAccessPlatformAdmin(profile);
   const visibleGroups = useMemo(() => (
     navGroups
@@ -85,6 +87,19 @@ export function Header() {
     event.preventDefault();
     const firstResult = searchResults[0];
     if (firstResult) goTo(firstResult.href);
+  }
+
+  async function handleSignOut() {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    setLogoutError("");
+    try {
+      await signOut();
+      router.replace("/login");
+    } catch {
+      setLogoutError("Não foi possível sair da conta. Tente novamente.");
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -150,9 +165,10 @@ export function Header() {
           <button onClick={toggleTheme} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title="Tema">
             {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
+          {logoutError ? <span className="hidden text-xs font-bold text-red-700 dark:text-red-300 md:inline">{logoutError}</span> : null}
           {!isDemo ? (
-            <button onClick={signOut} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title="Sair">
-              <LogOut className="h-5 w-5" />
+            <button onClick={handleSignOut} disabled={isLoggingOut} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title={isLoggingOut ? "Saindo da conta..." : "Sair"}>
+              {isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
             </button>
           ) : null}
           <div className="hidden rounded-lg bg-slate-900 px-4 py-2 text-right text-white dark:bg-white dark:text-slate-900 md:block">
@@ -161,6 +177,12 @@ export function Header() {
           </div>
         </div>
       </div>
+
+      {isLoggingOut ? (
+        <div className="absolute inset-x-0 top-full z-40 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-bold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+          Saindo da conta...
+        </div>
+      ) : null}
 
       {open ? (
         <div className="mt-3 max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 lg:hidden">
