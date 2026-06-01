@@ -7,7 +7,9 @@ import { CurrencyInput } from "@/components/ui/MaskedInputs";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
-import { assertUniqueActiveEmployeeWhatsApp, syncEmployeeWhatsAppUser } from "@/services/whatsapp-users";
+import { syncEmployeePanelAccess } from "@/services/employee-access";
+import { assertUniqueActiveEmployeeWhatsApp, deactivateEmployeeWhatsAppUser, syncEmployeeWhatsAppUser } from "@/services/whatsapp-users";
+import { useAuth } from "@/lib/auth-context";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext } from "@/lib/types";
 import { currentMonth, formatCurrency, formatDate, nowLocalDatetime } from "@/lib/utils";
@@ -39,6 +41,7 @@ export function EmployeeDetails({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { session } = useAuth();
   const [tab, setTab] = useState<Tab>("resumo");
   const [timeEntries, setTimeEntries] = useState<AnyRecord[]>([]);
   const [payrolls, setPayrolls] = useState<AnyRecord[]>([]);
@@ -132,10 +135,16 @@ export function EmployeeDetails({
     setBusy(true);
     setError("");
     try {
-      const contato_whatsapp = await assertUniqueActiveEmployeeWhatsApp({ ...employee, ...values }, context);
+      const hasWhatsApp = Boolean(values.contato_whatsapp);
+      const contato_whatsapp = hasWhatsApp ? await assertUniqueActiveEmployeeWhatsApp({ ...employee, ...values }, context) : null;
       const payload = { ...values, contato_whatsapp };
       const saved = await updateRecord(TABLES.funcionarios, employee.id, payload);
-      await syncEmployeeWhatsAppUser({ ...employee, ...payload, ...saved }, context);
+      if (contato_whatsapp) {
+        await syncEmployeeWhatsAppUser({ ...employee, ...payload, ...saved }, context);
+      } else {
+        await deactivateEmployeeWhatsAppUser({ ...employee, ...payload, id: employee.id }, context);
+      }
+      if (employee.usuario_id) await syncEmployeePanelAccess(employee.id, session?.access_token);
       notifyDashboardUpdated();
       setEditingEmployee(false);
       onChanged();
@@ -456,6 +465,7 @@ export function EmployeeDetails({
       {editingEmployee ? (
         <EmployeeForm
           employee={employee}
+          accessMode={employee.tipo_acesso === "sistema_whatsapp" ? "sistema_whatsapp" : employee.tipo_acesso === "sistema" ? "sistema" : "bot_only"}
           busy={busy}
           onClose={() => setEditingEmployee(false)}
           onSubmit={submitEmployee}

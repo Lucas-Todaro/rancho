@@ -6,6 +6,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { syncEmployeePanelAccess } from "@/services/employee-access";
 import { assertUniqueActiveEmployeeWhatsApp, deactivateEmployeeWhatsAppUser, syncEmployeeWhatsAppUser } from "@/services/whatsapp-users";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
@@ -162,9 +163,11 @@ export function EmployeeScreen() {
         } else {
           await deactivateEmployeeWhatsAppUser({ ...editing, ...payload, id: editing.id }, dataContext);
         }
+        if (editing.usuario_id) await syncEmployeePanelAccess(editing.id, session?.access_token);
       } else {
         const saved = await createRecord(TABLES.funcionarios, payload, dataContext);
         if (contato_whatsapp) await syncEmployeeWhatsAppUser(saved, dataContext);
+        if (saved?.usuario_id) await syncEmployeePanelAccess(saved.id, session?.access_token);
       }
       notifyDashboardUpdated();
       closeForm();
@@ -192,6 +195,7 @@ export function EmployeeScreen() {
       } else {
         await deactivateEmployeeWhatsAppUser(employee, dataContext);
       }
+      if (employee.usuario_id) await syncEmployeePanelAccess(employee.id, session?.access_token);
       notifyDashboardUpdated();
       await load();
     } catch (err) {
@@ -207,6 +211,7 @@ export function EmployeeScreen() {
       deleted_at: new Date().toISOString()
     });
     await deactivateEmployeeWhatsAppUser(employee, dataContext);
+    if (employee.usuario_id) await syncEmployeePanelAccess(employee.id, session?.access_token);
   }
 
   async function removeEmployee(employee: AnyRecord) {
@@ -226,6 +231,7 @@ export function EmployeeScreen() {
       } else {
         try {
           await deactivateEmployeeWhatsAppUser(employee, dataContext, { clearEmployeeLink: true });
+          if (employee.usuario_id) await syncEmployeePanelAccess(employee.id, session?.access_token, { forceDisabled: true });
           await deleteRecord(TABLES.funcionarios, employee.id);
         } catch {
           await softDeleteEmployee(employee);

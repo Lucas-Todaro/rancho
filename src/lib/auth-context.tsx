@@ -253,6 +253,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configured]);
 
+  useEffect(() => {
+    if (!configured || !session?.user?.id) return;
+
+    let mounted = true;
+    let client: SupabaseBrowserClient | null = null;
+    let channel: ReturnType<SupabaseBrowserClient["channel"]> | null = null;
+
+    async function watchProfileAccess() {
+      client = await getSupabaseBrowser();
+      if (!mounted || !client || !session?.user?.id) return;
+
+      channel = client
+        .channel(`profile-access:${session.user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "usuarios", filter: `id=eq.${session.user.id}` },
+          () => {
+            void loadProfile(session, { clearOnError: true });
+          }
+        )
+        .subscribe();
+    }
+
+    void watchProfileAccess();
+
+    return () => {
+      mounted = false;
+      if (client && channel) void client.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured, session?.user?.id]);
+
   async function signIn(email: string, password: string) {
     const client = await getSupabaseBrowser();
     if (!client) return;
