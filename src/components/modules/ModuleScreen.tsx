@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
+import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
@@ -108,7 +109,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       setRows(data);
       setRelationOptions(Object.fromEntries(relationPairs));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar dados.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível carregar os dados agora."));
     } finally {
       setLoading(false);
     }
@@ -153,7 +154,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       notifyDashboardUpdated();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao salvar.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível salvar o registro agora."));
     } finally {
       setBusy(false);
     }
@@ -168,7 +169,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       notifyDashboardUpdated();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao excluir.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível excluir o registro agora."));
     } finally {
       setBusy(false);
     }
@@ -237,6 +238,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       {selectedAnimal ? (
         <AnimalDetailModal
           animal={selectedAnimal}
+          animals={rows}
           context={dataContext}
           relationOptions={relationOptions}
           onClose={() => setSelectedAnimal(null)}

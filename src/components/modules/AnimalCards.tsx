@@ -114,6 +114,7 @@ export function AnimalCards({
 
       const text = [
         animal.brinco,
+        animal.nome,
         displayLabel(categoryLabels, animal.categoria),
         displayLabel(phaseLabels, animal.fase),
         displayLabel(statusLabels, animal.status),
@@ -134,7 +135,7 @@ export function AnimalCards({
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               className="input input-with-icon"
-              placeholder="Buscar por brinco, raça, fase ou lote..."
+              placeholder="Buscar por nome, brinco, raça, fase ou lote..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -190,8 +191,11 @@ export function AnimalCards({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="truncate text-2xl font-black tracking-tight">{animal.brinco || "Sem brinco"}</h3>
-                  <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{status}</p>
+                  <h3 className="truncate text-2xl font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
+                  <p className="mt-1 truncate text-sm font-bold text-slate-500 dark:text-slate-400">
+                    {animal.nome ? `Código: ${animal.brinco || "Sem brinco"}` : status}
+                  </p>
+                  {animal.nome ? <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">{status}</p> : null}
                 </div>
                 <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
                   {phase}

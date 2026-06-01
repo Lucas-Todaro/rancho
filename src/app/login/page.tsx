@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { LogIn, PawPrint, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { getFriendlyErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "register";
@@ -45,7 +46,7 @@ export default function LoginPage() {
       await signIn(email, password);
       router.replace("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível entrar."));
     } finally {
       setBusy(false);
     }
@@ -85,7 +86,7 @@ export default function LoginPage() {
       await signIn(email, password);
       router.replace("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível criar a conta.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível criar a conta."));
     } finally {
       setBusy(false);
     }

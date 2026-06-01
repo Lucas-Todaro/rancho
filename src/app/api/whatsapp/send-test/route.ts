@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getFriendlyErrorMessage } from "@/lib/errors";
 import { sendOutboundWhatsAppText } from "@/services/whatsapp/outbound";
 
 const DEFAULT_MESSAGE = [
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
     const result = await sendOutboundWhatsAppText(phone, String(message || DEFAULT_MESSAGE));
     return NextResponse.json({ ok: true, provider: result.provider });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível enviar a mensagem agora.";
+    const message = getFriendlyErrorMessage(error, "Não foi possível enviar a mensagem agora.");
     if (process.env.NODE_ENV !== "production") console.error("[WhatsApp send-message]", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

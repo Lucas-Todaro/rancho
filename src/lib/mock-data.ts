@@ -32,9 +32,9 @@ export const mockData: Record<string, AnyRecord[]> = {
     { id: "lote-2", fazenda_id: DEMO_FAZENDA_ID, nome: "Novilhas", descricao: "Animais em crescimento", ativo: true, created_at: "2026-05-18T08:00:00.000Z" }
   ],
   [TABLES.animais]: [
-    { id: "animal-1", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-042", categoria: "vaca", fase: "lactacao", raca: "Girolando", lote_id: "lote-1", data_nascimento: "2020-03-18", peso: 520, status: "ativo", observacoes: "Alta produtividade", created_by: DEMO_USUARIO_ID, created_at: "2026-05-20T08:00:00.000Z" },
-    { id: "animal-2", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-017", categoria: "vaca", fase: "lactacao", raca: "Holandesa", lote_id: "lote-1", data_nascimento: "2019-08-12", peso: 610, status: "ativo", observacoes: "Boa persistência de lactação", created_by: DEMO_USUARIO_ID, created_at: "2026-05-18T08:00:00.000Z" },
-    { id: "animal-3", fazenda_id: DEMO_FAZENDA_ID, brinco: "T-003", categoria: "touro", fase: "nao_aplicavel", raca: "Gir", lote_id: null, data_nascimento: "2021-02-04", peso: 760, status: "ativo", observacoes: "Reprodutor", created_by: DEMO_USUARIO_ID, created_at: "2026-05-10T08:00:00.000Z" }
+    { id: "animal-1", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-042", nome: "Mimosa", categoria: "vaca", fase: "lactacao", raca: "Girolando", lote_id: "lote-1", data_nascimento: "2020-03-18", peso: 520, status: "ativo", mae_id: "animal-2", pai_id: "animal-3", genealogia_observacoes: "Linhagem produtiva acompanhada.", observacoes: "Alta produtividade", created_by: DEMO_USUARIO_ID, created_at: "2026-05-20T08:00:00.000Z" },
+    { id: "animal-2", fazenda_id: DEMO_FAZENDA_ID, brinco: "B-017", nome: "Estrela", categoria: "vaca", fase: "lactacao", raca: "Holandesa", lote_id: "lote-1", data_nascimento: "2019-08-12", peso: 610, status: "ativo", mae_id: null, pai_id: null, genealogia_observacoes: null, observacoes: "Boa persistência de lactação", created_by: DEMO_USUARIO_ID, created_at: "2026-05-18T08:00:00.000Z" },
+    { id: "animal-3", fazenda_id: DEMO_FAZENDA_ID, brinco: "T-003", nome: "Imperador", categoria: "touro", fase: "nao_aplicavel", raca: "Gir", lote_id: null, data_nascimento: "2021-02-04", peso: 760, status: "ativo", mae_id: null, pai_id: null, genealogia_observacoes: null, observacoes: "Reprodutor", created_by: DEMO_USUARIO_ID, created_at: "2026-05-10T08:00:00.000Z" }
   ],
   [TABLES.eventosAnimal]: [
     { id: "evento-1", fazenda_id: DEMO_FAZENDA_ID, animal_id: "animal-1", tipo: "vacina", data_evento: "2026-05-23T09:00:00.000Z", descricao: "Reforço sanitário", medicamento: "Clostridial", dose: "5 ml", custo: 47, created_at: "2026-05-23T09:00:00.000Z" }
@@ -71,6 +71,7 @@ export const mockData: Record<string, AnyRecord[]> = {
   ],
   [TABLES.whatsappSessoes]: [],
   [TABLES.whatsappMensagens]: [],
+  [TABLES.notificacoes]: [],
   [TABLES.alertas]: [
     { id: "alerta-1", fazenda_id: DEMO_FAZENDA_ID, tipo: "estoque", severidade: "warning", titulo: "Vacina em estoque crítico", descricao: "Vacina clostridial está abaixo do mínimo", resolvido: false, created_at: "2026-05-30T09:30:00.000Z" }
   ],

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { isSupabaseConfigured } from "@/lib/env";
+import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
 import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
 import type { DataContext, UsuarioProfile } from "@/lib/types";
 
@@ -159,7 +160,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!sessionResult.ok) {
         setSession(null);
         setProfile(null);
-        setError(sessionResult.error.message);
+        logTechnicalError("Falha ao confirmar sessão", sessionResult.error);
+        setError(getFriendlyErrorMessage(sessionResult.error, "Não foi possível confirmar seu acesso agora. Tente novamente."));
         setLoading(false);
         return;
       }
@@ -168,7 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (sessionError) {
         setSession(null);
         setProfile(null);
-        setError(sessionError.message);
+        logTechnicalError("Falha ao carregar sessão", sessionError);
+        setError(getFriendlyErrorMessage(sessionError, "Não foi possível confirmar seu acesso agora. Tente novamente."));
         setLoading(false);
         return;
       }
@@ -240,7 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!signInResult.ok) throw signInResult.error;
 
       const { data, error: signInError } = signInResult.value;
-      if (signInError) throw new Error(signInError.message);
+      if (signInError) throw new Error(getFriendlyErrorMessage(signInError, "Não foi possível entrar."));
 
       setSession(data.session);
       if (!data.session?.user?.id) throw new Error("Não foi possível iniciar a sessão.");
@@ -260,7 +263,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
       }
       setLoading(false);
-      throw err instanceof Error ? err : new Error("Não foi possível entrar.");
+      throw new Error(getFriendlyErrorMessage(err, "Não foi possível entrar."));
     }
     setLoading(false);
   }

@@ -17,6 +17,7 @@ export const TABLES = {
   whatsappUsuarios: "whatsapp_usuarios",
   whatsappSessoes: "whatsapp_sessoes",
   whatsappMensagens: "whatsapp_mensagens",
+  notificacoes: "notificacoes",
   alertas: "alertas",
   auditoriaLogs: "auditoria_logs"
 } as const;
@@ -36,6 +37,7 @@ export const FARM_SCOPED_TABLES = new Set<string>([
   TABLES.whatsappUsuarios,
   TABLES.whatsappSessoes,
   TABLES.whatsappMensagens,
+  TABLES.notificacoes,
   TABLES.alertas,
   TABLES.auditoriaLogs
 ]);
@@ -107,6 +109,7 @@ export const moduleConfigs: ModuleConfig[] = [
     orderBy: "created_at",
     fields: [
       { name: "brinco", label: "Número do brinco", type: "text", required: true, placeholder: "Ex: B-042" },
+      { name: "nome", label: "Nome do animal", type: "text", placeholder: "Ex: Mimosa, Estrela, Princesa" },
       { name: "categoria", label: "Categoria", type: "select", required: true, defaultValue: "vaca", options: animalCategories },
       { name: "fase", label: "Fase", type: "select", defaultValue: "nao_aplicavel", options: animalPhases },
       { name: "raca", label: "Raça", type: "text", placeholder: "Ex: Girolando" },

@@ -341,10 +341,113 @@ async function logAudit(supabase: SupabaseAdmin, owner: WhatsAppOwner, entidade:
   });
 }
 
+function notificationActor(owner: WhatsAppOwner) {
+  return owner.nome_exibicao || "Usuário do WhatsApp";
+}
+
+function botNotificationFor(table: string, record: AnyRecord, owner: WhatsAppOwner) {
+  const actor = notificationActor(owner);
+
+  if (table === TABLES.ordenhas) {
+    return {
+      tipo: "producao_bot",
+      titulo: "Produção de leite cadastrada",
+      mensagem: `${actor} cadastrou produção de leite${record.litros ? ` de ${formatNumber(record.litros, " L")}` : ""}.`
+    };
+  }
+
+  if (table === TABLES.eventosAnimal) {
+    return {
+      tipo: "evento_animal_bot",
+      titulo: "Evento do rebanho cadastrado",
+      mensagem: `${actor} registrou ${record.tipo || "um evento"} no rebanho.`
+    };
+  }
+
+  if (table === TABLES.transacoesFinanceiras) {
+    const type = record.tipo === "saida" ? "saída" : "entrada";
+    return {
+      tipo: record.tipo === "saida" ? "financeiro_saida_bot" : "financeiro_entrada_bot",
+      titulo: `${type === "saída" ? "Saída" : "Entrada"} financeira cadastrada`,
+      mensagem: `${actor} registrou uma ${type} financeira de ${formatMoney(record.valor)}.`
+    };
+  }
+
+  if (table === TABLES.estoqueItens) {
+    return {
+      tipo: "estoque_item_bot",
+      titulo: "Item criado no estoque",
+      mensagem: `${actor} criou o item ${record.nome || "informado"} no estoque.`
+    };
+  }
+
+  if (table === TABLES.estoqueMovimentacoes) {
+    return {
+      tipo: record.tipo === "saida" ? "estoque_baixa_bot" : "estoque_entrada_bot",
+      titulo: record.tipo === "saida" ? "Baixa de estoque registrada" : "Entrada de estoque registrada",
+      mensagem: `${actor} ${record.tipo === "saida" ? "deu baixa em item do estoque" : "adicionou item ao estoque"}.`
+    };
+  }
+
+  if (table === TABLES.registrosPonto) {
+    return {
+      tipo: "ponto_bot",
+      titulo: "Ponto registrado pelo WhatsApp",
+      mensagem: `${actor} registrou ponto pelo WhatsApp.`
+    };
+  }
+
+  if (table === TABLES.funcionarios) {
+    return {
+      tipo: "funcionario_bot",
+      titulo: "Funcionário cadastrado pelo WhatsApp",
+      mensagem: `${actor} cadastrou o funcionário ${record.nome || "informado"}.`
+    };
+  }
+
+  if (table === TABLES.animais) {
+    return {
+      tipo: "animal_bot",
+      titulo: "Animal cadastrado pelo WhatsApp",
+      mensagem: `${actor} cadastrou o animal ${record.brinco || record.nome || "informado"}.`
+    };
+  }
+
+  return null;
+}
+
+async function createBotNotificationForInsert(supabase: SupabaseAdmin, owner: WhatsAppOwner, table: string, record: AnyRecord) {
+  const notification = botNotificationFor(table, record, owner);
+  if (!notification || !record?.id) return;
+
+  const { error } = await supabase.from(TABLES.notificacoes).insert({
+    fazenda_id: owner.fazenda_id,
+    usuario_id: owner.usuario_id || null,
+    ator_nome: owner.nome_exibicao || null,
+    ator_telefone: owner.telefone_e164,
+    tipo: notification.tipo,
+    titulo: notification.titulo,
+    mensagem: notification.mensagem,
+    entidade_tipo: table,
+    entidade_id: record.id,
+    origem: "bot",
+    dedupe_key: `bot:${table}:${record.id}`
+  });
+
+  if (error && !/duplicate|23505/i.test(`${error.message} ${error.code || ""}`)) {
+    console.warn("[BOT FLOW] Falha ao criar notificação interna", {
+      table,
+      code: error.code,
+      message: error.message
+    });
+  }
+}
+
 async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, table: string, payload: AnyRecord) {
   const { data, error } = await supabase.from(table).insert(payload).select("*").single();
   if (error) throw new Error(error.message);
   await logAudit(supabase, owner, table, "insert", data || payload);
+  await createBotNotificationForInsert(supabase, owner, table, (data || payload) as AnyRecord);
   return data;
 }
 
@@ -406,7 +509,7 @@ function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
   const { data, error } = await supabase
     .from(TABLES.animais)
-    .select("id,brinco,categoria,status,raca,observacoes")
+    .select("id,brinco,nome,categoria,status,raca,observacoes")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 

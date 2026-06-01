@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { navGroups } from "@/components/layout/navigation";
+import { NotificationsMenu } from "@/components/layout/NotificationsMenu";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
@@ -134,6 +135,7 @@ export function Header() {
         </form>
 
         <div className="ml-auto flex items-center gap-2">
+          <NotificationsMenu />
           <button onClick={toggleTheme} className="rounded-lg border border-slate-200 bg-white/70 p-2 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800" type="button" title="Tema">
             {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>

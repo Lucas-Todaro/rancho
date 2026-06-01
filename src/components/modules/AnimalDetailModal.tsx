@@ -1,16 +1,17 @@
 "use client";
 
-import { Activity, CalendarDays, ClipboardList, Heart, Plus, Stethoscope, TrendingUp, X } from "lucide-react";
+import { Activity, CalendarDays, ClipboardList, GitBranch, Heart, Plus, Save, Stethoscope, TrendingUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, listRecords } from "@/services/crud";
+import { createRecord, listRecords, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
 import { formatCurrency, formatDate, formatNumber, nowLocalDatetime } from "@/lib/utils";
 
-type Tab = "resumo" | "reproducao" | "timeline";
+type Tab = "resumo" | "reproducao" | "genealogia" | "timeline";
 
 const eventTypes = [
   { label: "Observação", value: "observacao" },
@@ -69,14 +70,48 @@ function toDateOnly(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
+function animalName(animal?: AnyRecord | null) {
+  if (!animal) return "Não informado";
+  return animal.nome ? `${animal.nome} (${animal.brinco || "sem brinco"})` : animal.brinco || "Sem brinco";
+}
+
+function collectDescendantIds(animalId: string, animals: AnyRecord[]) {
+  const descendants = new Set<string>();
+  const visit = (id: string) => {
+    animals
+      .filter((item) => String(item.mae_id || "") === id || String(item.pai_id || "") === id)
+      .forEach((child) => {
+        const childId = String(child.id || "");
+        if (!childId || descendants.has(childId)) return;
+        descendants.add(childId);
+        visit(childId);
+      });
+  };
+
+  visit(animalId);
+  return descendants;
+}
+
+function GenealogyCard({ label, animal, muted }: { label: string; animal?: AnyRecord | null; muted?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-4 text-center ${muted ? "border-dashed border-slate-300 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900/50" : "border-emerald-200 bg-white shadow-sm dark:border-emerald-900 dark:bg-slate-950"}`}>
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <strong className="mt-2 block text-base text-slate-900 dark:text-slate-100">{animalName(animal)}</strong>
+      {animal?.categoria ? <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{labelFromMap(categoryLabels, animal.categoria, "Animal")}</span> : null}
+    </div>
+  );
+}
+
 export function AnimalDetailModal({
   animal,
+  animals,
   context,
   relationOptions,
   onClose,
   onChanged
 }: {
   animal: AnyRecord;
+  animals: AnyRecord[];
   context: DataContext;
   relationOptions: Record<string, RelationOption[]>;
   onClose: () => void;
@@ -97,6 +132,22 @@ export function AnimalDetailModal({
     dose: "",
     custo: ""
   });
+  const [genealogyDraft, setGenealogyDraft] = useState({
+    mae_id: String(animal.mae_id || ""),
+    pai_id: String(animal.pai_id || ""),
+    genealogia_observacoes: String(animal.genealogia_observacoes || "")
+  });
+  const [genealogySaving, setGenealogySaving] = useState(false);
+  const [genealogySuccess, setGenealogySuccess] = useState("");
+
+  useEffect(() => {
+    setGenealogyDraft({
+      mae_id: String(animal.mae_id || ""),
+      pai_id: String(animal.pai_id || ""),
+      genealogia_observacoes: String(animal.genealogia_observacoes || "")
+    });
+    setGenealogySuccess("");
+  }, [animal.id, animal.mae_id, animal.pai_id, animal.genealogia_observacoes]);
 
   const loadDetails = useCallback(async () => {
     setDetailsLoading(true);
@@ -124,7 +175,7 @@ export function AnimalDetailModal({
   }, [animal.id, context.fazendaId, context.usuarioId]);
 
   useEffect(() => {
-    loadDetails().catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar a ficha."));
+    loadDetails().catch((err) => setError(getFriendlyErrorMessage(err, "Não foi possível carregar a ficha.")));
   }, [loadDetails]);
 
   const metrics = useMemo(() => {
@@ -166,6 +217,59 @@ export function AnimalDetailModal({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 20);
   }, [events, productions]);
+
+  const animalById = useMemo(() => new Map(animals.map((item) => [String(item.id), item])), [animals]);
+  const descendantIds = useMemo(() => collectDescendantIds(String(animal.id), animals), [animal.id, animals]);
+  const parentOptions = useMemo(() => (
+    animals.filter((item) => {
+      const itemId = String(item.id || "");
+      return itemId && itemId !== String(animal.id) && !descendantIds.has(itemId);
+    })
+  ), [animal.id, animals, descendantIds]);
+
+  const genealogy = useMemo(() => {
+    const mother = animalById.get(genealogyDraft.mae_id);
+    const father = animalById.get(genealogyDraft.pai_id);
+    const children = animals.filter((item) => String(item.mae_id || "") === String(animal.id) || String(item.pai_id || "") === String(animal.id));
+
+    return {
+      mother,
+      father,
+      maternalGrandmother: mother ? animalById.get(String(mother.mae_id || "")) : undefined,
+      maternalGrandfather: mother ? animalById.get(String(mother.pai_id || "")) : undefined,
+      paternalGrandmother: father ? animalById.get(String(father.mae_id || "")) : undefined,
+      paternalGrandfather: father ? animalById.get(String(father.pai_id || "")) : undefined,
+      children
+    };
+  }, [animal.id, animalById, animals, genealogyDraft.mae_id, genealogyDraft.pai_id]);
+
+  async function saveGenealogy() {
+    setGenealogySaving(true);
+    setError("");
+    setGenealogySuccess("");
+
+    try {
+      if (genealogyDraft.mae_id === animal.id || genealogyDraft.pai_id === animal.id) {
+        throw new Error("O animal não pode ser pai ou mãe dele mesmo.");
+      }
+
+      if ((genealogyDraft.mae_id && descendantIds.has(genealogyDraft.mae_id)) || (genealogyDraft.pai_id && descendantIds.has(genealogyDraft.pai_id))) {
+        throw new Error("Não é possível escolher um descendente como pai ou mãe.");
+      }
+
+      await updateRecord(TABLES.animais, animal.id, {
+        mae_id: genealogyDraft.mae_id || null,
+        pai_id: genealogyDraft.pai_id || null,
+        genealogia_observacoes: genealogyDraft.genealogia_observacoes || null
+      });
+      setGenealogySuccess("Genealogia salva com sucesso.");
+      await onChanged();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, "Não foi possível salvar a genealogia."));
+    } finally {
+      setGenealogySaving(false);
+    }
+  }
 
   function openEventForm(tipo = "observacao", descricao = "") {
     setDraft({
@@ -219,7 +323,7 @@ export function AnimalDetailModal({
       await loadDetails();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível registrar o manejo.");
+      setError(getFriendlyErrorMessage(err, "Não foi possível registrar o manejo."));
     } finally {
       setBusy(false);
     }
@@ -240,7 +344,8 @@ export function AnimalDetailModal({
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha 360</p>
-              <h2 className="mt-2 text-4xl font-black tracking-tight">{animal.brinco || "Animal"}</h2>
+              <h2 className="mt-2 text-4xl font-black tracking-tight">{animal.nome || animal.brinco || "Animal"}</h2>
+              {animal.nome ? <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">Código: {animal.brinco || "Sem brinco"}</p> : null}
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                 {categoria} • {fase || "Fase não informada"} • {lote}
               </p>
@@ -261,6 +366,7 @@ export function AnimalDetailModal({
             {[
               ["resumo", "Resumo"],
               ["reproducao", "Reprodução"],
+              ["genealogia", "Genealogia"],
               ["timeline", "Timeline"]
             ].map(([value, label]) => (
               <button
@@ -329,6 +435,8 @@ export function AnimalDetailModal({
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Dados do animal</p>
                   <div className="mt-4 space-y-3 text-sm">
                     {[
+                      ["Nome", animal.nome || "-"],
+                      ["Código", animal.brinco || "-"],
                       ["Categoria", categoria],
                       ["Fase", fase],
                       ["Raça", animal.raca || "-"],
@@ -364,6 +472,83 @@ export function AnimalDetailModal({
               <button className="btn w-full bg-blue-600 text-white" type="button" onClick={() => openEventForm("observacao", "Diagnóstico reprodutivo: ")}>
                 Registrar diagnóstico
               </button>
+            </div>
+          ) : null}
+
+          {tab === "genealogia" ? (
+            <div className="space-y-5">
+              <section className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
+                      <GitBranch className="h-5 w-5" />
+                      <strong>Árvore genealógica</strong>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Vincule pai e mãe entre animais já cadastrados no mesmo rancho. Avós e filhos aparecem automaticamente quando a relação existir.
+                    </p>
+                  </div>
+                  {genealogySuccess ? <Badge tone="success">{genealogySuccess}</Badge> : null}
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  <GenealogyCard label="Avó materna" animal={genealogy.maternalGrandmother} muted={!genealogy.maternalGrandmother} />
+                  <GenealogyCard label="Avô materno" animal={genealogy.maternalGrandfather} muted={!genealogy.maternalGrandfather} />
+                  <GenealogyCard label="Avó paterna" animal={genealogy.paternalGrandmother} muted={!genealogy.paternalGrandmother} />
+                  <GenealogyCard label="Avô paterno" animal={genealogy.paternalGrandfather} muted={!genealogy.paternalGrandfather} />
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <GenealogyCard label="Mãe" animal={genealogy.mother} muted={!genealogy.mother} />
+                  <GenealogyCard label="Pai" animal={genealogy.father} muted={!genealogy.father} />
+                </div>
+
+                <div className="mt-4 rounded-lg border-2 border-emerald-300 bg-white p-5 text-center shadow-sm dark:border-emerald-800 dark:bg-slate-950">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Animal selecionado</p>
+                  <h3 className="mt-2 text-2xl font-black">{animalName({ ...animal, mae_id: genealogyDraft.mae_id, pai_id: genealogyDraft.pai_id })}</h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{categoria} • {fase}</p>
+                </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Filhos / descendentes diretos</p>
+                  {genealogy.children.length ? (
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {genealogy.children.map((child) => <GenealogyCard key={child.id} label="Filho(a)" animal={child} />)}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">
+                      Nenhum descendente direto cadastrado.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+                <h3 className="text-lg font-black">Editar genealogia</h3>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm font-bold">Mãe</span>
+                    <select className="input" value={genealogyDraft.mae_id} onChange={(event) => setGenealogyDraft((current) => ({ ...current, mae_id: event.target.value }))}>
+                      <option value="">Não informado</option>
+                      {parentOptions.map((option) => <option key={option.id} value={option.id}>{animalName(option)}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-bold">Pai</span>
+                    <select className="input" value={genealogyDraft.pai_id} onChange={(event) => setGenealogyDraft((current) => ({ ...current, pai_id: event.target.value }))}>
+                      <option value="">Não informado</option>
+                      {parentOptions.map((option) => <option key={option.id} value={option.id}>{animalName(option)}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="mt-4 block space-y-2">
+                  <span className="text-sm font-bold">Observações genealógicas</span>
+                  <textarea className="input min-h-24 resize-y" value={genealogyDraft.genealogia_observacoes} onChange={(event) => setGenealogyDraft((current) => ({ ...current, genealogia_observacoes: event.target.value }))} placeholder="Ex: linhagem, origem, histórico familiar..." />
+                </label>
+                <button className="btn btn-primary mt-4" type="button" onClick={saveGenealogy} disabled={genealogySaving}>
+                  <Save className="h-4 w-4" /> {genealogySaving ? "Salvando..." : "Salvar alterações"}
+                </button>
+              </section>
             </div>
           ) : null}
 

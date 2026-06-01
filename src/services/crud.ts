@@ -2,6 +2,7 @@
 
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { mockData } from "@/lib/mock-data";
+import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
 import { CREATED_BY_FIELDS, FARM_SCOPED_TABLES, TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, ModuleField, RelationOption } from "@/lib/types";
 
@@ -125,7 +126,10 @@ export async function createRecord(tableName: string, values: AnyRecord, context
     .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    logTechnicalError(`Falha ao criar registro em ${tableName}`, error);
+    throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar o registro agora."));
+  }
   return data;
 }
 
@@ -144,7 +148,10 @@ export async function updateRecord(tableName: string, id: string, values: AnyRec
     .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    logTechnicalError(`Falha ao atualizar registro em ${tableName}`, error);
+    throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar as alterações agora."));
+  }
   return data;
 }
 
@@ -155,7 +162,10 @@ export async function deleteRecord(tableName: string, id: string) {
   }
 
   const { error } = await supabaseBrowser.from(tableName).delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    logTechnicalError(`Falha ao excluir registro em ${tableName}`, error);
+    throw new Error(getFriendlyErrorMessage(error, "Não foi possível excluir o registro agora."));
+  }
   return true;
 }
 
@@ -175,7 +185,10 @@ export async function deleteRecords(tableName: string, filters: ListOptions["fil
   });
 
   const { error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) {
+    logTechnicalError(`Falha ao excluir registros em ${tableName}`, error);
+    throw new Error(getFriendlyErrorMessage(error, "Não foi possível excluir os registros agora."));
+  }
   return true;
 }
 
