@@ -58,6 +58,9 @@ const mockStock = [
   { id: "item-milho", nome: "Milho" },
   { id: "item-feno", nome: "Feno" },
   { id: "item-sal-mineral", nome: "Sal mineral" },
+  { id: "item-racao-especial", nome: "Ração especial" },
+  { id: "item-mistura-lactacao", nome: "Mistura lactação" },
+  { id: "item-nucleo-mineral", nome: "Núcleo mineral" },
   { id: "item-aftosa", nome: "Aftosa" },
   { id: "item-terramicina", nome: "Terramicina" },
   { id: "item-remedio", nome: "Remédio" },
@@ -97,6 +100,11 @@ function resolveParsed(parsed) {
     const resolved = resolveStockItem(itemExtraido, mockStock);
     dados.item_extraido = itemExtraido;
     dados.item_normalizado = normalizeCatalogText(itemExtraido);
+    dados.origem_catalogo = "mock";
+    dados.quantidade_itens_catalogo = mockStock.length;
+    dados.candidatos_catalogo = (resolved.rows?.length ? resolved.rows : resolved.row ? [resolved.row] : mockStock.slice(0, 8)).map((row) => row.nome);
+    dados.status_resolucao = resolved.status;
+    dados.score_resolucao = Number(resolved.score.toFixed(3));
     dados.item_estoque_encontrado = Boolean(resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86);
     dados.motivo_processamento = parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra
       ? dados.item_estoque_encontrado ? "item_encontrado: estoque+financeiro" : "item_nao_encontrado: fluxo_criar_item_ou_financeiro"
@@ -157,10 +165,11 @@ function assertExpected(test, parsed) {
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
-  if (expected.produto && !normalize(dados.produto).includes(normalize(expected.produto))) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
+  if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
   if (expected.normalizedItem && normalize(dados.item_normalizado) !== normalize(expected.normalizedItem)) failures.push(`item normalizado esperado ${expected.normalizedItem}, recebido ${dados.item_normalizado}`);
   if (expected.itemId && dados.item_id !== expected.itemId) failures.push(`item_id esperado ${expected.itemId}, recebido ${dados.item_id}`);
+  if (expected.catalogSource && normalize(dados.origem_catalogo) !== normalize(expected.catalogSource)) failures.push(`origem_catalogo esperado ${expected.catalogSource}, recebido ${dados.origem_catalogo}`);
   if ("itemFound" in expected && Boolean(dados.item_estoque_encontrado) !== Boolean(expected.itemFound)) failures.push(`item_estoque_encontrado esperado ${expected.itemFound}, recebido ${dados.item_estoque_encontrado}`);
   if (expected.motivoIncludes && !normalize(dados.motivo_processamento).includes(normalize(expected.motivoIncludes))) failures.push(`motivo esperado contendo ${expected.motivoIncludes}, recebido ${dados.motivo_processamento}`);
   if ("quantidade" in expected && Number(dados.quantidade) !== Number(expected.quantidade)) failures.push(`quantidade esperada ${expected.quantidade}, recebida ${dados.quantidade}`);
@@ -234,6 +243,9 @@ const extraTests = [
   { phrase: "vaca 2 fez leite", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], missing: ["litros"] } },
   { phrase: "registra 25 litros da vaca 2", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 25 } },
   { phrase: "vacinei B002 com aftosa", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "aftosa", animal: "B-002" } },
+  { phrase: "vaca 2 recebeu vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "raiva", animalAny: ["2", "002"], resumoIncludes: "vacina de raiva" } },
+  { phrase: "vaca 2 tomou vacina de aftosa", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "aftosa", animalAny: ["2", "002"] } },
+  { phrase: "apliquei vacina contra brucelose na B-002", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "brucelose", animal: "B-002" } },
   { phrase: "terramicina na vaca b-002", expected: { tipo: "VACINA_MEDICAMENTO", produto: "terramicina", animal: "B-002" } },
   { phrase: "remedio na 15", expected: { tipo: "VACINA_MEDICAMENTO", produto: "remedio", animal: "15" } },
   { phrase: "tratei a vaca malhada com remedio", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "tratamento", produto: "remedio", animal: "MALHADA" } },
@@ -301,6 +313,9 @@ const regressionTests = [
   { phrase: "a vaca do fundo morreu", expected: { tipo: "MORTE", local: "fundo", missing: ["animal_codigo"] } },
   { phrase: "a preta pariu", expected: { tipo: "PARTO", animal: "PRETA" } },
   { phrase: "comprei 3 saco de sal mineral por 180 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Sal mineral", itemId: "item-sal-mineral", itemFound: true, motivoIncludes: "estoque+financeiro", quantidade: 3, unidade: "saco", valor: 180, resumoIncludes: "3 sacos" } },
+  { phrase: "comprei 5 sacos de ração especial por 200 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração especial", itemId: "item-racao-especial", itemFound: true, catalogSource: "mock", motivoIncludes: "estoque+financeiro", quantidade: 5, unidade: "saco", valor: 200 } },
+  { phrase: "comprei 10kg de mistura lactação por 150 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Mistura lactação", itemId: "item-mistura-lactacao", itemFound: true, catalogSource: "mock", motivoIncludes: "estoque+financeiro", quantidade: 10, unidade: "kg", valor: 150 } },
+  { phrase: "comprei 2 sacos de núcleo mineral por 90 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Núcleo mineral", itemId: "item-nucleo-mineral", itemFound: true, catalogSource: "mock", motivoIncludes: "estoque+financeiro", quantidade: 2, unidade: "saco", valor: 90 } },
   { phrase: "comprei 3 sacos de sal mineral por 180 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Sal mineral", quantidade: 3, unidade: "saco", valor: 180 } },
   { phrase: "comprei sal mineral por 180 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Sal mineral", valor: 180, missing: ["quantidade"] } },
   { phrase: "comprei 3 saco de sal minral por 180 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Sal mineral", itemId: "item-sal-mineral", itemFound: true, motivoIncludes: "estoque+financeiro", quantidade: 3, unidade: "saco", valor: 180 } },
@@ -308,6 +323,8 @@ const regressionTests = [
   { phrase: "estoque de saco de sal mineral", expected: { tipo: "CONSULTA_ESTOQUE", item: "Sal mineral", itemId: "item-sal-mineral", itemFound: true } },
   { phrase: "estoque de sal minral", expected: { tipo: "CONSULTA_ESTOQUE", item: "Sal mineral", itemId: "item-sal-mineral", itemFound: true } },
   { phrase: "comprei 3 sacos de item inexistente por 180 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 3, unidade: "saco", valor: 180, itemUnresolved: true, itemFound: false, motivoIncludes: "item_nao_encontrado" } },
+  { phrase: "comprei 5 sacos de coisa aleatória por 200 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "coisa aleatória", quantidade: 5, unidade: "saco", valor: 200, itemUnresolved: true, itemFound: false, motivoIncludes: "item_nao_encontrado" } },
+  { phrase: "comprei 5 de ração especial por 200 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração especial", itemId: "item-racao-especial", itemFound: true, quantidade: 5, valor: 200, missing: ["unidade"] } },
   { phrase: "chegou racao de boi", expected: { tipo: "ESTOQUE_ENTRADA", item: "Ração de boi", missing: ["quantidade"] } },
   { phrase: "botei 25kg de racao boi", expected: { tipo: "ESTOQUE_ENTRADA", item: "Ração de boi", quantidade: 25, unidade: "kg" } },
   { phrase: "entrou 25kg de racao de boi", expected: { tipo: "ESTOQUE_ENTRADA", item: "Ração de boi", quantidade: 25, unidade: "kg" } },

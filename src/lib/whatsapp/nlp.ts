@@ -527,22 +527,33 @@ function stripAnimalReferences(value: string) {
     .replace(/\b(?:na|no|em|a|o|da|do|de)\s+[a-z]*\d[a-z0-9-]*\b/gi, "")
     .replace(/\b(?:os|as|nos|nas|aos|pros|pras|para os|para as)?\s*(?:bois|vacas|gado|bezerros|bezerra|bezerro|novilhas)\b/gi, "")
     .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, "")
-    .replace(/\b(?:tomou|vacinei|apliquei|aplicado|aplicou|mediquei|medicou|tratei|tratou|tratar|manejo|com)\b/gi, "")
+    .replace(/\b(?:recebeu|tomou|vacinei|apliquei|aplicado|aplicou|mediquei|medicou|tratei|tratou|tratar|manejo|com)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanMedicineProduct(value: string | undefined) {
+  const cleaned = stripAnimalReferences(value || "")
+    .replace(/^(?:(?:vacina|medicamento|rem[eé]dio|tratamento|manejo)\s+)+/i, "")
+    .replace(/^(?:(?:da|de|do|contra|pra|para)\s+)+/i, "")
+    .replace(/\s+(?:da|de|do|contra|pra|para|na|no|em|a|o)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned || undefined;
 }
 
 function extractProduct(original: string, normalized: string) {
   const knownProduct = normalized.match(/\b(?:aftosa|brucelose|terramicina|remedio|medicamento)\b/)?.[0];
   const afterCom = original.match(/\bcom\s+(.+)$/i)?.[1];
   const afterAction = original.match(/\b(?:vacina|vacinei|apliquei|aplicou|tomou|mediquei|medicou|tratei|tratou)\s+(.+)$/i)?.[1];
-  const product = stripAnimalReferences(afterCom || afterAction || original);
-  const generic = normalizeRanchoText(product);
+  const product = cleanMedicineProduct(afterCom || afterAction || original);
+  const generic = normalizeRanchoText(product || "");
 
   if (product && !["vacina", "tomou", "tratei", "tratamento", "manejo", "bois", "gado"].includes(generic)) return product;
   if (knownProduct) return knownProduct;
 
-  const fallback = stripAnimalReferences(normalized);
+  const fallback = cleanMedicineProduct(normalized);
   return fallback && !["vacina", "tomou", "tratei", "tratamento", "manejo", "bois", "gado"].includes(fallback) ? fallback : undefined;
 }
 
@@ -555,6 +566,9 @@ function extractStockItem(original: string) {
 
   const quantityItem = original.match(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\s+(?:de|do|da)?\\s+(.+?)(?:\\s+(?:no|na|do|da)\\s+estoque\\b|\\s+(?:ao|aos|para|pra|pro|pros|pras|por)\\b|$)`, "i"))?.[1];
   if (quantityItem) return cleanAnswer(quantityItem);
+
+  const purchaseQuantityItem = original.match(/\b(?:comprei|compramos|comprar|compra)\s+\d+(?:[,.]\d+)?\s*(?:de|do|da)?\s+(.+?)(?:\s+por|\s+de\s+r\$?|\s+r\$|\s+\d+(?:[,.]\d+)?\s*(?:reais|real)\b|$)/i)?.[1];
+  if (purchaseQuantityItem) return cleanAnswer(purchaseQuantityItem);
 
   const cleaned = cleanAnswer(original)
     .replace(/\bpor\b.*$/gi, " ")
@@ -744,7 +758,9 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "PARTO") return `registrar parto${dados.animal_codigo ? ` do animal ${dados.animal_codigo}` : ""}${dados.data_referencia ? ` (${dados.data_referencia})` : ""}`;
 
   if (tipo === "VACINA_MEDICAMENTO") {
-    return `registrar ${dados.evento_tipo === "vacina" ? "vacina" : "tratamento"}${dados.produto ? ` com ${dados.produto}` : ""}${dados.animal_codigo ? ` no animal ${dados.animal_codigo}` : ""}`;
+    const evento = dados.evento_tipo === "vacina" ? "vacina" : "tratamento";
+    const produto = dados.produto ? `${evento === "vacina" ? " de" : " com"} ${dados.produto}` : "";
+    return `registrar ${evento}${produto}${dados.animal_codigo ? ` no animal ${dados.animal_codigo}` : ""}`;
   }
 
   if (tipo === "MORTE") return `registrar morte do animal ${dados.animal_codigo || "informado"}${dados.data_referencia ? ` (${dados.data_referencia})` : ""}`;
@@ -855,10 +871,12 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CRIAR_FUNCIONARIO", dados, buildMissing("CRIAR_FUNCIONARIO", dados), 0.88);
   }
 
+  const stockQuantity = extractStockQuantity(original);
   const physicalQuantity = hasPhysicalQuantity(original) || hasLooseStockQuantity(original);
   const explicitMoney = hasExplicitMoney(original);
   const isPurchase = isPurchaseText(original);
   const stockItemName = extractStockItem(original);
+  const hasPurchaseQuantity = isPurchase && hasValue(stockQuantity) && Boolean(stockItemName);
   const hasStockVocabulary = stockItemHintPattern.test(normalized) || /\bestoque\b/.test(normalized);
   const hasStockItemHint = Boolean(stockItemName) && hasStockVocabulary;
 
@@ -867,7 +885,7 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   if (hasStockCreate) {
     const dados = {
       item_nome: stockItemName,
-      quantidade: extractStockQuantity(original),
+      quantidade: stockQuantity,
       unidade: extractStockUnit(normalized)
     };
     return finalize("CRIAR_ITEM_ESTOQUE", dados, buildMissing("CRIAR_ITEM_ESTOQUE", dados), 0.86);
@@ -899,7 +917,7 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   if (isStockOut) {
     const dados = {
       item_nome: stockItemName,
-      quantidade: extractStockQuantity(original),
+      quantidade: stockQuantity,
       unidade: extractStockUnit(normalized),
       destino: extractStockDestination(original)
     };
@@ -910,11 +928,11 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   const paidPhysicalStock = physicalQuantity && /\bpaguei\b/.test(normalized);
   const isStockIn = ((physicalQuantity || hasStockItemHint) && stockInVerb)
     || paidPhysicalStock
-    || (isPurchase && hasStockItemHint);
+    || (isPurchase && (hasStockItemHint || hasPurchaseQuantity));
   if (isStockIn) {
     const dados = {
       item_nome: stockItemName,
-      quantidade: extractStockQuantity(original),
+      quantidade: stockQuantity,
       unidade: extractStockUnit(normalized),
       valor: explicitMoney ? extractMoneyValue(normalized) : undefined,
       compra: isPurchase || undefined

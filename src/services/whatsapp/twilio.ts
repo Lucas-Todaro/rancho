@@ -67,6 +67,18 @@ type MatchResult<T extends AnyRecord> = {
   resolutionStatus?: string;
 };
 
+type StockLookupResult = {
+  row?: AnyRecord;
+  exact: boolean;
+  score: number;
+  ambiguousRows?: AnyRecord[];
+  resolutionStatus: string;
+  catalogSource: "banco_real";
+  catalogCount: number;
+  candidateNames: string[];
+  reason: string;
+};
+
 const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "ok", "pode", "pode salvar", "isso", "certo", "1"]);
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "refazer", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
@@ -171,19 +183,23 @@ function botLog(event: string, owner: WhatsAppOwner, details: AnyRecord) {
   });
 }
 
-function stockResolutionDebug(input: unknown, found?: MatchResult<AnyRecord>) {
+function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
   return {
     item_extraido: String(input || ""),
     item_normalizado: normalizeCatalogText(String(input || "")),
+    origem_catalogo: found?.catalogSource || "banco_real",
+    quantidade_itens_catalogo: found?.catalogCount ?? 0,
+    candidatos_catalogo: found?.candidateNames || [],
     item_resolvido: found?.row?.nome || null,
     item_estoque_encontrado: Boolean(found?.row && !found.ambiguousRows?.length && found.score >= 0.86),
     item_id: found?.row?.id || null,
     status_resolucao: found?.resolutionStatus || "not_found",
-    score: typeof found?.score === "number" ? Number(found.score.toFixed(3)) : 0
+    score: typeof found?.score === "number" ? Number(found.score.toFixed(3)) : 0,
+    motivo_nao_resolvido: found?.row ? null : found?.reason || "item_nao_encontrado"
   };
 }
 
-function stockDecisionReason(parsed: ParsedRanchoMessage, found?: MatchResult<AnyRecord>, owner?: WhatsAppOwner) {
+function stockDecisionReason(parsed: ParsedRanchoMessage, found?: StockLookupResult, owner?: WhatsAppOwner) {
   if (parsed.tipo === "ESTOQUE_ENTRADA" && parsed.dados?.compra && found?.row && !found.ambiguousRows?.length && found.score >= 0.86) {
     return "item_encontrado: estoque+financeiro";
   }
@@ -525,23 +541,42 @@ async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: s
   };
 }
 
-async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
+async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string): Promise<StockLookupResult> {
   const { data, error } = await supabase
     .from(TABLES.estoqueItens)
-    .select("id,nome,quantidade_atual,unidade_medida,valor_unitario,ativo")
+    .select("id,nome,descricao,categoria,quantidade_atual,unidade_medida,valor_unitario,ativo")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
   if (error) throw new Error(error.message);
   const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
   const resolved = resolveStockItem(name, activeRows);
-  if (!resolved.row) return undefined;
+
+  const candidateRows = (resolved.rows?.length ? resolved.rows : resolved.row ? [resolved.row] : activeRows.slice(0, 8)) as AnyRecord[];
+  const candidateNames = candidateRows
+    .map((row) => String(row.nome || row.descricao || row.id || ""))
+    .filter(Boolean)
+    .slice(0, 8);
+  const reason = !activeRows.length
+    ? "catalogo_vazio"
+    : resolved.status === "not_found"
+      ? "sem_match_seguro"
+      : resolved.status === "ambiguous"
+        ? "multiplos_itens_parecidos"
+        : resolved.status === "suggestion"
+          ? "match_medio_precisa_confirmacao"
+          : "match_seguro";
+
   return {
     row: resolved.row,
     exact: resolved.status === "matched" && resolved.exact,
     score: resolved.score,
     ambiguousRows: resolved.status === "ambiguous" ? resolved.rows : undefined,
-    resolutionStatus: resolved.status
+    resolutionStatus: resolved.status,
+    catalogSource: "banco_real",
+    catalogCount: activeRows.length,
+    candidateNames,
+    reason
   };
 }
 
@@ -599,7 +634,14 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
     dados.item_extraido = originalItemName;
     dados.item_normalizado = stockResolution.item_normalizado;
+    dados.origem_catalogo = stockResolution.origem_catalogo;
+    dados.quantidade_itens_catalogo = stockResolution.quantidade_itens_catalogo;
+    dados.candidatos_catalogo = stockResolution.candidatos_catalogo;
+    dados.status_resolucao = stockResolution.status_resolucao;
+    dados.score_resolucao = stockResolution.score;
     dados.item_estoque_encontrado = stockResolution.item_estoque_encontrado;
+    dados.item_resolvido = stockResolution.item_resolvido;
+    dados.item_id = stockResolution.item_id;
     dados.motivo_processamento = decision;
     changed = true;
 
@@ -610,7 +652,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       decision
     });
 
-    if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
+    if (found.row && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
       dados.item_nome = found.row.nome;
       dados.item_id = found.row.id;
       dados.item_resolvido = found.row.nome;
@@ -618,7 +660,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       changed = true;
     }
 
-    if (parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra && !found && !isBotAdmin(owner)) {
+    if (parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra && !found.row && !isBotAdmin(owner)) {
       const financeData = {
         valor: dados.valor,
         descricao: dados.item_nome,
@@ -787,7 +829,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
-    if (found?.exact) {
+    if (found.row && found.exact) {
       return { response: `Não criei um novo item porque "${found.row.nome}" já existe no estoque.` };
     }
 
@@ -799,7 +841,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       };
     }
 
-    if (found && found.score >= 0.86) {
+    if (found.row && found.score >= 0.86) {
       const nextPending = pendingWithData(pending, { item_nome: found.row.nome });
       return {
         response: `Encontrei um item parecido: ${found.row.nome}. Quer usar esse item em vez de criar outro?\n1 - Confirmar\n2 - Corrigir`,
@@ -826,7 +868,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
     const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
     const stockResolution = stockResolutionDebug(dados.item_nome, found);
-    if (!found) {
+    if (!found.row) {
       const decision = stockDecisionReason(pending, found, owner);
       botLog("stock_purchase_decision", owner, {
         currentIntent: pending.tipo,
@@ -1080,7 +1122,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   if (parsed.tipo === "CONSULTA_ESTOQUE") {
     if (parsed.dados.item_nome) {
       const found = await findStockItem(supabase, owner, String(parsed.dados.item_nome));
-      if (found) return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.`;
+      if (found.row) return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.`;
     }
 
     const { data, error } = await supabase

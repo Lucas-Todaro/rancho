@@ -44,6 +44,12 @@ function withoutConnectors(value: string | number | null | undefined) {
     .join("");
 }
 
+function stockTokens(value: string | number | null | undefined) {
+  return normalizeCatalogText(value)
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !["de", "do", "da", "dos", "das", "o", "a"].includes(word));
+}
+
 function uniqueRows<T extends CatalogRow>(rows: T[]) {
   return rows.filter((row, index) => rows.findIndex((item) => item === row || item.id === row.id) === index);
 }
@@ -130,6 +136,11 @@ function stockScore(input: string, label: string) {
   if (withoutConnectors(target) && withoutConnectors(target) === withoutConnectors(option)) return 0.96;
   if (option.includes(target)) return 0.92;
   if (target.includes(option)) return 0.86;
+
+  const targetTokens = stockTokens(target);
+  const optionTokens = stockTokens(option);
+  if (targetTokens.length && targetTokens.every((token) => optionTokens.includes(token))) return 0.9;
+  if (optionTokens.length && optionTokens.every((token) => targetTokens.includes(token))) return 0.84;
 
   const distance = levenshtein(targetCompact, optionCompact);
   if (targetCompact.length <= 7 && distance <= 2) return 0.86;
