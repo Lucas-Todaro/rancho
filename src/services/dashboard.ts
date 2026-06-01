@@ -3,6 +3,7 @@
 import { TABLES } from "@/lib/tables";
 import { listRecords } from "@/services/crud";
 import type { DataContext } from "@/lib/types";
+import { financialAmount, financialMonthKey, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 
 const DASHBOARD_UPDATED_EVENT = "rancho:dashboard-updated";
 
@@ -41,9 +42,9 @@ export async function loadDashboardData(context?: DataContext) {
     .filter((item) => String(item.ordenhado_em || "").slice(0, 7) === month)
     .reduce((sum, item) => sum + Number(item.litros || 0), 0);
 
-  const monthFinance = finance.filter((item) => String(item.data_transacao || "").slice(0, 7) === month);
-  const income = monthFinance.filter((item) => item.tipo === "entrada").reduce((sum, item) => sum + Number(item.valor || 0), 0);
-  const expenses = monthFinance.filter((item) => item.tipo === "saida").reduce((sum, item) => sum + Number(item.valor || 0), 0);
+  const monthFinance = finance.filter((item) => financialMonthKey(item) === month);
+  const income = monthFinance.filter(isFinancialIncome).reduce((sum, item) => sum + financialAmount(item), 0);
+  const expenses = monthFinance.filter(isFinancialExpense).reduce((sum, item) => sum + financialAmount(item), 0);
 
   const criticalStock = stock.filter((item) => Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0));
   const activeEmployees = employees.filter((item) => item.ativo !== false && !item.deleted_at);

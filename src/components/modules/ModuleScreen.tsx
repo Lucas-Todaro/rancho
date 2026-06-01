@@ -28,6 +28,7 @@ import { notifyDashboardUpdated } from "@/services/dashboard";
 import { useAuth } from "@/lib/auth-context";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
+import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 const AnimalDetailModal = dynamic(
@@ -51,8 +52,8 @@ function calcStat(rows: AnyRecord[], stat: NonNullable<ModuleConfig["quickStats"
   if (stat.mode === "count") return rows.length;
   if (stat.mode === "active") return rows.filter((row) => row[stat.field] === true || row[stat.field] === "ativo").length;
   if (stat.mode === "critical") return rows.filter((row) => Number(row[stat.field] || 0) <= Number(row[stat.compareField || "quantidade_minima"] || 0)).length;
-  if (stat.mode === "moneyIn") return formatCurrency(rows.filter((row) => row.tipo === "entrada").reduce((sum, row) => sum + Number(row[stat.field] || 0), 0));
-  if (stat.mode === "moneyOut") return formatCurrency(rows.filter((row) => row.tipo === "saida").reduce((sum, row) => sum + Number(row[stat.field] || 0), 0));
+  if (stat.mode === "moneyIn") return formatCurrency(rows.filter(isFinancialIncome).reduce((sum, row) => sum + financialAmount(row, stat.field), 0));
+  if (stat.mode === "moneyOut") return formatCurrency(rows.filter(isFinancialExpense).reduce((sum, row) => sum + financialAmount(row, stat.field), 0));
 
   const sum = rows.reduce((total, row) => total + Number(row[stat.field] || 0), 0);
   if (stat.mode === "avg") return formatNumber(rows.length ? sum / rows.length : 0, stat.suffix || "");
