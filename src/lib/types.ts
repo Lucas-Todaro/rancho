@@ -69,6 +69,7 @@ export type UsuarioProfile = {
   telefone?: string | null;
   papel: "admin" | "gerente" | "funcionario" | "veterinario" | "contador";
   ativo: boolean;
+  is_internal_tester?: boolean;
   fazenda?: FazendaProfile | null;
 };
 

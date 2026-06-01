@@ -32,10 +32,10 @@ export type ParsedRanchoMessage = {
 };
 
 export const BOT_EXAMPLES = [
-  "- Mimosa deu 15 litros hoje",
+  "- Mimosa deu 15 litros de leite hoje",
   "- Vendi leite por 900 reais",
-  "- Comprei ração por 300",
-  "- Adiciona 10 sacos de ração no estoque",
+  "- Comprei ração por 300 reais",
+  "- Entrou 10 sacos de ração no estoque",
   "- João entrou às 7:30"
 ];
 

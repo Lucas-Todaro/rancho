@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { INTERNAL_TOOLS_FORBIDDEN_MESSAGE } from "@/lib/internal-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import { whatsappNumbersMatch } from "@/lib/phone";
+import { requireInternalWhatsappTester } from "@/lib/server/internal-whatsapp-tools";
 import { processWhatsappMessage } from "@/services/whatsapp/twilio";
 
 function jsonError(message: string, status: number) {
@@ -22,23 +24,12 @@ async function assertCanUseSimulator(request: NextRequest, telefone: string) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { error: jsonError("Supabase server-side não configurado.", 503) };
 
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return { error: jsonError("Sessão não informada.", 401) };
-
-  const { data: authData, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !authData.user?.id) return { error: jsonError("Sessão inválida.", 401) };
-
-  const { data: profile, error: profileError } = await supabase
-    .from(TABLES.usuarios)
-    .select("id,fazenda_id,papel,ativo")
-    .eq("id", authData.user.id)
-    .maybeSingle();
-
-  if (profileError) throw new Error(profileError.message);
-  if (!profile?.ativo) return { error: jsonError("Usuário inativo.", 403) };
-  if (!["admin", "gerente"].includes(String(profile.papel))) {
-    return { error: jsonError("Sem permissão para testar o bot.", 403) };
+  const permission = await requireInternalWhatsappTester(request);
+  if (!permission.ok) {
+    return { error: jsonError(INTERNAL_TOOLS_FORBIDDEN_MESSAGE, permission.response.status) };
   }
+
+  const profile = permission.profile;
 
   const { data: whatsappUsers, error: whatsappError } = await supabase
     .from(TABLES.whatsappUsuarios)

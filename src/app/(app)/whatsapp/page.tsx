@@ -7,8 +7,10 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { formatBrazilianPhone, isValidBrazilianPhone } from "@/lib/input-format";
 import { TABLES } from "@/lib/tables";
+import { useInternalTester } from "@/lib/use-internal-tester";
 import { formatDate } from "@/lib/utils";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import { isWhatsappSandboxEnvironment, publicWhatsappConfig } from "@/lib/public-env";
 import { createRecord, deleteRecord, deleteRecords, listRecords, updateRecord } from "@/services/crud";
 import type { AnyRecord } from "@/lib/types";
 
@@ -27,9 +29,10 @@ const initialDraft = {
 const defaultOutboundMessage = [
   "Olá! Aqui é o bot do Rancho.",
   "Pode mandar frases como:",
-  "- Mimosa deu 15 litros hoje",
+  "- Mimosa deu 15 litros de leite hoje",
   "- Vendi leite por 900 reais",
-  "- Comprei ração por 300",
+  "- Comprei ração por 300 reais",
+  "- Entrou 10 sacos de ração no estoque",
   "- João entrou às 7:30"
 ].join("\n");
 
@@ -69,6 +72,7 @@ function roleToDatabase(value: string) {
 
 export default function WhatsAppPage() {
   const { dataContext, profile, session } = useAuth();
+  const isInternalTester = useInternalTester();
   const [phone, setPhone] = useState("");
   const [outboundMessage, setOutboundMessage] = useState(defaultOutboundMessage);
   const [status, setStatus] = useState("");
@@ -88,6 +92,9 @@ export default function WhatsAppPage() {
   const [success, setSuccess] = useState("");
 
   const canManage = profile?.papel === "admin" || profile?.papel === "gerente";
+  const isSandbox = isWhatsappSandboxEnvironment();
+  const sandboxNumber = publicWhatsappConfig.sandboxNumber;
+  const sandboxJoinCode = publicWhatsappConfig.sandboxJoinCode;
 
   const loadAuthorizedNumbers = useCallback(async () => {
     setLoading(true);
@@ -240,6 +247,11 @@ export default function WhatsAppPage() {
   }
 
   async function sendMessage() {
+    if (!isInternalTester) {
+      setStatus("Você não tem permissão para acessar esta ferramenta interna.");
+      return;
+    }
+
     if (!isValidBrazilianPhone(phone)) {
       setStatus("Informe um WhatsApp válido com DDD.");
       return;
@@ -250,7 +262,10 @@ export default function WhatsAppPage() {
     try {
       const response = await fetch("/api/whatsapp/send-test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        },
         body: JSON.stringify({
           phone: normalizeWhatsappNumber(phone) || phone,
           message: outboundMessage
@@ -266,7 +281,7 @@ export default function WhatsAppPage() {
   }
 
   async function simulateBotMessage() {
-    if (!canManage) return;
+    if (!isInternalTester) return;
     const normalizedPhone = normalizeWhatsappNumber(botTestPhone);
     const text = botTestMessage.trim();
 
@@ -369,6 +384,57 @@ export default function WhatsAppPage() {
         </div>
       </section>
 
+      <section className={isSandbox ? "grid gap-4 lg:grid-cols-[0.9fr_1.1fr]" : "grid gap-4"}>
+        <div className="glass rounded-lg p-5 shadow-soft md:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-black">Status da integração</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Veja como o WhatsApp do Rancho está configurado agora.
+              </p>
+            </div>
+            <Badge tone={isSandbox ? "warning" : "success"}>{isSandbox ? "Ambiente de testes" : "Integração ativa"}</Badge>
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {isSandbox
+              ? "O bot está em ambiente de testes. Para usar, o WhatsApp precisa entrar no sandbox da Twilio e também estar autorizado abaixo."
+              : "A integração oficial do WhatsApp Business está ativa para os números autorizados do Rancho."}
+          </p>
+        </div>
+
+        {isSandbox ? (
+          <div className="glass rounded-lg p-5 shadow-soft md:p-6">
+            <h2 className="text-xl font-black">Como testar o bot agora</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Enquanto estiver em testes, cada telefone precisa ativar o sandbox uma vez antes de conversar com o bot.
+            </p>
+            <ol className="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">1</span>
+                <span>Cadastre e deixe o número ativo na lista de números autorizados.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">2</span>
+                <span>Envie a mensagem de ativação para o número do sandbox da Twilio.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">3</span>
+                <span>Depois da confirmação, mande uma mensagem simples, como &ldquo;menu&rdquo; ou &ldquo;vaca Mimosa deu 15 litros&rdquo;.</span>
+              </li>
+            </ol>
+            {sandboxNumber || sandboxJoinCode ? (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+                {sandboxNumber ? <p><strong>Número do sandbox:</strong> {sandboxNumber}</p> : null}
+                {sandboxJoinCode ? <p className="mt-1"><strong>Mensagem de ativação:</strong> join {sandboxJoinCode}</p> : null}
+              </div>
+            ) : null}
+            <p className="mt-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+              No WhatsApp oficial, essa ativação manual do sandbox deixa de existir.
+            </p>
+          </div>
+        ) : null}
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <form onSubmit={saveAuthorizedNumber} className="glass rounded-lg p-5 shadow-soft md:p-6">
           <div className="mb-5 flex items-start justify-between gap-3">
@@ -376,7 +442,7 @@ export default function WhatsAppPage() {
               <UserPlus className="h-6 w-6 text-emerald-600" />
               <div>
                 <h2 className="text-xl font-black">{editing ? "Editar número autorizado" : "Novo número autorizado"}</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Só números ativos nesta lista podem usar o bot.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Somente números autorizados e ativos poderão usar o bot do Rancho.</p>
               </div>
             </div>
             {editing ? (
@@ -476,8 +542,9 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="glass rounded-lg p-5 shadow-soft md:p-6">
+      <div className={isInternalTester ? "grid gap-6 lg:grid-cols-[0.9fr_1.1fr]" : "grid gap-6"}>
+        {isInternalTester ? (
+          <div className="glass rounded-lg p-5 shadow-soft md:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Send className="h-5 w-5 text-emerald-600" />
             <h2 className="text-xl font-black">Enviar mensagem</h2>
@@ -497,7 +564,8 @@ export default function WhatsAppPage() {
             <MessageCircle className="h-4 w-4" /> {sending ? "Enviando..." : "Enviar mensagem"}
           </button>
           {status ? <p className="mt-3 rounded-lg bg-slate-100 p-3 text-sm font-bold dark:bg-slate-900">{status}</p> : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="glass rounded-lg p-5 shadow-soft md:p-6">
           <div className="mb-5 flex items-center gap-3">
@@ -509,10 +577,10 @@ export default function WhatsAppPage() {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {[
-              "O número é salvo normalizado com DDI 55.",
-              "Mensagens da Twilio e da Meta usam a mesma validação.",
-              "Números inativos recebem bloqueio amigável.",
-              "Registros continuam entrando no rancho correto."
+              "O número precisa estar cadastrado e ativo para conversar com o bot.",
+              "Cada pessoa usa o próprio WhatsApp autorizado pelo Rancho.",
+              "Números inativos são bloqueados com uma mensagem clara.",
+              "Os registros entram automaticamente na fazenda correta."
             ].map((item) => (
               <div key={item} className="flex gap-3 rounded-lg border border-slate-200/70 bg-white/65 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/55">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -523,13 +591,13 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {canManage ? (
+      {isInternalTester ? (
         <section className="glass rounded-lg p-5 shadow-soft md:p-6">
           <div className="mb-5 flex items-center gap-3">
             <Bot className="h-6 w-6 text-emerald-600" />
             <div>
-              <h2 className="text-xl font-black">Modo teste do bot</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Simule mensagens de funcionários sem gastar limite do Twilio.</p>
+              <h2 className="text-xl font-black">Ferramentas internas de teste</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Área restrita para testar o bot antes de liberar mudanças para clientes.</p>
             </div>
           </div>
 

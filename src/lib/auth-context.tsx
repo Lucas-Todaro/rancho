@@ -26,6 +26,7 @@ const demoProfile: UsuarioProfile = {
   telefone: "5585999990000",
   papel: "admin",
   ativo: true,
+  is_internal_tester: false,
   fazenda: {
     id: DEMO_FAZENDA_ID,
     nome: "Fazenda Modelo",
@@ -69,11 +70,23 @@ async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
 }
 
 async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
-  const { data, error } = await client
+  const profileSelect = "id,fazenda_id,nome,telefone,papel,ativo,is_internal_tester,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
+  const fallbackProfileSelect = "id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)";
+  let result = await client
     .from("usuarios")
-    .select("id,fazenda_id,nome,telefone,papel,ativo,fazenda:fazendas(id,nome,slug,timezone,plano,ativa)")
+    .select(profileSelect)
     .eq("id", userId)
     .maybeSingle();
+
+  if (result.error && /is_internal_tester|schema cache|column/i.test(result.error.message)) {
+    result = await client
+      .from("usuarios")
+      .select(fallbackProfileSelect)
+      .eq("id", userId)
+      .maybeSingle();
+  }
+
+  const { data, error } = result;
 
   if (error) throw new Error("Não foi possível carregar os dados da fazenda agora.");
   if (!data) {

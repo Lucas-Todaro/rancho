@@ -41,9 +41,16 @@ SUPABASE_DEFAULT_FAZENDA_ID=
 WHATSAPP_VERIFY_TOKEN=
 META_WHATSAPP_TOKEN=
 META_PHONE_NUMBER_ID=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_WHATSAPP_FROM=
+NEXT_PUBLIC_WHATSAPP_ENV=sandbox
+NEXT_PUBLIC_TWILIO_SANDBOX_NUMBER=
+NEXT_PUBLIC_TWILIO_SANDBOX_JOIN_CODE=
 ```
 
 `SUPABASE_DEFAULT_FAZENDA_ID` e opcional, mas ajuda o webhook do WhatsApp quando um telefone ainda nao esta cadastrado em `whatsapp_usuarios`.
+As variaveis `NEXT_PUBLIC_*` acima mostram apenas informacoes publicas do ambiente de testes; tokens e chaves privadas ficam sempre fora do navegador.
 
 ## WhatsApp
 

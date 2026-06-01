@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFriendlyErrorMessage } from "@/lib/errors";
+import { requireInternalWhatsappTester } from "@/lib/server/internal-whatsapp-tools";
 import { sendOutboundWhatsAppText } from "@/services/whatsapp/outbound";
 
 const DEFAULT_MESSAGE = [
   "Olá! Aqui é o bot do Rancho.",
   "Você pode enviar frases como:",
-  "- Mimosa deu 15 litros hoje",
+  "- Mimosa deu 15 litros de leite hoje",
   "- Vendi leite por 900 reais",
-  "- Comprei ração por 300",
+  "- Comprei ração por 300 reais",
+  "- Entrou 10 sacos de ração no estoque",
   "- João entrou às 7:30"
 ].join("\n");
 
 export async function POST(request: NextRequest) {
   try {
+    const permission = await requireInternalWhatsappTester(request);
+    if (!permission.ok) return permission.response;
+
     const { phone, message } = await request.json();
     if (!phone) return NextResponse.json({ ok: false, error: "Informe o WhatsApp com DDD." }, { status: 400 });
 

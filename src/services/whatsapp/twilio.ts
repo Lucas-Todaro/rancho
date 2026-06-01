@@ -1331,7 +1331,7 @@ function ownerBlockedMessage(reason: Awaited<ReturnType<typeof resolveWhatsAppOw
   if (reason === "user_inactive") {
     return "Este WhatsApp está cadastrado, mas está inativo para usar o bot. Fale com o administrador do Rancho.";
   }
-  return "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
+  return "Este WhatsApp ainda não está autorizado no Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
 }
 
 function pendingFromSession(session?: BotSession | null) {

@@ -142,7 +142,7 @@ async function ensureSession(phone: string) {
   const normalizedPhone = normalizeWhatsappNumber(phone) || phone;
   const session = await getSession(normalizedPhone);
   if (!session.fazendaId) {
-    await sendWhatsAppText(normalizedPhone, "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.");
+    await sendWhatsAppText(normalizedPhone, "Este WhatsApp ainda não está autorizado no Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.");
     return null;
   }
   return session;
