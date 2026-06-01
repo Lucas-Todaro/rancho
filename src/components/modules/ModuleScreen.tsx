@@ -18,12 +18,13 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { DataTable } from "@/components/ui/DataTable";
 import { AnimalCards } from "@/components/modules/AnimalCards";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, deleteRecord, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
+import { createRecord, deleteRecord, deleteRecords, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
 import { useAuth } from "@/lib/auth-context";
@@ -79,7 +80,7 @@ function exportCsv(filename: string, rows: AnyRecord[], fields: ModuleConfig["fi
 }
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
-  const { dataContext, profile } = useAuth();
+  const { dataContext, profile, session } = useAuth();
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const queryContext = useMemo(() => ({ fazendaId: farmId, usuarioId: userId }), [farmId, userId]);
@@ -88,6 +89,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AnyRecord | null>(null);
   const [selectedAnimal, setSelectedAnimal] = useState<AnyRecord | null>(null);
+  const [animalDeleteTarget, setAnimalDeleteTarget] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -172,6 +174,14 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   }
 
   async function remove(id: string) {
+    if (config.tableName === TABLES.animais) {
+      const animal = rows.find((row) => String(row.id) === String(id));
+      if (animal) {
+        setAnimalDeleteTarget(animal);
+        return;
+      }
+    }
+
     const ok = window.confirm("Tem certeza que deseja excluir este registro?");
     if (!ok) return;
     setBusy(true);
@@ -186,6 +196,88 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       await load();
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível excluir o registro agora."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function inactivateAnimal() {
+    if (!animalDeleteTarget?.id) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
+      await updateRecord(TABLES.animais, animalDeleteTarget.id, { status: "inativo" });
+      setAnimalDeleteTarget(null);
+      notifyDashboardUpdated();
+      await load();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, "Não foi possível inativar o animal agora."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAnimalAndLinks() {
+    if (!animalDeleteTarget?.id) return;
+    const animalId = String(animalDeleteTarget.id);
+    setBusy(true);
+    setError("");
+
+    try {
+      if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
+
+      if (session?.access_token) {
+        const response = await fetch("/api/animals/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ animalId })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok === false) {
+          throw new Error(result?.error || "Não foi possível excluir o animal agora.");
+        }
+      } else {
+        const [animalEvents, childrenByMother, childrenByFather] = await Promise.all([
+          listRecords(TABLES.eventosAnimal, {
+            fazendaId: dataContext.fazendaId,
+            usuarioId: dataContext.usuarioId,
+            filters: [{ column: "animal_id", value: animalId }]
+          }),
+          listRecords(TABLES.animais, {
+            fazendaId: dataContext.fazendaId,
+            usuarioId: dataContext.usuarioId,
+            filters: [{ column: "mae_id", value: animalId }]
+          }),
+          listRecords(TABLES.animais, {
+            fazendaId: dataContext.fazendaId,
+            usuarioId: dataContext.usuarioId,
+            filters: [{ column: "pai_id", value: animalId }]
+          })
+        ]);
+
+        await Promise.all(animalEvents.map((event) => event.id ? removeEventCostFromFinance(String(event.id), dataContext) : Promise.resolve()));
+        await deleteRecords(TABLES.ordenhas, [{ column: "animal_id", value: animalId }]);
+        await deleteRecords(TABLES.eventosAnimal, [{ column: "animal_id", value: animalId }]);
+
+        const children = Array.from(new Map([...childrenByMother, ...childrenByFather].map((child) => [String(child.id), child])).values());
+        await Promise.all(children.map((child) => updateRecord(TABLES.animais, child.id, {
+          ...(String(child.mae_id || "") === animalId ? { mae_id: null } : {}),
+          ...(String(child.pai_id || "") === animalId ? { pai_id: null } : {})
+        })));
+
+        await deleteRecord(TABLES.animais, animalId);
+      }
+
+      setAnimalDeleteTarget(null);
+      if (selectedAnimal?.id === animalId) setSelectedAnimal(null);
+      notifyDashboardUpdated();
+      await load();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, "Não foi possível excluir o animal agora."));
     } finally {
       setBusy(false);
     }
@@ -267,6 +359,33 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           onClose={() => setSelectedAnimal(null)}
           onChanged={load}
         />
+      ) : null}
+
+      {animalDeleteTarget && typeof document !== "undefined" ? createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <section className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <h2 className="text-xl font-black">Excluir animal?</h2>
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+              Ao confirmar, {animalDeleteTarget.nome || animalDeleteTarget.brinco || "este animal"} será excluído do rebanho e os vínculos de produção, eventos e genealogia relacionados também serão removidos ou atualizados.
+            </p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Se quiser preservar o histórico sem usar mais esse animal nos lançamentos, escolha apenas inativar.
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button className="btn btn-secondary" type="button" onClick={() => setAnimalDeleteTarget(null)} disabled={busy}>
+                Cancelar
+              </button>
+              <button className="btn btn-secondary" type="button" onClick={inactivateAnimal} disabled={busy}>
+                Só inativar
+              </button>
+              <button className="btn bg-red-600 text-white hover:bg-red-700" type="button" onClick={deleteAnimalAndLinks} disabled={busy}>
+                {busy ? "Processando..." : "Excluir animal e vínculos"}
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
