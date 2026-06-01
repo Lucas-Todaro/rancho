@@ -101,16 +101,18 @@ export function NotificationsMenu() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900">
+        <>
+        <button className="fixed inset-0 z-40 cursor-default bg-transparent md:hidden" type="button" aria-label="Fechar notificações" onClick={() => setOpen(false)} />
+        <div className="fixed left-4 right-4 top-20 z-50 max-h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900 md:absolute md:left-auto md:right-0 md:top-12 md:w-96">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-black">Notificações</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Registros feitos pelo WhatsApp e avisos internos.</p>
             </div>
-            {unreadCount ? <Badge tone="success">{unreadCount} nova(s)</Badge> : null}
+            {unreadCount ? <span className="shrink-0"><Badge tone="success">{unreadCount} nova(s)</Badge></span> : null}
           </div>
 
-          <div className="max-h-[26rem] overflow-y-auto p-2">
+          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto p-2 md:max-h-[26rem]">
             {loading ? Array.from({ length: 4 }).map((_, index) => (
               <div key={`notification-skeleton-${index}`} className="rounded-lg p-3">
                 <Skeleton className="h-4 w-40" />
@@ -132,8 +134,8 @@ export function NotificationsMenu() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="truncate text-sm font-black">{notification.titulo}</h3>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{notification.mensagem}</p>
+                    <h3 className="break-words text-sm font-black">{notification.titulo}</h3>
+                    <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">{notification.mensagem}</p>
                     <p className="mt-2 text-xs text-slate-400">{formatDate(notification.created_at)}</p>
                   </div>
                   {!notification.lida_em ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" /> : null}
@@ -157,6 +159,7 @@ export function NotificationsMenu() {
             )}
           </div>
         </div>
+        </>
       ) : null}
     </div>
   );

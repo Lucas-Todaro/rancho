@@ -320,7 +320,25 @@ const regressionTests = [
   { phrase: "cadastrar funcionário Pedro 83999999999", actor: "João", expected: { responseIncludes: "não tem permissão" } }
 ];
 
-const allTests = [...mandatoryTests, ...extraTests, ...regressionTests];
+const decimalRegressionTests = [
+  { phrase: "vaca 2 deu 50.5 litros", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5 } },
+  { phrase: "B-002 deu 50,5 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 50.5 } },
+  { phrase: "vaca 15 produziu 1.5 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "15", litros: 1.5 } },
+  { phrase: "vaca 2 deu leite", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], missing: ["litros"] } },
+  { phrase: "usei 1,5 kg de ração de boi", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 1.5, unidade: "kg", item: "Ração de boi" } },
+  { phrase: "bota 2.5 kg de milho no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 2.5, unidade: "kg", item: "Milho" } },
+  { phrase: "chegou 2,5 sacos de sal mineral", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 2.5, unidade: "saco", item: "Sal mineral" } },
+  { phrase: "tira 0,5 dose de remédio do estoque", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 0.5, unidade: "dose", item: "Remédio" } },
+  { phrase: "comprei 10 sacos de ração por 300,50 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300.5 } },
+  { phrase: "comprei 2,5 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 2.5, unidade: "saco", item: "Ração", valor: 300 } },
+  { phrase: "comprei 20kg de ração por R$ 1.200,50", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 20, unidade: "kg", item: "Ração", valor: 1200.5 } },
+  { phrase: "comprei 1.5 fardos de feno por 90,50 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 1.5, unidade: "fardo", item: "Feno", valor: 90.5 } },
+  { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
+  { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
+  { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
+];
+
+const allTests = [...mandatoryTests, ...extraTests, ...regressionTests, ...decimalRegressionTests];
 
 if (allTests.length < 90) {
   console.error(`Erro interno do test:bot: esperado ao menos 90 testes, recebido ${allTests.length}.`);

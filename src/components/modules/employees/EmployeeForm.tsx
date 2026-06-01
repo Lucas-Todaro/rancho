@@ -4,6 +4,7 @@ import { Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CPFInput, CurrencyInput, WhatsAppInput } from "@/components/ui/MaskedInputs";
 import { formatBrazilianPhone, formatCPF, formatCurrencyForInput, isValidBrazilianPhone, isValidCPF, normalizeBrazilianWhatsApp, onlyDigits, parseCurrencyInput } from "@/lib/input-format";
+import { todayISO } from "@/lib/utils";
 import type { AnyRecord } from "@/lib/types";
 
 type EmployeeValues = {
@@ -25,7 +26,7 @@ function initialValues(employee?: AnyRecord | null): EmployeeValues {
     cpf: formatCPF(employee?.cpf),
     contato_whatsapp: formatBrazilianPhone(employee?.contato_whatsapp),
     salario_base: formatCurrencyForInput(employee?.salario_base),
-    data_admissao: String(employee?.data_admissao || new Date().toISOString().slice(0, 10)),
+    data_admissao: String(employee?.data_admissao || todayISO()),
     carga_horaria_mensal: String(employee?.carga_horaria_mensal ?? 220),
     valor_hora_extra: formatCurrencyForInput(employee?.valor_hora_extra),
     ativo: employee?.ativo !== false

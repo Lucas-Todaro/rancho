@@ -30,7 +30,7 @@ import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, toDateOnlyString } from "@/lib/utils";
 
 const AnimalDetailModal = dynamic(
   () => import("@/components/modules/AnimalDetailModal").then((module) => module.AnimalDetailModal),
@@ -76,8 +76,7 @@ function exportCsv(filename: string, rows: AnyRecord[], fields: ModuleConfig["fi
 }
 
 function dateOnly(value: unknown) {
-  const date = new Date(String(value || ""));
-  return Number.isNaN(date.getTime()) ? new Date().toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
+  return toDateOnlyString(String(value || ""));
 }
 
 export function ModuleScreen({ config }: { config: ModuleConfig }) {
@@ -238,7 +237,6 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       {selectedAnimal ? (
         <AnimalDetailModal
           animal={selectedAnimal}
-          animals={rows}
           context={dataContext}
           relationOptions={relationOptions}
           onClose={() => setSelectedAnimal(null)}

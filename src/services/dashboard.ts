@@ -4,6 +4,7 @@ import { TABLES } from "@/lib/tables";
 import { listRecords } from "@/services/crud";
 import type { DataContext } from "@/lib/types";
 import { financialAmount, financialMonthKey, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
+import { toDateOnlyString } from "@/lib/utils";
 
 const DASHBOARD_UPDATED_EVENT = "rancho:dashboard-updated";
 
@@ -29,17 +30,17 @@ export async function loadDashboardData(context?: DataContext) {
     listRecords(TABLES.alertas, { ...context, orderBy: "created_at" })
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDateOnlyString(new Date());
   const month = today.slice(0, 7);
 
   const animalMap = Object.fromEntries(animals.map((animal) => [animal.id, animal.brinco || animal.id]));
 
   const productionToday = productions
-    .filter((item) => String(item.ordenhado_em || "").slice(0, 10) === today)
+    .filter((item) => toDateOnlyString(item.ordenhado_em) === today)
     .reduce((sum, item) => sum + Number(item.litros || 0), 0);
 
   const productionMonth = productions
-    .filter((item) => String(item.ordenhado_em || "").slice(0, 7) === month)
+    .filter((item) => toDateOnlyString(item.ordenhado_em).slice(0, 7) === month)
     .reduce((sum, item) => sum + Number(item.litros || 0), 0);
 
   const monthFinance = finance.filter((item) => financialMonthKey(item) === month);
@@ -59,7 +60,7 @@ export async function loadDashboardData(context?: DataContext) {
   const activeAlerts = alerts.filter((item) => item.resolvido !== true);
 
   const dailyMap = productions.reduce<Record<string, number>>((acc, item) => {
-    const key = String(item.ordenhado_em || "sem data").slice(5, 10);
+    const key = item.ordenhado_em ? toDateOnlyString(item.ordenhado_em).slice(5, 10) : "sem data";
     acc[key] = (acc[key] || 0) + Number(item.litros || 0);
     return acc;
   }, {});

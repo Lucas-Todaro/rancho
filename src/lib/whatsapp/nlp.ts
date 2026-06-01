@@ -103,7 +103,8 @@ const animalWords = "(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinc
 const animalCategories = new Set(["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "animal"]);
 const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|fardos?|unidades?)";
-const stockUnitAfterQuantityPattern = new RegExp(`\\b(\\d+(?:[,.]\\d+)?)\\s*(${stockUnitWords})\\b`, "i");
+const decimalNumberPattern = "\\d+(?:[.,]\\d+)*";
+const stockUnitAfterQuantityPattern = new RegExp(`\\b(${decimalNumberPattern})\\s*(${stockUnitWords})\\b`, "i");
 const stockItemHintPattern = /\b(?:racao|ração|milho|feno|sal|mineral|aftosa|remedio|remédio|medicamento|insumo|silagem|suplemento)\b/;
 const forbiddenAnimalCodes = new Set([
   "vaca",
@@ -238,7 +239,13 @@ export function formatStockUnit(quantity: unknown, unit: string | null | undefin
 
 function formatStockQuantity(quantity: unknown, unit: string | null | undefined, fallback = "?") {
   if (!hasValue(quantity)) return fallback;
-  return `${quantity} ${formatStockUnit(quantity, unit)}`.trim();
+  return `${formatBotNumber(quantity)} ${formatStockUnit(quantity, unit)}`.trim();
+}
+
+function formatBotNumber(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value || "");
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(numeric);
 }
 
 function normalizeBotPhone(value: string | number | null | undefined) {
@@ -269,10 +276,50 @@ function removeWhatsappPhone(original: string) {
     .trim();
 }
 
-function toNumber(value: string | undefined) {
-  if (!value) return undefined;
-  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+function normalizeSingleDecimalSeparator(value: string, separator: "." | ",") {
+  const parts = value.split(separator);
+  if (parts.length === 1) return value;
+
+  const last = parts[parts.length - 1];
+  const first = parts[0];
+  const allThousandsGroups = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
+
+  if (parts.length === 2 && last.length === 3 && first !== "0") return `${first}${last}`;
+  if (parts.length > 2 && allThousandsGroups) return parts.join("");
+
+  return `${parts.slice(0, -1).join("")}.${last}`;
+}
+
+export function parseDecimalNumber(input: string | number | null | undefined) {
+  if (input === undefined || input === null || input === "") return undefined;
+
+  const raw = String(input).replace(/\s+/g, "").replace(/[^\d.,-]/g, "");
+  if (!/\d/.test(raw)) return undefined;
+
+  const sign = raw.startsWith("-") ? -1 : 1;
+  const value = raw.replace(/^-/, "");
+  const lastComma = value.lastIndexOf(",");
+  const lastDot = value.lastIndexOf(".");
+  let normalized = value;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const thousandsSeparator = decimalSeparator === "," ? "." : ",";
+    normalized = value
+      .replace(new RegExp(`\\${thousandsSeparator}`, "g"), "")
+      .replace(decimalSeparator, ".");
+  } else if (lastComma >= 0) {
+    normalized = normalizeSingleDecimalSeparator(value, ",");
+  } else if (lastDot >= 0) {
+    normalized = normalizeSingleDecimalSeparator(value, ".");
+  }
+
+  const parsed = Number(normalized) * sign;
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toNumber(value: string | undefined) {
+  return parseDecimalNumber(value);
 }
 
 function parseNumberWordSequence(words: string[], start: number) {
@@ -307,7 +354,7 @@ function parseNumberWordSequence(words: string[], start: number) {
 
 function numberMatches(text: string) {
   const matches: Array<{ raw: string; value: number; index: number }> = [];
-  const digitPattern = /\b\d+(?:[,.]\d+)?\b/g;
+  const digitPattern = new RegExp(`\\b${decimalNumberPattern}\\b`, "g");
   let digitMatch = digitPattern.exec(text);
 
   while (digitMatch) {
@@ -418,7 +465,7 @@ function extractAnimalCode(text: string, intent?: RanchoIntent) {
     return normalizeAnimalCandidate(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();
   }
 
-  const beforeLiters = text.match(/^([a-z][a-z0-9-]*)\s+\d+(?:[,.]\d+)?\s*(?:l|lt|lts|litro|litros)?\b/);
+  const beforeLiters = text.match(new RegExp(`^([a-z][a-z0-9-]*)\\s+${decimalNumberPattern}\\s*(?:l|lt|lts|litro|litros)?\\b`));
   if (beforeLiters?.[1] && intent === "PRODUCAO_LEITE") return normalizeAnimalCandidate(beforeLiters[1]) || beforeLiters[1].toUpperCase();
 
   const numbers = numberMatches(text);
@@ -428,10 +475,10 @@ function extractAnimalCode(text: string, intent?: RanchoIntent) {
 }
 
 function extractLiters(text: string) {
-  const withUnit = text.match(/\b(\d+(?:[,.]\d+)?)\s*(?:l|lt|lts|litro|litros)\b/);
+  const withUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s*(?:l|lt|lts|litro|litros)\\b`));
   if (withUnit?.[1]) return toNumber(withUnit[1]);
 
-  const afterProductionVerb = text.match(/\b(?:deu|produziu|fez|ordenhou|tirei|tirou)\s+(\d+(?:[,.]\d+)?)\b/);
+  const afterProductionVerb = text.match(new RegExp(`\\b(?:deu|produziu|fez|ordenhou|tirei|tirou)\\s+(${decimalNumberPattern})\\b`));
   if (afterProductionVerb?.[1]) return toNumber(afterProductionVerb[1]);
 
   return undefined;
@@ -443,8 +490,8 @@ function extractMoneyValue(text: string) {
 
 function removeValueAndCommonWords(value: string) {
   return cleanAnswer(value)
-    .replace(/r\$\s*\d+(?:[,.]\d+)?/gi, "")
-    .replace(/\b\d+(?:[,.]\d+)?\s*(?:reais|real)?\b/gi, "")
+    .replace(new RegExp(`r\\$\\s*${decimalNumberPattern}`, "gi"), "")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)?\\b`, "gi"), "")
     .replace(/\b(?:zero|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|mil|reais|real)\b/gi, "")
     .replace(/^\s*(?:por|de|do|da|com|no|na|o|a|um|uma|pra|para)\s+/gi, " ")
     .replace(/\s+/g, " ")
@@ -506,15 +553,15 @@ function extractStockItem(original: string) {
   const stockQueryItem = original.match(/\b(?:me\s+mostre\s+o\s+estoque\s+de|mostre\s+o\s+estoque\s+de|mostrar\s+estoque\s+de|ver\s+estoque\s+de|estoque\s+de|quanto\s+tem\s+de)\s+(.+)$/i)?.[1];
   if (stockQueryItem) return cleanAnswer(stockQueryItem);
 
-  const quantityItem = original.match(new RegExp(`\\b\\d+(?:[,.]\\d+)?\\s*${stockUnitWords}\\s+(?:de|do|da)?\\s+(.+?)(?:\\s+(?:no|na|do|da)\\s+estoque\\b|\\s+(?:ao|aos|para|pra|pro|pros|pras|por)\\b|$)`, "i"))?.[1];
+  const quantityItem = original.match(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\s+(?:de|do|da)?\\s+(.+?)(?:\\s+(?:no|na|do|da)\\s+estoque\\b|\\s+(?:ao|aos|para|pra|pro|pros|pras|por)\\b|$)`, "i"))?.[1];
   if (quantityItem) return cleanAnswer(quantityItem);
 
   const cleaned = cleanAnswer(original)
     .replace(/\bpor\b.*$/gi, " ")
-    .replace(new RegExp(`\\b\\d+(?:[,.]\\d+)?\\s*${stockUnitWords}\\b`, "gi"), " ")
-    .replace(/r\$\s*\d+(?:[,.]\d+)?/gi, " ")
-    .replace(/\b\d+(?:[,.]\d+)?\s*(?:reais|real)\b/gi, " ")
-    .replace(/\b(?:por)\s+\d+(?:[,.]\d+)?(?:\s*(?:reais|real))?\b/gi, " ")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\b`, "gi"), " ")
+    .replace(new RegExp(`r\\$\\s*${decimalNumberPattern}`, "gi"), " ")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)\\b`, "gi"), " ")
+    .replace(new RegExp(`\\b(?:por)\\s+${decimalNumberPattern}(?:\\s*(?:reais|real))?\\b`, "gi"), " ")
     .replace(/\b(?:no|na|do|da)\s+estoque\b/gi, " ")
     .replace(/\b(?:pros?|pras?|para os|para as|aos?|às?)\s+(?:bois|vacas|bezerros|gado|animais)\b/gi, " ")
     .replace(/\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|item|registrar|consultar|consulta|ver|quanto|saldo|tem|baixo|minimo|mínimo|critico|crítico|me|mostre|mostrar|comprei|compramos|comprar|compra|paguei|adiciona|adicionar|adicionei|bota|botar|botei|coloca|colocar|coloquei|lanca|lança|lancar|lançar|entrada|entrou|chegou|recebemos|estoque|baixa|baixar|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|saiu|dei|deu|sacos|saco|kg|quilo|quilos|grama|gramas|litro|litros|unidade|unidades|caixa|caixas|dose|doses|fardo|fardos)\b/gi, " ")
@@ -543,14 +590,14 @@ function hasPhysicalQuantity(text: string) {
 }
 
 function hasLooseStockQuantity(text: string) {
-  return /\b\d+(?:[,.]\d+)?\s*(?:saco|sacos|kg|quilo|quilos|grama|gramas|g|litro|litros|l|caixa|caixas|dose|doses|fardo|fardos|unidade|unidades)\b/.test(normalizeRanchoText(text));
+  return new RegExp(`\\b${decimalNumberPattern}\\s*(?:saco|sacos|kg|quilo|quilos|grama|gramas|g|litro|litros|l|caixa|caixas|dose|doses|fardo|fardos|unidade|unidades)\\b`).test(normalizeRanchoText(text));
 }
 
 function hasExplicitMoney(text: string) {
   const normalized = normalizeRanchoText(text);
-  return /r\$\s*\d+(?:[,.]\d+)?/i.test(text)
-    || /\b\d+(?:[,.]\d+)?\s*(?:reais|real)\b/.test(normalized)
-    || /\bpor\s+\d+(?:[,.]\d+)?(?:\s*(?:reais|real))?\b/.test(normalized);
+  return new RegExp(`r\\$\\s*${decimalNumberPattern}`, "i").test(text)
+    || new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)\\b`).test(normalized)
+    || new RegExp(`\\bpor\\s+${decimalNumberPattern}(?:\\s*(?:reais|real))?\\b`).test(normalized);
 }
 
 function isPurchaseText(text: string) {
@@ -691,7 +738,7 @@ function moneyText(value: unknown) {
 
 function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "PRODUCAO_LEITE") {
-    return `registrar produção de leite${dados.animal_codigo ? ` do animal ${dados.animal_codigo}` : ""}${hasValue(dados.litros) ? ` com ${dados.litros} litros` : ""}${dados.data_referencia ? ` (${dados.data_referencia})` : ""}`;
+    return `registrar produção de leite${dados.animal_codigo ? ` do animal ${dados.animal_codigo}` : ""}${hasValue(dados.litros) ? ` com ${formatBotNumber(dados.litros)} litros` : ""}${dados.data_referencia ? ` (${dados.data_referencia})` : ""}`;
   }
 
   if (tipo === "PARTO") return `registrar parto${dados.animal_codigo ? ` do animal ${dados.animal_codigo}` : ""}${dados.data_referencia ? ` (${dados.data_referencia})` : ""}`;
@@ -706,7 +753,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "RECEITA_VENDA") return `registrar entrada financeira${dados.valor ? ` de ${moneyText(dados.valor)}` : ""}${dados.descricao ? ` (${dados.descricao})` : ""}`;
 
-  if (["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) return `criar novo item de estoque${dados.item_nome ? ` chamado ${dados.item_nome}` : ""}${dados.unidade ? `, unidade ${dados.unidade}` : ""}${hasValue(dados.quantidade) ? `, quantidade inicial ${dados.quantidade}` : ""}`;
+  if (["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) return `criar novo item de estoque${dados.item_nome ? ` chamado ${dados.item_nome}` : ""}${dados.unidade ? `, unidade ${dados.unidade}` : ""}${hasValue(dados.quantidade) ? `, quantidade inicial ${formatBotNumber(dados.quantidade)}` : ""}`;
 
   if (tipo === "ESTOQUE_ENTRADA" && dados.compra && hasValue(dados.valor)) {
     return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque e registrar despesa de ${moneyText(dados.valor)}${dados.item_nome ? ` com ${dados.item_nome}` : ""}`;

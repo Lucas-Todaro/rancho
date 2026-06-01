@@ -11,7 +11,7 @@ import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
 import type { AnyRecord } from "@/lib/types";
 import { formatBrazilianPhone } from "@/lib/input-format";
-import { formatCurrency } from "@/lib/utils";
+import { currentMonth, formatCurrency } from "@/lib/utils";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
 import { EmployeeDetails } from "@/components/modules/employees/EmployeeDetails";
 import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
@@ -21,7 +21,7 @@ function monthKey(value: unknown) {
 }
 
 function currentMonthKey() {
-  return new Date().toISOString().slice(0, 7);
+  return currentMonth();
 }
 
 function exportEmployeesCsv(rows: AnyRecord[]) {
