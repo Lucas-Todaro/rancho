@@ -2,6 +2,7 @@
 
 import { Download, Eye, PawPrint, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { getAnimalSexInfo } from "@/lib/animal-sex";
 import type { AnyRecord, RelationOption } from "@/lib/types";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -118,6 +119,7 @@ export function AnimalCards({
         displayLabel(categoryLabels, animal.categoria),
         displayLabel(phaseLabels, animal.fase),
         displayLabel(statusLabels, animal.status),
+        getAnimalSexInfo(animal).label,
         animal.raca,
         animal.peso,
         loteLookup[String(animal.lote_id || "")]
@@ -182,6 +184,7 @@ export function AnimalCards({
           const phase = displayLabel(phaseLabels, animal.fase, "Sem fase");
           const category = displayLabel(categoryLabels, animal.categoria, "Animal");
           const status = displayLabel(statusLabels, animal.status, "Ativo");
+          const sex = getAnimalSexInfo(animal);
 
           return (
             <article
@@ -197,9 +200,14 @@ export function AnimalCards({
                   </p>
                   {animal.nome ? <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">{status}</p> : null}
                 </div>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
-                  {phase}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
+                    {phase}
+                  </span>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${sex.className}`}>
+                    {sex.label}
+                  </span>
+                </div>
               </div>
 
               <div className="my-8 flex justify-center">
@@ -208,7 +216,7 @@ export function AnimalCards({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-4 text-center text-sm dark:border-slate-800">
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-100 pb-4 text-center text-sm dark:border-slate-800 sm:grid-cols-4">
                 <div className="min-w-0">
                   <p className="text-slate-500 dark:text-slate-400">Categoria</p>
                   <strong className="mt-1 block truncate">{category}</strong>
@@ -220,6 +228,10 @@ export function AnimalCards({
                 <div className="min-w-0">
                   <p className="text-slate-500 dark:text-slate-400">Lote</p>
                   <strong className="mt-1 block truncate">{lote}</strong>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-slate-500 dark:text-slate-400">Sexo</p>
+                  <strong className="mt-1 block truncate">{sex.label}</strong>
                 </div>
               </div>
 

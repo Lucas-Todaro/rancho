@@ -4,6 +4,7 @@ import { GitBranch, PawPrint, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { getAnimalSexInfo } from "@/lib/animal-sex";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
@@ -47,6 +48,8 @@ function collectDescendantIds(animalId: string, animals: AnyRecord[]) {
 }
 
 function TreeCard({ label, animal, active = false }: { label: string; animal?: AnyRecord | null; active?: boolean }) {
+  const sex = getAnimalSexInfo(animal);
+
   return (
     <div className={cn(
       "min-w-48 rounded-lg border p-4 text-center shadow-sm",
@@ -58,7 +61,10 @@ function TreeCard({ label, animal, active = false }: { label: string; animal?: A
     )}>
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <strong className="mt-2 block text-base text-slate-950 dark:text-slate-100">{animalLabel(animal)}</strong>
-      {animal?.categoria ? <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{categoryLabel(animal.categoria)}</span> : null}
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        {animal?.categoria ? <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{categoryLabel(animal.categoria)}</span> : null}
+        {animal ? <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${sex.className}`}>{sex.label}</span> : null}
+      </div>
     </div>
   );
 }
@@ -136,6 +142,7 @@ export function GenealogyScreen() {
         animal.nome,
         animal.brinco,
         animal.raca,
+        getAnimalSexInfo(animal).label,
         categoryLabel(animal.categoria),
         animalLabel(mother),
         animalLabel(father)
@@ -244,7 +251,7 @@ export function GenealogyScreen() {
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             className="input input-with-icon"
-            placeholder="Buscar por nome, brinco, raça, pai ou mãe..."
+            placeholder="Buscar por nome, brinco, raça, sexo, pai ou mãe..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -257,6 +264,7 @@ export function GenealogyScreen() {
         {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalSkeleton key={`genealogy-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
           const mother = animalById.get(String(animal.mae_id || ""));
           const father = animalById.get(String(animal.pai_id || ""));
+          const sex = getAnimalSexInfo(animal);
           return (
             <article key={animal.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:border-slate-800 dark:bg-slate-950/70">
               <div className="flex items-start justify-between gap-3">
@@ -264,9 +272,14 @@ export function GenealogyScreen() {
                   <h2 className="truncate text-xl font-black">{animal.nome || animal.brinco || "Sem brinco"}</h2>
                   <p className="mt-1 truncate text-sm font-bold text-slate-500 dark:text-slate-400">{animal.nome ? `Código: ${animal.brinco || "Sem brinco"}` : categoryLabel(animal.categoria)}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
-                  {categoryLabel(animal.categoria)}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+                    {categoryLabel(animal.categoria)}
+                  </span>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${sex.className}`}>
+                    {sex.label}
+                  </span>
+                </div>
               </div>
 
               <div className="my-5 flex justify-center">
@@ -293,9 +306,10 @@ export function GenealogyScreen() {
       </section>
 
       {selected && tree ? (
-        <section aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-6" onMouseDown={closeTree} role="dialog">
-          <div className="relative z-10 flex max-h-[calc(100dvh-0.75rem)] min-h-0 w-full max-w-7xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:max-h-[min(92dvh,52rem)] md:rounded-lg" onMouseDown={(event) => event.stopPropagation()}>
-            <header className="shrink-0 border-b border-slate-200 p-4 dark:border-slate-800 md:p-6">
+        <section aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 backdrop-blur-sm md:p-6" role="dialog">
+          <div className="mx-auto flex min-h-full w-full max-w-7xl items-start md:items-center">
+            <div className="my-2 w-full animate-fade-in overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950 md:my-0">
+            <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 md:p-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Árvore genealógica</p>
                 <h2 className="mt-2 break-words text-2xl font-black md:text-3xl">{animalLabel(selected)}</h2>
@@ -309,7 +323,7 @@ export function GenealogyScreen() {
               </div>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="p-4 md:p-6">
               <div className="overflow-x-auto pb-2">
                 <div className="mx-auto min-w-[48rem] max-w-5xl space-y-4">
                   <div className="grid grid-cols-4 gap-3">
@@ -365,13 +379,14 @@ export function GenealogyScreen() {
                   <span className="text-sm font-bold">Observações genealógicas</span>
                   <textarea className="input min-h-24 resize-y" value={draft.genealogia_observacoes} onChange={(event) => setDraft((current) => ({ ...current, genealogia_observacoes: event.target.value }))} placeholder="Ex: linhagem, origem, histórico familiar..." />
                 </label>
-                <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <div className="mt-4 flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:justify-end">
                   <button className="btn btn-secondary" type="button" onClick={closeTree}>Fechar</button>
                   <button className="btn btn-primary" type="button" onClick={saveGenealogy} disabled={saving}>
                     <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar alterações"}
                   </button>
                 </div>
               </section>
+            </div>
             </div>
           </div>
         </section>

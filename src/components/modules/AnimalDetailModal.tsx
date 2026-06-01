@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
+import { getAnimalSexInfo } from "@/lib/animal-sex";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
@@ -232,6 +233,7 @@ export function AnimalDetailModal({
   const categoria = labelFromMap(categoryLabels, animal.categoria, "Animal");
   const fase = labelFromMap(phaseLabels, animal.fase);
   const status = labelFromMap(statusLabels, animal.status, "Ativo");
+  const sex = getAnimalSexInfo(animal);
   const reproductiveStatus = animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactação" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
 
   const showDetailPlaceholders = detailsLoading || Boolean(error && !events.length && !productions.length);
@@ -245,9 +247,10 @@ export function AnimalDetailModal({
               <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha 360</p>
               <h2 className="mt-2 text-4xl font-black tracking-tight">{animal.nome || animal.brinco || "Animal"}</h2>
               {animal.nome ? <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">Código: {animal.brinco || "Sem brinco"}</p> : null}
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                {categoria} • {fase || "Fase não informada"} • {lote}
-              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <span>{categoria} • {fase || "Fase não informada"} • {lote}</span>
+                <span className={`rounded-full border px-3 py-1 text-xs font-black ${sex.className}`}>{sex.label}</span>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3">
               <button className="btn btn-primary" type="button" onClick={() => openEventForm()}>
@@ -339,6 +342,7 @@ export function AnimalDetailModal({
                       ["Nome", animal.nome || "-"],
                       ["Código", animal.brinco || "-"],
                       ["Categoria", categoria],
+                      ["Sexo", sex.label],
                       ["Fase", fase],
                       ["Raça", animal.raca || "-"],
                       ["Lote", lote],

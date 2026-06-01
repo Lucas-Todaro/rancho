@@ -78,6 +78,12 @@ const animalStatus = [
   { label: "Inativo", value: "inativo" }
 ];
 
+const animalSex = [
+  { label: "Fêmea", value: "femea" },
+  { label: "Macho", value: "macho" },
+  { label: "Não informado", value: "nao_informado" }
+];
+
 export const moduleConfigs: ModuleConfig[] = [
   {
     key: "lotes",
@@ -111,6 +117,7 @@ export const moduleConfigs: ModuleConfig[] = [
       { name: "brinco", label: "Número do brinco", type: "text", required: true, placeholder: "Ex: B-042" },
       { name: "nome", label: "Nome do animal", type: "text", placeholder: "Ex: Mimosa, Estrela, Princesa" },
       { name: "categoria", label: "Categoria", type: "select", required: true, defaultValue: "vaca", options: animalCategories },
+      { name: "sexo", label: "Sexo", type: "select", defaultValue: "nao_informado", options: animalSex },
       { name: "fase", label: "Fase", type: "select", defaultValue: "nao_aplicavel", options: animalPhases },
       { name: "raca", label: "Raça", type: "text", placeholder: "Ex: Girolando" },
       {

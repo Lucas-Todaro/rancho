@@ -54,6 +54,17 @@ function preparePayload(tableName: string, values: AnyRecord, context?: DataCont
   return payload;
 }
 
+function canRetryWithoutAnimalOptionalFields(tableName: string, payload: AnyRecord, error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+  return tableName === TABLES.animais && "sexo" in payload && /sexo|schema cache|column/i.test(message);
+}
+
+function withoutAnimalOptionalFields(payload: AnyRecord) {
+  const nextPayload = { ...payload };
+  delete nextPayload.sexo;
+  return nextPayload;
+}
+
 function sortLocal(rows: AnyRecord[], orderBy = "created_at", ascending = false) {
   return [...rows].sort((a, b) => {
     const left = a[orderBy] ?? "";
@@ -127,6 +138,16 @@ export async function createRecord(tableName: string, values: AnyRecord, context
     .single();
 
   if (error) {
+    if (canRetryWithoutAnimalOptionalFields(tableName, payload, error)) {
+      const { data: fallbackData, error: fallbackError } = await supabaseBrowser
+        .from(tableName)
+        .insert(withoutAnimalOptionalFields(payload))
+        .select("*")
+        .single();
+
+      if (!fallbackError) return fallbackData;
+    }
+
     logTechnicalError(`Falha ao criar registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar o registro agora."));
   }
@@ -149,6 +170,17 @@ export async function updateRecord(tableName: string, id: string, values: AnyRec
     .single();
 
   if (error) {
+    if (canRetryWithoutAnimalOptionalFields(tableName, payload, error)) {
+      const { data: fallbackData, error: fallbackError } = await supabaseBrowser
+        .from(tableName)
+        .update(withoutAnimalOptionalFields(payload))
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (!fallbackError) return fallbackData;
+    }
+
     logTechnicalError(`Falha ao atualizar registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar as alterações agora."));
   }
