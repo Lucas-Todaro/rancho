@@ -1,9 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const Module = require("module");
+const nodeCrypto = require("crypto");
 const ts = require("typescript");
 
 const root = path.resolve(__dirname, "..");
+let activeBotTestSupabase = null;
 
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function resolveAlias(request, parent, isMain, options) {
@@ -14,6 +16,17 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
     }
   }
   return originalResolveFilename.call(this, request, parent, isMain, options);
+};
+
+const originalLoad = Module._load;
+Module._load = function loadWithBotMocks(request, parent, isMain) {
+  if (request === "@/lib/supabase/admin") {
+    return {
+      getSupabaseAdmin: () => activeBotTestSupabase
+    };
+  }
+
+  return originalLoad.call(this, request, parent, isMain);
 };
 
 require.extensions[".ts"] = function loadTs(module, filename) {
@@ -45,6 +58,7 @@ const {
   animalBlockedMessage,
   isAnimalInactiveForBot
 } = require("../src/lib/whatsapp/animal-status.ts");
+const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
 
 const mockAnimals = [
   { id: "animal-b-002", brinco: "B-002" },
@@ -75,6 +89,387 @@ const mockUsers = [
   { nome: "Dono", telefone: "5583999999999", admin: true, fazenda_id: "mock-fazenda-1" },
   { nome: "João", telefone: "5583888888888", admin: false, fazenda_id: "mock-fazenda-1" }
 ];
+
+const BOT_TEST_TABLES = {
+  fazendas: "fazendas",
+  animais: "animais",
+  eventosAnimal: "eventos_animal",
+  ordenhas: "ordenhas",
+  estoqueItens: "estoque_itens",
+  estoqueMovimentacoes: "estoque_movimentacoes",
+  transacoesFinanceiras: "transacoes_financeiras",
+  funcionarios: "funcionarios",
+  registrosPonto: "registros_ponto",
+  whatsappUsuarios: "whatsapp_usuarios",
+  whatsappSessoes: "whatsapp_sessoes",
+  whatsappMensagens: "whatsapp_mensagens",
+  notificacoes: "notificacoes",
+  auditoriaLogs: "auditoria_logs"
+};
+
+const BOT_TEST_BUSINESS_TABLES = new Set([
+  BOT_TEST_TABLES.animais,
+  BOT_TEST_TABLES.eventosAnimal,
+  BOT_TEST_TABLES.ordenhas,
+  BOT_TEST_TABLES.estoqueItens,
+  BOT_TEST_TABLES.estoqueMovimentacoes,
+  BOT_TEST_TABLES.transacoesFinanceiras,
+  BOT_TEST_TABLES.funcionarios,
+  BOT_TEST_TABLES.registrosPonto
+]);
+
+const BOT_TEST_FARM_ID = "mock-fazenda-1";
+const BOT_TEST_ADMIN_PHONE = "5583999999999";
+const BOT_TEST_WORKER_PHONE = "5583888888888";
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function stockUnitFor(name) {
+  const normalizedName = normalize(name);
+  if (/aftosa|terramicina|vacina/.test(normalizedName)) return "dose";
+  if (/feno/.test(normalizedName)) return "fardo";
+  if (/remedio|suplemento/.test(normalizedName)) return "unidade";
+  return "kg";
+}
+
+function createBotTestTables() {
+  const now = new Date().toISOString();
+
+  return {
+    [BOT_TEST_TABLES.fazendas]: [
+      { id: BOT_TEST_FARM_ID, ativa: true, nome: "Fazenda de teste" }
+    ],
+    [BOT_TEST_TABLES.whatsappUsuarios]: [
+      {
+        id: "wa-admin",
+        fazenda_id: BOT_TEST_FARM_ID,
+        usuario_id: "user-admin",
+        funcionario_id: null,
+        telefone_e164: BOT_TEST_ADMIN_PHONE,
+        nome_exibicao: "Dono",
+        papel_bot: "admin",
+        ativo: true
+      },
+      {
+        id: "wa-worker",
+        fazenda_id: BOT_TEST_FARM_ID,
+        usuario_id: null,
+        funcionario_id: "func-joao",
+        telefone_e164: BOT_TEST_WORKER_PHONE,
+        nome_exibicao: "Joao",
+        papel_bot: "funcionario",
+        ativo: true
+      }
+    ],
+    [BOT_TEST_TABLES.whatsappSessoes]: [],
+    [BOT_TEST_TABLES.whatsappMensagens]: [],
+    [BOT_TEST_TABLES.animais]: mockAnimals.map((animal, index) => ({
+      ...animal,
+      fazenda_id: BOT_TEST_FARM_ID,
+      nome: animal.brinco === "B-002" ? "Mimosa" : animal.brinco,
+      categoria: index % 2 === 0 ? "vaca" : "boi",
+      status: "ativo",
+      raca: "Girolando",
+      observacoes: ""
+    })),
+    [BOT_TEST_TABLES.estoqueItens]: mockStock.map((item, index) => ({
+      ...item,
+      fazenda_id: BOT_TEST_FARM_ID,
+      descricao: item.nome,
+      categoria: "racao",
+      quantidade_atual: index === 3 ? 4 : 100,
+      quantidade_minima: 5,
+      unidade_medida: stockUnitFor(item.nome),
+      valor_unitario: index + 1,
+      ativo: true
+    })),
+    [BOT_TEST_TABLES.funcionarios]: [
+      {
+        id: "func-joao",
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: "Joao",
+        funcao: "Ordenhador",
+        contato_whatsapp: BOT_TEST_WORKER_PHONE,
+        ativo: true,
+        deleted_at: null
+      }
+    ],
+    [BOT_TEST_TABLES.ordenhas]: [
+      {
+        id: "ordenha-seed",
+        fazenda_id: BOT_TEST_FARM_ID,
+        animal_id: "animal-b-002",
+        litros: 12,
+        ordenhado_em: now
+      }
+    ],
+    [BOT_TEST_TABLES.transacoesFinanceiras]: [
+      {
+        id: "financeiro-seed-entrada",
+        fazenda_id: BOT_TEST_FARM_ID,
+        tipo: "entrada",
+        valor: 800,
+        data_transacao: now.slice(0, 10)
+      },
+      {
+        id: "financeiro-seed-saida",
+        fazenda_id: BOT_TEST_FARM_ID,
+        tipo: "saida",
+        valor: 100,
+        data_transacao: now.slice(0, 10)
+      }
+    ],
+    [BOT_TEST_TABLES.eventosAnimal]: [],
+    [BOT_TEST_TABLES.estoqueMovimentacoes]: [],
+    [BOT_TEST_TABLES.registrosPonto]: [],
+    [BOT_TEST_TABLES.notificacoes]: [],
+    [BOT_TEST_TABLES.auditoriaLogs]: []
+  };
+}
+
+class BotTestQueryBuilder {
+  constructor(db, tableName) {
+    this.db = db;
+    this.tableName = tableName;
+    this.filters = [];
+    this.rangeFilters = [];
+    this.limitCount = null;
+    this.orderConfig = null;
+    this.operation = "select";
+    this.payload = null;
+    this.conflictColumns = [];
+  }
+
+  select() {
+    return this;
+  }
+
+  eq(field, value) {
+    this.filters.push((row) => row?.[field] === value || String(row?.[field]) === String(value));
+    return this;
+  }
+
+  neq(field, value) {
+    this.filters.push((row) => row?.[field] !== value && String(row?.[field]) !== String(value));
+    return this;
+  }
+
+  is(field, value) {
+    this.filters.push((row) => row?.[field] === value);
+    return this;
+  }
+
+  gte(field, value) {
+    this.rangeFilters.push((row) => String(row?.[field] || "") >= String(value));
+    return this;
+  }
+
+  lt(field, value) {
+    this.rangeFilters.push((row) => String(row?.[field] || "") < String(value));
+    return this;
+  }
+
+  lte(field, value) {
+    this.rangeFilters.push((row) => String(row?.[field] || "") <= String(value));
+    return this;
+  }
+
+  limit(count) {
+    this.limitCount = count;
+    return this;
+  }
+
+  order(field, options = {}) {
+    this.orderConfig = { field, ascending: options.ascending !== false };
+    return this;
+  }
+
+  insert(payload) {
+    this.operation = "insert";
+    this.payload = Array.isArray(payload) ? payload : [payload];
+    return this;
+  }
+
+  upsert(payload, options = {}) {
+    this.operation = "upsert";
+    this.payload = Array.isArray(payload) ? payload : [payload];
+    this.conflictColumns = String(options.onConflict || "id")
+      .split(",")
+      .map((field) => field.trim())
+      .filter(Boolean);
+    return this;
+  }
+
+  update(payload) {
+    this.operation = "update";
+    this.payload = payload || {};
+    return this;
+  }
+
+  delete() {
+    this.operation = "delete";
+    return this;
+  }
+
+  maybeSingle() {
+    return Promise.resolve(this.execute("maybeSingle"));
+  }
+
+  single() {
+    return Promise.resolve(this.execute("single"));
+  }
+
+  then(resolve, reject) {
+    return Promise.resolve(this.execute()).then(resolve, reject);
+  }
+
+  catch(reject) {
+    return Promise.resolve(this.execute()).catch(reject);
+  }
+
+  tableRows() {
+    if (!this.db.tables[this.tableName]) this.db.tables[this.tableName] = [];
+    return this.db.tables[this.tableName];
+  }
+
+  matches(row) {
+    return this.filters.every((filter) => filter(row)) && this.rangeFilters.every((filter) => filter(row));
+  }
+
+  selectedRows() {
+    let rows = this.tableRows().filter((row) => this.matches(row));
+
+    if (this.orderConfig) {
+      const { field, ascending } = this.orderConfig;
+      rows = [...rows].sort((left, right) => {
+        const leftValue = String(left?.[field] || "");
+        const rightValue = String(right?.[field] || "");
+        return ascending ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
+      });
+    }
+
+    if (typeof this.limitCount === "number") rows = rows.slice(0, this.limitCount);
+    return rows;
+  }
+
+  withId(row) {
+    return {
+      id: row.id || `${this.tableName}-${nodeCrypto.randomUUID()}`,
+      created_at: row.created_at || new Date().toISOString(),
+      ...clone(row)
+    };
+  }
+
+  executeInsert() {
+    const rows = this.payload.map((row) => this.withId(row));
+    this.tableRows().push(...rows);
+    this.db.recordWrite(this.tableName, "insert", rows);
+    return rows;
+  }
+
+  executeUpsert() {
+    const rows = this.payload.map((row) => this.withId(row));
+    const table = this.tableRows();
+    const changed = [];
+
+    for (const row of rows) {
+      const existingIndex = table.findIndex((current) => this.conflictColumns.every((field) => (
+        current?.[field] === row?.[field] || String(current?.[field]) === String(row?.[field])
+      )));
+
+      if (existingIndex >= 0) {
+        table[existingIndex] = { ...table[existingIndex], ...clone(row) };
+        changed.push(table[existingIndex]);
+      } else {
+        table.push(row);
+        changed.push(row);
+      }
+    }
+
+    this.db.recordWrite(this.tableName, "upsert", changed);
+    return changed;
+  }
+
+  executeUpdate() {
+    const changed = [];
+    const table = this.tableRows();
+
+    for (let index = 0; index < table.length; index += 1) {
+      if (this.matches(table[index])) {
+        table[index] = { ...table[index], ...clone(this.payload) };
+        changed.push(table[index]);
+      }
+    }
+
+    this.db.recordWrite(this.tableName, "update", changed);
+    return changed;
+  }
+
+  executeDelete() {
+    const table = this.tableRows();
+    const removed = [];
+    this.db.tables[this.tableName] = table.filter((row) => {
+      if (!this.matches(row)) return true;
+      removed.push(row);
+      return false;
+    });
+    this.db.recordWrite(this.tableName, "delete", removed);
+    return removed;
+  }
+
+  execute(singleMode) {
+    let rows;
+    if (this.operation === "insert") rows = this.executeInsert();
+    else if (this.operation === "upsert") rows = this.executeUpsert();
+    else if (this.operation === "update") rows = this.executeUpdate();
+    else if (this.operation === "delete") rows = this.executeDelete();
+    else rows = this.selectedRows();
+
+    const data = clone(rows);
+    if (singleMode === "single") {
+      if (!data.length) return { data: null, error: { message: `Nenhum registro em ${this.tableName}` } };
+      return { data: data[0], error: null };
+    }
+
+    if (singleMode === "maybeSingle") {
+      return { data: data[0] || null, error: null };
+    }
+
+    return { data, error: null };
+  }
+}
+
+class BotTestSupabase {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.tables = createBotTestTables();
+    this.writes = [];
+  }
+
+  from(tableName) {
+    return new BotTestQueryBuilder(this, tableName);
+  }
+
+  recordWrite(tableName, action, rows) {
+    if (!rows.length) return;
+    this.writes.push({
+      tableName,
+      action,
+      count: rows.length,
+      rows: clone(rows),
+      business: BOT_TEST_BUSINESS_TABLES.has(tableName)
+    });
+  }
+
+  businessWrites() {
+    return this.writes.filter((write) => write.business);
+  }
+}
 
 const animalStatusTests = [
   { name: "bloqueia producao para animal morto", animal: { id: "animal-morto", brinco: "M-001", status: "morto" }, intent: "PRODUCAO_LEITE", responseIncludes: "morto/inativo" },
@@ -365,6 +760,285 @@ const decimalRegressionTests = [
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
 ];
 
+const botConversationTests = [
+  {
+    name: "producao com dado faltante, sessao e confirmacao em dry-run",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "vaca B-002 deu leite",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_dado",
+          missing: ["litros"],
+          responseIncludes: "litro"
+        }
+      },
+      {
+        text: "32",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { litros: 32, animal_codigo: "B-002" },
+          responseIncludes: "correto"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao antes de confirmar nao salva e atualiza entidades",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "vaca B-002 deu 18 litros",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { litros: 18 }
+        }
+      },
+      {
+        text: "corrigir 20 litros",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { litros: 20 },
+          responseIncludes: "Agora entendi"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "cancelamento limpa a sessao sem salvar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "vaca B-002 deu leite",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_dado",
+          missing: ["litros"]
+        }
+      },
+      {
+        text: "cancelar",
+        expected: {
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "livre",
+          responseIncludes: "Nada foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "compra de estoque passa por catalogo e confirmacao sem gravar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "comprei 3 sacos de sal mineral por 180 reais",
+        expected: {
+          intent: "ESTOQUE_ENTRADA",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            item_nome: "Sal mineral",
+            quantidade: 3,
+            valor: 180
+          }
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "ESTOQUE_ENTRADA",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "funcionario comum nao pode criar item de estoque",
+    phone: BOT_TEST_WORKER_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "criar estoque de racao nova",
+        expected: {
+          intent: "CRIAR_ITEM_ESTOQUE",
+          estadoNovo: "livre",
+          responseIncludes: "permiss"
+        }
+      }
+    ]
+  },
+  {
+    name: "telefone nao autorizado recebe bloqueio amigavel",
+    phone: "5583000000000",
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "menu",
+        expected: {
+          estadoNovo: null,
+          responseIncludes: "autorizado"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta usa base mockada sem abrir confirmacao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "quanto leite hoje",
+        expected: {
+          intent: "CONSULTA_PRODUCAO",
+          estadoNovo: "livre",
+          responseIncludes: "12"
+        }
+      }
+    ]
+  },
+  {
+    name: "ponto de funcionario pede confirmacao e nao grava no dry-run",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "Joao entrou as 7:30",
+        expected: {
+          intent: "PONTO_FUNCIONARIO",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            funcionario_nome: "Joao",
+            ponto_tipo: "entrada",
+            horario: "07:30"
+          }
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "PONTO_FUNCIONARIO",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  }
+];
+
+function assertProcessResult(expected = {}, result) {
+  const failures = [];
+  const dados = result.dadosExtraidos || {};
+
+  if ("intent" in expected && result.intencaoDetectada !== expected.intent) {
+    failures.push(`intent esperado ${expected.intent}, recebido ${result.intencaoDetectada}`);
+  }
+
+  if ("estadoAnterior" in expected && result.estadoAnterior !== expected.estadoAnterior) {
+    failures.push(`estadoAnterior esperado ${expected.estadoAnterior}, recebido ${result.estadoAnterior}`);
+  }
+
+  if ("estadoNovo" in expected && result.estadoNovo !== expected.estadoNovo) {
+    failures.push(`estadoNovo esperado ${expected.estadoNovo}, recebido ${result.estadoNovo}`);
+  }
+
+  if ("eventoConfirmado" in expected && Boolean(result.eventoConfirmado) !== Boolean(expected.eventoConfirmado)) {
+    failures.push(`eventoConfirmado esperado ${expected.eventoConfirmado}, recebido ${result.eventoConfirmado}`);
+  }
+
+  if (expected.responseIncludes && !normalize(result.respostaTexto).includes(normalize(expected.responseIncludes))) {
+    failures.push(`resposta deveria conter "${expected.responseIncludes}", recebeu "${result.respostaTexto}"`);
+  }
+
+  for (const field of expected.missing || []) {
+    if (hasValue(dados[field])) failures.push(`campo ${field} deveria estar faltando, recebeu ${dados[field]}`);
+    if (!result.camposFaltantes.some((question) => normalize(question).includes(normalize(field)))) {
+      failures.push(`campo faltante ${field} nao apareceu em camposFaltantes`);
+    }
+  }
+
+  for (const [field, value] of Object.entries(expected.dados || {})) {
+    const received = dados[field];
+    if (typeof value === "number") {
+      if (Number(received) !== value) failures.push(`dados.${field} esperado ${value}, recebido ${received}`);
+    } else if (normalize(received) !== normalize(value)) {
+      failures.push(`dados.${field} esperado ${value}, recebido ${received}`);
+    }
+  }
+
+  if (result.erro) failures.push(`handler retornou erro: ${result.erro}`);
+  return failures;
+}
+
+async function runConversationTest(test, index) {
+  const supabase = new BotTestSupabase();
+  activeBotTestSupabase = supabase;
+  const steps = [];
+  const failures = [];
+
+  for (let messageIndex = 0; messageIndex < test.messages.length; messageIndex += 1) {
+    const step = test.messages[messageIndex];
+    const result = await processWhatsappMessage({
+      telefone: test.phone,
+      mensagem: step.text,
+      provider: "simulador",
+      modoTeste: true,
+      salvarReal: false,
+      messageSid: `bot-test-${index + 1}-${messageIndex + 1}`
+    });
+    const stepFailures = assertProcessResult(step.expected, result);
+    if (stepFailures.length) {
+      failures.push(`mensagem ${messageIndex + 1} (${step.text}): ${stepFailures.join("; ")}`);
+    }
+    steps.push({ text: step.text, result });
+  }
+
+  const businessWrites = supabase.businessWrites();
+  if (test.expectNoBusinessWrites && businessWrites.length) {
+    failures.push(`dry-run gerou escrita de negocio: ${businessWrites.map((write) => `${write.tableName}:${write.action}`).join(", ")}`);
+  }
+
+  activeBotTestSupabase = null;
+  return {
+    index,
+    test,
+    steps,
+    businessWrites,
+    ok: failures.length === 0,
+    failures
+  };
+}
+
 const allTests = [...mandatoryTests, ...extraTests, ...regressionTests, ...decimalRegressionTests];
 
 if (allTests.length < 90) {
@@ -408,13 +1082,24 @@ const animalResults = animalStatusTests.map((test, index) => {
   };
 });
 
-const results = [...parserResults, ...animalResults];
+async function main() {
+  const conversationResults = [];
+  for (let index = 0; index < botConversationTests.length; index += 1) {
+    conversationResults.push(await runConversationTest(botConversationTests[index], parserResults.length + animalResults.length + index + 1));
+  }
+
+  const results = [...parserResults, ...animalResults, ...conversationResults];
 
 const failed = results.filter((result) => !result.ok);
 const passed = results.length - failed.length;
 
 console.log("Bot test offline Rancho");
-console.log(`Usuários mockados: ${mockUsers.length}`);
+console.log(`Usuarios mockados: ${mockUsers.length}`);
+console.log(`Parser/status: ${parserResults.length + animalResults.length}`);
+console.log(`Conversas reais simuladas: ${conversationResults.length}`);
+console.log("Motor real: processWhatsappMessage em modoTeste=true, salvarReal=false");
+console.log("WhatsApp real: nao envia mensagens");
+console.log("Persistencia: Supabase mockado local; dry-run bloqueia escritas de negocio");
 console.log(`Total: ${results.length}`);
 console.log(`Aprovados: ${passed}`);
 console.log(`Falhos: ${failed.length}`);
@@ -422,7 +1107,23 @@ console.log(`Falhos: ${failed.length}`);
 for (const result of failed) {
   console.log("\n--- Falha", result.index, "---");
   console.log("Frase:", result.test.phrase || result.test.name);
-  console.log("Esperado:", JSON.stringify(result.test.expected));
+  console.log("Esperado:", JSON.stringify(result.test.expected || result.test.messages?.map((step) => step.expected)));
+  if (result.steps) {
+    console.log("Recebido:", JSON.stringify(result.steps.map((step) => ({
+      mensagem: step.text,
+      resposta: step.result.respostaTexto,
+      intent: step.result.intencaoDetectada,
+      estadoAnterior: step.result.estadoAnterior,
+      estadoNovo: step.result.estadoNovo,
+      camposFaltantes: step.result.camposFaltantes,
+      dados: step.result.dadosExtraidos,
+      confirmado: step.result.eventoConfirmado,
+      erro: step.result.erro
+    })), null, 2));
+    console.log("Escritas de negocio:", JSON.stringify(result.businessWrites || []));
+    console.log("Motivos:", result.failures.join("; "));
+    continue;
+  }
   console.log("Recebido:", result.parsed ? JSON.stringify({
     tipo: result.parsed.tipo,
     dados: result.parsed.dados,
@@ -434,3 +1135,9 @@ for (const result of failed) {
 }
 
 if (failed.length) process.exit(1);
+}
+
+main().catch((error) => {
+  console.error("Falha ao rodar test:bot", error);
+  process.exit(1);
+});
