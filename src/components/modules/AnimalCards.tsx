@@ -2,9 +2,9 @@
 
 import { Download, Eye, PawPrint, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { getAnimalSexInfo } from "@/lib/animal-sex";
 import type { AnyRecord, RelationOption } from "@/lib/types";
-import { Skeleton } from "@/components/ui/Skeleton";
 
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
@@ -45,23 +45,22 @@ function phaseTone(value: unknown) {
 
 function AnimalCardSkeleton() {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      <div className="flex items-start justify-between gap-3">
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex items-start gap-3">
+        <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1">
           <Skeleton className="h-6 w-24" />
           <Skeleton className="mt-2 h-4 w-16" />
         </div>
-        <Skeleton className="h-7 w-20 rounded-full" />
+        <Skeleton className="h-6 w-16 rounded-full" />
       </div>
-      <div className="my-5 flex justify-center">
-        <Skeleton className="h-16 w-16 rounded-full" />
+      <div className="mt-3 grid grid-cols-2 gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+        <Skeleton className="h-8 rounded-lg" />
+        <Skeleton className="h-8 rounded-lg" />
+        <Skeleton className="h-8 rounded-lg" />
+        <Skeleton className="h-8 rounded-lg" />
       </div>
-      <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-8 w-full" />
-      </div>
-      <div className="mt-4 flex gap-2">
+      <div className="mt-3 flex gap-2">
         <Skeleton className="h-10 flex-1 rounded-lg" />
         <Skeleton className="h-10 w-10 rounded-lg" />
         <Skeleton className="h-10 w-10 rounded-lg" />
@@ -112,7 +111,6 @@ export function AnimalCards({
     return rows.filter((animal) => {
       if (loteFilter && animal.lote_id !== loteFilter) return false;
       if (statusFilter && animal.status !== statusFilter) return false;
-
       if (!term) return true;
 
       const text = [
@@ -133,7 +131,7 @@ export function AnimalCards({
 
   return (
     <section className="space-y-5">
-      <div className="rounded-lg border border-slate-200/70 bg-white/88 p-4 shadow-soft dark:border-slate-800 dark:bg-slate-950/70 md:p-5">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-950 md:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <label className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -180,7 +178,7 @@ export function AnimalCards({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalCardSkeleton key={`animal-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
           const lote = loteLookup[String(animal.lote_id || "")] || "Sem lote";
           const phase = displayLabel(phaseLabels, animal.fase, "Sem fase");
@@ -191,62 +189,59 @@ export function AnimalCards({
           return (
             <article
               key={animal.id}
-              className={`group min-w-0 cursor-pointer rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
+              className={`group relative min-w-0 cursor-pointer overflow-hidden rounded-lg border p-3 pl-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:hover:border-emerald-800 ${sex.accentClassName}`}
               onClick={() => onView(animal)}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="truncate text-xl font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
+              <span className={`absolute inset-y-0 left-0 w-1 ${sex.stripeClassName}`} aria-hidden="true" />
+              <div className="flex items-start gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${sex.iconClassName}`}>
+                  <PawPrint className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-lg font-black tracking-tight">{animal.nome || animal.brinco || "Sem brinco"}</h3>
                   <p className="mt-1 truncate text-sm font-bold text-slate-500 dark:text-slate-400">
                     {animal.nome ? `Código: ${animal.brinco || "Sem brinco"}` : status}
                   </p>
-                  {animal.nome ? <p className="mt-1 text-xs font-bold text-slate-400 dark:text-slate-500">{status}</p> : null}
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className={`max-w-28 truncate rounded-full px-2.5 py-1 text-xs font-black ${phaseTone(animal.fase)}`}>
                     {phase}
                   </span>
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${sex.className}`}>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${sex.className}`}>
                     {sex.label}
                   </span>
                 </div>
               </div>
 
-              <div className="my-5 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-emerald-50 group-hover:text-emerald-600 dark:bg-slate-900 dark:ring-slate-800 dark:group-hover:bg-emerald-950/40 dark:group-hover:text-emerald-200">
-                  <PawPrint className="h-8 w-8" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 border-b border-slate-200/70 pb-4 text-center text-xs dark:border-slate-800 sm:grid-cols-4">
-                <div className="min-w-0">
+              <div className="mt-3 grid grid-cols-2 gap-2 border-b border-slate-200/70 pb-3 text-xs dark:border-slate-800">
+                <div className="min-w-0 rounded-lg bg-white p-2 ring-1 ring-slate-200/70 dark:bg-slate-900/70 dark:ring-slate-800">
                   <p className="text-slate-500 dark:text-slate-400">Categoria</p>
                   <strong className="mt-1 block truncate">{category}</strong>
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 rounded-lg bg-white p-2 ring-1 ring-slate-200/70 dark:bg-slate-900/70 dark:ring-slate-800">
                   <p className="text-slate-500 dark:text-slate-400">Raça</p>
                   <strong className="mt-1 block truncate">{animal.raca || "-"}</strong>
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 rounded-lg bg-white p-2 ring-1 ring-slate-200/70 dark:bg-slate-900/70 dark:ring-slate-800">
                   <p className="text-slate-500 dark:text-slate-400">Lote</p>
                   <strong className="mt-1 block truncate">{lote}</strong>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-slate-500 dark:text-slate-400">Sexo</p>
-                  <strong className="mt-1 block truncate">{sex.label}</strong>
+                <div className="min-w-0 rounded-lg bg-white p-2 ring-1 ring-slate-200/70 dark:bg-slate-900/70 dark:ring-slate-800">
+                  <p className="text-slate-500 dark:text-slate-400">Status</p>
+                  <strong className="mt-1 block truncate">{status}</strong>
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button className="btn flex-1 bg-emerald-600 text-white" type="button" onClick={(event) => { event.stopPropagation(); onView(animal); }}>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="btn h-10 min-h-10 flex-1 bg-emerald-600 px-3 py-2 text-sm text-white" type="button" onClick={(event) => { event.stopPropagation(); onView(animal); }}>
                   <Eye className="h-4 w-4" /> Ver ficha
                 </button>
                 {canManage ? (
                   <>
-                    <button className="rounded-lg border border-slate-200 p-2.5 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
+                    <button className="h-10 rounded-lg border border-slate-200 p-2.5 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={(event) => { event.stopPropagation(); onEdit(animal); }} title="Editar animal">
                       <Pencil className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg border border-red-200 p-2.5 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
+                    <button className="h-10 rounded-lg border border-red-200 p-2.5 text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={(event) => { event.stopPropagation(); onDelete(animal.id); }} title="Excluir animal">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </>
@@ -255,7 +250,7 @@ export function AnimalCards({
             </article>
           );
         }) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 xl:col-span-3">
+          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
             Nenhum animal encontrado com esses filtros.
           </div>
         )}

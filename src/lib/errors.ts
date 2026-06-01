@@ -25,6 +25,14 @@ function normalize(value: string) {
 
 const friendlyRules: Array<[RegExp, string]> = [
   [/invalid login credentials|invalid credentials|email not confirmed/i, "E-mail ou senha incorretos."],
+  [/email rate limit exceeded|over email send rate limit|rate limit|too many requests|for security purposes.*only request|429/i, "Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de pedir outro e-mail."],
+  [/otp expired|token.*expired|link.*expired|expired token|expired/i, "Este link expirou. Solicite um novo link e tente novamente."],
+  [/invalid.*token|invalid.*link|auth session missing|session.*missing|missing.*session/i, "O link de acesso não é válido ou já foi usado. Solicite um novo link."],
+  [/user already registered|already registered|email already/i, "Já existe uma conta cadastrada com este e-mail."],
+  [/signup disabled|signups not allowed|email signup disabled/i, "O cadastro direto está fechado. Peça um convite ao administrador."],
+  [/password should be at least|weak password|password.*characters|senha.*caracteres/i, "A senha precisa ter pelo menos 6 caracteres."],
+  [/same password|new password should be different/i, "A nova senha precisa ser diferente da senha atual."],
+  [/invalid email|email.*invalid/i, "Informe um e-mail válido."],
   [/failed to fetch|fetch failed|network error|networkerror/i, "Não foi possível carregar as informações. Verifique sua conexão e tente novamente."],
   [/timeout|timed out|tempo esgotado|demorou/i, "A conexão demorou para responder. Tente novamente em instantes."],
   [/unauthorized|not authorized|jwt|permission denied|forbidden/i, "Você não tem permissão para acessar esta informação."],
@@ -38,7 +46,7 @@ const friendlyRules: Array<[RegExp, string]> = [
 ];
 
 function looksTechnical(message: string) {
-  return /supabase|postgres|sql|constraint|violates|stack|schema|relation|column|failed|unauthorized|jwt|policy|pgrst|42p01|42703|23503|23505/i.test(message);
+  return /supabase|postgres|sql|constraint|violates|stack|schema|relation|column|failed|unauthorized|jwt|policy|pgrst|rate limit|token|otp|auth|42p01|42703|23503|23505/i.test(message);
 }
 
 export function getFriendlyErrorMessage(error: unknown, fallback = "Algo deu errado. Tente novamente.") {
