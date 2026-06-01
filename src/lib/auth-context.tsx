@@ -40,6 +40,13 @@ const demoProfile: UsuarioProfile = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const AUTH_WAIT_LIMIT_MS = 12000;
+const ACCESS_DISABLED_MESSAGE = "Seu acesso foi desativado. Entre em contato com o administrador do Rancho.";
+const PROFILE_BLOCKING_MESSAGES = [
+  ACCESS_DISABLED_MESSAGE,
+  "Este login ainda não está vinculado a uma fazenda. Fale com o administrador.",
+  "Este cadastro é exclusivo para uso pelo WhatsApp. Solicite acesso ao administrador se precisar entrar no sistema.",
+  "Este rancho está inativo. Entre em contato com o administrador do Rancho."
+];
 
 async function getSupabaseBrowser() {
   const { supabaseBrowser } = await import("@/lib/supabase/browser");
@@ -68,6 +75,10 @@ async function waitWithLimit<T>(promise: PromiseLike<T>, message: string) {
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function isProfileBlockingError(message: string) {
+  return PROFILE_BLOCKING_MESSAGES.includes(message);
 }
 
 async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
@@ -110,7 +121,7 @@ async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
   } as UsuarioProfile;
 
   if (!profile.ativo) {
-    throw new Error("Seu acesso ainda não está ativo. Entre em contato com o administrador do Rancho.");
+    throw new Error(ACCESS_DISABLED_MESSAGE);
   }
 
   if (profile.papel === "bot_only") {
@@ -160,8 +171,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(profileResult.value);
       setError("");
     } else {
+      const message = profileResult.error.message || "Não foi possível carregar os dados da fazenda.";
+      if (isProfileBlockingError(message)) {
+        await client.auth.signOut().catch(() => undefined);
+        setSession(null);
+        setProfile(null);
+        setError(message);
+        return;
+      }
       if (options.clearOnError) setProfile(null);
-      setError(profileResult.error.message || "Não foi possível carregar os dados da fazenda.");
+      setError(message);
     }
   }
 
@@ -291,6 +310,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
       if (client && channel) void client.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured, session?.user?.id]);
+
+  useEffect(() => {
+    if (!configured || !session?.user?.id) return;
+
+    function revalidateProfile() {
+      if (document.visibilityState === "hidden") return;
+      void loadProfile(session, { clearOnError: true });
+    }
+
+    window.addEventListener("focus", revalidateProfile);
+    document.addEventListener("visibilitychange", revalidateProfile);
+
+    return () => {
+      window.removeEventListener("focus", revalidateProfile);
+      document.removeEventListener("visibilitychange", revalidateProfile);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configured, session?.user?.id]);

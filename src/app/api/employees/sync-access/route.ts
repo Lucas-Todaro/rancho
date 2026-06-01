@@ -28,6 +28,17 @@ export async function POST(request: NextRequest) {
     }
 
     const enabled = forceDisabled === true ? false : employee.ativo !== false && !employee.deleted_at;
+    if (!enabled && employee.usuario_id === permission.user.id) {
+      return invitationError("VocÃª nÃ£o pode desativar seu prÃ³prio acesso por esta tela.", 400);
+    }
+
+    console.log("[Employee access sync]", {
+      employeeId: employee.id,
+      usuarioId: employee.usuario_id,
+      fazendaId: employee.fazenda_id,
+      enabled
+    });
+
     const { error: userError } = await permission.supabase
       .from(TABLES.usuarios)
       .update({ ativo: enabled })

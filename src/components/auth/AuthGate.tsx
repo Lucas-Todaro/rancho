@@ -17,6 +17,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [error, isDemo, loading, pathname, profile, router]);
 
+  useEffect(() => {
+    if (!loading && !isDemo && profile && session?.user?.id) {
+      void reloadProfile();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   function retry() {
     if (session?.user?.id) {
       void reloadProfile();

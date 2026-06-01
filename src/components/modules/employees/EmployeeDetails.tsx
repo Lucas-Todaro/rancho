@@ -144,7 +144,7 @@ export function EmployeeDetails({
       } else {
         await deactivateEmployeeWhatsAppUser({ ...employee, ...payload, id: employee.id }, context);
       }
-      if (employee.usuario_id) await syncEmployeePanelAccess(employee.id, session?.access_token);
+      await syncEmployeePanelAccess(employee.id, session?.access_token);
       notifyDashboardUpdated();
       setEditingEmployee(false);
       onChanged();
