@@ -41,6 +41,7 @@ export type ParsedRanchoMessage = {
 
 export const BOT_EXAMPLES = [
   "- Mimosa deu 15 litros de leite hoje",
+  "- Adicionar vaca Mimosa com brinco B-043",
   "- Vendi leite por 900 reais",
   "- Comprei ração por 300 reais",
   "- Entrou 10 sacos de ração no estoque",
@@ -62,20 +63,41 @@ const questionByField: Record<string, string> = {
   categoria_animal: "Qual é a categoria do animal? Ex: vaca, bezerro ou touro."
 };
 
-const animalWords = "(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)";
-const animalCategories = new Set(["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "animal"]);
+const animalWords = "(?:vacas?|animais|animal|gado|bois?|touros?|bezerros?|bezerras?|novilhas?|brinco)";
+const animalCategories = new Set(["vaca", "vacas", "boi", "bois", "bezerro", "bezerros", "bezerra", "bezerras", "novilha", "novilhas", "touro", "touros", "animal", "animais"]);
+const animalCategoryMap: Record<string, string | undefined> = {
+  vaca: "vaca",
+  vacas: "vaca",
+  boi: "boi",
+  bois: "boi",
+  bezerro: "bezerro",
+  bezerros: "bezerro",
+  bezerra: "bezerro",
+  bezerras: "bezerro",
+  novilha: "novilha",
+  novilhas: "novilha",
+  touro: "touro",
+  touros: "touro"
+};
 const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|fardos?|unidades?)";
 const stockUnitAfterQuantityPattern = new RegExp(`\\b(${decimalNumberPattern})\\s*(${stockUnitWords})\\b`, "i");
 const stockItemHintPattern = /\b(?:racao|ração|milho|feno|sal|mineral|aftosa|remedio|remédio|medicamento|insumo|silagem|suplemento)\b/;
 const forbiddenAnimalCodes = new Set([
   "vaca",
+  "vacas",
   "animal",
+  "animais",
   "boi",
   "bois",
+  "touro",
+  "touros",
   "bezerro",
+  "bezerros",
   "bezerra",
+  "bezerras",
   "novilha",
+  "novilhas",
   "pariu",
   "morreu",
   "fundo",
@@ -496,9 +518,8 @@ function extractPointType(text: string) {
 
 function extractAnimalCategory(text: string) {
   const category = Array.from(animalCategories).find((item) => new RegExp(`\\b${item}\\b`).test(text));
-  if (!category || category === "animal" || category === "gado") return undefined;
-  if (category === "bezerra") return "bezerro";
-  return category;
+  if (!category || category === "animal" || category === "animais" || category === "gado") return undefined;
+  return animalCategoryMap[category] || category;
 }
 
 function extractAnimalLocal(text: string) {
@@ -506,10 +527,40 @@ function extractAnimalLocal(text: string) {
   return location;
 }
 
-function extractAnimalBirthTag(text: string) {
-  const direct = text.match(/\b(?:brinco|numero|número)\s+([a-z0-9-]+)\b/)?.[1];
-  if (direct) return direct.toUpperCase();
-  return extractAnimalCode(text, "CADASTRO_ANIMAL");
+function explicitRegistrationCode(value?: string | null) {
+  const candidate = normalizeAnimalCandidate(value);
+  if (!candidate) return undefined;
+  return /\d|-/.test(candidate) ? candidate : undefined;
+}
+
+function extractAnimalRegistrationCode(text: string) {
+  const direct = text.match(/\b(?:brinco|codigo|código|cod|numero|número|n)\s+([a-z0-9-]+)\b/)?.[1];
+  if (direct) return normalizeAnimalCandidate(direct);
+
+  const afterCategory = text.match(new RegExp(`\\b${animalWords}\\s+(?:brinco|codigo|cod|numero|n)?\\s*([a-z]*\\d[a-z0-9-]*|[a-z]+-[a-z0-9]+)\\b`))?.[1];
+  return explicitRegistrationCode(afterCategory);
+}
+
+function cleanAnimalRegistrationName(value?: string | null) {
+  const cleaned = cleanAnswer(value || "")
+    .replace(/\b(?:brinco|codigo|código|cod|numero|número|n)\b.*$/i, "")
+    .replace(/\b(?:com|de|do|da|no|na|para|pra)\b\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return undefined;
+  if (extractAnimalCategory(normalizeRanchoText(cleaned))) return undefined;
+  if (explicitRegistrationCode(cleaned)) return undefined;
+  return cleaned;
+}
+
+function extractAnimalRegistrationName(original: string) {
+  const explicit = original.match(/\b(?:nome|chamad[oa]|apelido)\s+(?:de|da|do)?\s*([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s'-]{0,40}?)(?:\s+(?:com|brinco|codigo|código|cod|numero|número|n)\b|$)/i)?.[1];
+  const explicitName = cleanAnimalRegistrationName(explicit);
+  if (explicitName) return explicitName;
+
+  const afterCategory = original.match(/\b(?:vaca|boi|touro|bezerro|bezerra|novilha)\s+([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s'-]{0,40}?)(?:\s+(?:com|brinco|codigo|código|cod|numero|número|n)\b|$)/i)?.[1];
+  return cleanAnimalRegistrationName(afterCategory);
 }
 
 function extractServiceLocal(original: string) {
@@ -580,7 +631,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "CRIAR_FUNCIONARIO") return `cadastrar funcionário${dados.funcionario_nome ? ` ${dados.funcionario_nome}` : ""}${dados.telefone ? ` com WhatsApp ${dados.telefone}` : ""}`;
 
-  if (tipo === "CADASTRO_ANIMAL") return `cadastrar ${dados.categoria || "animal"}${dados.animal_codigo ? ` com brinco ${dados.animal_codigo}` : ""}`;
+  if (tipo === "CADASTRO_ANIMAL") return `cadastrar ${dados.categoria || "animal"}${dados.nome ? ` ${dados.nome}` : ""}${dados.animal_codigo ? ` com brinco ${dados.animal_codigo}` : ""}`;
 
   if (tipo === "CONSULTA_PRODUCAO") return "consultar produção de leite";
   if (tipo === "CONSULTA_FINANCEIRO") return "consultar financeiro";
@@ -895,10 +946,14 @@ function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("MORTE", dados, buildMissing("MORTE", dados));
   }
 
-  const isAnimalCreation = /\b(?:cadastrar|cadastro|nasceu|novo|nova)\b/.test(normalized) && new RegExp(`\\b${animalWords}\\b`).test(normalized);
+  const hasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção)\b/.test(normalized);
+  const isAnimalCreation = !hasProductionCue
+    && /\b(?:cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lança|lancar|lançar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
+    && new RegExp(`\\b${animalWords}\\b`).test(normalized);
   if (isAnimalCreation) {
     const dados = {
-      animal_codigo: extractAnimalBirthTag(normalized),
+      animal_codigo: extractAnimalRegistrationCode(normalized),
+      nome: extractAnimalRegistrationName(original),
       categoria: extractAnimalCategory(normalized),
       data_referencia: extractDateReference(normalized)
     };

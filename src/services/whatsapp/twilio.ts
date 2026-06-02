@@ -1073,13 +1073,14 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     await insertRealRecord(supabase, owner, TABLES.animais, {
       fazenda_id: owner.fazenda_id,
       brinco: dados.animal_codigo,
+      nome: dados.nome || null,
       categoria: dados.categoria || "outro",
       fase: "nao_aplicavel",
       status: "ativo",
       created_by: owner.usuario_id || null,
       observacoes: "Cadastrado via WhatsApp"
     });
-    return realSaveResult(`Pronto, animal cadastrado com sucesso.\nBrinco: ${dados.animal_codigo}.`, [TABLES.animais]);
+    return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${dados.nome ? `Nome: ${dados.nome}.\n` : ""}Brinco: ${dados.animal_codigo}.`, [TABLES.animais]);
   }
 
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {

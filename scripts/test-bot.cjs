@@ -597,6 +597,8 @@ function assertExpected(test, parsed) {
   if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
+  if (expected.categoria && normalize(dados.categoria) !== normalize(expected.categoria)) failures.push(`categoria esperada ${expected.categoria}, recebida ${dados.categoria}`);
+  if (expected.nome && normalize(dados.nome) !== normalize(expected.nome)) failures.push(`nome esperado ${expected.nome}, recebido ${dados.nome}`);
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
   if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
@@ -680,6 +682,11 @@ const mandatoryTests = [
   { phrase: "apliquei aftosa na b002", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "aftosa", animal: "B-002" } },
   { phrase: "mediquei b002 com terramicina", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "tratamento", produto: "terramicina", animal: "B-002" } },
   { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", animal: "B-002" } },
+  { phrase: "adicionar vaca", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", missing: ["animal_codigo"] } },
+  { phrase: "adicionar touro", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", missing: ["animal_codigo"] } },
+  { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
+  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", noMissing: true } },
+  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", noMissing: true } },
   { phrase: "a vaca do fundo morreu", expected: { tipo: "MORTE", local: "fundo", missing: ["animal_codigo"] } },
   { phrase: "bota 20kg de racao de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
   { phrase: "lança 20kg de ração de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
