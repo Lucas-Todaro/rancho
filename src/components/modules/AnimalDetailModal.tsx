@@ -239,7 +239,7 @@ export function AnimalDetailModal({
   const showDetailPlaceholders = detailsLoading || Boolean(error && !events.length && !productions.length);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+    <div className="fixed inset-y-0 left-0 right-0 z-40 bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100 lg:left-72">
       <section className="flex h-dvh w-full animate-fade-in flex-col overflow-hidden">
         <header className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-4 dark:border-slate-800 dark:from-emerald-950 dark:via-slate-950 dark:to-lime-950">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 md:flex-row md:items-start md:justify-between">

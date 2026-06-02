@@ -81,8 +81,8 @@ export function InviteEmployeeForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-3 backdrop-blur-sm md:items-center">
-      <form onSubmit={submit} className="w-full max-w-3xl animate-fade-in rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950 md:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/45 p-3 backdrop-blur-sm">
+      <form onSubmit={submit} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl animate-fade-in overflow-y-auto rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950 md:p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-black">Convidar funcionário</h2>

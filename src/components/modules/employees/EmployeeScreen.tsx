@@ -2,6 +2,7 @@
 
 import { Download, MailPlus, MessageCircle, RefreshCw, Search, Users, Wallet, X, Clock3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
@@ -364,13 +365,14 @@ export function EmployeeScreen() {
         />
       ) : null}
 
-      {showInviteForm ? (
+      {showInviteForm && typeof document !== "undefined" ? createPortal(
         <InviteEmployeeForm
           busy={busy}
           session={session}
           onClose={() => setShowInviteForm(false)}
           onCreated={load}
-        />
+        />,
+        document.body
       ) : null}
 
       {selected ? (
