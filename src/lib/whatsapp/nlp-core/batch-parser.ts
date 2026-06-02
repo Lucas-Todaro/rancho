@@ -1,0 +1,122 @@
+import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import type { ParsedRanchoMessage, RanchoIntent } from "./types";
+import { buildMissing, finalize } from "./result";
+import { parseSingleRanchoMessage } from "./intent-detector";
+import {
+  extractAnimalCode,
+  extractDateReference,
+  extractFinanceDescription,
+  extractLiters,
+  extractLooseProductionLiters,
+  extractMoneyValue,
+  extractStockDestination,
+  extractStockItem,
+  extractStockQuantity,
+  extractStockUnit,
+  extractTurno,
+  hasExplicitMoney
+} from "./extractors";
+
+const batchableIntents = new Set<RanchoIntent>([
+  "PRODUCAO_LEITE",
+  "PARTO",
+  "VACINA_MEDICAMENTO",
+  "MORTE",
+  "DESPESA",
+  "RECEITA_VENDA",
+  "ESTOQUE_ENTRADA",
+  "ESTOQUE_SAIDA"
+]);
+
+function splitBatchSegments(text: string) {
+  const nextActionStart = "(?:\\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\\d|[a-z]*\\d[a-z0-9-]*\\s+(?:\\d|deu|produziu|fez|pariu|morreu)|[a-zÃ-ÿ]+(?:\\s+[a-zÃ-ÿ]+){0,3}\\s+por\\s+\\d|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu)";
+  const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é|Ã©)m|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
+
+  return cleanAnswer(String(text || ""))
+    .split(/[\n;]+|,(?=\s*\S)/g)
+    .flatMap((chunk) => chunk.split(connectorPattern))
+    .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=\d)/i))
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+}
+
+function parseBatchSegmentWithContext(segment: string, previous: ParsedRanchoMessage): ParsedRanchoMessage | null {
+  const original = cleanAnswer(segment);
+  const normalized = normalizeRanchoText(original);
+
+  if (previous.tipo === "PRODUCAO_LEITE") {
+    const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
+    const liters = extractLiters(normalized)
+      ?? extractLooseProductionLiters(normalized)
+      ?? (/\btamb/.test(normalized) ? previous.dados.litros : undefined);
+    if (animal && hasValue(liters)) {
+      const dados = {
+        animal_codigo: animal,
+        litros: liters,
+        turno: extractTurno(normalized) || previous.dados.turno,
+        data_referencia: extractDateReference(normalized) || previous.dados.data_referencia || "hoje"
+      };
+      return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados), 0.82);
+    }
+  }
+
+  if (previous.tipo === "ESTOQUE_ENTRADA" || previous.tipo === "ESTOQUE_SAIDA") {
+    const dados = {
+      item_nome: extractStockItem(original) || previous.dados.item_nome,
+      quantidade: extractStockQuantity(original),
+      unidade: extractStockUnit(normalized) || previous.dados.unidade,
+      valor: hasExplicitMoney(original) ?extractMoneyValue(normalized) : undefined,
+      compra: previous.tipo === "ESTOQUE_ENTRADA" ?previous.dados.compra : undefined,
+      destino: previous.tipo === "ESTOQUE_SAIDA" ?extractStockDestination(original) || previous.dados.destino : undefined
+    };
+    if (dados.item_nome && hasValue(dados.quantidade)) {
+      return finalize(previous.tipo, dados, buildMissing(previous.tipo, dados), 0.78);
+    }
+  }
+
+  if (previous.tipo === "DESPESA" || previous.tipo === "RECEITA_VENDA") {
+    const dados = {
+      valor: extractMoneyValue(normalized),
+      descricao: extractFinanceDescription(original, normalized, previous.tipo),
+      data_referencia: extractDateReference(normalized) || previous.dados.data_referencia
+    };
+    if (hasValue(dados.valor) && dados.descricao) {
+      return finalize(previous.tipo, dados, buildMissing(previous.tipo, dados), 0.78);
+    }
+  }
+
+  return null;
+}
+
+export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
+  const segments = splitBatchSegments(text);
+  if (segments.length < 2) return null;
+
+  const registros: ParsedRanchoMessage[] = [];
+  let previous: ParsedRanchoMessage | null = null;
+
+  for (const segment of segments) {
+    const parsed = parseSingleRanchoMessage(segment);
+    const contextual: ParsedRanchoMessage | null = previous ?parseBatchSegmentWithContext(segment, previous) : null;
+    const directIsReadyAction = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length && batchableIntents.has(parsed.tipo);
+    const next: ParsedRanchoMessage | null = directIsReadyAction ?parsed : contextual;
+    if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
+    registros.push(next);
+    previous = next;
+  }
+
+  if (registros.length < 2) return null;
+  const productionRecords = registros.filter((registro) => registro.tipo === "PRODUCAO_LEITE");
+  const totalLitros = productionRecords.reduce((sum, registro) => sum + Number(registro.dados?.litros || 0), 0);
+  const dados = {
+    registros,
+    total_registros: registros.length,
+    tipos: Array.from(new Set(registros.map((registro) => registro.tipo))),
+    ...(productionRecords.length > 1 ?{
+      total_litros: totalLitros,
+      estoque_leite_detectado: true,
+      tanque: /\btanque\b/.test(normalizeRanchoText(text))
+    } : {})
+  };
+  return finalize("LOTE_REGISTROS", dados, [], 0.88);
+}

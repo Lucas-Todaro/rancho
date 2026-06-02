@@ -1,0 +1,37 @@
+import type { AnyRecord } from "@/lib/types";
+
+export type RanchoIntent =
+  | "PRODUCAO_LEITE"
+  | "PARTO"
+  | "VACINA_MEDICAMENTO"
+  | "MORTE"
+  | "DESPESA"
+  | "RECEITA_VENDA"
+  | "CRIAR_ITEM_ESTOQUE"
+  | "ESTOQUE_CADASTRO"
+  | "ESTOQUE_ENTRADA"
+  | "ESTOQUE_SAIDA"
+  | "CRIAR_FUNCIONARIO"
+  | "PONTO_FUNCIONARIO"
+  | "CADASTRO_ANIMAL"
+  | "CONSULTA_PRODUCAO"
+  | "CONSULTA_PRODUCAO_HOJE"
+  | "CONSULTA_PRODUCAO_ANIMAL"
+  | "CONSULTA_FINANCEIRO"
+  | "CONSULTA_ESTOQUE"
+  | "CONSULTA_ESTOQUE_ITEM"
+  | "CONSULTA_ESTOQUE_GERAL"
+  | "CONSULTA_FUNCIONARIO"
+  | "CONSULTA_REGISTROS_HOJE"
+  | "ORDEM_SERVICO"
+  | "LOTE_REGISTROS"
+  | "AJUDA"
+  | "DESCONHECIDO";
+
+export type ParsedRanchoMessage = {
+  tipo: RanchoIntent;
+  confianca: number;
+  dados: AnyRecord;
+  resumo: string;
+  perguntas_faltantes: string[];
+};
