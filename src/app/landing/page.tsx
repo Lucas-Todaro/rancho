@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -18,7 +19,6 @@ import {
   PawPrint,
   Settings2,
   ShieldCheck,
-  Sparkles,
   UsersRound,
   Wallet,
   Warehouse,
@@ -61,12 +61,15 @@ const features: Array<{ icon: LucideIcon; title: string; description: string }> 
 ];
 
 const showcaseItems = [
-  { name: "Dashboard", detail: "Indicadores gerais", accent: "emerald", stats: ["Produção", "Estoque", "Financeiro"] },
-  { name: "Rebanho", detail: "Ficha 360 dos animais", accent: "blue", stats: ["Fase", "Lote", "Manejo"] },
-  { name: "Estoque", detail: "Entradas e baixas", accent: "amber", stats: ["Itens", "Unidades", "Crítico"] },
-  { name: "Financeiro", detail: "Transações conectadas", accent: "teal", stats: ["Entradas", "Saídas", "Resultado"] },
-  { name: "Funcionários", detail: "Equipe e ponto", accent: "violet", stats: ["Cargos", "Acessos", "Ponto"] },
-  { name: "Genealogia", detail: "Árvore dos animais", accent: "rose", stats: ["Mãe", "Pai", "Linhagem"] }
+  { name: "Dashboard", detail: "Indicadores gerais", image: "/landing/screenshots/dashboard.png" },
+  { name: "Rebanho", detail: "Animais e ficha individual", image: "/landing/screenshots/rebanho.png" },
+  { name: "Genealogia", detail: "Árvore familiar dos animais", image: "/landing/screenshots/genealogia.png" },
+  { name: "Produção", detail: "Ordenhas e destino do leite", image: "/landing/screenshots/producao.png" },
+  { name: "Estoque", detail: "Entradas, baixas e saldo", image: "/landing/screenshots/estoque.png" },
+  { name: "Financeiro", detail: "Entradas, saídas e categorias", image: "/landing/screenshots/financeiro.png" },
+  { name: "Funcionários", detail: "Equipe, convites e ponto", image: "/landing/screenshots/funcionarios.png" },
+  { name: "WhatsApp", detail: "Bot e números autorizados", image: "/landing/screenshots/whatsapp.png" },
+  { name: "Configurações", detail: "Preferências e dados protegidos", image: "/landing/screenshots/configuracoes.png", mask: "settings" as const }
 ];
 
 const steps = [
@@ -122,7 +125,7 @@ function HeroMockup() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Painel da fazenda</p>
-              <h2 className="mt-1 text-2xl font-black text-slate-950">Rancho do Todaro</h2>
+              <h2 className="mt-1 text-2xl font-black text-slate-950">Fazenda Modelo</h2>
             </div>
             <div className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-lg shadow-emerald-700/20">Acompanhamento ativo</div>
           </div>
@@ -170,43 +173,33 @@ function HeroMockup() {
 }
 
 function ScreenshotMockup({ item }: { item: (typeof showcaseItems)[number] }) {
-  const colorMap: Record<string, string> = {
-    emerald: "from-emerald-500 to-emerald-700",
-    blue: "from-sky-500 to-blue-700",
-    amber: "from-amber-400 to-orange-600",
-    teal: "from-teal-500 to-emerald-700",
-    violet: "from-violet-500 to-indigo-700",
-    rose: "from-rose-400 to-pink-700"
-  };
-
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-soft">
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-        <div className={`h-2 bg-gradient-to-r ${colorMap[item.accent]}`} />
-        <div className="space-y-3 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{item.detail}</p>
-              <h3 className="mt-1 text-xl font-black text-slate-950">{item.name}</h3>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-emerald-700 shadow-sm">
-              <Sparkles className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {item.stats.map((stat) => (
-              <div key={stat} className="rounded-lg bg-white p-3 shadow-sm">
-                <div className="mb-3 h-2 w-10 rounded-full bg-slate-200" />
-                <p className="text-xs font-bold text-slate-600">{stat}</p>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2">
-            <div className="h-2.5 rounded-full bg-slate-200" />
-            <div className="h-2.5 w-4/5 rounded-full bg-slate-200" />
-            <div className="h-2.5 w-2/3 rounded-full bg-slate-200" />
-          </div>
+    <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-soft">
+      <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+        <Image
+          src={item.image}
+          alt={`Tela do Rancho: ${item.name}`}
+          width={2160}
+          height={1350}
+          unoptimized
+          loading="lazy"
+          decoding="async"
+          sizes="(min-width: 1024px) 50vw, 100vw"
+          className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-[1.015]"
+        />
+        <div className="absolute right-[2.5%] top-[2.8%] flex h-[8.5%] w-[19%] items-center justify-center rounded-lg border border-white/50 bg-white/70 px-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 shadow-sm backdrop-blur-md">
+          Dados protegidos
         </div>
+        {item.mask === "settings" ? (
+          <>
+            <div className="absolute left-[60%] top-[32%] h-[15%] w-[31%] rounded-lg border border-white/50 bg-white/70 shadow-sm backdrop-blur-md" />
+            <div className="absolute left-[60%] top-[64%] h-[19%] w-[31%] rounded-lg border border-white/50 bg-white/70 shadow-sm backdrop-blur-md" />
+          </>
+        ) : null}
+      </div>
+      <div className="border-t border-slate-100 p-4">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">{item.detail}</p>
+        <h3 className="mt-1 text-xl font-black text-slate-950">{item.name}</h3>
       </div>
     </article>
   );
@@ -368,7 +361,7 @@ export default function LandingPage() {
             <SectionLabel>Prévia do sistema</SectionLabel>
             <h2 className="text-3xl font-black text-slate-950 sm:text-4xl">Telas pensadas para controle rápido e leitura fácil.</h2>
             <p className="mt-4 text-base leading-7 text-slate-600">
-              Não encontrei prints reais no projeto, então esta seção usa mockups leves e identificados. Quando houver imagens reais, basta substituir estes blocos por screenshots do app.
+              Capturas reais do Rancho em ambiente demonstrativo, com áreas pessoais mascaradas para proteger nome, e-mail, telefone e dados de configuração.
             </p>
           </div>
           <Link href="/login" className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-800 shadow-sm transition hover:-translate-y-1 hover:border-emerald-300 hover:text-emerald-700">
@@ -376,7 +369,7 @@ export default function LandingPage() {
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
           {showcaseItems.map((item) => <ScreenshotMockup key={item.name} item={item} />)}
         </div>
       </section>
