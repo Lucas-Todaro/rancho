@@ -251,6 +251,16 @@ function isMenuCommand(command: string) {
 }
 
 function confirmationText(parsed: ParsedRanchoMessage) {
+  if (parsed.tipo === "LOTE_REGISTROS") {
+    const registros = Array.isArray(parsed.dados?.registros) ? parsed.dados.registros as ParsedRanchoMessage[] : [];
+    const lines = registros
+      .slice(0, 6)
+      .map((registro, index) => `${index + 1}. ${registro.resumo}`)
+      .join("\n");
+    const extra = registros.length > 6 ? `\n...e mais ${registros.length - 6} registro(s).` : "";
+    return `Entendi ${registros.length} registros:\n${lines}${extra}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+  }
+
   return `Entendi que você quer ${parsed.resumo}.\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
 }
 
@@ -286,6 +296,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CONSULTA_ESTOQUE: "consulta de estoque",
     CONSULTA_FUNCIONARIO: "consulta de funcionário",
     ORDEM_SERVICO: "ordem de serviço",
+    LOTE_REGISTROS: "registros em lote",
     AJUDA: "ajuda",
     DESCONHECIDO: "uma mensagem"
   };
@@ -620,6 +631,34 @@ function stockCategoryFromName(name: string) {
   return "outro";
 }
 
+async function validateBatchRecordReady(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage) {
+  const dados = pending.dados || {};
+
+  if (pending.perguntas_faltantes.length) {
+    return `faltam dados: ${pending.perguntas_faltantes[0]}`;
+  }
+
+  if (ANIMAL_RECORD_INTENTS.has(pending.tipo)) {
+    const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
+    if (!found) return `não encontrei o animal "${dados.animal_codigo || ""}"`;
+    if (found.ambiguousRows?.length) return `o animal "${dados.animal_codigo || ""}" está ambíguo`;
+    if (!found.exact) return `preciso confirmar o animal parecido "${found.row.brinco}"`;
+    if (isAnimalInactiveForBot(found.row)) return animalBlockedMessage(found.row, pending.tipo);
+  }
+
+  if (pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") {
+    const found = await findStockItem(supabase, owner, String(dados.item_nome || ""));
+    if (!found.row) return `não encontrei "${dados.item_nome || ""}" no estoque`;
+    if (found.ambiguousRows?.length) return `o item "${dados.item_nome || ""}" está ambíguo`;
+    if (!found.exact) return `preciso confirmar o item parecido "${found.row.nome}"`;
+    if (pending.tipo === "ESTOQUE_SAIDA" && Number(dados.quantidade || 0) > Number(found.row.quantidade_atual || 0)) {
+      return `saldo insuficiente de ${found.row.nome}`;
+    }
+  }
+
+  return null;
+}
+
 function pendingWithData(pending: ParsedRanchoMessage, dados: AnyRecord): ParsedRanchoMessage {
   return refreshRanchoMessage(pending, { ...pending.dados, ...dados });
 }
@@ -704,6 +743,42 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
 async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
   const dados = pending.dados || {};
+
+  if (pending.tipo === "LOTE_REGISTROS") {
+    const registros = Array.isArray(dados.registros) ? dados.registros as ParsedRanchoMessage[] : [];
+    if (!registros.length) return { response: "Não encontrei registros válidos nesse lote. Envie novamente." };
+
+    const savedTables = new Set<string>();
+    const summaries: string[] = [];
+
+    for (let index = 0; index < registros.length; index += 1) {
+      const reason = await validateBatchRecordReady(supabase, owner, registros[index]);
+      if (reason) {
+        return { response: `Não salvei o lote. O registro ${index + 1} precisa de ajuste: ${reason}.` };
+      }
+    }
+
+    for (let index = 0; index < registros.length; index += 1) {
+      const registro = registros[index];
+      const result = await saveConfirmedRecord(supabase, owner, registro);
+
+      if (result.nextSession) {
+        return {
+          response: `Preciso revisar o registro ${index + 1} do lote antes de salvar tudo.\n${result.response}`,
+          nextSession: result.nextSession
+        };
+      }
+
+      if (!result.savedReal) {
+        return { response: `Não salvei o lote. O registro ${index + 1} precisa de ajuste:\n${result.response}` };
+      }
+
+      for (const table of result.savedTables || []) savedTables.add(table);
+      summaries.push(`${index + 1}. ${registro.resumo}`);
+    }
+
+    return realSaveResult(`Pronto, ${registros.length} registros salvos com sucesso.\n${summaries.join("\n")}`, Array.from(savedTables));
+  }
 
   if (ANIMAL_RECORD_INTENTS.has(pending.tipo)) {
     const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));

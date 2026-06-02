@@ -160,3 +160,31 @@ export function lastNumber(text: string) {
   const numbers = numberMatches(text);
   return numbers[numbers.length - 1]?.value;
 }
+
+export function financialNumberMatches(text: string) {
+  const matches = numberMatches(text);
+  const normalized = String(text || "").toLowerCase();
+  const milPattern = new RegExp(`\\b(?:(?:${decimalNumberPattern})\\s+)?mil\\b`, "g");
+  let match = milPattern.exec(normalized);
+
+  while (match) {
+    const raw = match[0];
+    const prefix = raw.match(new RegExp(`^(${decimalNumberPattern})\\s+mil$`))?.[1];
+    const value = prefix ? parseDecimalNumber(prefix) : 1;
+    if (value !== undefined) {
+      matches.push({ raw, value: value * 1000, index: match.index || 0 });
+    }
+    match = milPattern.exec(normalized);
+  }
+
+  return matches.sort((left, right) => left.index - right.index || String(left.raw).length - String(right.raw).length);
+}
+
+export function lastFinancialNumber(text: string) {
+  const numbers = financialNumberMatches(text);
+  const combinedMil = numbers.filter((match) => /\d.*\bmil\b/.test(match.raw));
+  if (combinedMil.length) return combinedMil[combinedMil.length - 1]?.value;
+  const standaloneMil = numbers.filter((match) => /\bmil\b/.test(match.raw));
+  if (standaloneMil.length) return standaloneMil[standaloneMil.length - 1]?.value;
+  return numbers[numbers.length - 1]?.value;
+}

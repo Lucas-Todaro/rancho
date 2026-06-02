@@ -1,7 +1,7 @@
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber } from "@/lib/phone";
 import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
-import { decimalNumberPattern, firstNumber, lastNumber, numberMatches, parseDecimalNumber } from "@/lib/whatsapp/nlp-numbers";
+import { decimalNumberPattern, firstNumber, lastFinancialNumber, lastNumber, numberMatches, parseDecimalNumber } from "@/lib/whatsapp/nlp-numbers";
 import { formatBotNumber, formatStockQuantity, formatStockUnit, moneyText } from "@/lib/whatsapp/nlp-format";
 
 export { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
@@ -27,6 +27,7 @@ export type RanchoIntent =
   | "CONSULTA_ESTOQUE"
   | "CONSULTA_FUNCIONARIO"
   | "ORDEM_SERVICO"
+  | "LOTE_REGISTROS"
   | "AJUDA"
   | "DESCONHECIDO";
 
@@ -252,6 +253,12 @@ function extractAnimalCode(text: string, intent?: RanchoIntent) {
 }
 
 function extractLiters(text: string) {
+  const withMilUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s+mil\\s*(?:l|lt|lts|litro|litros)\\b`));
+  if (withMilUnit?.[1]) {
+    const value = parseDecimalNumber(withMilUnit[1]);
+    return value === undefined ? undefined : value * 1000;
+  }
+
   const withUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s*(?:l|lt|lts|litro|litros)\\b`));
   if (withUnit?.[1]) return parseDecimalNumber(withUnit[1]);
 
@@ -262,7 +269,7 @@ function extractLiters(text: string) {
 }
 
 function extractMoneyValue(text: string) {
-  return lastNumber(text);
+  return lastFinancialNumber(text);
 }
 
 function removeValueAndCommonWords(value: string) {
@@ -388,7 +395,9 @@ function hasExplicitMoney(text: string) {
   const normalized = normalizeRanchoText(text);
   return new RegExp(`r\\$\\s*${decimalNumberPattern}`, "i").test(text)
     || new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)\\b`).test(normalized)
-    || new RegExp(`\\bpor\\s+${decimalNumberPattern}(?:\\s*(?:reais|real))?\\b`).test(normalized);
+    || new RegExp(`\\bpor\\s+${decimalNumberPattern}(?:\\s*(?:mil|reais|real))?\\b`).test(normalized)
+    || /\b(?:paguei|gastei|recebi|vendi|valor|custou)\s+(?:\d+(?:[.,]\d+)?\s+)?mil\b/.test(normalized)
+    || /\b(?:mil)\s+(?:reais|real)\b/.test(normalized);
 }
 
 function isPurchaseText(text: string) {
@@ -399,9 +408,11 @@ function numberHasUnitOrMoneyContext(text: string, index: number, raw: string) {
   const before = text.slice(Math.max(0, index - 8), index);
   const after = text.slice(index + raw.length, index + raw.length + 18);
   const unitAfter = new RegExp(`^\\s*${stockUnitWords}\\b`).test(after);
+  const milUnitAfter = /^\s*mil\s*(?:l|lt|lts|litro|litros|kg|quilos?|gramas?|g|sacos?|caixas?|doses?|fardos?|unidades?)\b/.test(after);
+  const milMoneyAfter = /^\s*mil\b/.test(after);
   const moneyAfter = /^\s*(?:reais|real)\b/.test(after);
   const moneyBefore = /r\$\s*$/.test(before);
-  return unitAfter || moneyAfter || moneyBefore;
+  return unitAfter || milUnitAfter || milMoneyAfter || moneyAfter || moneyBefore;
 }
 
 function extractStockQuantity(original: string) {
@@ -418,7 +429,8 @@ function extractStockQuantity(original: string) {
   const generic = numbers.find((match) => {
     const tail = normalized.slice(match.index + match.raw.length);
     const articleBeforeItem = /^(?:1|um|uma)$/.test(match.raw) && /^\s*item\b/.test(tail);
-    return !articleBeforeItem && !numberHasUnitOrMoneyContext(normalized, match.index, match.raw);
+    const moneyMagnitude = /\bmil\b/.test(match.raw) || /^\s*mil\b/.test(tail);
+    return !articleBeforeItem && !moneyMagnitude && !numberHasUnitOrMoneyContext(normalized, match.index, match.raw);
   });
 
   return generic?.value;
@@ -562,6 +574,10 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CONSULTA_ESTOQUE") return dados.item_nome ? `consultar estoque de ${dados.item_nome}` : "consultar estoque";
   if (tipo === "CONSULTA_FUNCIONARIO") return dados.funcionario_nome ? `consultar funcionário ${dados.funcionario_nome}` : "consultar funcionários";
   if (tipo === "ORDEM_SERVICO") return `registrar ordem de serviço: ${dados.descricao || "serviço informado"}`;
+  if (tipo === "LOTE_REGISTROS") {
+    const registros = Array.isArray(dados.registros) ? dados.registros : [];
+    return `registrar ${registros.length || dados.total_registros || 0} registros em lote`;
+  }
   if (tipo === "AJUDA") return "mostrar ajuda do bot";
 
   return `Não consegui entender certinho. Você pode tentar assim:\n${BOT_EXAMPLES.join("\n")}`;
@@ -617,7 +633,94 @@ export function refreshRanchoMessage(parsed: ParsedRanchoMessage, dados: AnyReco
   return finalize(parsed.tipo, dados, buildMissing(parsed.tipo, dados), parsed.confianca);
 }
 
-export function parseRanchoMessage(text: string): ParsedRanchoMessage {
+const batchableIntents = new Set<RanchoIntent>([
+  "PRODUCAO_LEITE",
+  "VACINA_MEDICAMENTO",
+  "DESPESA",
+  "RECEITA_VENDA",
+  "ESTOQUE_ENTRADA",
+  "ESTOQUE_SAIDA"
+]);
+
+function splitBatchSegments(text: string) {
+  return String(text || "")
+    .split(/[\n;]+|,(?=\s*\S)/g)
+    .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|b-?\d|\d+\s*(?:l|lt|lts|litro|litros|kg|sacos?|reais)|comprei|compramos|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei))/i))
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+}
+
+function parseBatchSegmentWithContext(segment: string, previous: ParsedRanchoMessage): ParsedRanchoMessage | null {
+  const original = cleanAnswer(segment);
+  const normalized = normalizeRanchoText(original);
+
+  if (previous.tipo === "PRODUCAO_LEITE") {
+    const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
+    const liters = extractLiters(normalized) ?? (/\b(?:tambem|também)\b/.test(normalized) ? previous.dados.litros : undefined);
+    if (animal && hasValue(liters)) {
+      const dados = {
+        animal_codigo: animal,
+        litros: liters,
+        turno: extractTurno(normalized) || previous.dados.turno,
+        data_referencia: extractDateReference(normalized) || previous.dados.data_referencia || "hoje"
+      };
+      return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados), 0.82);
+    }
+  }
+
+  if (previous.tipo === "ESTOQUE_ENTRADA" || previous.tipo === "ESTOQUE_SAIDA") {
+    const dados = {
+      item_nome: extractStockItem(original) || previous.dados.item_nome,
+      quantidade: extractStockQuantity(original),
+      unidade: extractStockUnit(normalized) || previous.dados.unidade,
+      valor: hasExplicitMoney(original) ? extractMoneyValue(normalized) : undefined,
+      compra: previous.tipo === "ESTOQUE_ENTRADA" ? previous.dados.compra : undefined,
+      destino: previous.tipo === "ESTOQUE_SAIDA" ? extractStockDestination(original) || previous.dados.destino : undefined
+    };
+    if (dados.item_nome && hasValue(dados.quantidade)) {
+      return finalize(previous.tipo, dados, buildMissing(previous.tipo, dados), 0.78);
+    }
+  }
+
+  if (previous.tipo === "DESPESA" || previous.tipo === "RECEITA_VENDA") {
+    const dados = {
+      valor: extractMoneyValue(normalized),
+      descricao: extractFinanceDescription(original, normalized, previous.tipo),
+      data_referencia: extractDateReference(normalized) || previous.dados.data_referencia
+    };
+    if (hasValue(dados.valor) && dados.descricao) {
+      return finalize(previous.tipo, dados, buildMissing(previous.tipo, dados), 0.78);
+    }
+  }
+
+  return null;
+}
+
+function parseBatchMessage(text: string): ParsedRanchoMessage | null {
+  const segments = splitBatchSegments(text);
+  if (segments.length < 2) return null;
+
+  const registros: ParsedRanchoMessage[] = [];
+  let previous: ParsedRanchoMessage | null = null;
+
+  for (const segment of segments) {
+    const parsed = parseSingleRanchoMessage(segment);
+    const next: ParsedRanchoMessage | null = parsed.tipo !== "DESCONHECIDO" ? parsed : previous ? parseBatchSegmentWithContext(segment, previous) : null;
+    if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
+    registros.push(next);
+    previous = next;
+  }
+
+  if (registros.length < 2) return null;
+  const dados = {
+    registros,
+    total_registros: registros.length,
+    tipos: Array.from(new Set(registros.map((registro) => registro.tipo)))
+  };
+  return finalize("LOTE_REGISTROS", dados, [], 0.88);
+}
+
+function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const original = cleanAnswer(text);
   const normalized = normalizeRanchoText(original);
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
@@ -685,7 +788,7 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);
-  const isStockOut = (physicalQuantity || hasStockItemHint) && stockOutVerb;
+  const isStockOut = physicalQuantity && stockOutVerb;
   if (isStockOut) {
     const dados = {
       item_nome: stockItemName,
@@ -794,6 +897,10 @@ export function parseRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   return finalize("DESCONHECIDO", {}, []);
+}
+
+export function parseRanchoMessage(text: string): ParsedRanchoMessage {
+  return parseBatchMessage(text) || parseSingleRanchoMessage(text);
 }
 
 export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: string): ParsedRanchoMessage {

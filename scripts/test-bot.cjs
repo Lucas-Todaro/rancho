@@ -589,6 +589,15 @@ function assertExpected(test, parsed) {
   if (expected.local && normalize(dados.local) !== normalize(expected.local)) failures.push(`local esperado ${expected.local}, recebido ${dados.local}`);
   if (expected.itemUnresolved && dados.item_id) failures.push(`item deveria ficar sem resolução oficial, recebeu item_id ${dados.item_id}`);
   if (expected.resumoIncludes && !normalize(parsed.resumo).includes(normalize(expected.resumoIncludes))) failures.push(`resumo deveria conter "${expected.resumoIncludes}", recebeu "${parsed.resumo}"`);
+  if ("registros" in expected) {
+    const registros = Array.isArray(dados.registros) ? dados.registros : [];
+    if (registros.length !== expected.registros) failures.push(`registros esperados ${expected.registros}, recebidos ${registros.length}`);
+  }
+  if (expected.registroTipos) {
+    const tipos = Array.isArray(dados.registros) ? dados.registros.map((registro) => registro.tipo) : [];
+    const missingTipos = expected.registroTipos.filter((tipo) => !tipos.includes(tipo));
+    if (missingTipos.length) failures.push(`tipos de lote faltando: ${missingTipos.join(", ")}`);
+  }
 
   for (const field of expected.missing || []) {
     if (hasValue(dados[field])) failures.push(`campo ${field} deveria estar faltando, recebido ${dados[field]}`);
@@ -711,7 +720,9 @@ const extraTests = [
   { phrase: "83996732761", pending: () => pendingFrom("cadastrar funcionário João"), expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "João", telefone: "5583996732761", noMissing: true } },
   { phrase: "kg", pending: () => pendingFrom("criar estoque de ração de bezerro"), expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", unidade: "kg", missing: ["quantidade"] } },
   { phrase: "0", pending: () => pendingFrom("criar estoque de ração de bezerro", ["kg"]), expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", unidade: "kg", quantidade: 0, noMissing: true } },
-  { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } }
+  { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } },
+  { phrase: "vaca B-002 deu 32 litros e vaca 15 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"] } },
+  { phrase: "usei 2 kg de milho e tirei 1 fardo de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"] } }
 ];
 
 const regressionTests = [
@@ -757,6 +768,13 @@ const decimalRegressionTests = [
   { phrase: "comprei 2,5 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 2.5, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei 20kg de ração por R$ 1.200,50", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 20, unidade: "kg", item: "Ração", valor: 1200.5 } },
   { phrase: "comprei 1.5 fardos de feno por 90,50 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 1.5, unidade: "fardo", item: "Feno", valor: 90.5 } },
+  { phrase: "comprei racao por 20 mil", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", valor: 20000, missing: ["quantidade"] } },
+  { phrase: "paguei 20 mil em racao", expected: { tipo: "DESPESA", valor: 20000, descricao: "racao" } },
+  { phrase: "vendi boi por 15 mil", expected: { tipo: "RECEITA_VENDA", valor: 15000, descricao: "venda de boi" } },
+  { phrase: "comprei 10 sacos de racao por 2,5 mil", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 2500 } },
+  { phrase: "gastei mil reais com remedio", expected: { tipo: "DESPESA", valor: 1000, descricao: "remedio" } },
+  { phrase: "recebi 1 mil do leite", expected: { tipo: "RECEITA_VENDA", valor: 1000, descricao: "leite" } },
+  { phrase: "20 mil litros de leite", expected: { tipo: "PRODUCAO_LEITE", litros: 20000, missing: ["animal_codigo"] } },
   { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
   { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
