@@ -382,14 +382,15 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         </div>
       </div>
 
-      {selectedAnimal ? (
+      {selectedAnimal && typeof document !== "undefined" ? createPortal(
         <AnimalDetailModal
           animal={selectedAnimal}
           context={dataContext}
           relationOptions={relationOptions}
           onClose={() => setSelectedAnimal(null)}
           onChanged={load}
-        />
+        />,
+        document.body
       ) : null}
 
       {animalDeleteTarget && typeof document !== "undefined" ? createPortal(
