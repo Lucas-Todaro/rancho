@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, listRecords } from "@/services/crud";
+import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { syncEventCostToFinance } from "@/services/event-finance";
 import { getAnimalSexInfo } from "@/lib/animal-sex";
@@ -82,7 +83,7 @@ export function AnimalDetailModal({
   context: DataContext;
   relationOptions: Record<string, RelationOption[]>;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: () => void | Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>("resumo");
   const [events, setEvents] = useState<AnyRecord[]>([]);
@@ -217,11 +218,12 @@ export function AnimalDetailModal({
         context,
         [{ value: String(animal.id), label: animal.brinco || animal.nome || "Animal" }]
       );
+      await syncAnimalPhaseAfterEvent(created || { animal_id: animal.id, tipo: draft.tipo }, context);
 
       notifyDashboardUpdated();
       setShowForm(false);
       await loadDetails();
-      onChanged();
+      await onChanged();
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível registrar o manejo."));
     } finally {

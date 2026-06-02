@@ -556,7 +556,7 @@ function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
   const { data, error } = await supabase
     .from(TABLES.animais)
-    .select("id,brinco,nome,categoria,status,raca,observacoes")
+    .select("id,brinco,nome,categoria,fase,status,raca,observacoes")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
@@ -841,7 +841,17 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return realSaveResult(`Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.`, [TABLES.eventosAnimal]);
+      const savedTables: string[] = [TABLES.eventosAnimal];
+      if (animal.fase === "gestante") {
+        const { error } = await supabase
+          .from(TABLES.animais)
+          .update({ fase: "lactacao" })
+          .eq("id", animal.id)
+          .eq("fazenda_id", owner.fazenda_id);
+        if (error) throw new Error(error.message);
+        savedTables.push(TABLES.animais);
+      }
+      return realSaveResult(`Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.`, savedTables);
     }
 
     if (pending.tipo === "VACINA_MEDICAMENTO") {

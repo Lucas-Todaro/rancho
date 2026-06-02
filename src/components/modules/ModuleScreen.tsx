@@ -17,7 +17,7 @@ import {
   Wallet,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DataTable } from "@/components/ui/DataTable";
 import { AnimalCards } from "@/components/modules/AnimalCards";
@@ -25,6 +25,7 @@ import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createRecord, deleteRecord, deleteRecords, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
+import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
 import { removeProductionStockMovement, syncProductionStockMovement, validateProductionStockDestination } from "@/services/production-stock";
@@ -101,6 +102,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const Icon = moduleIcons[config.icon] || Database;
   const showPlaceholders = loading || Boolean(error && !rows.length);
@@ -116,6 +118,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         Promise.all(relationFields.map(async (field) => [field.name, await loadRelationOptions(field, queryContext)] as const))
       ]);
       setRows(data);
+      setSelectedAnimal((current) => current ? data.find((row) => String(row.id) === String(current.id)) || current : current);
       setRelationOptions(Object.fromEntries(relationPairs));
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível carregar os dados agora."));
@@ -154,6 +157,13 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     }
   }
 
+  const openEditor = useCallback((row: AnyRecord) => {
+    setEditing(row);
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+
   async function submit(values: AnyRecord) {
     setBusy(true);
     setError("");
@@ -177,7 +187,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       if (editing?.id) {
         const updated = await updateRecord(config.tableName, editing.id, payload);
         if (config.tableName === TABLES.eventosAnimal) {
-          await syncEventCostToFinance(updated || { ...editing, ...payload }, dataContext, relationOptions.animal_id);
+          const eventRecord = updated || { ...editing, ...payload };
+          await syncEventCostToFinance(eventRecord, dataContext, relationOptions.animal_id);
+          await syncAnimalPhaseAfterEvent(eventRecord, dataContext);
         }
         if (config.tableName === TABLES.ordenhas) {
           await syncProductionStockMovement(updated || { ...editing, ...payload, id: editing.id }, dataContext);
@@ -186,7 +198,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       } else {
         const created = await createRecord(config.tableName, payload, dataContext);
         if (config.tableName === TABLES.eventosAnimal) {
-          await syncEventCostToFinance(created || payload, dataContext, relationOptions.animal_id);
+          const eventRecord = created || payload;
+          await syncEventCostToFinance(eventRecord, dataContext, relationOptions.animal_id);
+          await syncAnimalPhaseAfterEvent(eventRecord, dataContext);
         }
         if (config.tableName === TABLES.ordenhas) {
           await syncProductionStockMovement(created || payload, dataContext);
@@ -339,7 +353,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
 
       <div className="space-y-6">
         {canManage ? (
-          <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
+          <div ref={formRef} className="scroll-mt-24">
+            <ModuleForm config={config} editing={editing} onSubmit={submit} onCancel={() => setEditing(null)} busy={busy} relationOptions={relationOptions} />
+          </div>
         ) : (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
             Seu perfil pode consultar esta área, mas não pode criar, editar ou excluir registros.
@@ -360,7 +376,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               relationOptions={relationOptions}
               loading={showPlaceholders}
               onDelete={remove}
-              onEdit={canManage ? setEditing : () => setError(PERMISSION_DENIED_MESSAGE)}
+              onEdit={canManage ? openEditor : () => setError(PERMISSION_DENIED_MESSAGE)}
               onView={setSelectedAnimal}
               onExport={(animals) => exportCsv(config.key, animals, config.fields)}
               canManage={canManage}
@@ -372,7 +388,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               search={search}
               setSearch={setSearch}
               onDelete={remove}
-              onEdit={canManage ? setEditing : () => setError(PERMISSION_DENIED_MESSAGE)}
+              onEdit={canManage ? openEditor : () => setError(PERMISSION_DENIED_MESSAGE)}
               onExport={() => exportCsv(config.key, filteredRows, config.fields)}
               relationOptions={relationOptions}
               loading={showPlaceholders}
