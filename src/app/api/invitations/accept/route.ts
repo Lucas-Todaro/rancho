@@ -18,6 +18,16 @@ function isValidBotOwnerPhone(value: string | number | null | undefined) {
   return ddd >= 11 && ddd <= 99 && national[2] === "9" && !/^(\d)\1+$/.test(national);
 }
 
+function acceptInviteErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  if (/usuarios_papel_check|violates check constraint.*papel|papel.*violates check constraint/i.test(message)) {
+    return "A estrutura do Supabase ainda não permite cadastrar o dono da fazenda. Execute a migration 20260602001000_allow_owner_role_in_users.sql e tente novamente.";
+  }
+
+  return "Não foi possível aceitar o convite. Tente novamente.";
+}
+
 async function syncOwnerWhatsAppUser(input: {
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>;
   fazendaId: string;
@@ -205,6 +215,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: "Convite aceito. Entre com seu e-mail e senha." });
   } catch (error) {
     console.error("[Invitation accept]", error);
-    return invitationError("Não foi possível aceitar o convite. Tente novamente.", 500);
+    return invitationError(acceptInviteErrorMessage(error), 500);
   }
 }
