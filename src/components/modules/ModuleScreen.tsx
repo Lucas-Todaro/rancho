@@ -231,9 +231,26 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       const deletedRow = rows.find((row) => String(row.id) === String(id));
       if (config.tableName === TABLES.ordenhas) {
-        await removeProductionStockMovement(id, dataContext);
+        if (session?.access_token) {
+          const response = await fetch("/api/production/delete", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({ productionId: id })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result?.ok === false) {
+            throw new Error(result?.error || "Não foi possível excluir o registro de produção agora.");
+          }
+        } else {
+          await removeProductionStockMovement(id, dataContext);
+          await deleteRecord(config.tableName, id);
+        }
+      } else {
+        await deleteRecord(config.tableName, id);
       }
-      await deleteRecord(config.tableName, id);
       if (config.tableName === TABLES.eventosAnimal && deletedRow) {
         await removeEventCostFromFinance(id, dataContext);
       }
