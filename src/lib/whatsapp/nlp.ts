@@ -290,6 +290,7 @@ function removeValueAndCommonWords(value: string) {
     .replace(new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)?\\b`, "gi"), "")
     .replace(/\b(?:zero|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|mil|reais|real)\b/gi, "")
     .replace(/^\s*(?:por|de|do|da|com|no|na|o|a|um|uma|pra|para)\s+/gi, " ")
+    .replace(/\b(?:por|de|do|da|com|no|na)\s*$/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -657,9 +658,13 @@ const batchableIntents = new Set<RanchoIntent>([
 ]);
 
 function splitBatchSegments(text: string) {
+  const nextActionStart = "(?:\\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\\d|[a-z]*\\d[a-z0-9-]*\\s+(?:\\d|deu|produziu|fez|pariu|morreu)|[a-zÃ-ÿ]+(?:\\s+[a-zÃ-ÿ]+){0,3}\\s+por\\s+\\d|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu)";
+  const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é|Ã©)m|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
+
   return cleanAnswer(String(text || ""))
     .split(/[\n;]+|,(?=\s*\S)/g)
-    .flatMap((chunk) => chunk.split(/\s+\b(?:e|tamb(?:e|é|Ã©)m|mais)\b\s+(?=(?:\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\d|[a-z]*\d[a-z0-9-]*\s+(?:\d|deu|produziu|fez|pariu|morreu)|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu))/i))
+    .flatMap((chunk) => chunk.split(connectorPattern))
+    .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=\d)/i))
     .map((chunk) => chunk.trim())
     .filter(Boolean);
 }
@@ -722,7 +727,8 @@ function parseBatchMessage(text: string): ParsedRanchoMessage | null {
   for (const segment of segments) {
     const parsed = parseSingleRanchoMessage(segment);
     const contextual: ParsedRanchoMessage | null = previous ? parseBatchSegmentWithContext(segment, previous) : null;
-    const next: ParsedRanchoMessage | null = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length ? parsed : contextual;
+    const directIsReadyAction = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length && batchableIntents.has(parsed.tipo);
+    const next: ParsedRanchoMessage | null = directIsReadyAction ? parsed : contextual;
     if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
     registros.push(next);
     previous = next;

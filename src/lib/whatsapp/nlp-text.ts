@@ -3,7 +3,7 @@ export function normalizeRanchoText(value: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\be\s*(?=(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|b-\d|\d))/g, "e ")
+    .replace(/\be\s*(?=(?:a\s+)?(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco)|b-\d|\d)/g, "e ")
     .replace(/[!?;()[\]{}]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -11,7 +11,7 @@ export function normalizeRanchoText(value: string) {
 
 export function cleanAnswer(value: string) {
   return value
-    .replace(/\be\s*(?=(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|B-\d|\d))/gi, "e ")
+    .replace(/\be\s*(?=(?:a\s+)?(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco)|B-\d|\d)/gi, "e ")
     .replace(/\s+/g, " ")
     .trim();
 }

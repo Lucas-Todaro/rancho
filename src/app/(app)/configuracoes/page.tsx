@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { CPFInput, WhatsAppInput } from "@/components/ui/MaskedInputs";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { listRecords, updateRecord } from "@/services/crud";
+import { deactivateOwnerWhatsAppUser, syncOwnerWhatsAppUser } from "@/services/whatsapp-users";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
 import { getPasswordResetRedirectUrl } from "@/lib/app-url";
@@ -267,12 +268,20 @@ export default function ConfiguracoesPage() {
     try {
       if (userDraft.telefone && !isValidBrazilianPhone(userDraft.telefone)) throw new Error("Informe um WhatsApp válido com DDD.");
       if (userDraft.cpf && !isValidCPF(userDraft.cpf)) throw new Error("Informe um CPF válido ou deixe o campo em branco.");
-      await updateRecord(TABLES.usuarios, user.id, {
+      const normalizedPhone = stripBrazilCountryCode(userDraft.telefone) || null;
+      const savedUser = await updateRecord(TABLES.usuarios, user.id, {
         nome: userDraft.nome,
-        telefone: stripBrazilCountryCode(userDraft.telefone) || null,
+        telefone: normalizedPhone,
         cpf: onlyDigits(userDraft.cpf) || null,
         cargo: userDraft.cargo || null
       });
+      const nextUser = { ...user, ...savedUser, nome: userDraft.nome, telefone: normalizedPhone };
+      const ownerContext = { ...profile, fazendaId: profile?.fazenda_id, usuarioId: profile?.id };
+      if (normalizedPhone) {
+        await syncOwnerWhatsAppUser(nextUser, ownerContext);
+      } else {
+        await deactivateOwnerWhatsAppUser(nextUser, ownerContext);
+      }
       await reloadProfile();
       await load();
       showSuccess("Perfil salvo com sucesso.");

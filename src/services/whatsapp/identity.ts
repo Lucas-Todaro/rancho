@@ -12,7 +12,7 @@ export type WhatsAppOwner = {
   telefone_e164: string;
   nome_exibicao?: string | null;
   papel_bot?: string | null;
-  source: "whatsapp_usuarios";
+  source: "whatsapp_usuarios" | "usuarios";
 };
 
 export type ResolveWhatsAppOwnerResult = {
@@ -47,6 +47,19 @@ async function findWhatsAppUsers(supabase: SupabaseAdmin, incomingCandidates: Se
 
   if (error) throw new Error(error.message);
   return (data || []).filter((row) => matchesIncomingPhone(row.telefone_e164, incomingCandidates));
+}
+
+async function findOwnerUsers(supabase: SupabaseAdmin, incomingCandidates: Set<string>) {
+  const { data, error } = await supabase
+    .from(TABLES.usuarios)
+    .select("id,fazenda_id,nome,telefone,papel,ativo")
+    .limit(2000);
+
+  if (error) throw new Error(error.message);
+  return (data || []).filter((row) => {
+    const role = String(row.papel || "");
+    return ["dono", "admin"].includes(role) && matchesIncomingPhone(row.telefone, incomingCandidates);
+  });
 }
 
 export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string): Promise<ResolveWhatsAppOwnerResult> {
@@ -95,6 +108,54 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
       source: "whatsapp_usuarios",
       userFound: true,
       ranchoFound: whatsappUsers.some((row) => Boolean(row.fazenda_id)),
+      reason: blockedReason
+    });
+
+    return { owner: null, reason: blockedReason };
+  }
+
+  const ownerUsers = await findOwnerUsers(supabase, incomingCandidates);
+  if (ownerUsers.length > 0) {
+    let blockedReason: ResolveWhatsAppOwnerResult["reason"] = "user_inactive";
+
+    for (const user of ownerUsers) {
+      if (user.ativo === false) continue;
+
+      const farmError = await assertActiveFarm(supabase, user.fazenda_id as string | null);
+      if (farmError) {
+        blockedReason = farmError;
+        continue;
+      }
+
+      const owner = {
+        fazenda_id: user.fazenda_id as string,
+        whatsapp_usuario_id: null,
+        funcionario_id: null,
+        usuario_id: user.id as string,
+        telefone_e164: normalizeWhatsappNumber(user.telefone as string) || normalizedPhone,
+        nome_exibicao: user.nome as string | null,
+        papel_bot: "admin",
+        source: "usuarios" as const
+      };
+
+      console.log("[BOT AUTH]", {
+        fromRaw: from,
+        normalized: normalizedPhone,
+        source: "usuarios",
+        userFound: true,
+        ranchoFound: Boolean(owner.fazenda_id),
+        reason: "ok"
+      });
+
+      return { owner };
+    }
+
+    console.log("[BOT AUTH]", {
+      fromRaw: from,
+      normalized: normalizedPhone,
+      source: "usuarios",
+      userFound: true,
+      ranchoFound: ownerUsers.some((row) => Boolean(row.fazenda_id)),
       reason: blockedReason
     });
 

@@ -95,6 +95,7 @@ const mockUsers = [
 
 const BOT_TEST_TABLES = {
   fazendas: "fazendas",
+  usuarios: "usuarios",
   animais: "animais",
   eventosAnimal: "eventos_animal",
   ordenhas: "ordenhas",
@@ -169,6 +170,24 @@ function createBotTestTables() {
     ],
     [BOT_TEST_TABLES.whatsappSessoes]: [],
     [BOT_TEST_TABLES.whatsappMensagens]: [],
+    [BOT_TEST_TABLES.usuarios]: [
+      {
+        id: "user-admin",
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: "Dono",
+        telefone: BOT_TEST_ADMIN_PHONE.slice(2),
+        papel: "dono",
+        ativo: true
+      },
+      {
+        id: "user-worker",
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: "Usuario comum",
+        telefone: "5583777777777",
+        papel: "funcionario",
+        ativo: true
+      }
+    ],
     [BOT_TEST_TABLES.animais]: mockAnimals.map((animal, index) => ({
       ...animal,
       fazenda_id: BOT_TEST_FARM_ID,
@@ -626,6 +645,7 @@ function assertExpected(test, parsed) {
       if ("quantidade" in detail && Number(registroDados.quantidade) !== Number(detail.quantidade)) failures.push(`registro ${index + 1}: quantidade esperada ${detail.quantidade}, recebida ${registroDados.quantidade}`);
       if (detail.unidade && normalize(registroDados.unidade) !== normalize(detail.unidade)) failures.push(`registro ${index + 1}: unidade esperada ${detail.unidade}, recebida ${registroDados.unidade}`);
       if ("valor" in detail && Number(registroDados.valor) !== Number(detail.valor)) failures.push(`registro ${index + 1}: valor esperado ${detail.valor}, recebido ${registroDados.valor}`);
+      if (detail.descricao && !normalize(registroDados.descricao).includes(normalize(detail.descricao))) failures.push(`registro ${index + 1}: descriÃ§Ã£o esperada ${detail.descricao}, recebida ${registroDados.descricao}`);
     });
   }
 
@@ -753,6 +773,11 @@ const extraTests = [
   { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } },
   { phrase: "vaca B-002 deu 32 litros e vaca 15 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"] } },
   { phrase: "usei 2 kg de milho e tirei 1 fardo de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"] } },
+  { phrase: "vaca 2 deu 15 litros e a 1 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }] } },
+  { phrase: "vaca 2 deu 15 litros e vaca 1 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }] } },
+  { phrase: "vaca 2 deu 15 litros e a vaca 1 tambem", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 30, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }] } },
+  { phrase: "vaca 2 15 litros, 1 20, B-002 18", expected: { tipo: "LOTE_REGISTROS", registros: 3, registroTipos: ["PRODUCAO_LEITE"], total_litros: 53, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }, { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 18 }] } },
+  { phrase: "ordenha: vaca 2 15, vaca 1 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }] } },
   { phrase: "vaca 1 deu 15 litros evaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
   { phrase: "vaca 1 deu 15 litros e vaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
   { phrase: "vaca 1 deu 14 litros e vaca 2 15", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
@@ -760,12 +785,19 @@ const extraTests = [
   { phrase: "B-002 deu 30 litros, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
   { phrase: "ordenha: B-002 30, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
   { phrase: "vaca 2 pariu e B-002 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PARTO", "PRODUCAO_LEITE"], registroDetalhes: [{ tipo: "PARTO", animalAny: ["2", "002"] }, { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 20 }] } },
+  { phrase: "bota 20kg de racao de boi e 10kg de milho no estoque", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_ENTRADA"], registroDetalhes: [{ tipo: "ESTOQUE_ENTRADA", item: "Racao de boi", quantidade: 20, unidade: "kg" }, { tipo: "ESTOQUE_ENTRADA", item: "Milho", quantidade: 10, unidade: "kg" }] } },
+  { phrase: "tira 10kg de milho e 5kg de sal", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"], registroDetalhes: [{ tipo: "ESTOQUE_SAIDA", item: "Milho", quantidade: 10, unidade: "kg" }, { tipo: "ESTOQUE_SAIDA", item: "Sal mineral", quantidade: 5, unidade: "kg" }] } },
+  { phrase: "paguei 300 de racao e 120 de remedio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["DESPESA"], registroDetalhes: [{ tipo: "DESPESA", valor: 300, descricao: "racao" }, { tipo: "DESPESA", valor: 120, descricao: "remedio" }] } },
+  { phrase: "recebi 500 do leite e 1200 do bezerro", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["RECEITA_VENDA"], registroDetalhes: [{ tipo: "RECEITA_VENDA", valor: 500, descricao: "leite" }, { tipo: "RECEITA_VENDA", valor: 1200, descricao: "bezerro" }] } },
+  { phrase: "vendi boi por 15 mil e leite por 500", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["RECEITA_VENDA"], registroDetalhes: [{ tipo: "RECEITA_VENDA", valor: 15000, descricao: "boi" }, { tipo: "RECEITA_VENDA", valor: 500, descricao: "leite" }] } },
   { phrase: "usei 20kg de raÃ§Ã£o e 2 doses de aftosa", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"], registroDetalhes: [{ tipo: "ESTOQUE_SAIDA", item: "Ração", quantidade: 20, unidade: "kg" }, { tipo: "ESTOQUE_SAIDA", item: "Aftosa", quantidade: 2, unidade: "dose" }] } },
   { phrase: "chegou 10 sacos de raÃ§Ã£o e 5 fardos de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_ENTRADA"], registroDetalhes: [{ tipo: "ESTOQUE_ENTRADA", item: "Ração", quantidade: 10, unidade: "saco" }, { tipo: "ESTOQUE_ENTRADA", item: "Feno", quantidade: 5, unidade: "fardo" }] } },
   { phrase: "B-002 morreu e paguei 300 de remÃ©dio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["MORTE", "DESPESA"], registroDetalhes: [{ tipo: "MORTE", animal: "B-002" }, { tipo: "DESPESA", valor: 300 }] } },
   { phrase: "vaca 1 deu 14 litros e vaca 2 15 no tanque", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
+  { phrase: "vaca 2 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 } },
   { phrase: "vaca 1 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 } },
   { phrase: "vaca 3 tomou vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" } },
+  { phrase: "racao de boi", expected: { tipo: "DESCONHECIDO" } },
   { phrase: "raÃ§Ã£o de boi", expected: { tipo: "DESCONHECIDO" } },
   { phrase: "vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", produto: "raiva", missing: ["animal_codigo"] } }
 ];
@@ -977,6 +1009,22 @@ const botConversationTests = [
     ]
   },
   {
+    name: "dono com telefone no perfil pode usar bot mesmo sem whatsapp_usuarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    whatsappUsers: [],
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "quanto leite hoje",
+        expected: {
+          intent: "CONSULTA_PRODUCAO",
+          estadoNovo: "livre",
+          responseIncludes: "12"
+        }
+      }
+    ]
+  },
+  {
     name: "consulta usa base mockada sem abrir confirmacao",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,
@@ -1142,6 +1190,9 @@ function assertProcessResult(expected = {}, result) {
 
 async function runConversationTest(test, index) {
   const supabase = new BotTestSupabase();
+  if (test.whatsappUsers) {
+    supabase.tables[BOT_TEST_TABLES.whatsappUsuarios] = clone(test.whatsappUsers);
+  }
   if (test.stockItems) {
     supabase.tables[BOT_TEST_TABLES.estoqueItens] = test.stockItems.map((item, itemIndex) => ({
       id: item.id || `stock-custom-${itemIndex + 1}`,

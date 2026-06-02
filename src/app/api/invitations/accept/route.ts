@@ -1,12 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
+import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import { findAuthUserByEmail, hashInvitationToken, invitationError } from "@/lib/server/invitations";
 
 export const dynamic = "force-dynamic";
 
 function asText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isValidBotOwnerPhone(value: string | number | null | undefined) {
+  const phone = normalizeWhatsappNumber(value);
+  if (phone.length !== 13 || !phone.startsWith("55")) return false;
+  const national = phone.slice(2);
+  const ddd = Number(national.slice(0, 2));
+  return ddd >= 11 && ddd <= 99 && national[2] === "9" && !/^(\d)\1+$/.test(national);
+}
+
+async function syncOwnerWhatsAppUser(input: {
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+  fazendaId: string;
+  usuarioId: string;
+  nome: string;
+  telefone?: string | null;
+}) {
+  const phone = normalizeWhatsappNumber(input.telefone);
+  if (!isValidBotOwnerPhone(phone)) return;
+
+  const payload = {
+    fazenda_id: input.fazendaId,
+    telefone_e164: phone,
+    usuario_id: input.usuarioId,
+    funcionario_id: null,
+    nome_exibicao: input.nome || "Dono",
+    papel_bot: "admin",
+    ativo: true
+  };
+
+  const [{ data: byUser, error: byUserError }, { data: byPhone, error: byPhoneError }] = await Promise.all([
+    input.supabase
+      .from(TABLES.whatsappUsuarios)
+      .select("id,usuario_id,telefone_e164")
+      .eq("fazenda_id", input.fazendaId)
+      .eq("usuario_id", input.usuarioId),
+    input.supabase
+      .from(TABLES.whatsappUsuarios)
+      .select("id,usuario_id,telefone_e164")
+      .eq("fazenda_id", input.fazendaId)
+      .eq("telefone_e164", phone)
+  ]);
+
+  if (byUserError) throw new Error(byUserError.message);
+  if (byPhoneError) throw new Error(byPhoneError.message);
+
+  const rows = [...(byUser || []), ...(byPhone || [])].filter((row, index, allRows) => {
+    return row.id && allRows.findIndex((item) => item.id === row.id) === index;
+  });
+  const target = rows.find((row) => row.usuario_id === input.usuarioId) || rows.find((row) => whatsappNumbersMatch(row.telefone_e164, phone));
+
+  if (target?.id) {
+    const { error } = await input.supabase.from(TABLES.whatsappUsuarios).update(payload).eq("id", target.id);
+    if (error) throw new Error(error.message);
+    await Promise.all(rows
+      .filter((row) => row.id !== target.id)
+      .map((row) => input.supabase.from(TABLES.whatsappUsuarios).update({ ativo: false }).eq("id", row.id)));
+    return;
+  }
+
+  const { error } = await input.supabase.from(TABLES.whatsappUsuarios).insert(payload);
+  if (error) throw new Error(error.message);
 }
 
 export async function POST(request: NextRequest) {
@@ -41,6 +104,14 @@ export async function POST(request: NextRequest) {
     if (invite.status !== "pendente") return invitationError("Convite inválido.", 400);
 
     const finalName = nome || invite.nome || invite.email;
+    const { data: farm, error: farmError } = await supabase
+      .from(TABLES.fazendas)
+      .select("id,dono_telefone")
+      .eq("id", invite.fazenda_id)
+      .maybeSingle();
+
+    if (farmError) throw new Error(farmError.message);
+
     let authUser = await findAuthUserByEmail(supabase, invite.email);
 
     if (authUser) {
@@ -80,6 +151,7 @@ export async function POST(request: NextRequest) {
       id: authUser.id,
       fazenda_id: invite.fazenda_id,
       nome: finalName,
+      telefone: isValidBotOwnerPhone(farm?.dono_telefone) ? normalizeWhatsappNumber(farm?.dono_telefone).slice(2) : undefined,
       papel: invite.papel,
       ativo: true
     };
@@ -89,6 +161,16 @@ export async function POST(request: NextRequest) {
       .upsert(profilePayload, { onConflict: "id" });
 
     if (profileError) throw new Error(profileError.message);
+
+    if (invite.papel === "dono") {
+      await syncOwnerWhatsAppUser({
+        supabase,
+        fazendaId: invite.fazenda_id,
+        usuarioId: authUser.id,
+        nome: finalName,
+        telefone: farm?.dono_telefone as string | null | undefined
+      });
+    }
 
     if (invite.funcionario_id) {
       const { error: employeeError } = await supabase
