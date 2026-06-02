@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+﻿import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
@@ -93,7 +93,18 @@ const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "refazer", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
-const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["CONSULTA_PRODUCAO", "CONSULTA_FINANCEIRO", "CONSULTA_ESTOQUE", "CONSULTA_FUNCIONARIO", "AJUDA"]);
+const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "CONSULTA_PRODUCAO",
+  "CONSULTA_PRODUCAO_HOJE",
+  "CONSULTA_PRODUCAO_ANIMAL",
+  "CONSULTA_FINANCEIRO",
+  "CONSULTA_ESTOQUE",
+  "CONSULTA_ESTOQUE_ITEM",
+  "CONSULTA_ESTOQUE_GERAL",
+  "CONSULTA_FUNCIONARIO",
+  "CONSULTA_REGISTROS_HOJE",
+  "AJUDA"
+]);
 const ANIMAL_RECORD_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"]);
 
 function nowIso() {
@@ -144,6 +155,31 @@ function currentMonthRange() {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+function currentWeekRange() {
+  const now = new Date();
+  const start = new Date(now);
+  const day = start.getDay();
+  const offset = day === 0 ?-6 : 1 - day;
+  start.setDate(start.getDate() + offset);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function periodRange(period?: string) {
+  if (period === "semana") return currentWeekRange();
+  if (period === "mes") return currentMonthRange();
+  return dayRange(period);
+}
+
+function periodLabel(period?: string) {
+  if (period === "semana") return "esta semana";
+  if (period === "mes") return "este mês";
+  if (period === "ontem") return "ontem";
+  return "hoje";
+}
+
 function formatMoney(value: number | string | null | undefined) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
 }
@@ -157,7 +193,7 @@ function formatStockAmount(quantity: number | string | null | undefined, unit: s
 }
 
 function maskPhone(value: string) {
-  return value.length > 4 ? `***${value.slice(-4)}` : "***";
+  return value.length > 4 ?`***${value.slice(-4)}` : "***";
 }
 
 function isBotAdmin(owner: WhatsAppOwner) {
@@ -205,8 +241,8 @@ function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
     item_estoque_encontrado: Boolean(found?.row && !found.ambiguousRows?.length && found.score >= 0.86),
     item_id: found?.row?.id || null,
     status_resolucao: found?.resolutionStatus || "not_found",
-    score: typeof found?.score === "number" ? Number(found.score.toFixed(3)) : 0,
-    motivo_nao_resolvido: found?.row ? null : found?.reason || "item_nao_encontrado"
+    score: typeof found?.score === "number" ?Number(found.score.toFixed(3)) : 0,
+    motivo_nao_resolvido: found?.row ?null : found?.reason || "item_nao_encontrado"
   };
 }
 
@@ -233,7 +269,7 @@ function botAnimalCheckLog(owner: WhatsAppOwner, parsed: ParsedRanchoMessage, an
     died_at: animalDeathDate(animal) || null,
     canRegister,
     intent: parsed.tipo,
-    motivo_bloqueio: canRegister ? null : "animal_morto_ou_inativo"
+    motivo_bloqueio: canRegister ?null : "animal_morto_ou_inativo"
   });
 }
 
@@ -265,19 +301,19 @@ function milkStockStatusText(parsed: ParsedRanchoMessage) {
   if (!stock || !dados.estoque_leite_detectado) return "";
 
   const total = formatNumber(Number(stock.total_litros || dados.total_litros || 0), " L");
-  const destino = stock.destino_detectado ? `\nDestino detectado: ${stock.destino_detectado}.` : "";
+  const destino = stock.destino_detectado ?`\nDestino detectado: ${stock.destino_detectado}.` : "";
 
   if (stock.status_resolucao === "matched") {
-    return `\n\nEstoque de leite detectado: ${total}.${destino}\nItem compatÃ­vel: ${stock.item_leite_resolvido} (${stock.unidade || "unidade nÃ£o informada"}).\nA entrada no estoque ficarÃ¡ pendente; vou registrar apenas a produÃ§Ã£o.`;
+    return `\n\nEstoque de leite detectado: ${total}.${destino}\nItem compatível: ${stock.item_leite_resolvido} (${stock.unidade || "unidade não informada"}).\nA entrada no estoque ficará pendente; vou registrar apenas a produção.`;
   }
 
   if (stock.status_resolucao === "ambiguous") {
-    const options = Array.isArray(stock.opcoes) ? stock.opcoes as AnyRecord[] : [];
-    const lines = options.slice(0, 5).map((option, index) => `${index + 1}. ${option.nome} (${option.unidade || "unidade nÃ£o informada"})`).join("\n");
-    return `\n\nEncontrei mais de um item de estoque compatÃ­vel com leite (${total}).${destino}\n${lines}\nNÃ£o vou movimentar estoque automaticamente; vou registrar apenas a produÃ§Ã£o.`;
+    const options = Array.isArray(stock.opcoes) ?stock.opcoes as AnyRecord[] : [];
+    const lines = options.slice(0, 5).map((option, index) => `${index + 1}. ${option.nome} (${option.unidade || "unidade não informada"})`).join("\n");
+    return `\n\nEncontrei mais de um item de estoque compatível com leite (${total}).${destino}\n${lines}\nNão vou movimentar estoque automaticamente; vou registrar apenas a produção.`;
   }
 
-  return `\n\nNÃ£o encontrei item de estoque compatÃ­vel com leite (${total}).${destino}\nVou registrar apenas a produÃ§Ã£o.`;
+  return `\n\nNão encontrei item de estoque compatível com leite (${total}).${destino}\nVou registrar apenas a produção.`;
 }
 
 function milkStockAfterSaveText(parsed: ParsedRanchoMessage) {
@@ -285,24 +321,24 @@ function milkStockAfterSaveText(parsed: ParsedRanchoMessage) {
   if (!stock) return "";
 
   if (stock.status_resolucao === "matched") {
-    return `\nEstoque de leite: item compatÃ­vel identificado (${stock.item_leite_resolvido}), mas nenhuma entrada de estoque foi movimentada automaticamente.`;
+    return `\nEstoque de leite: item compatível identificado (${stock.item_leite_resolvido}), mas nenhuma entrada de estoque foi movimentada automaticamente.`;
   }
 
   if (stock.status_resolucao === "ambiguous") {
-    return "\nEstoque de leite: encontrei mÃºltiplos itens compatÃ­veis e nÃ£o movimentei estoque automaticamente.";
+    return "\nEstoque de leite: encontrei múltiplos itens compatíveis e não movimentei estoque automaticamente.";
   }
 
-  return "\nNÃ£o encontrei item de estoque compatÃ­vel com leite. Registrei apenas a produÃ§Ã£o.";
+  return "\nNão encontrei item de estoque compatível com leite. Registrei apenas a produção.";
 }
 
 function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "LOTE_REGISTROS") {
-    const registros = Array.isArray(parsed.dados?.registros) ? parsed.dados.registros as ParsedRanchoMessage[] : [];
+    const registros = Array.isArray(parsed.dados?.registros) ?parsed.dados.registros as ParsedRanchoMessage[] : [];
     const lines = registros
       .slice(0, 6)
       .map((registro, index) => `${index + 1}. ${registro.resumo}`)
       .join("\n");
-    const extra = registros.length > 6 ? `\n...e mais ${registros.length - 6} registro(s).` : "";
+    const extra = registros.length > 6 ?`\n...e mais ${registros.length - 6} registro(s).` : "";
     return `Entendi ${registros.length} registros:\n${lines}${extra}${milkStockStatusText(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
   }
 
@@ -310,18 +346,18 @@ function confirmationText(parsed: ParsedRanchoMessage) {
 }
 
 function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
-  if (!parsed) return "ConfirmaÃ§Ã£o recebida no modo teste. Nenhum registro real foi salvo.";
+  if (!parsed) return "Confirmação recebida no modo teste. Nenhum registro real foi salvo.";
 
   if (parsed.tipo === "LOTE_REGISTROS") {
-    const total = Number(parsed.dados?.total_registros || (Array.isArray(parsed.dados?.registros) ? parsed.dados.registros.length : 0));
+    const total = Number(parsed.dados?.total_registros || (Array.isArray(parsed.dados?.registros) ?parsed.dados.registros.length : 0));
     const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
     const stockDebug = stock
       ? `\nDebug estoque leite:\n- total_litros: ${stock.total_litros ?? parsed.dados?.total_litros ?? null}\n- destino_detectado: ${stock.destino_detectado || "nenhum"}\n- item_leite_resolvido: ${stock.item_leite_resolvido || "nenhum"}\n- item_id: ${stock.item_id || "nenhum"}\n- origem: ${stock.origem || "desconhecida"}\n- estoque_movimentar: ${stock.estoque_movimentar ? "sim" : "nao"}`
       : "";
-    return `SimulaÃ§Ã£o concluÃ­da: ${total} registros seriam salvos. Nenhum registro real foi salvo.${stockDebug}`;
+    return `Simulação concluída: ${total} registros seriam salvos. Nenhum registro real foi salvo.${stockDebug}`;
   }
 
-  return `ConfirmaÃ§Ã£o recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`;
+  return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`;
 }
 
 function missingText(parsed: ParsedRanchoMessage) {
@@ -352,9 +388,14 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
     CONSULTA_PRODUCAO: "consulta de produção",
+    CONSULTA_PRODUCAO_HOJE: "consulta de produção",
+    CONSULTA_PRODUCAO_ANIMAL: "consulta de produção por animal",
     CONSULTA_FINANCEIRO: "consulta financeira",
     CONSULTA_ESTOQUE: "consulta de estoque",
+    CONSULTA_ESTOQUE_ITEM: "consulta de estoque",
+    CONSULTA_ESTOQUE_GERAL: "consulta de estoque",
     CONSULTA_FUNCIONARIO: "consulta de funcionário",
+    CONSULTA_REGISTROS_HOJE: "consulta de registros",
     ORDEM_SERVICO: "ordem de serviço",
     LOTE_REGISTROS: "registros em lote",
     AJUDA: "ajuda",
@@ -375,7 +416,7 @@ async function saveWhatsAppMessage(
   }
 ) {
   const waMessageId = input.direction === "entrada"
-    ? input.messageSid || `in-${crypto.randomUUID()}`
+    ?input.messageSid || `in-${crypto.randomUUID()}`
     : `out-${input.messageSid || crypto.randomUUID()}-${Date.now()}`;
 
   const { error } = await supabase.from(TABLES.whatsappMensagens).insert({
@@ -403,11 +444,11 @@ async function getSession(supabase: SupabaseAdmin, owner: WhatsAppOwner): Promis
 
   if (error) throw new Error(error.message);
 
-  const expired = data?.expira_em ? new Date(data.expira_em as string).getTime() < Date.now() : false;
+  const expired = data?.expira_em ?new Date(data.expira_em as string).getTime() < Date.now() : false;
   if (!data || expired) return { etapa: "livre", dados: {} };
 
   const etapa = ["aguardando_dado", "aguardando_confirmacao"].includes(String(data.etapa))
-    ? String(data.etapa) as BotSession["etapa"]
+    ?String(data.etapa) as BotSession["etapa"]
     : "livre";
 
   return {
@@ -421,7 +462,7 @@ async function saveSession(supabase: SupabaseAdmin, owner: WhatsAppOwner, sessio
     fazenda_id: owner.fazenda_id,
     whatsapp_usuario_id: owner.whatsapp_usuario_id,
     telefone_e164: owner.telefone_e164,
-    fluxo: session.etapa === "livre" ? null : "nlp_local",
+    fluxo: session.etapa === "livre" ?null : "nlp_local",
     etapa: session.etapa,
     dados: session.dados || {},
     status: "ativa",
@@ -459,7 +500,7 @@ function botNotificationFor(table: string, record: AnyRecord, owner: WhatsAppOwn
     return {
       tipo: "producao_bot",
       titulo: "Produção de leite cadastrada",
-      mensagem: `${actor} cadastrou produção de leite${record.litros ? ` de ${formatNumber(record.litros, " L")}` : ""}.`
+      mensagem: `${actor} cadastrou produção de leite${record.litros ?` de ${formatNumber(record.litros, " L")}` : ""}.`
     };
   }
 
@@ -472,10 +513,10 @@ function botNotificationFor(table: string, record: AnyRecord, owner: WhatsAppOwn
   }
 
   if (table === TABLES.transacoesFinanceiras) {
-    const type = record.tipo === "saida" ? "saída" : "entrada";
+    const type = record.tipo === "saida" ?"saída" : "entrada";
     return {
-      tipo: record.tipo === "saida" ? "financeiro_saida_bot" : "financeiro_entrada_bot",
-      titulo: `${type === "saída" ? "Saída" : "Entrada"} financeira cadastrada`,
+      tipo: record.tipo === "saida" ?"financeiro_saida_bot" : "financeiro_entrada_bot",
+      titulo: `${type === "saída" ?"Saída" : "Entrada"} financeira cadastrada`,
       mensagem: `${actor} registrou uma ${type} financeira de ${formatMoney(record.valor)}.`
     };
   }
@@ -490,9 +531,9 @@ function botNotificationFor(table: string, record: AnyRecord, owner: WhatsAppOwn
 
   if (table === TABLES.estoqueMovimentacoes) {
     return {
-      tipo: record.tipo === "saida" ? "estoque_baixa_bot" : "estoque_entrada_bot",
-      titulo: record.tipo === "saida" ? "Baixa de estoque registrada" : "Entrada de estoque registrada",
-      mensagem: `${actor} ${record.tipo === "saida" ? "deu baixa em item do estoque" : "adicionou item ao estoque"}.`
+      tipo: record.tipo === "saida" ?"estoque_baixa_bot" : "estoque_entrada_bot",
+      titulo: record.tipo === "saida" ?"Baixa de estoque registrada" : "Entrada de estoque registrada",
+      mensagem: `${actor} ${record.tipo === "saida" ?"deu baixa em item do estoque" : "adicionou item ao estoque"}.`
     };
   }
 
@@ -568,7 +609,7 @@ function matchKey(value: unknown) {
 
 function numericKey(value: unknown) {
   const digits = String(value || "").replace(/\D/g, "");
-  return digits ? digits.replace(/^0+/, "") || "0" : "";
+  return digits ?digits.replace(/^0+/, "") || "0" : "";
 }
 
 function levenshtein(left: string, right: string) {
@@ -577,7 +618,7 @@ function levenshtein(left: string, right: string) {
     let previous = i;
     for (let j = 1; j <= right.length; j += 1) {
       const next = left[i - 1] === right[j - 1]
-        ? costs[j - 1]
+        ?costs[j - 1]
         : Math.min(costs[j - 1], previous, costs[j]) + 1;
       costs[j - 1] = previous;
       previous = next;
@@ -627,7 +668,7 @@ async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: s
     row: resolved.row,
     exact: resolved.status === "matched" && resolved.exact,
     score: resolved.score,
-    ambiguousRows: resolved.status === "ambiguous" ? resolved.rows : undefined,
+    ambiguousRows: resolved.status === "ambiguous" ?resolved.rows : undefined,
     resolutionStatus: resolved.status
   };
 }
@@ -655,26 +696,26 @@ async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name
   const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
   const resolved = resolveStockItem(name, activeRows);
 
-  const candidateRows = (resolved.rows?.length ? resolved.rows : resolved.row ? [resolved.row] : activeRows.slice(0, 8)) as AnyRecord[];
+  const candidateRows = (resolved.rows?.length ?resolved.rows : resolved.row ?[resolved.row] : activeRows.slice(0, 8)) as AnyRecord[];
   const candidateNames = candidateRows
     .map((row) => String(row.nome || row.id || ""))
     .filter(Boolean)
     .slice(0, 8);
   const reason = !activeRows.length
-    ? "catalogo_vazio"
+    ?"catalogo_vazio"
     : resolved.status === "not_found"
-      ? "sem_match_seguro"
+      ?"sem_match_seguro"
       : resolved.status === "ambiguous"
-        ? "multiplos_itens_parecidos"
+        ?"multiplos_itens_parecidos"
         : resolved.status === "suggestion"
-          ? "match_medio_precisa_confirmacao"
+          ?"match_medio_precisa_confirmacao"
           : "match_seguro";
 
   return {
     row: resolved.row,
     exact: resolved.status === "matched" && resolved.exact,
     score: resolved.score,
-    ambiguousRows: resolved.status === "ambiguous" ? resolved.rows : undefined,
+    ambiguousRows: resolved.status === "ambiguous" ?resolved.rows : undefined,
     resolutionStatus: resolved.status,
     catalogSource: "banco_real",
     catalogCount: activeRows.length,
@@ -731,7 +772,7 @@ async function resolveMilkStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwne
     options: [],
     catalogSource: "banco_real",
     catalogCount: activeRows.length,
-    reason: activeRows.length ? "sem_item_leite_em_litros" : "catalogo_vazio"
+    reason: activeRows.length ?"sem_item_leite_em_litros" : "catalogo_vazio"
   };
 }
 
@@ -756,7 +797,7 @@ function milkStockDebug(resolution: MilkStockResolution, totalLitros: number, de
     estoque_movimentar: false,
     acao_pendente_estoque: resolution.status === "matched",
     todo_salvar_estoque: resolution.status === "matched"
-      ? "TODO: salvar entrada consolidada de leite usando service server-side seguro de estoque."
+      ?"TODO: salvar entrada consolidada de leite usando service server-side seguro de estoque."
       : null
   };
 }
@@ -818,7 +859,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   let changed = false;
 
   if (parsed.tipo === "LOTE_REGISTROS") {
-    const registros = Array.isArray(dados.registros) ? dados.registros as ParsedRanchoMessage[] : [];
+    const registros = Array.isArray(dados.registros) ?dados.registros as ParsedRanchoMessage[] : [];
     const enrichedRegistros: ParsedRanchoMessage[] = [];
 
     for (const registro of registros) {
@@ -834,7 +875,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
     if (productionRecords.length > 1 && totalLitros > 0) {
       const resolution = await resolveMilkStockItem(supabase, owner);
-      const destinoDetectado = dados.tanque ? "tanque" : "producao_leite";
+      const destinoDetectado = dados.tanque ?"tanque" : "producao_leite";
       dados.total_litros = totalLitros;
       dados.estoque_leite_detectado = true;
       dados.estoque_leite = milkStockDebug(resolution, totalLitros, destinoDetectado);
@@ -891,7 +932,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
   }
 
-  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE"].includes(parsed.tipo) && dados.item_nome) {
+  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE", "CONSULTA_ESTOQUE_ITEM"].includes(parsed.tipo) && dados.item_nome) {
     const originalItemName = String(dados.item_nome);
     const found = await findStockItem(supabase, owner, originalItemName);
     const stockResolution = stockResolutionDebug(originalItemName, found);
@@ -941,14 +982,14 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
   }
 
-  return changed ? refreshRanchoMessage(parsed, dados) : parsed;
+  return changed ?refreshRanchoMessage(parsed, dados) : parsed;
 }
 
 async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
   const dados = pending.dados || {};
 
   if (pending.tipo === "LOTE_REGISTROS") {
-    const registros = Array.isArray(dados.registros) ? dados.registros as ParsedRanchoMessage[] : [];
+    const registros = Array.isArray(dados.registros) ?dados.registros as ParsedRanchoMessage[] : [];
     if (!registros.length) return { response: "Não encontrei registros válidos nesse lote. Envie novamente." };
 
     const savedTables = new Set<string>();
@@ -1058,19 +1099,19 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     if (pending.tipo === "VACINA_MEDICAMENTO") {
-      const tipo = dados.evento_tipo === "vacina" ? "vacina" : "tratamento";
+      const tipo = dados.evento_tipo === "vacina" ?"vacina" : "tratamento";
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         tipo,
         data_evento: isoFromReference(dados.data_referencia),
-        descricao: `${tipo === "vacina" ? "Vacina" : "Tratamento"} registrado via WhatsApp`,
+        descricao: `${tipo === "vacina" ?"Vacina" : "Tratamento"} registrado via WhatsApp`,
         medicamento: dados.produto,
         dose: null,
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
-      return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "vacina" ? "Vacina" : "Tratamento"} em ${animal.brinco}: ${dados.produto}.`, [TABLES.eventosAnimal]);
+      return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "vacina" ?"Vacina" : "Tratamento"} em ${animal.brinco}: ${dados.produto}.`, [TABLES.eventosAnimal]);
     }
 
     if (pending.tipo === "MORTE") {
@@ -1113,19 +1154,19 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       observacoes: "Cadastrado via WhatsApp"
     });
     const details = [
-      dados.nome ? `Nome: ${dados.nome}.` : "",
+      dados.nome ?`Nome: ${dados.nome}.` : "",
       `Brinco: ${dados.animal_codigo}.`,
-      dados.sexo ? `Sexo: ${dados.sexo}.` : "",
-      dados.fase ? `Fase: ${dados.fase}.` : "",
-      dados.raca ? `Raça: ${dados.raca}.` : "",
-      dados.lote_nome ? `Lote: ${dados.lote_nome}.` : "",
-      dados.data_nascimento ? `Nascimento: ${dados.data_nascimento}.` : ""
+      dados.sexo ?`Sexo: ${dados.sexo}.` : "",
+      dados.fase ?`Fase: ${dados.fase}.` : "",
+      dados.raca ?`Raça: ${dados.raca}.` : "",
+      dados.lote_nome ?`Lote: ${dados.lote_nome}.` : "",
+      dados.data_nascimento ?`Nascimento: ${dados.data_nascimento}.` : ""
     ].filter(Boolean).join("\n");
     return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${details}`, [TABLES.animais]);
   }
 
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {
-    const tipo = pending.tipo === "DESPESA" ? "saida" : "entrada";
+    const tipo = pending.tipo === "DESPESA" ?"saida" : "entrada";
     if (pending.tipo === "DESPESA" && dados.item_extraido) {
       botLog("stock_purchase_decision", owner, {
         currentIntent: pending.tipo,
@@ -1146,13 +1187,13 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       tipo,
       data_transacao: dateOnlyFromReference(dados.data_referencia),
       valor: Number(dados.valor),
-      categoria: dados.descricao || (tipo === "saida" ? "Despesa via WhatsApp" : "Receita via WhatsApp"),
+      categoria: dados.descricao || (tipo === "saida" ?"Despesa via WhatsApp" : "Receita via WhatsApp"),
       descricao: dados.descricao || pending.resumo,
       metodo_pagamento: "whatsapp",
       origem: "whatsapp",
       created_by: owner.usuario_id || null
     });
-    return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "saida" ? "Saída" : "Entrada"}: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
+    return realSaveResult(`Pronto, registro salvo com sucesso.\n${tipo === "saida" ?"Saída" : "Entrada"}: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
   }
 
   if (pending.tipo === "ESTOQUE_CADASTRO" || pending.tipo === "CRIAR_ITEM_ESTOQUE") {
@@ -1252,7 +1293,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       };
     }
 
-    const type = pending.tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida";
+    const type = pending.tipo === "ESTOQUE_ENTRADA" ?"entrada" : "saida";
     const current = Number(found.row.quantidade_atual || 0);
     const quantity = Number(dados.quantidade || 0);
     if (type === "saida" && quantity > current) {
@@ -1296,7 +1337,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       );
     }
 
-    return realSaveResult(`Pronto, movimentação salva com sucesso.\n${type === "entrada" ? "Entrada" : "Baixa"}: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.`, [TABLES.estoqueMovimentacoes]);
+    return realSaveResult(`Pronto, movimentação salva com sucesso.\n${type === "entrada" ?"Entrada" : "Baixa"}: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.`, [TABLES.estoqueMovimentacoes]);
   }
 
   if (pending.tipo === "CRIAR_FUNCIONARIO") {
@@ -1405,7 +1446,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       origem: "whatsapp",
       created_by: owner.usuario_id || null
     });
-    return realSaveResult(`Pronto, ponto salvo com sucesso.\n${found.row.nome}: ${dados.ponto_tipo || "entrada"}${dados.horario ? ` às ${dados.horario}` : ""}.`, [TABLES.registrosPonto]);
+    return realSaveResult(`Pronto, ponto salvo com sucesso.\n${found.row.nome}: ${dados.ponto_tipo || "entrada"}${dados.horario ?` às ${dados.horario}` : ""}.`, [TABLES.registrosPonto]);
   }
 
   if (pending.tipo === "ORDEM_SERVICO") {
@@ -1424,8 +1465,9 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
-  if (parsed.tipo === "CONSULTA_PRODUCAO") {
-    const range = parsed.dados.data_referencia === "mes" ? currentMonthRange() : dayRange(parsed.dados.data_referencia);
+  if (parsed.tipo === "CONSULTA_PRODUCAO" || parsed.tipo === "CONSULTA_PRODUCAO_HOJE") {
+    const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
+    const range = periodRange(period);
     const { data, error } = await supabase
       .from(TABLES.ordenhas)
       .select("litros")
@@ -1434,10 +1476,43 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
       .lt("ordenhado_em", range.end);
     if (error) throw new Error(error.message);
     const total = (data || []).reduce((sum, row) => sum + Number(row.litros || 0), 0);
-    return `Produção ${parsed.dados.data_referencia === "mes" ? "do mês" : "de hoje"}: ${formatNumber(total, " L")} em ${(data || []).length} registro(s).`;
+    const count = (data || []).length;
+    parsed.dados.consulta_executada = "producao";
+    parsed.dados.resultado = { total_litros: total, registros: count, periodo: period };
+    if (!count) return `Ainda não há produção de leite registrada ${periodLabel(period)}.`;
+    return `${period === "hoje" ?"Hoje" : periodLabel(period)} foram registrados ${formatNumber(total)} litros de leite em ${count} ${count === 1 ?"registro" : "registros"}.`;
+  }
+
+  if (parsed.tipo === "CONSULTA_PRODUCAO_ANIMAL") {
+    const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
+    const animalReference = String(parsed.dados.animal_codigo || "").trim();
+    const found = animalReference ?await findAnimal(supabase, owner, animalReference) : undefined;
+    if (!found?.row) return `Não encontrei o animal "${animalReference || "informado"}" no cadastro.`;
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => row.brinco || row.nome).filter(Boolean).join(", ");
+      return `Encontrei mais de um animal parecido. Tente pelo brinco cadastrado. Opções: ${options}.`;
+    }
+
+    const range = periodRange(period);
+    const { data, error } = await supabase
+      .from(TABLES.ordenhas)
+      .select("litros")
+      .eq("fazenda_id", owner.fazenda_id)
+      .eq("animal_id", found.row.id)
+      .gte("ordenhado_em", range.start)
+      .lt("ordenhado_em", range.end);
+    if (error) throw new Error(error.message);
+    const total = (data || []).reduce((sum, row) => sum + Number(row.litros || 0), 0);
+    const count = (data || []).length;
+    const label = found.row.brinco || found.row.nome || animalReference;
+    parsed.dados.consulta_executada = "producao_animal";
+    parsed.dados.resultado = { animal_id: found.row.id, animal: label, total_litros: total, registros: count, periodo: period };
+    if (!count) return `Não encontrei produção registrada ${periodLabel(period)} para ${label}.`;
+    return `${period === "hoje" ?"Hoje" : periodLabel(period)} a ${label} produziu ${formatNumber(total)} litros${count > 1 ?` no total em ${count} registros` : ""}.`;
   }
 
   if (parsed.tipo === "CONSULTA_FINANCEIRO") {
+    if (!isBotAdmin(owner)) return "Você não tem permissão para consultar financeiro pelo WhatsApp.";
     const range = currentMonthRange();
     const { data, error } = await supabase
       .from(TABLES.transacoesFinanceiras)
@@ -1451,29 +1526,52 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     return `Financeiro do mês:\nEntradas: ${formatMoney(entrada)}\nSaídas: ${formatMoney(saida)}\nResultado: ${formatMoney(entrada - saida)}`;
   }
 
-  if (parsed.tipo === "CONSULTA_ESTOQUE") {
+  if (parsed.tipo === "CONSULTA_ESTOQUE" || parsed.tipo === "CONSULTA_ESTOQUE_ITEM") {
     if (parsed.dados.item_nome) {
       const found = await findStockItem(supabase, owner, String(parsed.dados.item_nome));
-      if (found.row) return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.`;
-    }
+      if (found.ambiguousRows?.length) {
+        const options = found.ambiguousRows.slice(0, 5).map((row) => row.nome).filter(Boolean).join(", ");
+        return `Encontrei mais de um item parecido no estoque. Tente pelo nome cadastrado. Opções: ${options}.`;
+      }
+      if (!found.row) return "Não encontrei esse item no estoque. Tente pelo nome cadastrado ou peça para um administrador cadastrar.";
 
+      const current = Number(found.row.quantidade_atual || 0);
+      const minimum = Number(found.row.quantidade_minima || 0);
+      const hasMinimum = Number.isFinite(minimum) && minimum > 0;
+      const status = hasMinimum && current < minimum ?"abaixo do mínimo" : "ok";
+      parsed.dados.consulta_executada = "estoque_item";
+      parsed.dados.resultado = {
+        item_id: found.row.id,
+        item: found.row.nome,
+        quantidade_atual: current,
+        quantidade_minima: hasMinimum ?minimum : null,
+        unidade: found.row.unidade_medida,
+        status
+      };
+      return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.${hasMinimum ?` Mínimo: ${formatStockAmount(found.row.quantidade_minima, found.row.unidade_medida)}. Status: ${status}.` : ""}`;
+    }
+  }
+
+  if (parsed.tipo === "CONSULTA_ESTOQUE" || parsed.tipo === "CONSULTA_ESTOQUE_GERAL") {
     const { data, error } = await supabase
       .from(TABLES.estoqueItens)
       .select("nome,quantidade_atual,quantidade_minima,unidade_medida")
       .eq("fazenda_id", owner.fazenda_id)
       .limit(1000);
     if (error) throw new Error(error.message);
-    const critical = (data || []).filter((row) => Number(row.quantidade_atual || 0) <= Number(row.quantidade_minima || 0));
-    const examples = critical.slice(0, 3).map((row) => `- ${row.nome}: ${formatStockAmount(row.quantidade_atual, row.unidade_medida)}`).join("\n");
+    const critical = (data || []).filter((row) => Number(row.quantidade_minima || 0) > 0 && Number(row.quantidade_atual || 0) < Number(row.quantidade_minima || 0));
+    const examples = critical.slice(0, 5).map((row) => `- ${row.nome}: ${formatStockAmount(row.quantidade_atual, row.unidade_medida)} (mínimo ${formatStockAmount(row.quantidade_minima, row.unidade_medida)})`).join("\n");
+    parsed.dados.consulta_executada = "estoque_geral";
+    parsed.dados.resultado = { itens_abaixo_minimo: critical.length };
     return critical.length
-      ? `Você tem ${critical.length} item(ns) em atenção no estoque:\n${examples}`
-      : "Estoque consultado. Não encontrei itens abaixo do mínimo agora.";
+      ?`Itens abaixo do mínimo no estoque:\n${examples}`
+      : "Nenhum item está abaixo do mínimo agora.";
   }
 
   if (parsed.tipo === "CONSULTA_FUNCIONARIO") {
     if (parsed.dados.funcionario_nome) {
       const found = await findEmployee(supabase, owner, String(parsed.dados.funcionario_nome));
-      if (found) return `${found.row.nome}: ${found.row.funcao || "função não informada"} - ${found.row.ativo === false ? "inativo" : "ativo"}.`;
+      if (found) return `${found.row.nome}: ${found.row.funcao || "função não informada"} - ${found.row.ativo === false ?"inativo" : "ativo"}.`;
     }
 
     const { data, error } = await supabase
@@ -1486,9 +1584,37 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     return `Funcionários ativos: ${active}.`;
   }
 
+  if (parsed.tipo === "CONSULTA_REGISTROS_HOJE") {
+    const range = dayRange("hoje");
+    const { data, error } = await supabase
+      .from(TABLES.auditoriaLogs)
+      .select("entidade,acao,depois,created_at")
+      .eq("fazenda_id", owner.fazenda_id)
+      .eq("usuario_id", owner.usuario_id || "")
+      .gte("created_at", range.start)
+      .lt("created_at", range.end)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (error) throw new Error(error.message);
+    const logs = (data || []) as AnyRecord[];
+    parsed.dados.consulta_executada = "registros_hoje";
+    parsed.dados.resultado = { registros: logs.length };
+    if (!logs.length) return "Você ainda não registrou nada hoje pelo WhatsApp.";
+
+    const lines = logs.map((log, index) => {
+      const payload = (log.depois || {}) as AnyRecord;
+      if (log.entidade === TABLES.ordenhas) return `${index + 1}. Produção: ${payload.animal_codigo || payload.animal_id || "animal"}, ${formatNumber(payload.litros)} litros`;
+      if (log.entidade === TABLES.estoqueMovimentacoes) return `${index + 1}. Estoque: ${payload.tipo || log.acao} de ${formatStockAmount(payload.quantidade, payload.unidade_medida || payload.unidade)} ${payload.item_nome || ""}`.trim();
+      if (log.entidade === TABLES.transacoesFinanceiras) return `${index + 1}. Financeiro: ${payload.tipo || "lançamento"} de ${formatMoney(payload.valor)}${payload.descricao ?` com ${payload.descricao}` : ""}`;
+      return `${index + 1}. ${log.entidade || "Registro"}: ${log.acao || "salvo"}`;
+    }).join("\n");
+
+    return `Hoje você registrou ${logs.length} ${logs.length === 1 ?"lançamento" : "lançamentos"} pelo WhatsApp:\n${lines}`;
+  }
+
   return unknownText();
 }
-
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
   const parsed = await enrichWithCatalog(supabase, owner, parsedMessage || parseRanchoMessage(text));
   botLog("nlp_general", owner, {
@@ -1567,8 +1693,8 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
         quantidade: 0
       };
       const next = refreshRanchoMessage({ ...pending, tipo: "CRIAR_ITEM_ESTOQUE", dados: createData }, createData);
-      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ? "aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
-      return next.perguntas_faltantes.length ? missingText(next) : confirmationText(next);
+      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ?"aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
+      return next.perguntas_faltantes.length ?missingText(next) : confirmationText(next);
     }
 
     if (command === "2" || /\b(?:despesa|financeiro)\b/.test(command)) {
@@ -1578,8 +1704,8 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
         data_referencia: pending.dados.data_referencia
       };
       const next = refreshRanchoMessage({ ...pending, tipo: "DESPESA", dados: financeData }, financeData);
-      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ? "aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
-      return next.perguntas_faltantes.length ? missingText(next) : confirmationText(next);
+      await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ?"aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
+      return next.perguntas_faltantes.length ?missingText(next) : confirmationText(next);
     }
 
     return "Responda 1 para criar o item de estoque ou 2 para registrar apenas como despesa.";
@@ -1590,7 +1716,7 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     pending: next,
     status: "aguardando_dado",
     parser: "contextual",
-    nextStep: next.perguntas_faltantes.length ? "pedir_dado" : "confirmar"
+    nextStep: next.perguntas_faltantes.length ?"pedir_dado" : "confirmar"
   });
   const animalBlock = animalBlockFromParsed(next);
   if (animalBlock) {
@@ -1693,7 +1819,7 @@ function buildProcessResult(input: {
   return {
     respostaTexto: input.response,
     intencaoDetectada: detected?.tipo || null,
-    confianca: typeof detected?.confianca === "number" ? detected.confianca : null,
+    confianca: typeof detected?.confianca === "number" ?detected.confianca : null,
     dadosExtraidos: detected?.dados || null,
     estadoAnterior: input.previousSession?.etapa || null,
     estadoNovo: input.nextSession?.etapa || null,
@@ -1823,7 +1949,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       eventConfirmed
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro interno no Rancho.";
+    const message = error instanceof Error ?error.message : "Erro interno no Rancho.";
     console.error("[BOT FLOW]", {
       event: "process_error",
       provider: input.provider,

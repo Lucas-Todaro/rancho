@@ -545,7 +545,7 @@ function resolveParsed(parsed) {
     }
   }
 
-  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE"].includes(parsed.tipo) && dados.item_nome) {
+  if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE", "CONSULTA_ESTOQUE_ITEM"].includes(parsed.tipo) && dados.item_nome) {
     const itemExtraido = dados.item_nome;
     const resolved = resolveStockItem(itemExtraido, mockStock);
     dados.item_extraido = itemExtraido;
@@ -582,6 +582,7 @@ function canonicalIntent(tipo, dados) {
   if (tipo === "ENTRADA_ESTOQUE" || tipo === "COMPRA_ESTOQUE") return "ESTOQUE_ENTRADA";
   if (tipo === "SAIDA_ESTOQUE") return "ESTOQUE_SAIDA";
   if (tipo === "CONSULTA_ESTOQUE_ITEM") return "CONSULTA_ESTOQUE";
+  if (tipo === "CONSULTA_ESTOQUE_GERAL") return "CONSULTA_ESTOQUE";
   if (tipo === "CRIAR_ITEM_ESTOQUE") return "CRIAR_ITEM_ESTOQUE";
   if (tipo === "ESTOQUE_CADASTRO") return "CRIAR_ITEM_ESTOQUE";
   return tipo;
@@ -611,7 +612,9 @@ function assertExpected(test, parsed) {
   const dados = parsed.dados || {};
   const expected = test.expected || {};
 
-  if (expected.tipo && canonicalIntent(parsed.tipo, dados) !== canonicalIntent(expected.tipo, expected)) {
+  if (expected.exactTipo && expected.tipo && parsed.tipo !== expected.tipo) {
+    failures.push(`tipo exato esperado ${expected.tipo}, recebido ${parsed.tipo}`);
+  } else if (expected.tipo && canonicalIntent(parsed.tipo, dados) !== canonicalIntent(expected.tipo, expected)) {
     failures.push(`tipo esperado ${expected.tipo}, recebido ${parsed.tipo}`);
   }
 
@@ -868,6 +871,26 @@ const regressionTests = [
   { phrase: "cadastrar funcionário Pedro 83999999999", actor: "João", expected: { responseIncludes: "não tem permissão" } }
 ];
 
+const consultationParserTests = [
+  { phrase: "Quantos litros foram ordenhados hoje?", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true } },
+  { phrase: "Total de leite hoje", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true } },
+  { phrase: "Quanto leite tirou hoje?", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true } },
+  { phrase: "A vaca B-002 deu quantos litros?", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animal: "B-002" } },
+  { phrase: "Quanto a B-002 produziu hoje?", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animal: "B-002" } },
+  { phrase: "Producao da vaca 2 hoje", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animalAny: ["2", "002"] } },
+  { phrase: "Como está o estoque de ração de boi?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Ração de boi", itemId: "item-racao-boi", itemFound: true } },
+  { phrase: "Quanto tem de ração de boi?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Ração de boi", itemId: "item-racao-boi", itemFound: true } },
+  { phrase: "Tem quanto de leite cru?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Leite Cru", itemId: "item-leite-cru", itemFound: true } },
+  { phrase: "Ainda tem aftosa?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Aftosa", itemId: "item-aftosa", itemFound: true } },
+  { phrase: "Como está o estoque?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true } },
+  { phrase: "O que está acabando?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true } },
+  { phrase: "O que eu registrei hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
+  { phrase: "Meus registros de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
+  { phrase: "vaca B-002 deu 30 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 30 } },
+  { phrase: "usei 20kg de ração de boi", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Ração de boi", quantidade: 20, unidade: "kg" } },
+  { phrase: "comprei 10 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Ração", quantidade: 10, unidade: "saco", valor: 300 } }
+];
+
 const decimalRegressionTests = [
   { phrase: "vaca 2 deu 50.5 litros", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5 } },
   { phrase: "B-002 deu 50,5 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 50.5 } },
@@ -925,7 +948,9 @@ const botConversationTests = [
           estadoAnterior: "aguardando_confirmacao",
           estadoNovo: "livre",
           eventoConfirmado: true,
-          responseIncludes: "Nenhum registro real foi salvo"
+          responseIncludes: "Nenhum registro real foi salvo",
+          responseRawIncludes: "Confirmação",
+          responseRawNotIncludes: ["ConfirmaÃ", "produÃ"]
         }
       }
     ]
@@ -1138,7 +1163,7 @@ const botConversationTests = [
       {
         text: "quanto leite hoje",
         expected: {
-          intent: "CONSULTA_PRODUCAO",
+          intent: "CONSULTA_PRODUCAO_HOJE",
           estadoNovo: "livre",
           responseIncludes: "12"
         }
@@ -1153,9 +1178,84 @@ const botConversationTests = [
       {
         text: "quanto leite hoje",
         expected: {
-          intent: "CONSULTA_PRODUCAO",
+          intent: "CONSULTA_PRODUCAO_HOJE",
           estadoNovo: "livre",
           responseIncludes: "12"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta de producao geral nao abre confirmacao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "Quantos litros foram ordenhados hoje?",
+        expected: {
+          intent: "CONSULTA_PRODUCAO_HOJE",
+          estadoNovo: "livre",
+          responseIncludes: "Hoje foram registrados 12"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta de producao por animal usa ordenhas reais",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "A vaca B-002 deu quantos litros?",
+        expected: {
+          intent: "CONSULTA_PRODUCAO_ANIMAL",
+          estadoNovo: "livre",
+          responseIncludes: "B-002 produziu 12"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta de item de estoque usa item real",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "Como está o estoque de ração de boi?",
+        expected: {
+          intent: "CONSULTA_ESTOQUE_ITEM",
+          estadoNovo: "livre",
+          responseIncludes: "Estoque de Ração de boi"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta de item inexistente nao salva nem cria item",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "Ainda tem item inexistente?",
+        expected: {
+          intent: "CONSULTA_ESTOQUE_ITEM",
+          estadoNovo: "livre",
+          responseIncludes: "Não encontrei esse item"
+        }
+      }
+    ]
+  },
+  {
+    name: "consulta de registros de hoje nao abre confirmacao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "O que eu registrei hoje?",
+        expected: {
+          intent: "CONSULTA_REGISTROS_HOJE",
+          estadoNovo: "livre",
+          responseIncludes: "Você ainda não registrou nada hoje"
         }
       }
     ]
@@ -1205,7 +1305,9 @@ const botConversationTests = [
             estoque_leite_item_id: "item-leite-cru",
             estoque_leite_movimentar: false
           },
-          responseIncludes: "entrada no estoque"
+          responseIncludes: "entrada no estoque",
+          responseRawIncludes: ["ficará", "produção"],
+          responseRawNotIncludes: ["ficarÃ", "produÃ"]
         }
       },
       {
@@ -1214,7 +1316,9 @@ const botConversationTests = [
           intent: "LOTE_REGISTROS",
           estadoNovo: "livre",
           eventoConfirmado: true,
-          responseIncludes: "estoque_movimentar: nao"
+          responseIncludes: "estoque_movimentar: nao",
+          responseRawIncludes: "Simulação",
+          responseRawNotIncludes: ["SimulaÃ", "produÃ"]
         }
       }
     ]
@@ -1287,6 +1391,24 @@ function assertProcessResult(expected = {}, result) {
 
   if (expected.responseIncludes && !normalize(result.respostaTexto).includes(normalize(expected.responseIncludes))) {
     failures.push(`resposta deveria conter "${expected.responseIncludes}", recebeu "${result.respostaTexto}"`);
+  }
+
+  const rawIncludes = Array.isArray(expected.responseRawIncludes)
+    ? expected.responseRawIncludes
+    : expected.responseRawIncludes ? [expected.responseRawIncludes] : [];
+  for (const text of rawIncludes) {
+    if (!String(result.respostaTexto || "").includes(text)) {
+      failures.push(`resposta deveria conter exatamente "${text}", recebeu "${result.respostaTexto}"`);
+    }
+  }
+
+  const rawNotIncludes = Array.isArray(expected.responseRawNotIncludes)
+    ? expected.responseRawNotIncludes
+    : expected.responseRawNotIncludes ? [expected.responseRawNotIncludes] : [];
+  for (const text of rawNotIncludes) {
+    if (String(result.respostaTexto || "").includes(text)) {
+      failures.push(`resposta não deveria conter exatamente "${text}", recebeu "${result.respostaTexto}"`);
+    }
   }
 
   for (const field of expected.missing || []) {
@@ -1379,7 +1501,7 @@ async function runConversationTest(test, index) {
   };
 }
 
-const allTests = [...mandatoryTests, ...extraTests, ...regressionTests, ...decimalRegressionTests];
+const allTests = [...mandatoryTests, ...extraTests, ...regressionTests, ...consultationParserTests, ...decimalRegressionTests];
 
 if (allTests.length < 90) {
   console.error(`Erro interno do test:bot: esperado ao menos 90 testes, recebido ${allTests.length}.`);

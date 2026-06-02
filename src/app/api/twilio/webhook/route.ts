@@ -19,7 +19,7 @@ function xmlResponse(body: string, status = 200) {
   return new Response(body, {
     status,
     headers: {
-      "Content-Type": "text/xml"
+      "Content-Type": "text/xml; charset=utf-8"
     }
   });
 }
