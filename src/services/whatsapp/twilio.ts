@@ -80,6 +80,15 @@ type StockLookupResult = {
   reason: string;
 };
 
+type MilkStockResolution = {
+  status: "matched" | "ambiguous" | "not_found";
+  row?: AnyRecord;
+  options: AnyRecord[];
+  catalogSource: "banco_real";
+  catalogCount: number;
+  reason: string;
+};
+
 const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "ok", "pode", "pode salvar", "isso", "certo", "1"]);
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "refazer", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
@@ -250,6 +259,42 @@ function isMenuCommand(command: string) {
   return MENU_WORDS.has(command);
 }
 
+function milkStockStatusText(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const stock = dados.estoque_leite as AnyRecord | undefined;
+  if (!stock || !dados.estoque_leite_detectado) return "";
+
+  const total = formatNumber(Number(stock.total_litros || dados.total_litros || 0), " L");
+  const destino = stock.destino_detectado ? `\nDestino detectado: ${stock.destino_detectado}.` : "";
+
+  if (stock.status_resolucao === "matched") {
+    return `\n\nEstoque de leite detectado: ${total}.${destino}\nItem compatÃ­vel: ${stock.item_leite_resolvido} (${stock.unidade || "unidade nÃ£o informada"}).\nA entrada no estoque ficarÃ¡ pendente; vou registrar apenas a produÃ§Ã£o.`;
+  }
+
+  if (stock.status_resolucao === "ambiguous") {
+    const options = Array.isArray(stock.opcoes) ? stock.opcoes as AnyRecord[] : [];
+    const lines = options.slice(0, 5).map((option, index) => `${index + 1}. ${option.nome} (${option.unidade || "unidade nÃ£o informada"})`).join("\n");
+    return `\n\nEncontrei mais de um item de estoque compatÃ­vel com leite (${total}).${destino}\n${lines}\nNÃ£o vou movimentar estoque automaticamente; vou registrar apenas a produÃ§Ã£o.`;
+  }
+
+  return `\n\nNÃ£o encontrei item de estoque compatÃ­vel com leite (${total}).${destino}\nVou registrar apenas a produÃ§Ã£o.`;
+}
+
+function milkStockAfterSaveText(parsed: ParsedRanchoMessage) {
+  const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
+  if (!stock) return "";
+
+  if (stock.status_resolucao === "matched") {
+    return `\nEstoque de leite: item compatÃ­vel identificado (${stock.item_leite_resolvido}), mas nenhuma entrada de estoque foi movimentada automaticamente.`;
+  }
+
+  if (stock.status_resolucao === "ambiguous") {
+    return "\nEstoque de leite: encontrei mÃºltiplos itens compatÃ­veis e nÃ£o movimentei estoque automaticamente.";
+  }
+
+  return "\nNÃ£o encontrei item de estoque compatÃ­vel com leite. Registrei apenas a produÃ§Ã£o.";
+}
+
 function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "LOTE_REGISTROS") {
     const registros = Array.isArray(parsed.dados?.registros) ? parsed.dados.registros as ParsedRanchoMessage[] : [];
@@ -258,10 +303,25 @@ function confirmationText(parsed: ParsedRanchoMessage) {
       .map((registro, index) => `${index + 1}. ${registro.resumo}`)
       .join("\n");
     const extra = registros.length > 6 ? `\n...e mais ${registros.length - 6} registro(s).` : "";
-    return `Entendi ${registros.length} registros:\n${lines}${extra}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+    return `Entendi ${registros.length} registros:\n${lines}${extra}${milkStockStatusText(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
   }
 
   return `Entendi que você quer ${parsed.resumo}.\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+}
+
+function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
+  if (!parsed) return "ConfirmaÃ§Ã£o recebida no modo teste. Nenhum registro real foi salvo.";
+
+  if (parsed.tipo === "LOTE_REGISTROS") {
+    const total = Number(parsed.dados?.total_registros || (Array.isArray(parsed.dados?.registros) ? parsed.dados.registros.length : 0));
+    const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
+    const stockDebug = stock
+      ? `\nDebug estoque leite:\n- total_litros: ${stock.total_litros ?? parsed.dados?.total_litros ?? null}\n- destino_detectado: ${stock.destino_detectado || "nenhum"}\n- item_leite_resolvido: ${stock.item_leite_resolvido || "nenhum"}\n- item_id: ${stock.item_id || "nenhum"}\n- origem: ${stock.origem || "desconhecida"}\n- estoque_movimentar: ${stock.estoque_movimentar ? "sim" : "nao"}`
+      : "";
+    return `SimulaÃ§Ã£o concluÃ­da: ${total} registros seriam salvos. Nenhum registro real foi salvo.${stockDebug}`;
+  }
+
+  return `ConfirmaÃ§Ã£o recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`;
 }
 
 function missingText(parsed: ParsedRanchoMessage) {
@@ -611,6 +671,84 @@ async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name
   };
 }
 
+function isMilkStockUnit(unit: unknown) {
+  const normalized = normalizeRanchoText(String(unit || ""));
+  return ["l", "litro", "litros"].includes(normalized);
+}
+
+function isMilkStockName(name: unknown) {
+  const normalized = normalizeRanchoText(String(name || ""));
+  return /\bleite\b/.test(normalized);
+}
+
+async function resolveMilkStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner): Promise<MilkStockResolution> {
+  const { data, error } = await supabase
+    .from(TABLES.estoqueItens)
+    .select("id,nome,categoria,quantidade_atual,quantidade_minima,unidade_medida,valor_unitario,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+
+  const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
+  const compatibleRows = activeRows.filter((row) => isMilkStockName(row.nome) && isMilkStockUnit(row.unidade_medida));
+
+  if (compatibleRows.length === 1) {
+    return {
+      status: "matched",
+      row: compatibleRows[0],
+      options: [],
+      catalogSource: "banco_real",
+      catalogCount: activeRows.length,
+      reason: "item_leite_unico_compativel"
+    };
+  }
+
+  if (compatibleRows.length > 1) {
+    return {
+      status: "ambiguous",
+      options: compatibleRows.slice(0, 8),
+      catalogSource: "banco_real",
+      catalogCount: activeRows.length,
+      reason: "multiplos_itens_leite_compativeis"
+    };
+  }
+
+  return {
+    status: "not_found",
+    options: [],
+    catalogSource: "banco_real",
+    catalogCount: activeRows.length,
+    reason: activeRows.length ? "sem_item_leite_em_litros" : "catalogo_vazio"
+  };
+}
+
+function milkStockDebug(resolution: MilkStockResolution, totalLitros: number, destinoDetectado?: string | null) {
+  const row = resolution.row;
+  const options = resolution.options.map((option) => ({
+    item_id: option.id || null,
+    nome: option.nome || null,
+    unidade: option.unidade_medida || null
+  }));
+
+  return {
+    total_litros: totalLitros,
+    destino_detectado: destinoDetectado || null,
+    item_leite_resolvido: row?.nome || null,
+    item_id: row?.id || null,
+    unidade: row?.unidade_medida || null,
+    origem: resolution.catalogSource,
+    status_resolucao: resolution.status,
+    motivo: resolution.reason,
+    opcoes: options,
+    estoque_movimentar: false,
+    acao_pendente_estoque: resolution.status === "matched",
+    todo_salvar_estoque: resolution.status === "matched"
+      ? "TODO: salvar entrada consolidada de leite usando service server-side seguro de estoque."
+      : null
+  };
+}
+
 async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
   const { data, error } = await supabase
     .from(TABLES.funcionarios)
@@ -666,6 +804,43 @@ function pendingWithData(pending: ParsedRanchoMessage, dados: AnyRecord): Parsed
 async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   const dados = { ...(parsed.dados || {}) };
   let changed = false;
+
+  if (parsed.tipo === "LOTE_REGISTROS") {
+    const registros = Array.isArray(dados.registros) ? dados.registros as ParsedRanchoMessage[] : [];
+    const enrichedRegistros: ParsedRanchoMessage[] = [];
+
+    for (const registro of registros) {
+      enrichedRegistros.push(await enrichWithCatalog(supabase, owner, registro));
+    }
+
+    const productionRecords = enrichedRegistros.filter((registro) => registro.tipo === "PRODUCAO_LEITE");
+    const totalLitros = productionRecords.reduce((sum, registro) => sum + Number(registro.dados?.litros || 0), 0);
+
+    dados.registros = enrichedRegistros;
+    dados.total_registros = enrichedRegistros.length;
+    dados.tipos = Array.from(new Set(enrichedRegistros.map((registro) => registro.tipo)));
+
+    if (productionRecords.length > 1 && totalLitros > 0) {
+      const resolution = await resolveMilkStockItem(supabase, owner);
+      const destinoDetectado = dados.tanque ? "tanque" : "producao_leite";
+      dados.total_litros = totalLitros;
+      dados.estoque_leite_detectado = true;
+      dados.estoque_leite = milkStockDebug(resolution, totalLitros, destinoDetectado);
+      dados.estoque_leite_item_id = resolution.row?.id || null;
+      dados.estoque_leite_item_nome = resolution.row?.nome || null;
+      dados.estoque_leite_unidade = resolution.row?.unidade_medida || null;
+      dados.estoque_leite_opcoes = resolution.options.map((option) => ({
+        item_id: option.id || null,
+        nome: option.nome || null,
+        unidade: option.unidade_medida || null
+      }));
+      dados.estoque_leite_status = resolution.status;
+      dados.estoque_leite_origem = resolution.catalogSource;
+      dados.estoque_leite_movimentar = false;
+    }
+
+    return refreshRanchoMessage(parsed, dados);
+  }
 
   if (ANIMAL_RECORD_INTENTS.has(parsed.tipo) && dados.animal_codigo) {
     const found = await findAnimal(supabase, owner, String(dados.animal_codigo));
@@ -777,7 +952,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       summaries.push(`${index + 1}. ${registro.resumo}`);
     }
 
-    return realSaveResult(`Pronto, ${registros.length} registros salvos com sucesso.\n${summaries.join("\n")}`, Array.from(savedTables));
+    return realSaveResult(`Pronto, ${registros.length} registros salvos com sucesso.\n${summaries.join("\n")}${milkStockAfterSaveText(pending)}`, Array.from(savedTables));
   }
 
   if (ANIMAL_RECORD_INTENTS.has(pending.tipo)) {
@@ -1567,9 +1742,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           salvar_real: false
         }
       });
-      response = parsed
-        ? `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`
-        : "Confirmação recebida no modo teste. Nenhum registro real foi salvo.";
+      response = dryRunConfirmationText(parsed);
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
       eventConfirmed = isConfirmCommand(command);

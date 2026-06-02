@@ -62,8 +62,10 @@ const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts")
 
 const mockAnimals = [
   { id: "animal-b-002", brinco: "B-002" },
+  { id: "animal-1", brinco: "1" },
   { id: "animal-002", brinco: "002" },
   { id: "animal-2", brinco: "2" },
+  { id: "animal-3", brinco: "3" },
   { id: "animal-15", brinco: "15" },
   { id: "animal-a12", brinco: "A12" },
   { id: "animal-malhada", brinco: "MALHADA" },
@@ -82,7 +84,8 @@ const mockStock = [
   { id: "item-aftosa", nome: "Aftosa" },
   { id: "item-terramicina", nome: "Terramicina" },
   { id: "item-remedio", nome: "Remédio" },
-  { id: "item-suplemento", nome: "Suplemento" }
+  { id: "item-suplemento", nome: "Suplemento" },
+  { id: "item-leite-cru", nome: "Leite Cru" }
 ];
 
 const mockUsers = [
@@ -128,6 +131,7 @@ function clone(value) {
 
 function stockUnitFor(name) {
   const normalizedName = normalize(name);
+  if (/leite/.test(normalizedName)) return "litro";
   if (/aftosa|terramicina|vacina/.test(normalizedName)) return "dose";
   if (/feno/.test(normalizedName)) return "fardo";
   if (/remedio|suplemento/.test(normalizedName)) return "unidade";
@@ -492,6 +496,11 @@ function parseResolved(phrase) {
 function resolveParsed(parsed) {
   const dados = { ...(parsed.dados || {}) };
 
+  if (parsed.tipo === "LOTE_REGISTROS" && Array.isArray(dados.registros)) {
+    dados.registros = dados.registros.map((registro) => resolveParsed(registro));
+    return refreshRanchoMessage(parsed, dados);
+  }
+
   if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(parsed.tipo) && dados.animal_codigo) {
     const resolved = resolveAnimalIdentifier(dados.animal_codigo, mockAnimals);
     if (resolved.row && resolved.status !== "ambiguous") {
@@ -593,10 +602,31 @@ function assertExpected(test, parsed) {
     const registros = Array.isArray(dados.registros) ? dados.registros : [];
     if (registros.length !== expected.registros) failures.push(`registros esperados ${expected.registros}, recebidos ${registros.length}`);
   }
+  if ("total_litros" in expected && Number(dados.total_litros) !== Number(expected.total_litros)) failures.push(`total_litros esperado ${expected.total_litros}, recebido ${dados.total_litros}`);
   if (expected.registroTipos) {
     const tipos = Array.isArray(dados.registros) ? dados.registros.map((registro) => registro.tipo) : [];
     const missingTipos = expected.registroTipos.filter((tipo) => !tipos.includes(tipo));
     if (missingTipos.length) failures.push(`tipos de lote faltando: ${missingTipos.join(", ")}`);
+  }
+  if (expected.registroDetalhes) {
+    const registros = Array.isArray(dados.registros) ? dados.registros : [];
+    expected.registroDetalhes.forEach((detail, index) => {
+      const registro = registros[index];
+      const registroDados = registro?.dados || {};
+      if (!registro) {
+        failures.push(`registro ${index + 1} ausente`);
+        return;
+      }
+      if (detail.tipo && canonicalIntent(registro.tipo, registroDados) !== canonicalIntent(detail.tipo, detail)) failures.push(`registro ${index + 1}: tipo esperado ${detail.tipo}, recebido ${registro.tipo}`);
+      if (detail.animal && normalize(registroDados.animal_codigo) !== normalize(detail.animal)) failures.push(`registro ${index + 1}: animal esperado ${detail.animal}, recebido ${registroDados.animal_codigo}`);
+      if (detail.animalAny && !detail.animalAny.map(normalize).includes(normalize(registroDados.animal_codigo))) failures.push(`registro ${index + 1}: animal esperado um de ${detail.animalAny.join(", ")}, recebido ${registroDados.animal_codigo}`);
+      if ("litros" in detail && Number(registroDados.litros) !== Number(detail.litros)) failures.push(`registro ${index + 1}: litros esperado ${detail.litros}, recebido ${registroDados.litros}`);
+      if (detail.produto && normalize(registroDados.produto) !== normalize(detail.produto)) failures.push(`registro ${index + 1}: produto esperado ${detail.produto}, recebido ${registroDados.produto}`);
+      if (detail.item && normalize(registroDados.item_nome) !== normalize(detail.item)) failures.push(`registro ${index + 1}: item esperado ${detail.item}, recebido ${registroDados.item_nome}`);
+      if ("quantidade" in detail && Number(registroDados.quantidade) !== Number(detail.quantidade)) failures.push(`registro ${index + 1}: quantidade esperada ${detail.quantidade}, recebida ${registroDados.quantidade}`);
+      if (detail.unidade && normalize(registroDados.unidade) !== normalize(detail.unidade)) failures.push(`registro ${index + 1}: unidade esperada ${detail.unidade}, recebida ${registroDados.unidade}`);
+      if ("valor" in detail && Number(registroDados.valor) !== Number(detail.valor)) failures.push(`registro ${index + 1}: valor esperado ${detail.valor}, recebido ${registroDados.valor}`);
+    });
   }
 
   for (const field of expected.missing || []) {
@@ -722,7 +752,22 @@ const extraTests = [
   { phrase: "0", pending: () => pendingFrom("criar estoque de ração de bezerro", ["kg"]), expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", unidade: "kg", quantidade: 0, noMissing: true } },
   { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } },
   { phrase: "vaca B-002 deu 32 litros e vaca 15 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"] } },
-  { phrase: "usei 2 kg de milho e tirei 1 fardo de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"] } }
+  { phrase: "usei 2 kg de milho e tirei 1 fardo de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"] } },
+  { phrase: "vaca 1 deu 15 litros evaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
+  { phrase: "vaca 1 deu 15 litros e vaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
+  { phrase: "vaca 1 deu 14 litros e vaca 2 15", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
+  { phrase: "vaca 1 deu 15 litros e vaca 2 tambÃ©m", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 30, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
+  { phrase: "B-002 deu 30 litros, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
+  { phrase: "ordenha: B-002 30, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
+  { phrase: "vaca 2 pariu e B-002 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PARTO", "PRODUCAO_LEITE"], registroDetalhes: [{ tipo: "PARTO", animalAny: ["2", "002"] }, { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 20 }] } },
+  { phrase: "usei 20kg de raÃ§Ã£o e 2 doses de aftosa", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"], registroDetalhes: [{ tipo: "ESTOQUE_SAIDA", item: "Ração", quantidade: 20, unidade: "kg" }, { tipo: "ESTOQUE_SAIDA", item: "Aftosa", quantidade: 2, unidade: "dose" }] } },
+  { phrase: "chegou 10 sacos de raÃ§Ã£o e 5 fardos de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_ENTRADA"], registroDetalhes: [{ tipo: "ESTOQUE_ENTRADA", item: "Ração", quantidade: 10, unidade: "saco" }, { tipo: "ESTOQUE_ENTRADA", item: "Feno", quantidade: 5, unidade: "fardo" }] } },
+  { phrase: "B-002 morreu e paguei 300 de remÃ©dio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["MORTE", "DESPESA"], registroDetalhes: [{ tipo: "MORTE", animal: "B-002" }, { tipo: "DESPESA", valor: 300 }] } },
+  { phrase: "vaca 1 deu 14 litros e vaca 2 15 no tanque", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
+  { phrase: "vaca 1 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 } },
+  { phrase: "vaca 3 tomou vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" } },
+  { phrase: "raÃ§Ã£o de boi", expected: { tipo: "DESCONHECIDO" } },
+  { phrase: "vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", produto: "raiva", missing: ["animal_codigo"] } }
 ];
 
 const regressionTests = [
@@ -973,6 +1018,81 @@ const botConversationTests = [
         }
       }
     ]
+  },
+  {
+    name: "lote de producao resolve item unico de estoque de leite sem movimentar no dry-run",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "vaca 1 deu 14 litros e vaca 2 15 no tanque",
+        expected: {
+          intent: "LOTE_REGISTROS",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            total_litros: 29,
+            estoque_leite_status: "matched",
+            estoque_leite_item_nome: "Leite Cru",
+            estoque_leite_item_id: "item-leite-cru",
+            estoque_leite_movimentar: false
+          },
+          responseIncludes: "entrada no estoque"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "LOTE_REGISTROS",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "estoque_movimentar: nao"
+        }
+      }
+    ]
+  },
+  {
+    name: "lote de producao lista multiplos itens compativeis de leite sem movimentar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    extraStockItems: [
+      { id: "item-leite-in-natura", nome: "Leite in natura", unidade_medida: "litro" }
+    ],
+    messages: [
+      {
+        text: "vaca 1 deu 14 litros e vaca 2 15",
+        expected: {
+          intent: "LOTE_REGISTROS",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            total_litros: 29,
+            estoque_leite_status: "ambiguous",
+            estoque_leite_movimentar: false
+          },
+          responseIncludes: "mais de um item"
+        }
+      }
+    ]
+  },
+  {
+    name: "lote de producao sem item de leite registra apenas producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    stockItems: mockStock.filter((item) => !/leite/i.test(item.nome)),
+    messages: [
+      {
+        text: "vaca 1 deu 14 litros e vaca 2 15",
+        expected: {
+          intent: "LOTE_REGISTROS",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            total_litros: 29,
+            estoque_leite_status: "not_found",
+            estoque_leite_movimentar: false
+          },
+          responseIncludes: "item de estoque"
+        }
+      }
+    ]
   }
 ];
 
@@ -1022,6 +1142,34 @@ function assertProcessResult(expected = {}, result) {
 
 async function runConversationTest(test, index) {
   const supabase = new BotTestSupabase();
+  if (test.stockItems) {
+    supabase.tables[BOT_TEST_TABLES.estoqueItens] = test.stockItems.map((item, itemIndex) => ({
+      id: item.id || `stock-custom-${itemIndex + 1}`,
+      fazenda_id: BOT_TEST_FARM_ID,
+      nome: item.nome,
+      descricao: item.nome,
+      categoria: item.categoria || "outro",
+      quantidade_atual: item.quantidade_atual ?? 0,
+      quantidade_minima: item.quantidade_minima ?? 0,
+      unidade_medida: item.unidade_medida || stockUnitFor(item.nome),
+      valor_unitario: item.valor_unitario ?? 0,
+      ativo: item.ativo !== false
+    }));
+  }
+  if (test.extraStockItems) {
+    supabase.tables[BOT_TEST_TABLES.estoqueItens].push(...test.extraStockItems.map((item, itemIndex) => ({
+      id: item.id || `stock-extra-${itemIndex + 1}`,
+      fazenda_id: BOT_TEST_FARM_ID,
+      nome: item.nome,
+      descricao: item.nome,
+      categoria: item.categoria || "outro",
+      quantidade_atual: item.quantidade_atual ?? 0,
+      quantidade_minima: item.quantidade_minima ?? 0,
+      unidade_medida: item.unidade_medida || stockUnitFor(item.nome),
+      valor_unitario: item.valor_unitario ?? 0,
+      ativo: item.ativo !== false
+    })));
+  }
   activeBotTestSupabase = supabase;
   const steps = [];
   const failures = [];

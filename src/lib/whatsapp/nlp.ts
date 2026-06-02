@@ -268,6 +268,18 @@ function extractLiters(text: string) {
   return undefined;
 }
 
+function extractLooseProductionLiters(text: string) {
+  const normalized = normalizeRanchoText(text);
+  const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
+  const animalKey = compactKey(animal);
+  const quantity = [...numberMatches(normalized)].reverse().find((match) => {
+    if (compactKey(match.raw) === animalKey) return false;
+    return !numberHasUnitOrMoneyContext(normalized, match.index, match.raw);
+  });
+
+  return quantity?.value;
+}
+
 function extractMoneyValue(text: string) {
   return lastFinancialNumber(text);
 }
@@ -635,7 +647,9 @@ export function refreshRanchoMessage(parsed: ParsedRanchoMessage, dados: AnyReco
 
 const batchableIntents = new Set<RanchoIntent>([
   "PRODUCAO_LEITE",
+  "PARTO",
   "VACINA_MEDICAMENTO",
+  "MORTE",
   "DESPESA",
   "RECEITA_VENDA",
   "ESTOQUE_ENTRADA",
@@ -643,9 +657,9 @@ const batchableIntents = new Set<RanchoIntent>([
 ]);
 
 function splitBatchSegments(text: string) {
-  return String(text || "")
+  return cleanAnswer(String(text || ""))
     .split(/[\n;]+|,(?=\s*\S)/g)
-    .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|b-?\d|\d+\s*(?:l|lt|lts|litro|litros|kg|sacos?|reais)|comprei|compramos|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei))/i))
+    .flatMap((chunk) => chunk.split(/\s+\b(?:e|tamb(?:e|é|Ã©)m|mais)\b\s+(?=(?:\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\d|[a-z]*\d[a-z0-9-]*\s+(?:\d|deu|produziu|fez|pariu|morreu)|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu))/i))
     .map((chunk) => chunk.trim())
     .filter(Boolean);
 }
@@ -656,7 +670,9 @@ function parseBatchSegmentWithContext(segment: string, previous: ParsedRanchoMes
 
   if (previous.tipo === "PRODUCAO_LEITE") {
     const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
-    const liters = extractLiters(normalized) ?? (/\b(?:tambem|também)\b/.test(normalized) ? previous.dados.litros : undefined);
+    const liters = extractLiters(normalized)
+      ?? extractLooseProductionLiters(normalized)
+      ?? (/\btamb/.test(normalized) ? previous.dados.litros : undefined);
     if (animal && hasValue(liters)) {
       const dados = {
         animal_codigo: animal,
@@ -705,17 +721,25 @@ function parseBatchMessage(text: string): ParsedRanchoMessage | null {
 
   for (const segment of segments) {
     const parsed = parseSingleRanchoMessage(segment);
-    const next: ParsedRanchoMessage | null = parsed.tipo !== "DESCONHECIDO" ? parsed : previous ? parseBatchSegmentWithContext(segment, previous) : null;
+    const contextual: ParsedRanchoMessage | null = previous ? parseBatchSegmentWithContext(segment, previous) : null;
+    const next: ParsedRanchoMessage | null = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length ? parsed : contextual;
     if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
     registros.push(next);
     previous = next;
   }
 
   if (registros.length < 2) return null;
+  const productionRecords = registros.filter((registro) => registro.tipo === "PRODUCAO_LEITE");
+  const totalLitros = productionRecords.reduce((sum, registro) => sum + Number(registro.dados?.litros || 0), 0);
   const dados = {
     registros,
     total_registros: registros.length,
-    tipos: Array.from(new Set(registros.map((registro) => registro.tipo)))
+    tipos: Array.from(new Set(registros.map((registro) => registro.tipo))),
+    ...(productionRecords.length > 1 ? {
+      total_litros: totalLitros,
+      estoque_leite_detectado: true,
+      tanque: /\btanque\b/.test(normalizeRanchoText(text))
+    } : {})
   };
   return finalize("LOTE_REGISTROS", dados, [], 0.88);
 }
@@ -880,7 +904,7 @@ function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (isProduction) {
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PRODUCAO_LEITE"),
-      litros: extractLiters(normalized),
+      litros: extractLiters(normalized) ?? extractLooseProductionLiters(normalized),
       turno: extractTurno(normalized),
       data_referencia: extractDateReference(normalized) || "hoje"
     };
