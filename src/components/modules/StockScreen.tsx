@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, PackageOpen, Pencil, Plus, RefreshCw, Scale, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
@@ -210,6 +210,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,6 +263,13 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   }, [movements]);
   const showPlaceholders = loading || Boolean(error && !items.length);
   const canManage = canManageData(profile);
+
+  function startEditing(item: AnyRecord) {
+    setEditing(item);
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
 
   async function submitItem(values: AnyRecord) {
     setBusy(true);
@@ -352,7 +360,9 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       </div>
 
       {canManage ? (
-        <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
+        <div ref={formRef}>
+          <ModuleForm config={config} editing={editing} onSubmit={submitItem} onCancel={() => setEditing(null)} busy={busy} relationOptions={{} as Record<string, RelationOption[]>} />
+        </div>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
           Seu perfil pode consultar o estoque, mas não pode criar, editar ou movimentar itens.
@@ -419,7 +429,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
                   <div className="flex gap-2">
                     {canManage ? (
                       <>
-                        <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={() => setEditing(item)} title="Editar item">
+                        <button className="rounded-lg border border-slate-200 p-2 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" onClick={() => startEditing(item)} title="Editar item">
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950" type="button" onClick={() => removeItem(item)} title="Excluir item">

@@ -33,6 +33,19 @@ export default function RedefinirSenhaPage() {
           if (exchangeError) throw exchangeError;
           window.history.replaceState(null, "", "/redefinir-senha");
         }
+
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+        const type = hashParams.get("type");
+        if (accessToken && refreshToken && type === "recovery") {
+          const { error: sessionError } = await supabaseBrowser.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          if (sessionError) throw sessionError;
+          window.history.replaceState(null, "", "/redefinir-senha");
+        }
       } catch (err) {
         if (active) {
           setError(getFriendlyErrorMessage(err, "Não foi possível validar o link de redefinição."));
