@@ -1,5 +1,12 @@
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber } from "@/lib/phone";
+import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import { decimalNumberPattern, firstNumber, lastNumber, numberMatches, parseDecimalNumber } from "@/lib/whatsapp/nlp-numbers";
+import { formatBotNumber, formatStockQuantity, formatStockUnit, moneyText } from "@/lib/whatsapp/nlp-format";
+
+export { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+export { parseDecimalNumber } from "@/lib/whatsapp/nlp-numbers";
+export { formatStockUnit } from "@/lib/whatsapp/nlp-format";
 
 export type RanchoIntent =
   | "PRODUCAO_LEITE"
@@ -54,56 +61,10 @@ const questionByField: Record<string, string> = {
   categoria_animal: "Qual é a categoria do animal? Ex: vaca, bezerro ou touro."
 };
 
-const numberWords: Record<string, number> = {
-  zero: 0,
-  um: 1,
-  uma: 1,
-  dois: 2,
-  duas: 2,
-  tres: 3,
-  três: 3,
-  quatro: 4,
-  cinco: 5,
-  seis: 6,
-  sete: 7,
-  oito: 8,
-  nove: 9,
-  dez: 10,
-  onze: 11,
-  doze: 12,
-  treze: 13,
-  quatorze: 14,
-  catorze: 14,
-  quinze: 15,
-  dezesseis: 16,
-  dezessete: 17,
-  dezoito: 18,
-  dezenove: 19,
-  vinte: 20,
-  trinta: 30,
-  quarenta: 40,
-  cinquenta: 50,
-  sessenta: 60,
-  setenta: 70,
-  oitenta: 80,
-  noventa: 90,
-  cem: 100,
-  cento: 100,
-  duzentos: 200,
-  trezentos: 300,
-  quatrocentos: 400,
-  quinhentos: 500,
-  seiscentos: 600,
-  setecentos: 700,
-  oitocentos: 800,
-  novecentos: 900
-};
-
 const animalWords = "(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)";
 const animalCategories = new Set(["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "animal"]);
 const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|fardos?|unidades?)";
-const decimalNumberPattern = "\\d+(?:[.,]\\d+)*";
 const stockUnitAfterQuantityPattern = new RegExp(`\\b(${decimalNumberPattern})\\s*(${stockUnitWords})\\b`, "i");
 const stockItemHintPattern = /\b(?:racao|ração|milho|feno|sal|mineral|aftosa|remedio|remédio|medicamento|insumo|silagem|suplemento)\b/;
 const forbiddenAnimalCodes = new Set([
@@ -180,78 +141,6 @@ export function normalizeAnimalCode(value: string | number | null | undefined) {
   return undefined;
 }
 
-export function normalizeRanchoText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[!?;()[\]{}]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function cleanAnswer(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function hasValue(value: unknown) {
-  return value !== undefined && value !== null && value !== "";
-}
-
-export function formatStockUnit(quantity: unknown, unit: string | null | undefined) {
-  const normalized = normalizeRanchoText(String(unit || "")).trim();
-  const amount = Number(quantity);
-  const plural = Number.isFinite(amount) && Math.abs(amount) !== 1;
-  const singularByUnit: Record<string, string> = {
-    saco: "saco",
-    sacos: "saco",
-    dose: "dose",
-    doses: "dose",
-    fardo: "fardo",
-    fardos: "fardo",
-    unidade: "unidade",
-    unidades: "unidade",
-    litro: "litro",
-    litros: "litro",
-    l: "litro",
-    kg: "quilo",
-    quilo: "quilo",
-    quilos: "quilo",
-    g: "grama",
-    grama: "grama",
-    gramas: "grama",
-    ml: "mililitro",
-    mililitro: "mililitro",
-    mililitros: "mililitro",
-    caixa: "caixa",
-    caixas: "caixa"
-  };
-  const pluralByUnit: Record<string, string> = {
-    saco: "sacos",
-    dose: "doses",
-    fardo: "fardos",
-    unidade: "unidades",
-    litro: "litros",
-    caixa: "caixas",
-    quilo: "quilos",
-    grama: "gramas",
-    mililitro: "mililitros"
-  };
-  const singular = singularByUnit[normalized] || normalized || "";
-  return plural ? (pluralByUnit[singular] || singular) : singular;
-}
-
-function formatStockQuantity(quantity: unknown, unit: string | null | undefined, fallback = "?") {
-  if (!hasValue(quantity)) return fallback;
-  return `${formatBotNumber(quantity)} ${formatStockUnit(quantity, unit)}`.trim();
-}
-
-function formatBotNumber(value: unknown) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value || "");
-  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(numeric);
-}
-
 function normalizeBotPhone(value: string | number | null | undefined) {
   return normalizeWhatsappNumber(value);
 }
@@ -278,122 +167,6 @@ function removeWhatsappPhone(original: string) {
     .replace(/(?:whatsapp:)?\+?\d[\d\s().-]{8,}\d/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function normalizeSingleDecimalSeparator(value: string, separator: "." | ",") {
-  const parts = value.split(separator);
-  if (parts.length === 1) return value;
-
-  const last = parts[parts.length - 1];
-  const first = parts[0];
-  const allThousandsGroups = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
-
-  if (parts.length === 2 && last.length === 3 && first !== "0") return `${first}${last}`;
-  if (parts.length > 2 && allThousandsGroups) return parts.join("");
-
-  return `${parts.slice(0, -1).join("")}.${last}`;
-}
-
-export function parseDecimalNumber(input: string | number | null | undefined) {
-  if (input === undefined || input === null || input === "") return undefined;
-
-  const raw = String(input).replace(/\s+/g, "").replace(/[^\d.,-]/g, "");
-  if (!/\d/.test(raw)) return undefined;
-
-  const sign = raw.startsWith("-") ? -1 : 1;
-  const value = raw.replace(/^-/, "");
-  const lastComma = value.lastIndexOf(",");
-  const lastDot = value.lastIndexOf(".");
-  let normalized = value;
-
-  if (lastComma >= 0 && lastDot >= 0) {
-    const decimalSeparator = lastComma > lastDot ? "," : ".";
-    const thousandsSeparator = decimalSeparator === "," ? "." : ",";
-    normalized = value
-      .replace(new RegExp(`\\${thousandsSeparator}`, "g"), "")
-      .replace(decimalSeparator, ".");
-  } else if (lastComma >= 0) {
-    normalized = normalizeSingleDecimalSeparator(value, ",");
-  } else if (lastDot >= 0) {
-    normalized = normalizeSingleDecimalSeparator(value, ".");
-  }
-
-  const parsed = Number(normalized) * sign;
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function toNumber(value: string | undefined) {
-  return parseDecimalNumber(value);
-}
-
-function parseNumberWordSequence(words: string[], start: number) {
-  let total = 0;
-  let current = 0;
-  let used = 0;
-
-  for (let index = start; index < words.length; index += 1) {
-    const word = words[index];
-    if (word === "e") {
-      used += 1;
-      continue;
-    }
-
-    if (word === "mil") {
-      total += (current || 1) * 1000;
-      current = 0;
-      used += 1;
-      continue;
-    }
-
-    const value = numberWords[word];
-    if (value === undefined) break;
-
-    current += value;
-    used += 1;
-  }
-
-  if (!used) return null;
-  return { value: total + current, used };
-}
-
-function numberMatches(text: string) {
-  const matches: Array<{ raw: string; value: number; index: number }> = [];
-  const digitPattern = new RegExp(`\\b${decimalNumberPattern}\\b`, "g");
-  let digitMatch = digitPattern.exec(text);
-
-  while (digitMatch) {
-    const value = toNumber(digitMatch[0]);
-    const index = digitMatch.index || 0;
-    const before = text[index - 1] || "";
-    const after = text[index + digitMatch[0].length] || "";
-    const isCodePart = /[a-z-]/i.test(before) || /[a-z-]/i.test(after);
-    if (value !== undefined && !isCodePart) matches.push({ raw: digitMatch[0], value, index });
-    digitMatch = digitPattern.exec(text);
-  }
-
-  const words = text.split(/\s+/).filter(Boolean);
-  let searchFrom = 0;
-  for (let index = 0; index < words.length; index += 1) {
-    const parsed = parseNumberWordSequence(words, index);
-    if (!parsed) continue;
-
-    const raw = words.slice(index, index + parsed.used).join(" ");
-    const rawIndex = text.indexOf(raw, searchFrom);
-    matches.push({ raw, value: parsed.value, index: rawIndex >= 0 ? rawIndex : index });
-    searchFrom = rawIndex >= 0 ? rawIndex + raw.length : searchFrom;
-    index += parsed.used - 1;
-  }
-
-  return matches.sort((left, right) => left.index - right.index);
-}
-
-function firstNumber(text: string) {
-  return numberMatches(text)[0]?.value;
-}
-
-function lastNumber(text: string) {
-  const numbers = numberMatches(text);
-  return numbers[numbers.length - 1]?.value;
 }
 
 function extractTurno(text: string) {
@@ -480,10 +253,10 @@ function extractAnimalCode(text: string, intent?: RanchoIntent) {
 
 function extractLiters(text: string) {
   const withUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s*(?:l|lt|lts|litro|litros)\\b`));
-  if (withUnit?.[1]) return toNumber(withUnit[1]);
+  if (withUnit?.[1]) return parseDecimalNumber(withUnit[1]);
 
   const afterProductionVerb = text.match(new RegExp(`\\b(?:deu|produziu|fez|ordenhou|tirei|tirou)\\s+(${decimalNumberPattern})\\b`));
-  if (afterProductionVerb?.[1]) return toNumber(afterProductionVerb[1]);
+  if (afterProductionVerb?.[1]) return parseDecimalNumber(afterProductionVerb[1]);
 
   return undefined;
 }
@@ -634,7 +407,7 @@ function numberHasUnitOrMoneyContext(text: string, index: number, raw: string) {
 function extractStockQuantity(original: string) {
   const normalized = normalizeRanchoText(original);
   const quantityWithUnit = normalized.match(stockUnitAfterQuantityPattern);
-  if (quantityWithUnit?.[1]) return toNumber(quantityWithUnit[1]);
+  if (quantityWithUnit?.[1]) return parseDecimalNumber(quantityWithUnit[1]);
 
   const numbers = numberMatches(normalized);
   const unitPattern = new RegExp(`^\\s*${stockUnitWords}\\b`);
@@ -747,11 +520,6 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     }
     return questionByField[field];
   }).filter(Boolean);
-}
-
-function moneyText(value: unknown) {
-  const numeric = Number(value || 0);
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(numeric);
 }
 
 function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
