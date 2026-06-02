@@ -10,6 +10,7 @@ import { TABLES } from "@/lib/tables";
 import { useInternalTester } from "@/lib/use-internal-tester";
 import { formatDate } from "@/lib/utils";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import { canManageData } from "@/lib/permissions";
 import { isWhatsappSandboxEnvironment, publicWhatsappConfig } from "@/lib/public-env";
 import { createRecord, deleteRecord, deleteRecords, listRecords, updateRecord } from "@/services/crud";
 import type { AnyRecord } from "@/lib/types";
@@ -91,7 +92,7 @@ export default function WhatsAppPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const canManage = profile?.papel === "admin" || profile?.papel === "gerente";
+  const canManage = canManageData(profile);
   const isSandbox = isWhatsappSandboxEnvironment();
   const sandboxNumber = publicWhatsappConfig.sandboxNumber;
   const sandboxJoinCode = publicWhatsappConfig.sandboxJoinCode;
