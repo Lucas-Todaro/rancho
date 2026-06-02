@@ -41,7 +41,7 @@ export type ParsedRanchoMessage = {
 
 export const BOT_EXAMPLES = [
   "- Mimosa deu 15 litros de leite hoje",
-  "- Adicionar vaca Mimosa com brinco B-043",
+  "- Adicionar vaca Mimosa com brinco B-043, fêmea, gestante, raça Girolando",
   "- Vendi leite por 900 reais",
   "- Comprei ração por 300 reais",
   "- Entrou 10 sacos de ração no estoque",
@@ -60,10 +60,16 @@ const questionByField: Record<string, string> = {
   funcionario_nome: "Qual funcionário?",
   telefone: "Qual é o WhatsApp do funcionário? Envie com DDD.",
   ponto_tipo: "Foi entrada ou saída?",
-  categoria_animal: "Qual é a categoria do animal? Ex: vaca, bezerro ou touro."
+  categoria_animal: "Qual é a categoria do animal? Ex: vaca, bezerro ou touro.",
+  sexo: "Quer informar o sexo do animal? Envie fêmea, macho ou 2 para pular.",
+  fase: "Quer informar a fase? Ex: lactação, seca, gestante, vazia, crescimento, engorda ou 2 para pular.",
+  raca: "Quer informar a raça? Envie o nome da raça ou 2 para pular.",
+  lote_animal: "Quer informar o lote? Envie o nome do lote já cadastrado ou 2 para pular.",
+  data_nascimento: "Quer informar o nascimento? Envie a data (DD/MM/AAAA ou AAAA-MM-DD) ou 2 para pular."
 };
 
 const animalWords = "(?:vacas?|animais|animal|gado|bois?|touros?|bezerros?|bezerras?|novilhas?|brinco)";
+const animalOptionalFields = ["sexo", "fase", "raca", "lote_animal", "data_nascimento"];
 const animalCategories = new Set(["vaca", "vacas", "boi", "bois", "bezerro", "bezerros", "bezerra", "bezerras", "novilha", "novilhas", "touro", "touros", "animal", "animais"]);
 const animalCategoryMap: Record<string, string | undefined> = {
   vaca: "vaca",
@@ -78,6 +84,30 @@ const animalCategoryMap: Record<string, string | undefined> = {
   novilhas: "novilha",
   touro: "touro",
   touros: "touro"
+};
+const animalSexMap: Record<string, string | undefined> = {
+  femea: "femea",
+  femeas: "femea",
+  f: "femea",
+  feminino: "femea",
+  macho: "macho",
+  machos: "macho",
+  m: "macho",
+  masculino: "macho"
+};
+const animalPhaseMap: Record<string, string | undefined> = {
+  lactacao: "lactacao",
+  lactante: "lactacao",
+  leite: "lactacao",
+  seca: "seca",
+  gestante: "gestante",
+  prenha: "gestante",
+  vazia: "vazia",
+  crescimento: "crescimento",
+  recria: "crescimento",
+  engorda: "engorda",
+  nao_aplicavel: "nao_aplicavel",
+  inaplicavel: "nao_aplicavel"
 };
 const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|fardos?|unidades?)";
@@ -522,6 +552,84 @@ function extractAnimalCategory(text: string) {
   return animalCategoryMap[category] || category;
 }
 
+function isAnimalOptionalField(field?: string) {
+  return Boolean(field && animalOptionalFields.includes(field));
+}
+
+function skippedAnimalOptionalFields(dados: AnyRecord) {
+  return Array.isArray(dados.campos_opcionais_pulados) ? dados.campos_opcionais_pulados.map(String) : [];
+}
+
+function hasSkippedAnimalOptionalField(dados: AnyRecord, field: string) {
+  return skippedAnimalOptionalFields(dados).includes(field);
+}
+
+function markAnimalOptionalFieldSkipped(dados: AnyRecord, field: string) {
+  const skipped = new Set(skippedAnimalOptionalFields(dados));
+  skipped.add(field);
+  return {
+    ...dados,
+    campos_opcionais_pulados: Array.from(skipped),
+    ...(field === "lote_animal" ? { lote_nome: undefined, lote_nao_encontrado: undefined, lote_opcoes: undefined } : {})
+  };
+}
+
+function hasAnimalOptionalValue(dados: AnyRecord, field: string) {
+  if (field === "lote_animal") return hasValue(dados.lote_id) || hasValue(dados.lote_nome);
+  return hasValue(dados[field]);
+}
+
+function isSkipOptionalAnswer(text: string) {
+  const normalized = normalizeRanchoText(text);
+  return normalized === "2"
+    || /^(?:pular|pula|nao|não|sem|deixar sem|deixa sem|ignorar|nao informar|não informar)$/.test(normalized);
+}
+
+function extractAnimalSex(text: string) {
+  const normalized = normalizeRanchoText(text);
+  const word = Object.keys(animalSexMap).find((item) => new RegExp(`\\b${item}\\b`).test(normalized));
+  return word ? animalSexMap[word] : undefined;
+}
+
+function extractAnimalPhase(text: string) {
+  const normalized = normalizeRanchoText(text)
+    .replace(/\blote\b.*$/g, " ")
+    .replace(/\bnao\s+aplicavel\b/g, "nao_aplicavel");
+  const word = Object.keys(animalPhaseMap).find((item) => new RegExp(`\\b${item}\\b`).test(normalized));
+  return word ? animalPhaseMap[word] : undefined;
+}
+
+function extractAnimalBreed(original: string) {
+  const match = original.match(/\b(?:raça|raca)\s+(?:do|da|de)?\s*([a-zA-ZÀ-ÿ0-9\s'-]+?)(?:\s+(?:lote|sexo|fase|nasc(?:imento|eu|ido|ida)?|brinco|codigo|código|cod|número|numero)\b|$)/i)?.[1];
+  return cleanAnswer(match || "") || undefined;
+}
+
+function extractAnimalLotName(original: string) {
+  const match = original.match(/\blote\s+(?:do|da|de)?\s*([a-zA-ZÀ-ÿ0-9\s'-]+?)(?:\s+(?:raça|raca|sexo|fase|nasc(?:imento|eu|ido|ida)?|brinco|codigo|código|cod|número|numero)\b|$)/i)?.[1];
+  return cleanAnswer(match || "") || undefined;
+}
+
+function validDateParts(year: number, month: number, day: number) {
+  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function extractAnimalBirthDate(original: string) {
+  const normalized = normalizeRanchoText(original);
+  const brDate = normalized.match(/\b(\d{1,2})[/-](\d{1,2})[/-]((?:19|20)\d{2})\b/);
+  if (brDate) return validDateParts(Number(brDate[3]), Number(brDate[2]), Number(brDate[1]));
+
+  const isoDate = normalized.match(/\b((?:19|20)\d{2})[/-](\d{1,2})[/-](\d{1,2})\b/);
+  if (isoDate) return validDateParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+
+  const yearOnly = normalized.match(/\b(?:ano|nasceu em|nascido em|nascimento)\s*((?:19|20)\d{2})\b/);
+  if (yearOnly) return validDateParts(Number(yearOnly[1]), 1, 1);
+
+  return undefined;
+}
+
 function extractAnimalLocal(text: string) {
   const location = text.match(/\b(?:do|da|no|na|em)\s+(fundo|curral|pasto|piquete)\b/)?.[1];
   return location;
@@ -575,6 +683,9 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
         return `Encontrei mais de um animal parecido com ${dados.animal_referencia_nao_encontrada}. Qual é o brinco correto? ${dados.animal_opcoes.slice(0, 5).join(", ")}`;
       }
       return `Não encontrei um animal cadastrado como ${dados.animal_referencia_nao_encontrada}. Qual é o brinco ou código do animal?`;
+    }
+    if (field === "lote_animal" && dados.lote_nao_encontrado) {
+      return `Não encontrei o lote "${dados.lote_nao_encontrado}". Envie o nome de um lote já cadastrado ou 2 para pular.`;
     }
     if (field === "unidade" && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) {
       return "Qual unidade padrão? Exemplos: kg, saco, unidade, dose, fardo.";
@@ -631,7 +742,16 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "CRIAR_FUNCIONARIO") return `cadastrar funcionário${dados.funcionario_nome ? ` ${dados.funcionario_nome}` : ""}${dados.telefone ? ` com WhatsApp ${dados.telefone}` : ""}`;
 
-  if (tipo === "CADASTRO_ANIMAL") return `cadastrar ${dados.categoria || "animal"}${dados.nome ? ` ${dados.nome}` : ""}${dados.animal_codigo ? ` com brinco ${dados.animal_codigo}` : ""}`;
+  if (tipo === "CADASTRO_ANIMAL") {
+    const details = [
+      dados.sexo ? `sexo ${dados.sexo}` : "",
+      dados.fase ? `fase ${dados.fase}` : "",
+      dados.raca ? `raça ${dados.raca}` : "",
+      dados.lote_nome ? `lote ${dados.lote_nome}` : "",
+      dados.data_nascimento ? `nascimento ${dados.data_nascimento}` : ""
+    ].filter(Boolean);
+    return `cadastrar ${dados.categoria || "animal"}${dados.nome ? ` ${dados.nome}` : ""}${dados.animal_codigo ? ` com brinco ${dados.animal_codigo}` : ""}${details.length ? ` (${details.join(", ")})` : ""}`;
+  }
 
   if (tipo === "CONSULTA_PRODUCAO") return "consultar produção de leite";
   if (tipo === "CONSULTA_FINANCEIRO") return "consultar financeiro";
@@ -688,8 +808,17 @@ function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CRIAR_FUNCIONARIO" && !isValidBotPhone(dados.telefone)) missing.push("telefone");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.ponto_tipo) missing.push("ponto_tipo");
-  if (tipo === "CADASTRO_ANIMAL" && !dados.animal_codigo) missing.push("animal_codigo");
-  if (tipo === "CADASTRO_ANIMAL" && !dados.categoria) missing.push("categoria_animal");
+  if (tipo === "CADASTRO_ANIMAL") {
+    if (!dados.animal_codigo) missing.push("animal_codigo");
+    if (!dados.categoria) missing.push("categoria_animal");
+    if (missing.length) return missing;
+
+    animalOptionalFields.forEach((field) => {
+      if (!hasAnimalOptionalValue(dados, field) && !hasSkippedAnimalOptionalField(dados, field)) {
+        missing.push(field);
+      }
+    });
+  }
   return missing;
 }
 
@@ -955,6 +1084,11 @@ function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       animal_codigo: extractAnimalRegistrationCode(normalized),
       nome: extractAnimalRegistrationName(original),
       categoria: extractAnimalCategory(normalized),
+      sexo: extractAnimalSex(normalized),
+      fase: extractAnimalPhase(normalized),
+      raca: extractAnimalBreed(original),
+      lote_nome: extractAnimalLotName(original),
+      data_nascimento: extractAnimalBirthDate(original),
       data_referencia: extractDateReference(normalized)
     };
     return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados));
@@ -996,6 +1130,11 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const expectedFields = buildMissing(current.tipo, dados);
   const expectedField = expectedFields[0];
 
+  if (current.tipo === "CADASTRO_ANIMAL" && isAnimalOptionalField(expectedField) && isSkipOptionalAnswer(original)) {
+    const nextDados = markAnimalOptionalFieldSkipped(dados, expectedField as string);
+    return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+  }
+
   if (parsedAnswer.tipo === current.tipo) {
     Object.entries(parsedAnswer.dados).forEach(([key, value]) => {
       if (value === undefined || value === null || value === "") return;
@@ -1023,6 +1162,15 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "telefone" && contextualPhone) dados.telefone = contextualPhone;
     if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);
     if (expectedField === "categoria_animal") dados.categoria = extractAnimalCategory(normalized) || original.toLowerCase();
+    if (expectedField === "sexo") dados.sexo = extractAnimalSex(normalized);
+    if (expectedField === "fase") dados.fase = extractAnimalPhase(normalized);
+    if (expectedField === "raca" && original) dados.raca = extractAnimalBreed(original) || original;
+    if (expectedField === "lote_animal" && original) {
+      dados.lote_nome = extractAnimalLotName(original) || original;
+      dados.lote_nao_encontrado = undefined;
+      dados.lote_opcoes = undefined;
+    }
+    if (expectedField === "data_nascimento") dados.data_nascimento = extractAnimalBirthDate(original);
   }
 
   const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL"].includes(current.tipo);
@@ -1055,7 +1203,14 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (!dados.unidade && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.unidade = extractStockUnit(normalized);
   if (!dados.produto && current.tipo === "VACINA_MEDICAMENTO") dados.produto = extractProduct(answer, normalized);
   if (!dados.descricao && ["DESPESA", "RECEITA_VENDA", "ORDEM_SERVICO"].includes(current.tipo)) dados.descricao = removeValueAndCommonWords(original) || original;
-  if (!dados.categoria && current.tipo === "CADASTRO_ANIMAL") dados.categoria = extractAnimalCategory(normalized);
+  if (current.tipo === "CADASTRO_ANIMAL") {
+    if (!dados.categoria) dados.categoria = extractAnimalCategory(normalized);
+    if (!dados.sexo) dados.sexo = extractAnimalSex(normalized);
+    if (!dados.fase) dados.fase = extractAnimalPhase(normalized);
+    if (!dados.raca) dados.raca = extractAnimalBreed(original);
+    if (!dados.lote_nome && !dados.lote_id) dados.lote_nome = extractAnimalLotName(original);
+    if (!dados.data_nascimento) dados.data_nascimento = extractAnimalBirthDate(original);
+  }
 
   const missing = buildMissing(current.tipo, dados);
   return finalize(current.tipo, dados, missing);

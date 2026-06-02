@@ -96,6 +96,7 @@ const mockUsers = [
 const BOT_TEST_TABLES = {
   fazendas: "fazendas",
   usuarios: "usuarios",
+  lotes: "lotes",
   animais: "animais",
   eventosAnimal: "eventos_animal",
   ordenhas: "ordenhas",
@@ -185,6 +186,22 @@ function createBotTestTables() {
         nome: "Usuario comum",
         telefone: "5583777777777",
         papel: "funcionario",
+        ativo: true
+      }
+    ],
+    [BOT_TEST_TABLES.lotes]: [
+      {
+        id: "lote-lactacao-1",
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: "Lactacao 1",
+        descricao: "Lote principal",
+        ativo: true
+      },
+      {
+        id: "lote-piquete-2",
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: "Piquete 2",
+        descricao: "Piquete de teste",
         ativo: true
       }
     ],
@@ -579,7 +596,12 @@ function missingContains(parsed, field) {
     unidade: /unidade/.test(text),
     valor: /valor|custou/.test(text),
     telefone: /whatsapp|ddd/.test(text),
-    item_nome: /item|estoque/.test(text)
+    item_nome: /item|estoque/.test(text),
+    sexo: /sexo|femea|macho/.test(text),
+    fase: /fase|lactacao|gestante|seca|vazia|crescimento|engorda/.test(text),
+    raca: /raca/.test(text),
+    lote_animal: /lote/.test(text),
+    data_nascimento: /nascimento|data/.test(text)
   };
   return Boolean(checks[field]);
 }
@@ -599,6 +621,12 @@ function assertExpected(test, parsed) {
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
   if (expected.categoria && normalize(dados.categoria) !== normalize(expected.categoria)) failures.push(`categoria esperada ${expected.categoria}, recebida ${dados.categoria}`);
   if (expected.nome && normalize(dados.nome) !== normalize(expected.nome)) failures.push(`nome esperado ${expected.nome}, recebido ${dados.nome}`);
+  if (expected.sexo && normalize(dados.sexo) !== normalize(expected.sexo)) failures.push(`sexo esperado ${expected.sexo}, recebido ${dados.sexo}`);
+  if (expected.fase && normalize(dados.fase) !== normalize(expected.fase)) failures.push(`fase esperada ${expected.fase}, recebida ${dados.fase}`);
+  if (expected.raca && normalize(dados.raca) !== normalize(expected.raca)) failures.push(`raca esperada ${expected.raca}, recebida ${dados.raca}`);
+  if (expected.lote && normalize(dados.lote_nome) !== normalize(expected.lote)) failures.push(`lote esperado ${expected.lote}, recebido ${dados.lote_nome}`);
+  if (expected.loteId && dados.lote_id !== expected.loteId) failures.push(`lote_id esperado ${expected.loteId}, recebido ${dados.lote_id}`);
+  if (expected.data_nascimento && dados.data_nascimento !== expected.data_nascimento) failures.push(`data_nascimento esperada ${expected.data_nascimento}, recebida ${dados.data_nascimento}`);
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
   if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
@@ -685,8 +713,9 @@ const mandatoryTests = [
   { phrase: "adicionar vaca", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", missing: ["animal_codigo"] } },
   { phrase: "adicionar touro", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", missing: ["animal_codigo"] } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
-  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", noMissing: true } },
-  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", noMissing: true } },
+  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", missing: ["sexo"] } },
+  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", missing: ["sexo"] } },
+  { phrase: "adicionar vaca Mimosa brinco B-043 femea gestante raca Girolando lote Lactacao 1 nascimento 01/02/2024", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", animal: "B-043", nome: "Mimosa", sexo: "femea", fase: "gestante", raca: "Girolando", lote: "Lactacao 1", data_nascimento: "2024-02-01", noMissing: true } },
   { phrase: "a vaca do fundo morreu", expected: { tipo: "MORTE", local: "fundo", missing: ["animal_codigo"] } },
   { phrase: "bota 20kg de racao de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
   { phrase: "lança 20kg de ração de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
@@ -979,6 +1008,91 @@ const botConversationTests = [
         text: "sim",
         expected: {
           intent: "ESTOQUE_ENTRADA",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "cadastro de animal pergunta opcionais e permite pular",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "adicionar vaca",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_dado",
+          missing: ["brinco"],
+          responseIncludes: "brinco"
+        }
+      },
+      {
+        text: "B-777",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "aguardando_dado",
+          dados: { animal_codigo: "B-777" },
+          missing: ["sexo"],
+          responseIncludes: "sexo"
+        }
+      },
+      {
+        text: "femea",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_dado",
+          dados: { sexo: "femea" },
+          missing: ["fase"],
+          responseIncludes: "fase"
+        }
+      },
+      {
+        text: "gestante",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_dado",
+          dados: { fase: "gestante" },
+          missing: ["raca"],
+          responseIncludes: "ra"
+        }
+      },
+      {
+        text: "Girolando",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_dado",
+          dados: { raca: "Girolando" },
+          missing: ["lote"],
+          responseIncludes: "lote"
+        }
+      },
+      {
+        text: "Lactacao 1",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_dado",
+          dados: { lote_id: "lote-lactacao-1" },
+          missing: ["nascimento"],
+          responseIncludes: "nascimento"
+        }
+      },
+      {
+        text: "2",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-777", sexo: "femea", fase: "gestante", raca: "Girolando", lote_id: "lote-lactacao-1" },
+          responseIncludes: "correto"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
           estadoNovo: "livre",
           eventoConfirmado: true,
           responseIncludes: "Nenhum registro real foi salvo"

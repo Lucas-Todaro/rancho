@@ -632,6 +632,18 @@ async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: s
   };
 }
 
+async function findLot(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
+  const { data, error } = await supabase
+    .from(TABLES.lotes)
+    .select("id,nome,descricao,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+  const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
+  return bestMatch(activeRows, name, (row) => [row.nome, row.descricao]);
+}
+
 async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string): Promise<StockLookupResult> {
   const { data, error } = await supabase
     .from(TABLES.estoqueItens)
@@ -863,6 +875,22 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
   }
 
+  if (parsed.tipo === "CADASTRO_ANIMAL" && dados.lote_nome && !dados.lote_id) {
+    const found = await findLot(supabase, owner, String(dados.lote_nome));
+    if (found && (found.exact || found.score >= 0.86)) {
+      dados.lote_id = found.row.id;
+      dados.lote_nome = found.row.nome;
+      dados.lote_nao_encontrado = undefined;
+      dados.lote_opcoes = undefined;
+      changed = true;
+    } else {
+      dados.lote_nao_encontrado = dados.lote_nome;
+      dados.lote_nome = undefined;
+      dados.lote_id = undefined;
+      changed = true;
+    }
+  }
+
   if (["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE"].includes(parsed.tipo) && dados.item_nome) {
     const originalItemName = String(dados.item_nome);
     const found = await findStockItem(supabase, owner, originalItemName);
@@ -1075,12 +1103,25 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       brinco: dados.animal_codigo,
       nome: dados.nome || null,
       categoria: dados.categoria || "outro",
-      fase: "nao_aplicavel",
+      sexo: dados.sexo || "nao_informado",
+      fase: dados.fase || "nao_aplicavel",
+      raca: dados.raca || null,
+      lote_id: dados.lote_id || null,
+      data_nascimento: dados.data_nascimento || null,
       status: "ativo",
       created_by: owner.usuario_id || null,
       observacoes: "Cadastrado via WhatsApp"
     });
-    return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${dados.nome ? `Nome: ${dados.nome}.\n` : ""}Brinco: ${dados.animal_codigo}.`, [TABLES.animais]);
+    const details = [
+      dados.nome ? `Nome: ${dados.nome}.` : "",
+      `Brinco: ${dados.animal_codigo}.`,
+      dados.sexo ? `Sexo: ${dados.sexo}.` : "",
+      dados.fase ? `Fase: ${dados.fase}.` : "",
+      dados.raca ? `Raça: ${dados.raca}.` : "",
+      dados.lote_nome ? `Lote: ${dados.lote_nome}.` : "",
+      dados.data_nascimento ? `Nascimento: ${dados.data_nascimento}.` : ""
+    ].filter(Boolean).join("\n");
+    return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${details}`, [TABLES.animais]);
   }
 
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {
