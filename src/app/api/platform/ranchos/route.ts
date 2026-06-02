@@ -20,6 +20,10 @@ function statusFromFarm(farm: AnyRecord, ownerAccepted: boolean) {
   return farm.ativa === false ? "suspenso" : "ativo";
 }
 
+function shouldIgnoreOptionalTableError(error: { message?: string } | null) {
+  return Boolean(error?.message && /relation .* does not exist|column .* does not exist|schema cache/i.test(error.message));
+}
+
 async function authEmailMap(supabase: SupabaseAdmin, userIds: string[]) {
   const targets = new Set(userIds.filter(Boolean));
   const map = new Map<string, string>();
@@ -77,8 +81,146 @@ async function createOwnerInvite(input: {
   };
 }
 
+async function updateOwnerDetails(input: {
+  supabase: SupabaseAdmin;
+  ranchoId: string;
+  nome: string;
+  email: string;
+}) {
+  if (!input.nome) throw new Error("owner_name_required");
+  if (!isValidInviteEmail(input.email)) throw new Error("owner_email_invalid");
+
+  const { data: owner, error: ownerError } = await input.supabase
+    .from(TABLES.usuarios)
+    .select("id,nome,papel")
+    .eq("fazenda_id", input.ranchoId)
+    .eq("papel", "dono")
+    .maybeSingle();
+
+  if (ownerError) throw new Error(ownerError.message);
+
+  const existingAuthUser = await findAuthUserByEmail(input.supabase, input.email);
+  if (existingAuthUser && existingAuthUser.id !== owner?.id) {
+    throw new Error("owner_email_already_used");
+  }
+
+  const { error: farmError } = await input.supabase
+    .from(TABLES.fazendas)
+    .update({ dono_nome: input.nome, dono_email: input.email })
+    .eq("id", input.ranchoId);
+
+  if (farmError) throw new Error(farmError.message);
+
+  if (owner?.id) {
+    const { error: authError } = await input.supabase.auth.admin.updateUserById(owner.id, {
+      email: input.email,
+      email_confirm: true,
+      user_metadata: { nome: input.nome }
+    });
+
+    if (authError) throw new Error(authError.message);
+
+    const { error: profileError } = await input.supabase
+      .from(TABLES.usuarios)
+      .update({ nome: input.nome })
+      .eq("id", owner.id)
+      .eq("fazenda_id", input.ranchoId);
+
+    if (profileError) throw new Error(profileError.message);
+
+    const { error: whatsappError } = await input.supabase
+      .from(TABLES.whatsappUsuarios)
+      .update({ nome_exibicao: input.nome })
+      .eq("fazenda_id", input.ranchoId)
+      .eq("usuario_id", owner.id);
+
+    if (whatsappError && !shouldIgnoreOptionalTableError(whatsappError)) throw new Error(whatsappError.message);
+    return;
+  }
+
+  const { error: inviteError } = await input.supabase
+    .from(TABLES.convites)
+    .update({ nome: input.nome, email: input.email })
+    .eq("fazenda_id", input.ranchoId)
+    .eq("papel", "dono")
+    .eq("status", "pendente");
+
+  if (inviteError) throw new Error(inviteError.message);
+}
+
+async function deleteFarmCompletely(input: {
+  supabase: SupabaseAdmin;
+  ranchoId: string;
+  currentUserId: string;
+}) {
+  const { data: farm, error: farmError } = await input.supabase
+    .from(TABLES.fazendas)
+    .select("id,nome")
+    .eq("id", input.ranchoId)
+    .maybeSingle();
+
+  if (farmError) throw new Error(farmError.message);
+  if (!farm) return { deletedUsers: 0, farmName: "" };
+
+  const { data: users, error: usersError } = await input.supabase
+    .from(TABLES.usuarios)
+    .select("id")
+    .eq("fazenda_id", input.ranchoId);
+
+  if (usersError) throw new Error(usersError.message);
+
+  const userIds = ((users || []) as AnyRecord[]).map((user) => String(user.id)).filter(Boolean);
+  if (userIds.includes(input.currentUserId)) throw new Error("cannot_delete_own_farm");
+
+  const tablesInDeleteOrder = [
+    TABLES.whatsappMensagens,
+    TABLES.whatsappSessoes,
+    TABLES.whatsappUsuarios,
+    TABLES.registrosPonto,
+    TABLES.folhaPagamento,
+    TABLES.convites,
+    TABLES.estoqueMovimentacoes,
+    TABLES.transacoesFinanceiras,
+    TABLES.ordenhas,
+    TABLES.eventosAnimal,
+    TABLES.notificacoes,
+    TABLES.alertas,
+    TABLES.auditoriaLogs,
+    TABLES.animais,
+    TABLES.estoqueItens,
+    TABLES.funcionarios,
+    TABLES.lotes,
+    TABLES.usuarios
+  ];
+
+  for (const tableName of tablesInDeleteOrder) {
+    const { error } = await input.supabase.from(tableName).delete().eq("fazenda_id", input.ranchoId);
+    if (error && !shouldIgnoreOptionalTableError(error)) throw new Error(`${tableName}: ${error.message}`);
+  }
+
+  const { error: deleteFarmError } = await input.supabase
+    .from(TABLES.fazendas)
+    .delete()
+    .eq("id", input.ranchoId);
+
+  if (deleteFarmError) throw new Error(deleteFarmError.message);
+
+  let deletedUsers = 0;
+  for (const userId of userIds) {
+    const { error } = await input.supabase.auth.admin.deleteUser(userId);
+    if (error && !/not found|user not found/i.test(error.message)) throw new Error(error.message);
+    if (!error) deletedUsers += 1;
+  }
+
+  return { deletedUsers, farmName: String(farm.nome || "") };
+}
+
 function platformErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+  if (/owner_name_required/i.test(message)) return "Informe o nome do dono.";
+  if (/owner_email_invalid/i.test(message)) return "Informe um e-mail vÃ¡lido para o dono.";
+  if (/owner_email_already_used/i.test(message)) return "Este e-mail jÃ¡ estÃ¡ vinculado a outro usuÃ¡rio.";
+  if (/cannot_delete_own_farm/i.test(message)) return "NÃ£o Ã© possÃ­vel excluir o rancho vinculado ao admin logado.";
   if (/is_platform_admin|status|cidade|estado|dono_|schema cache|column|relation/i.test(message)) {
     return "A estrutura de Admin Interno ainda não está completa no Supabase. Execute a migration de Admin Interno e tente novamente.";
   }
@@ -276,6 +418,12 @@ export async function PATCH(request: NextRequest) {
       const cidade = asText(body.cidade);
       const estado = asText(body.estado).toUpperCase().slice(0, 2);
       const status = asText(body.status);
+      const donoNome = asText(body.donoNome || body.ownerName);
+      const donoEmail = normalizeInviteEmail(body.donoEmail || body.ownerEmail);
+      if (donoNome || donoEmail) {
+        if (!donoNome) return platformAdminError("Informe o nome do dono.", 400);
+        if (!isValidInviteEmail(donoEmail)) return platformAdminError("Informe um e-mail vÃ¡lido para o dono.", 400);
+      }
       if (nome) payload.nome = nome;
       if (plano) payload.plano = plano;
       if (cidade || body.cidade === "") payload.cidade = cidade || null;
@@ -287,6 +435,14 @@ export async function PATCH(request: NextRequest) {
 
       const { error } = await permission.supabase.from(TABLES.fazendas).update(payload).eq("id", ranchoId);
       if (error) throw new Error(error.message);
+      if (donoNome || donoEmail) {
+        await updateOwnerDetails({
+          supabase: permission.supabase,
+          ranchoId,
+          nome: donoNome,
+          email: donoEmail
+        });
+      }
       return NextResponse.json({ ok: true, message: "Rancho atualizado." });
     }
 
@@ -336,6 +492,32 @@ export async function PATCH(request: NextRequest) {
     return platformAdminError("Ação inválida.", 400);
   } catch (error) {
     console.error("[Platform ranchos PATCH]", error);
+    return platformAdminError(platformErrorMessage(error), 500);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const permission = await requirePlatformAdmin(request);
+    if (!permission.ok) return permission.response;
+
+    const body = await request.json().catch(() => ({}));
+    const ranchoId = asText(body.ranchoId || body.id);
+    if (!ranchoId) return platformAdminError("Rancho invÃ¡lido.", 400);
+
+    const result = await deleteFarmCompletely({
+      supabase: permission.supabase,
+      ranchoId,
+      currentUserId: permission.user.id
+    });
+
+    return NextResponse.json({
+      ok: true,
+      deletedUsers: result.deletedUsers,
+      message: result.farmName ? `Rancho ${result.farmName} excluÃ­do completamente.` : "Rancho excluÃ­do completamente."
+    });
+  } catch (error) {
+    console.error("[Platform ranchos DELETE]", error);
     return platformAdminError(platformErrorMessage(error), 500);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Copy, Loader2, Plus, RefreshCw, ShieldCheck, UserPlus } from "lucide-react";
+import { Building2, Copy, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -42,6 +42,7 @@ type ApiResult = {
   message?: string;
   ranchos?: RanchoRow[];
   inviteLink?: string;
+  deletedUsers?: number;
 };
 
 const initialDraft = {
@@ -195,6 +196,34 @@ export default function AdminInternoPage() {
     }
   }
 
+  async function deleteRancho(row: RanchoRow) {
+    const confirmation = window.prompt(`Digite EXCLUIR para apagar completamente o rancho "${row.nome}" e todos os dados vinculados.`);
+    if (confirmation !== "EXCLUIR") return;
+
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    setInviteLink("");
+
+    try {
+      const response = await fetch("/api/platform/ranchos", {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ ranchoId: row.id })
+      });
+      const data = await response.json().catch(() => ({})) as ApiResult;
+      if (!response.ok) throw new Error(data.error || "NÃ£o foi possÃ­vel excluir o rancho.");
+
+      setSuccess(data.message || "Rancho excluÃ­do completamente.");
+      if (editing?.id === row.id) resetForm();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "NÃ£o foi possÃ­vel excluir o rancho.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyInvite() {
     if (!inviteLink) return;
     await navigator.clipboard.writeText(inviteLink);
@@ -245,21 +274,19 @@ export default function AdminInternoPage() {
               <input className="input" value={draft.nome} onChange={(event) => updateDraft("nome", event.target.value)} required />
             </label>
 
+            <label className="block space-y-2">
+              <span className="text-sm font-bold">Nome do dono</span>
+              <input className="input" value={draft.donoNome} onChange={(event) => updateDraft("donoNome", event.target.value)} required />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold">E-mail do dono</span>
+              <input className="input" type="email" value={draft.donoEmail} onChange={(event) => updateDraft("donoEmail", event.target.value)} required />
+            </label>
             {!editing ? (
-              <>
-                <label className="block space-y-2">
-                  <span className="text-sm font-bold">Nome do dono</span>
-                  <input className="input" value={draft.donoNome} onChange={(event) => updateDraft("donoNome", event.target.value)} required />
-                </label>
-                <label className="block space-y-2">
-                  <span className="text-sm font-bold">E-mail do dono</span>
-                  <input className="input" type="email" value={draft.donoEmail} onChange={(event) => updateDraft("donoEmail", event.target.value)} required />
-                </label>
-                <label className="block space-y-2">
-                  <span className="text-sm font-bold">WhatsApp do dono</span>
-                  <input className="input" value={draft.donoTelefone} onChange={(event) => updateDraft("donoTelefone", event.target.value)} placeholder="Opcional" />
-                </label>
-              </>
+              <label className="block space-y-2">
+                <span className="text-sm font-bold">WhatsApp do dono</span>
+                <input className="input" value={draft.donoTelefone} onChange={(event) => updateDraft("donoTelefone", event.target.value)} placeholder="Opcional" />
+              </label>
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -351,6 +378,9 @@ export default function AdminInternoPage() {
                     ) : (
                       <button className="btn btn-primary px-3 py-2 text-sm" type="button" onClick={() => void runAction(row, "reactivate")} disabled={busy}>Reativar</button>
                     )}
+                    <button className="btn border border-red-300 bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700 dark:border-red-800 dark:bg-red-700 dark:hover:bg-red-800" type="button" onClick={() => void deleteRancho(row)} disabled={busy}>
+                      <Trash2 className="h-4 w-4" /> Excluir
+                    </button>
                   </div>
                 </div>
               </article>

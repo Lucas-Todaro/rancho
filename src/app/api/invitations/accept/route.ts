@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       id: authUser.id,
       fazenda_id: invite.fazenda_id,
       nome: finalName,
-      telefone: isValidBotOwnerPhone(farm?.dono_telefone) ? normalizeWhatsappNumber(farm?.dono_telefone).slice(2) : undefined,
+      telefone: isValidBotOwnerPhone(farm?.dono_telefone) ? normalizeWhatsappNumber(farm?.dono_telefone).slice(2) : "",
       papel: invite.papel,
       ativo: true
     };
