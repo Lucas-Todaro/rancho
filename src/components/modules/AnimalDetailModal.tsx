@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, CalendarDays, ClipboardList, Heart, Plus, Stethoscope, TrendingUp, X } from "lucide-react";
+import { Activity, ClipboardList, Heart, Plus, Stethoscope, TrendingUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -129,6 +129,14 @@ export function AnimalDetailModal({
     loadDetails().catch((err) => setError(getFriendlyErrorMessage(err, "Não foi possível carregar a ficha.")));
   }, [loadDetails]);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const metrics = useMemo(() => {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -231,20 +239,20 @@ export function AnimalDetailModal({
   const showDetailPlaceholders = detailsLoading || Boolean(error && !events.length && !productions.length);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:p-6">
-      <section className="flex max-h-[96vh] w-full max-w-6xl animate-fade-in flex-col overflow-hidden rounded-t-lg border border-slate-200 bg-white text-slate-950 shadow-soft dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 md:rounded-lg">
-        <header className="border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-5 dark:border-slate-800 dark:from-emerald-950 dark:via-slate-950 dark:to-lime-950 md:p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
+    <div className="fixed inset-0 z-50 bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+      <section className="flex h-dvh w-full animate-fade-in flex-col overflow-hidden">
+        <header className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-4 dark:border-slate-800 dark:from-emerald-950 dark:via-slate-950 dark:to-lime-950">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700 dark:text-emerald-300">Ficha 360</p>
-              <h2 className="mt-2 text-4xl font-black tracking-tight">{animal.nome || animal.brinco || "Animal"}</h2>
+              <h2 className="mt-1 truncate text-3xl font-black tracking-tight md:text-4xl">{animal.nome || animal.brinco || "Animal"}</h2>
               {animal.nome ? <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">Código: {animal.brinco || "Sem brinco"}</p> : null}
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <span>{categoria} • {fase || "Fase não informada"} • {lote}</span>
                 <span className={`rounded-full border px-3 py-1 text-xs font-black ${sex.className}`}>{sex.label}</span>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex shrink-0 flex-wrap gap-2">
               <button className="btn btn-primary" type="button" onClick={() => openEventForm()}>
                 <Plus className="h-4 w-4" /> Novo registro de manejo
               </button>
@@ -258,8 +266,8 @@ export function AnimalDetailModal({
           </div>
         </header>
 
-        <div className="border-b border-slate-200 bg-white px-5 dark:border-slate-800 dark:bg-slate-950 md:px-6">
-          <nav className="flex gap-6 overflow-auto">
+        <div className="shrink-0 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
+          <nav className="mx-auto flex max-w-7xl gap-6 overflow-auto">
             {[
               ["resumo", "Resumo"],
               ["reproducao", "Reprodução"],
@@ -267,7 +275,7 @@ export function AnimalDetailModal({
             ].map(([value, label]) => (
               <button
                 key={value}
-                className={`border-b-2 px-1 py-4 text-sm font-black transition ${tab === value ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"}`}
+                className={`border-b-2 px-1 py-3 text-sm font-black transition ${tab === value ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"}`}
                 type="button"
                 onClick={() => setTab(value as Tab)}
               >
@@ -277,40 +285,41 @@ export function AnimalDetailModal({
           </nav>
         </div>
 
-        <div className="overflow-y-auto bg-white p-5 dark:bg-slate-950 md:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 dark:bg-slate-950 md:p-4">
+          <div className="mx-auto max-w-7xl">
           {error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
 
           {tab === "resumo" ? (
-            <div className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-900 dark:bg-blue-950/30">
-                  <TrendingUp className="h-6 w-6 text-blue-700" />
-                  <p className="mt-4 text-sm font-black">Média leite/dia</p>
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+                  <TrendingUp className="h-5 w-5 text-blue-700" />
+                  <p className="mt-3 text-sm font-black">Média leite/dia</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 7 dias</p>
-                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-28" /> : <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.dailyAverage, " L")}</h3>}
+                  {showDetailPlaceholders ? <Skeleton className="mt-3 h-8 w-24" /> : <h3 className="mt-3 text-2xl font-black">{formatNumber(metrics.dailyAverage, " L")}</h3>}
                 </div>
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <Activity className="h-6 w-6 text-emerald-700" />
-                  <p className="mt-4 text-sm font-black">Produção recente</p>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <Activity className="h-5 w-5 text-emerald-700" />
+                  <p className="mt-3 text-sm font-black">Produção recente</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Últimos 30 dias</p>
-                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-28" /> : <h3 className="mt-4 text-3xl font-black">{formatNumber(metrics.production30, " L")}</h3>}
+                  {showDetailPlaceholders ? <Skeleton className="mt-3 h-8 w-24" /> : <h3 className="mt-3 text-2xl font-black">{formatNumber(metrics.production30, " L")}</h3>}
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
-                  <Stethoscope className="h-6 w-6 text-amber-700" />
-                  <p className="mt-4 text-sm font-black">Custo de saúde</p>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+                  <Stethoscope className="h-5 w-5 text-amber-700" />
+                  <p className="mt-3 text-sm font-black">Custo de saúde</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Mês atual</p>
-                  {showDetailPlaceholders ? <Skeleton className="mt-4 h-9 w-32" /> : <h3 className="mt-4 text-3xl font-black">{formatCurrency(metrics.monthCost)}</h3>}
+                  {showDetailPlaceholders ? <Skeleton className="mt-3 h-8 w-28" /> : <h3 className="mt-3 text-2xl font-black">{formatCurrency(metrics.monthCost)}</h3>}
                 </div>
-                <div className="rounded-lg border border-purple-200 bg-purple-50 p-5 dark:border-purple-900 dark:bg-purple-950/30">
-                  <Heart className="h-6 w-6 text-purple-700" />
-                  <p className="mt-4 text-sm font-black">Status reprodutivo</p>
+                <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-900 dark:bg-purple-950/30">
+                  <Heart className="h-5 w-5 text-purple-700" />
+                  <p className="mt-3 text-sm font-black">Status reprodutivo</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Snapshot atual</p>
-                  <h3 className="mt-4 text-3xl font-black">{reproductiveStatus}</h3>
+                  <h3 className="mt-3 text-2xl font-black">{reproductiveStatus}</h3>
                 </div>
               </div>
 
-              <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-                <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950">
+              <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Caderno de manejo</p>
@@ -320,16 +329,16 @@ export function AnimalDetailModal({
                       <Plus className="h-4 w-4" /> Registrar agora
                     </button>
                   </div>
-                  <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Manejos</p>{showDetailPlaceholders ? <Skeleton className="mt-2 h-5 w-12" /> : <strong>{metrics.eventCount}</strong>}</div>
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Peso atual</p><strong>{formatNumber(animal.peso, " kg")}</strong></div>
                     <div className="rounded-lg bg-slate-100 p-4 dark:bg-slate-900"><p className="text-sm text-slate-500">Status</p><strong>{status}</strong></div>
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950">
+                <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Dados do animal</p>
-                  <div className="mt-4 space-y-3 text-sm">
+                  <div className="mt-3 space-y-2 text-sm">
                     {[
                       ["Nome", animal.nome || "-"],
                       ["Código", animal.brinco || "-"],
@@ -405,7 +414,7 @@ export function AnimalDetailModal({
           ) : null}
 
           {showForm ? (
-            <form onSubmit={submitEvent} className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <form onSubmit={submitEvent} className="mt-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black">Novo registro de manejo</h3>
@@ -454,13 +463,8 @@ export function AnimalDetailModal({
               </button>
             </form>
           ) : null}
+          </div>
         </div>
-
-        <footer className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <button className="btn btn-secondary w-full" type="button" onClick={onClose}>
-            <CalendarDays className="h-4 w-4" /> Fechar ficha
-          </button>
-        </footer>
       </section>
     </div>
   );
