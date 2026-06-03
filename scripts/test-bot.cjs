@@ -933,6 +933,9 @@ function assertExpected(test, parsed) {
   if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
   if ("novo_valor" in expected && normalize(dados.novo_valor) !== normalize(expected.novo_valor)) failures.push(`novo_valor esperado ${expected.novo_valor}, recebido ${dados.novo_valor}`);
   if ("consulta" in expected && Boolean(dados.consulta) !== Boolean(expected.consulta)) failures.push(`consulta esperada ${expected.consulta}, recebida ${dados.consulta}`);
+  if (expected.financeiro_modo && normalize(dados.financeiro_modo) !== normalize(expected.financeiro_modo)) failures.push(`financeiro_modo esperado ${expected.financeiro_modo}, recebido ${dados.financeiro_modo}`);
+  if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
+  if (expected.filtro_texto && normalize(dados.filtro_texto) !== normalize(expected.filtro_texto)) failures.push(`filtro_texto esperado ${expected.filtro_texto}, recebido ${dados.filtro_texto}`);
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
   if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
@@ -1396,6 +1399,23 @@ const financeHumanParserTests = [
   financeParser("transacoes da semana", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
   financeParser("despesas do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
   financeParser("receitas do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quais as minhas transacoes de hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_modo: "detalhado" }),
+  financeParser("quais entradas de hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "detalhado" }),
+  financeParser("quanto entrou hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "resumo" }),
+  financeParser("quanto saiu hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" }),
+  financeParser("resultado do dia", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_modo: "resumo" }),
+  financeParser("transacoes do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "mes", financeiro_modo: "detalhado" }),
+  financeParser("financeiro de hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_modo: "resumo" }),
+  financeParser("movimentacoes de ontem", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "ontem", financeiro_modo: "detalhado" }),
+  financeParser("extrato da semana", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "semana", financeiro_modo: "detalhado" }),
+  financeParser("quanto gastei com racao hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "saida", filtro_texto: "racao" }),
+  financeParser("vendas de leite do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "mes", financeiro_tipo: "entrada", filtro_texto: "leite" }),
+  financeParser("despesas com salario da semana", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "semana", financeiro_tipo: "saida", filtro_texto: "salario" }),
+  financeParser("transacoes de 01/06/2026", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "2026-06-01", financeiro_modo: "detalhado" }),
+  financeParser("transacoes de junho de 2026", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "2026-06", financeiro_modo: "detalhado" }),
+  financeParser("finaceiro hj", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje" }),
+  financeParser("resutado do dia", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje" }),
+  financeParser("despezas de racao hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "saida", filtro_texto: "racao" }),
   financeParser("Joao entrou as 7:30", { tipo: "PONTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "joao", ponto_tipo: "entrada", horario: "07:30" }),
   financeParser("comprei 10 sacos de racao por 300 reais", { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Racao", quantidade: 10, unidade: "saco", valor: 300 })
 ];
@@ -3565,6 +3585,154 @@ const financeFrameworkCases = [
     }
   },
   {
+    name: "consulta resumo de entradas de hoje soma sem confirmar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" },
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quanto entrou hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "resumo" },
+      responseIncludes: "Entradas de hoje",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta resumo de saidas de hoje soma sem confirmar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" },
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quanto saiu hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" },
+      responseIncludes: "Saídas de hoje",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta transacoes de hoje lista entradas e saidas",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" },
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quais as minhas transacoes de hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "hoje", financeiro_modo: "detalhado" },
+      responseIncludes: "Venda de leite",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta entradas de hoje lista somente entradas",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" },
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quais entradas de hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "detalhado" },
+      responseIncludes: "Entradas de hoje",
+      responseNotIncludes: "Compra de racao",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta saidas filtradas por racao nao vira consulta de estoque",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" },
+      { tipo: "saida", valor: 100, descricao: "Veterinario", categoria: "veterinario" }
+    ],
+    messages: ["quanto gastei com racao hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      avoidIntents: ["CONSULTA_ESTOQUE", "CONSULTA_ESTOQUE_ITEM", "CONSULTA_ESTOQUE_GERAL"],
+      entities: { data_referencia: "hoje", financeiro_tipo: "saida", filtro_texto: "racao" },
+      responseIncludes: "sobre racao",
+      responseNotIncludes: "Veterinario",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta sem transacoes informa vazio sem salvar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["transacoes de 01/01/2026"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "2026-01-01", financeiro_modo: "detalhado" },
+      responseIncludes: "Não encontrei transações",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta financeira pagina transacoes com ver mais",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 101, descricao: "Venda lote 01" },
+      { tipo: "entrada", valor: 102, descricao: "Venda lote 02" },
+      { tipo: "entrada", valor: 103, descricao: "Venda lote 03" },
+      { tipo: "entrada", valor: 104, descricao: "Venda lote 04" },
+      { tipo: "entrada", valor: 105, descricao: "Venda lote 05" },
+      { tipo: "entrada", valor: 106, descricao: "Venda lote 06" }
+    ],
+    messages: ["transacoes do mes", "ver mais"],
+    expected: {
+      responseIncludes: "Venda lote 04",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta transacoes por mes explicito usa intervalo do mes",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 700, descricao: "Venda junho", data_transacao: "2026-06-10" },
+      { tipo: "entrada", valor: 300, descricao: "Venda julho", data_transacao: "2026-07-10" }
+    ],
+    messages: ["transacoes de junho de 2026"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "2026-06", financeiro_modo: "detalhado" },
+      responseIncludes: "Venda junho",
+      responseNotIncludes: "Venda julho",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "valor zero em financeiro fica aguardando dado e nao salva",
     module: "financeiro",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -5061,7 +5229,11 @@ function createSupabaseForScenario(test = {}) {
       tipo: row.tipo || "entrada",
       valor: row.valor,
       descricao: row.descricao || "transacao teste",
-      data_transacao: row.data_transacao || new Date().toISOString().slice(0, 10)
+      categoria: row.categoria || null,
+      metodo_pagamento: row.metodo_pagamento || null,
+      origem: row.origem || null,
+      data_transacao: row.data_transacao || new Date().toISOString().slice(0, 10),
+      created_at: row.created_at || `${row.data_transacao || new Date().toISOString().slice(0, 10)}T12:00:00.000Z`
     })));
   }
   if (test.employees) {
@@ -6097,6 +6269,14 @@ function writeBotTestReports(summary) {
         passed: financialPassed,
         failed: financialFailed.length,
         successRate: financialSuccessRate,
+        coverage: [
+          "lancamentos de entradas e saidas com confirmacao obrigatoria",
+          "consultas financeiras sem confirmacao e sem salvamento",
+          "resumos de entradas, saidas e resultado por hoje, ontem, semana, mes e datas explicitas",
+          "listas de transacoes com paginacao via ver mais",
+          "filtros por descricao/categoria como leite, racao e salario",
+          "permissoes de admin/dono, isolamento por rancho e dry-run sem escrita real"
+        ],
         failures: financialFailed.map((result) => resultName(result))
       },
       funcionariosPontoFolha: {
@@ -6219,7 +6399,8 @@ function writeBotTestReports(summary) {
     `- Aprovados financeiro: ${report.summary.financeiro.passed}`,
     `- Falhos financeiro: ${report.summary.financeiro.failed}`,
     `- Taxa financeiro: ${report.summary.financeiro.successRate}%`,
-    "- Cobertura: entradas, saidas, vendas, compras/despesas, salarios, valores em reais, contexto, confirmacao, correcao, cancelamento, repeticao, consultas, permissoes e rancho_id.",
+    "- Cobertura: entradas, saidas, vendas, compras/despesas, salarios, valores em reais, contexto, confirmacao, correcao, cancelamento, repeticao, consultas resumidas/detalhadas, periodos, filtros, paginacao, permissoes e rancho_id.",
+    "- Consultas protegidas: perguntas como quanto entrou hoje, quanto saiu hoje, resultado do dia, transacoes do mes e quais entradas de hoje consultam dados existentes e nao pedem confirmacao nem salvam transacao.",
     "- Observacao: testes usam modoTeste=true, salvarReal=false, Supabase mockado e nao enviam WhatsApp real.",
     "- Recomendacao: manter os casos financeiros criticos na bateria completa sempre que o NLP do bot mudar.",
     "",

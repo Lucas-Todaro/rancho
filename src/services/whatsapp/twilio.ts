@@ -96,6 +96,7 @@ const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
 const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "mostrar de novo", "resumo", "resumir"]);
 const STOCK_PAGINATION_WORDS = new Set(["mais", "ver mais", "proximos", "proximo", "continuar", "continua"]);
 const STOCK_PAGE_SIZE = 8;
+const FINANCE_PAGE_SIZE = 5;
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
   "CONSULTA_PRODUCAO_HOJE",
@@ -191,6 +192,13 @@ function currentMonthRange() {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+function monthRange(period: string) {
+  const [year, month] = period.split("-").map(Number);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 function currentWeekRange() {
   const now = new Date();
   const start = new Date(now);
@@ -206,12 +214,15 @@ function currentWeekRange() {
 function periodRange(period?: string) {
   if (period === "semana") return currentWeekRange();
   if (period === "mes") return currentMonthRange();
+  if (/^\d{4}-\d{2}$/.test(String(period || ""))) return monthRange(String(period));
   return dayRange(period);
 }
 
 function periodLabel(period?: string) {
   if (period === "semana") return "esta semana";
   if (period === "mes") return "este mês";
+  if (/^\d{4}-\d{2}$/.test(String(period || ""))) return `o mês ${String(period)}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(period || ""))) return `o dia ${String(period)}`;
   if (period === "anteontem") return "anteontem";
   if (period === "ontem") return "ontem";
   return "hoje";
@@ -2429,6 +2440,196 @@ async function handleStockPagination(supabase: SupabaseAdmin, owner: WhatsAppOwn
   return page.text;
 }
 
+function financeRowType(row: AnyRecord) {
+  return String(row.tipo || "").toLowerCase() === "saida" ? "saida" : "entrada";
+}
+
+function financeRowDate(row: AnyRecord) {
+  return String(row.data_transacao || row.created_at || "").slice(0, 10) || "sem data";
+}
+
+function financeFilterMatches(row: AnyRecord, filter?: string) {
+  const requested = normalizeRanchoText(filter || "");
+  if (!requested) return true;
+  const haystack = normalizeRanchoText([
+    row.descricao,
+    row.categoria,
+    row.metodo_pagamento,
+    row.origem
+  ].filter(Boolean).join(" "));
+  return haystack.includes(requested);
+}
+
+function financeTotals(rows: AnyRecord[]) {
+  const entrada = rows.filter((row) => financeRowType(row) === "entrada").reduce((sum, row) => sum + Number(row.valor || 0), 0);
+  const saida = rows.filter((row) => financeRowType(row) === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
+  return { entrada, saida, resultado: entrada - saida };
+}
+
+function financeTypeLabel(type?: string) {
+  if (type === "entrada") return "Entradas";
+  if (type === "saida") return "Saídas";
+  return "Transações";
+}
+
+function financeSummaryHeader(type: string | undefined, period: string, filter?: string) {
+  const suffix = filter ?` sobre ${filter}` : "";
+  if (type === "entrada") return `Entradas de ${periodLabel(period)}${suffix}:`;
+  if (type === "saida") return `Saídas de ${periodLabel(period)}${suffix}:`;
+  return `Resumo financeiro de ${periodLabel(period)}${suffix}:`;
+}
+
+function formatFinanceLine(row: AnyRecord, index: number) {
+  const direction = financeRowType(row) === "saida" ? "Saída" : "Entrada";
+  const description = row.descricao || row.categoria || "sem descrição";
+  return `${index}. ${financeRowDate(row)} - ${direction} - ${description}: ${formatMoney(row.valor)}`;
+}
+
+function buildFinanceSummaryText(rows: AnyRecord[], period: string, type?: string, filter?: string) {
+  const totals = financeTotals(rows);
+  const header = financeSummaryHeader(type, period, filter);
+  if (type === "entrada") return `${header}\nTotal: ${formatMoney(totals.entrada)}\nRegistros: ${rows.length}`;
+  if (type === "saida") return `${header}\nTotal: ${formatMoney(totals.saida)}\nRegistros: ${rows.length}`;
+  return `${header}\nEntradas: ${formatMoney(totals.entrada)}\nSaídas: ${formatMoney(totals.saida)}\nResultado: ${formatMoney(totals.resultado)}\nRegistros: ${rows.length}`;
+}
+
+function buildFinanceListText(rows: AnyRecord[], period: string, offset: number, pageSize: number, type?: string, filter?: string) {
+  const total = rows.length;
+  if (!total) {
+    return {
+      text: `Não encontrei transações registradas em ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`,
+      nextOffset: offset,
+      hasMore: false,
+      total
+    };
+  }
+
+  const pageRows = rows.slice(offset, offset + pageSize);
+  const lines = pageRows.map((row, index) => formatFinanceLine(row, offset + index + 1)).join("\n");
+  const nextOffset = offset + pageRows.length;
+  const hasMore = nextOffset < total;
+  const totals = financeTotals(rows);
+  const header = offset === 0
+    ? `${financeTypeLabel(type)} de ${periodLabel(period)}${filter ?` sobre ${filter}` : ""}:`
+    : `Mostrando mais ${pageRows.length} ${pageRows.length === 1 ?"transação" : "transações"}:`;
+  const footer = hasMore ?"\n\nQuer ver mais?" : offset > 0 ?"\n\nFim da lista." : "";
+  const summary = type === "entrada"
+    ?`\nTotal de entradas: ${formatMoney(totals.entrada)}`
+    : type === "saida"
+      ?`\nTotal de saídas: ${formatMoney(totals.saida)}`
+      :`\nTotais: entradas ${formatMoney(totals.entrada)}, saídas ${formatMoney(totals.saida)}, resultado ${formatMoney(totals.resultado)}`;
+  return { text: `${header}\n${lines}${summary}${footer}`, nextOffset, hasMore, total };
+}
+
+async function saveFinancePagination(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  period: string,
+  type: string | undefined,
+  filter: string | undefined,
+  nextOffset: number,
+  pageSize: number
+) {
+  await saveSession(supabase, owner, {
+    etapa: "livre",
+    dados: {
+      financeiro_paginacao: {
+        tipo: "financeiro_lista",
+        periodo: period,
+        financeiro_tipo: type || null,
+        filtro_texto: filter || null,
+        offset: nextOffset,
+        pageSize
+      }
+    }
+  });
+}
+
+async function queryFinanceRows(supabase: SupabaseAdmin, owner: WhatsAppOwner, period: string, type?: string, filter?: string) {
+  const range = periodRange(period);
+  let query = supabase
+    .from(TABLES.transacoesFinanceiras)
+    .select("id,tipo,valor,descricao,categoria,data_transacao,created_at,metodo_pagamento,origem")
+    .eq("fazenda_id", owner.fazenda_id)
+    .gte("data_transacao", dateOnly(new Date(range.start)))
+    .lt("data_transacao", dateOnly(new Date(range.end)))
+    .order("data_transacao", { ascending: false })
+    .limit(1000);
+
+  if (type === "entrada" || type === "saida") query = query.eq("tipo", type);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[])
+    .filter((row) => financeFilterMatches(row, filter))
+    .sort((left, right) => String(right.data_transacao || right.created_at || "").localeCompare(String(left.data_transacao || left.created_at || "")));
+}
+
+async function handleFinancePagination(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession) {
+  const pagination = session.dados?.financeiro_paginacao as AnyRecord | undefined;
+  if (!pagination || pagination.tipo !== "financeiro_lista") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há mais transações para mostrar agora.";
+  }
+
+  const period = String(pagination.periodo || "mes");
+  const type = pagination.financeiro_tipo ?String(pagination.financeiro_tipo) : undefined;
+  const filter = pagination.filtro_texto ?String(pagination.filtro_texto) : undefined;
+  const offset = Math.max(0, Number(pagination.offset || 0));
+  const pageSize = Math.max(1, Math.min(20, Number(pagination.pageSize || FINANCE_PAGE_SIZE)));
+  const rows = await queryFinanceRows(supabase, owner, period, type, filter);
+
+  if (!rows.length || offset >= rows.length) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há mais transações para mostrar agora.";
+  }
+
+  const page = buildFinanceListText(rows, period, offset, pageSize, type, filter);
+  if (page.hasMore) {
+    await saveFinancePagination(supabase, owner, period, type, filter, page.nextOffset, pageSize);
+  } else {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+
+  return page.text;
+}
+
+async function handleFinanceConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  if (!isBotAdmin(owner)) return "Você não tem permissão para consultar financeiro pelo WhatsApp.";
+
+  const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "mes");
+  const type = parsed.dados.financeiro_tipo ?String(parsed.dados.financeiro_tipo) : undefined;
+  const mode = String(parsed.dados.financeiro_modo || "resumo");
+  const filter = parsed.dados.filtro_texto ?String(parsed.dados.filtro_texto) : undefined;
+  const rows = await queryFinanceRows(supabase, owner, period, type, filter);
+  const totals = financeTotals(rows);
+
+  parsed.dados.consulta_executada = "financeiro";
+  parsed.dados.resultado = {
+    periodo: period,
+    modo: mode,
+    tipo: type || null,
+    filtro: filter || null,
+    registros: rows.length,
+    entradas: totals.entrada,
+    saidas: totals.saida,
+    resultado: totals.resultado
+  };
+
+  if (mode === "detalhado") {
+    const page = buildFinanceListText(rows, period, 0, FINANCE_PAGE_SIZE, type, filter);
+    if (page.hasMore) {
+      await saveFinancePagination(supabase, owner, period, type, filter, page.nextOffset, FINANCE_PAGE_SIZE);
+    } else {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    }
+    return page.text;
+  }
+
+  await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  return buildFinanceSummaryText(rows, period, type, filter);
+}
+
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
@@ -2570,18 +2771,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   }
 
   if (parsed.tipo === "CONSULTA_FINANCEIRO") {
-    if (!isBotAdmin(owner)) return "Você não tem permissão para consultar financeiro pelo WhatsApp.";
-    const range = currentMonthRange();
-    const { data, error } = await supabase
-      .from(TABLES.transacoesFinanceiras)
-      .select("tipo,valor")
-      .eq("fazenda_id", owner.fazenda_id)
-      .gte("data_transacao", dateOnly(new Date(range.start)))
-      .lt("data_transacao", dateOnly(new Date(range.end)));
-    if (error) throw new Error(error.message);
-    const entrada = (data || []).filter((row) => row.tipo === "entrada").reduce((sum, row) => sum + Number(row.valor || 0), 0);
-    const saida = (data || []).filter((row) => row.tipo === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
-    return `Financeiro do mês:\nEntradas: ${formatMoney(entrada)}\nSaídas: ${formatMoney(saida)}\nResultado: ${formatMoney(entrada - saida)}`;
+    return handleFinanceConsultation(supabase, owner, parsed);
   }
 
   if (parsed.tipo === "CONSULTA_ESTOQUE" || parsed.tipo === "CONSULTA_ESTOQUE_ITEM") {
@@ -3073,6 +3263,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
     } else if (isStockPaginationCommand(command) && previousSession.dados?.estoque_paginacao) {
       response = await handleStockPagination(supabase, owner, previousSession);
+    } else if (isStockPaginationCommand(command) && previousSession.dados?.financeiro_paginacao) {
+      response = await handleFinancePagination(supabase, owner, previousSession);
     } else if (isRepeatCommand(command)) {
       parsed = pendingFromSession(previousSession);
       if (previousSession.etapa === "aguardando_confirmacao" && parsed) {

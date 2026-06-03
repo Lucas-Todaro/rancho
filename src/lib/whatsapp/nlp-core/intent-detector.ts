@@ -63,6 +63,82 @@ type StockConsultationDetection = {
   confidence: number;
 };
 
+const financeMonthNumbers: Record<string, number> = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12
+};
+
+function financeNamedMonthPeriod(normalized: string) {
+  const match = normalized.match(/\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+((?:19|20)\d{2}))?\b/);
+  if (!match) return undefined;
+  const year = match[2] ? Number(match[2]) : new Date().getFullYear();
+  const month = financeMonthNumbers[match[1]];
+  return month ? `${year}-${String(month).padStart(2, "0")}` : undefined;
+}
+
+function financeQueryPeriod(normalized: string) {
+  const reference = extractDateReference(normalized);
+  if (reference && !/^\d{4}-\d{2}-\d{2}$/.test(reference)) return reference;
+  return reference || financeNamedMonthPeriod(normalized) || (/\b(?:dia|diario|diaria)\b/.test(normalized) ? "hoje" : "mes");
+}
+
+function financeQueryType(normalized: string) {
+  if (/\b(?:entradas?|receitas?|vendas?|recebidos?|recebemos|recebi|entrou|entro|vendemos|vendi|ganhamos|ganhei)\b/.test(normalized)) return "entrada";
+  if (/\b(?:saidas?|despesas?|despezas?|gastos?|gastamos|gastei|saiu|compras?|paguei|pagamos|pagamentos?|salarios?|folha|contas?)\b/.test(normalized)) return "saida";
+  return undefined;
+}
+
+function financeQueryMode(normalized: string) {
+  if (/\b(?:transacoes?|movimentacoes?|lancamentos?|extrato|detalhes?|quais|listar|lista|mostra|mostrar|ver)\b/.test(normalized)) return "detalhado";
+  return "resumo";
+}
+
+function cleanFinanceFilterCandidate(candidate?: string | null) {
+  const cleaned = normalizeRanchoText(cleanAnswer(candidate || ""))
+    .replace(/\b(?:hoje|hj|ontem|anteontem|semana|mes|mensal|dia|esse|essa|este|esta|nesse|nesta|desse|dessa)\b/g, " ")
+    .replace(/\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/g, " ")
+    .replace(/\b(?:transacoes?|movimentacoes?|lancamentos?|extrato|detalhes?|quais|listar|lista|mostra|mostrar|ver|quanto|resultado|saldo|financeiro|caixa|entradas?|saidas?|receitas?|despesas?|despezas?|gastos?|compras?|vendas?)\b/g, " ")
+    .replace(/^(?:de|do|da|dos|das|com|em|no|na|por|para|pra|a|o|os|as|um|uma)\s+/g, " ")
+    .replace(/\b(?:de|do|da|dos|das|com|em|no|na|por|para|pra)\s*$/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || /^(?:tudo|todos?|geral|periodo)$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+function financeQueryFilter(normalized: string) {
+  const direct =
+    normalized.match(/\b(?:venda|vendas|receita|receitas)\s+(?:de|do|da)\s+(.+)$/)?.[1]
+    || normalized.match(/\b(?:gasto|gastos|despesa|despesas|despeza|despezas|compra|compras|pagamento|pagamentos)\s+(?:com|de|do|da|em|no|na)\s+(.+)$/)?.[1]
+    || normalized.match(/\b(?:quanto\s+(?:gastei|gastamos|entrou|recebi|vendemos)|quais\s+(?:entradas|saidas|despesas|receitas|transacoes))\s+(?:com|de|do|da|em|no|na)\s+(.+)$/)?.[1];
+  return cleanFinanceFilterCandidate(direct);
+}
+
+function financeQueryData(normalized: string) {
+  const period = financeQueryPeriod(normalized);
+  const financeiro_tipo = financeQueryType(normalized);
+  const financeiro_modo = financeQueryMode(normalized);
+  const filtro_texto = financeQueryFilter(normalized);
+  return {
+    data_referencia: period,
+    periodo: period,
+    financeiro_tipo,
+    financeiro_modo,
+    filtro_texto,
+    consulta: true
+  };
+}
+
 function cleanStockSpecificItemCandidate(candidate?: string | null) {
   const cleaned = normalizeRanchoText(cleanAnswer(candidate || ""))
     .replace(/\b(?:no|na|em|do|da)\s+estoque\b/g, " ")
@@ -563,6 +639,15 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const normalized = normalizeRanchoText(original);
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
 
+  const earlyFinanceQuery = (
+    /\b(?:quanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)|quais\s+(?:entradas?|saidas?|transacoes?|despesas?|receitas?)|transacoes?|movimentacoes?|extrato|resultado|resutado|financeiro|finaceiro|financeirro|caixa|saldo|lucro|despesas?|despezas?|receitas?|vendas?|compras?)\b/.test(normalized)
+    && /\b(?:hoje|hj|ontem|anteontem|semana|mes|dia|\d{1,2}[/-]\d{1,2}|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|financeiro|caixa|saldo|resultado|resutado|transacoes?|movimentacoes?|extrato)\b/.test(normalized)
+    && !/\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|ponto)\b/.test(normalized)
+    && !/\bestoque\b/.test(normalized)
+    && !/\b(?:entrou|recebi|recebemos|vendi|paguei|gastei|gastamos)\s+(?:r\$\s*)?\d/.test(normalized)
+  );
+  if (earlyFinanceQuery) return finalize("CONSULTA_FINANCEIRO", financeQueryData(normalized), [], 0.9);
+
   const isHelp = /\b(?:ajuda|suporte|exemplos|como usar|o que voce faz|o que você faz|deu erro|bot nao funciona|bot não funciona|falar com alguem|falar com alguém|contato|email de suporte)\b/.test(normalized);
   if (isHelp) return finalize("AJUDA", {}, [], 0.95);
 
@@ -720,6 +805,12 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const explicitFinanceValue = hasValue(extractMoneyValue(normalized));
+  const financeQueryBlocked = /\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|ponto)\b/.test(normalized) || /\b(?:entrada|saida)\s+(?:do|da)\s+\w+\b/.test(normalized);
+  const enhancedFinanceQuery = !financeQueryBlocked && !explicitFinanceValue && ((
+    /\b(?:como ta|como esta|saldo|resultado|resutado|financeiro|finaceiro|financeirro|caixa|entradas?|saidas?|lucro|relatorio|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha)\b/.test(normalized)
+    && /\b(?:financeiro|finaceiro|financeirro|mes|mez|hoje|hj|ontem|semana|caixa|entradas?|saidas?|lucro|resultado|resutado|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha|dia|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized)
+  ) || /\bquanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
+  if (enhancedFinanceQuery) return finalize("CONSULTA_FINANCEIRO", financeQueryData(normalized), [], 0.9);
   const isFinanceQuery = !explicitFinanceValue && ((
     /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro|relatorio|relatório|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
     && /\b(?:financeiro|mes|mês|hoje|ontem|semana|caixa|entradas|saidas|saídas|lucro|resultado|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
