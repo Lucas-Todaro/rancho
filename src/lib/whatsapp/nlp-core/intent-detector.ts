@@ -18,8 +18,12 @@ import {
   extractConsultationPeriod,
   extractDateReference,
   extractEmployeeCreationName,
+  extractEmployeeAccessMode,
+  extractEmployeeCpf,
+  extractEmployeeLooseName,
   extractEmployeeName,
   extractEmployeeRole,
+  extractEmployeeSalary,
   extractFinanceDescription,
   extractLiters,
   extractLooseProductionLiters,
@@ -101,6 +105,25 @@ function extractAnimalUpdateData(original: string, normalized: string) {
   return { animal_codigo };
 }
 
+function employeeUpdateData(original: string, normalized: string) {
+  const funcionario_nome = extractEmployeeLooseName(original, normalized);
+  const phone = extractWhatsappPhone(original);
+  const cpf = extractEmployeeCpf(original);
+  const salary = extractEmployeeSalary(original, normalized);
+  const role = extractEmployeeRole(normalized)
+    || cleanUpdateValue(original.match(/\b(?:cargo|funcao|função)\s+(?:do|da|de)?\s*.*?\s+(?:para|como)\s+(.+)$/i)?.[1])
+    || cleanUpdateValue(original.match(/\b(?:virou|agora\s+(?:e|é))\s+(.+)$/i)?.[1]);
+  const name = cleanUpdateValue(original.match(/\b(?:corrige|corrigir|muda|alterar|troca|trocar)\s+nome\s+(?:do|da|de)?\s*.*?\s+para\s+(.+)$/i)?.[1]);
+
+  if (salary !== undefined) return { funcionario_nome, campo_alterado: "salario_base", novo_valor: salary };
+  if (cpf) return { funcionario_nome, campo_alterado: "cpf", novo_valor: cpf };
+  if (phone) return { funcionario_nome, campo_alterado: "contato_whatsapp", novo_valor: phone };
+  if (name) return { funcionario_nome, campo_alterado: "nome", novo_valor: name };
+  if (role) return { funcionario_nome, campo_alterado: "funcao", novo_valor: role };
+  if (/\b(?:reativa|reativar|ativa|ativar)\b/.test(normalized)) return { funcionario_nome, campo_alterado: "ativo", novo_valor: true };
+  return { funcionario_nome };
+}
+
 export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const original = cleanAnswer(text);
   const normalized = normalizeRanchoText(original);
@@ -177,10 +200,116 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isFinanceQuery = !explicitFinanceValue && ((
     /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro|relatorio|relatório|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
     && /\b(?:financeiro|mes|mês|hoje|ontem|semana|caixa|entradas|saidas|saídas|lucro|resultado|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
-  ) || /\bquanto\s+(?:entrou|saiu|vendemos|gastamos)\b/.test(normalized));
+  ) || /\bquanto\s+(?:entrou|saiu|vendemos|gastamos)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
   if (isFinanceQuery) return finalize("CONSULTA_FINANCEIRO", { data_referencia: extractDateReference(normalized) || "mes" }, [], 0.9);
 
-  const isEmployeeCreate = /\b(?:cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar)\b/.test(normalized)
+  const employeeName = extractEmployeeLooseName(original, normalized);
+  const employeePhone = extractWhatsappPhone(original);
+  const employeeCpf = extractEmployeeCpf(original);
+  const employeeSalary = extractEmployeeSalary(original, normalized);
+  const employeeAccessMode = extractEmployeeAccessMode(original, normalized);
+  const employeeRole = extractEmployeeRole(normalized);
+
+  const employeeQuery = !explicitFinanceValue
+    && (
+      /\b(?:listar|lista|ver|mostra|mostrar|quem sao|quem são|funcionarios ativos|funcionarios desligados|equipe|ficha|dados|quantos funcionarios|cargo|whatsapp|cpf)\b/.test(normalized)
+      || /\b(?:salario|salário|quanto .* ganha)\b/i.test(original)
+    )
+    && /\b(?:funcionario|funcionarios|funcionário|funcionários|colaborador|equipe|bruno|joao|joão|pedro|ana|carlos)\b/.test(normalized)
+    && !/\b(?:cadastra|cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar|contratei|contratar)\b/.test(normalized)
+    && !/\b(?:muda|mudar|altera|alterar|atualiza|atualizar|define|definir|paguei|pagamento|recebeu)\b/.test(normalized);
+  if (employeeQuery) {
+    return finalize("CONSULTA_FUNCIONARIO", {
+      funcionario_nome: employeeName || extractEmployeeName(original, normalized),
+      consulta_campo: /\b(?:salario|salário|ganha)\b/i.test(original) ?"salario_base" : /\bcpf\b/i.test(original) ?"cpf" : /\bwhatsapp|telefone|zap\b/i.test(original) ?"contato_whatsapp" : /\bcargo|funcao|função\b/i.test(original) ?"funcao" : undefined
+    }, [], 0.86);
+  }
+
+  const pointQuery = !explicitFinanceValue
+    && /\b(?:ponto|horas|trabalhou|trabalhadas|faltas|relatorio de ponto|relatório de ponto|quem bateu|sem ponto)\b/.test(normalized)
+    && /\b(?:hoje|ontem|mes|mês|funcionarios|funcionários|bruno|joao|joão|pedro|ana|carlos|ponto|horas|faltas)\b/.test(normalized)
+    && !/\b(?:registrar|registra|marcar|marca|entrada|saida|saída|entrou|saiu|chegou|comecei|começou|comecou|terminei|terminou)\b/.test(normalized);
+  if (pointQuery) {
+    const pointEmployeeName = employeeName || extractEmployeeName(original, normalized);
+    return finalize("CONSULTA_PONTO", {
+      funcionario_nome: normalizeRanchoText(pointEmployeeName || "") === "quem" ?undefined : pointEmployeeName,
+      data_referencia: extractDateReference(normalized) || (/\bmes|mês\b/.test(normalized) ?"mes" : "hoje"),
+      consulta: true
+    }, [], 0.86);
+  }
+
+  const employeeDelete = /\b(?:exclui|excluir|apaga|apagar|remove|remover|deleta|deletar)\b/.test(normalized)
+    && /\b(?:funcionario|funcionário|colaborador|bruno|joao|joão|pedro|ana|carlos)\b/.test(normalized);
+  if (employeeDelete) {
+    const dados = { funcionario_nome: employeeName };
+    return finalize("EXCLUIR_FUNCIONARIO", dados, buildMissing("EXCLUIR_FUNCIONARIO", dados), 0.86);
+  }
+
+  const employeeDeactivate = /\b(?:desliga|desligar|inativa|inativar|desativa|desativar|demite|demitir|saiu da fazenda|nao trabalha mais|não trabalha mais|afasta|afastar|inativo|desligada)\b/.test(normalized);
+  if (employeeDeactivate) {
+    const dados = { funcionario_nome: employeeName };
+    return finalize("DESLIGAR_FUNCIONARIO", dados, buildMissing("DESLIGAR_FUNCIONARIO", dados), 0.86);
+  }
+
+  const employeeUpdate = (
+    /\b(?:muda|mudar|altera|alterar|atualiza|atualizar|corrige|corrigir|troca|trocar|define|definir|reativa|reativar|ativa|ativar|virou|agora ganha|ganha|salario|salário|slario|cpf|whatsapp|telefone)\b/.test(normalized)
+    && !/\b(?:cadastra|cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar|contratei|contratar)\b/.test(normalized)
+    && !/\b(?:paguei|pagamento|salario pago|salário pago|diaria|diária|recebeu)\b/.test(normalized)
+    && !extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL")
+    && (employeeName || employeeSalary !== undefined || employeePhone || employeeCpf)
+  );
+  if (employeeUpdate) {
+    const dados = employeeUpdateData(original, normalized);
+    return finalize("ATUALIZAR_FUNCIONARIO", dados, buildMissing("ATUALIZAR_FUNCIONARIO", dados), 0.86);
+  }
+
+  const richEmployeeCreate = (
+    /\b(?:cadastra|cadastrar|cadastre|cadatra|adicionar|adiciona|novo|nova|cria|criar|registrar|registra|coloca|contratei|contratar)\b/.test(normalized)
+    || /\b(?:começou a trabalhar|comecou a trabalhar|trabalha como|vai usar so|vai usar só)\b/i.test(original)
+    || /^funcion[aá]rio\s+/i.test(original)
+  )
+    && (
+      /\b(?:funcionario|funcionário|funcionaria|colaborador|vaqueiro|ordenhador|ordenhadora|tratador|tratadora|gerente|trabalhar|trabalha|bot|whatsapp|salario|salário)\b/.test(normalized)
+      || (employeeName && /\b(?:contratei|contratar|trabalha como|começou a trabalhar|comecou a trabalhar)\b/i.test(original))
+      || employeeSalary !== undefined
+      || employeePhone
+      || employeeAccessMode
+    );
+  if (richEmployeeCreate) {
+    const dados = {
+      funcionario_nome: extractEmployeeCreationName(original) || employeeName,
+      telefone: employeePhone,
+      funcao: employeeRole,
+      salario_base: employeeSalary,
+      cpf: employeeCpf,
+      tipo_acesso: employeeAccessMode,
+      telefone_obrigatorio: Boolean(employeeAccessMode || /\b(?:autoriza|libera|numero|número|whatsapp|bot)\b/.test(normalized))
+    };
+    return finalize("CRIAR_FUNCIONARIO", dados, buildMissing("CRIAR_FUNCIONARIO", dados), 0.88);
+  }
+
+  const stockLikePointText = hasPhysicalQuantity(original)
+    || hasLooseStockQuantity(original)
+    || /\b(?:racao|ração|saco|sacos|fardo|fardos|poste|postes|brinco|brincos|identificacao|identificação|kg|quilo|quilos)\b/.test(normalized);
+  const pointContext = /\b(?:ponto|bateu|bater ponto|registrar ponto|cheguei|comecei|terminei|fim do expediente|foi embora|fechou o ponto)\b/.test(normalized)
+    || Boolean(extractEmployeeName(original, normalized) || employeeName);
+  const earlyPoint = /\b(?:ponto|entrou|entrada|saiu|saida|bateu|bater ponto|registrar ponto|chegou|cheguei|comecei|comecou|iniciou|inicio|terminou|terminei|encerrou|fim do expediente|foi embora|fechou o ponto)\b/.test(normalized)
+    && pointContext
+    && !stockLikePointText
+    && !hasValue(extractMoneyValue(normalized))
+    && !/\b(?:paguei|pagamento|salario|salário|folha|diaria|diária|financeiro|despesa|receita|venda|vendi)\b/.test(normalized);
+  if (earlyPoint) {
+    const dados = {
+      funcionario_nome: extractEmployeeName(original, normalized) || employeeName,
+      ponto_tipo: extractPointType(normalized),
+      horario: extractPointTime(normalized),
+      data_referencia: extractDateReference(normalized) || "hoje",
+      agora: /\bagora\b/.test(normalized) || undefined
+    };
+    return finalize("PONTO_FUNCIONARIO", dados, buildMissing("PONTO_FUNCIONARIO", dados), 0.88);
+  }
+
+  const isEmployeeCreate = /\b(?:cadastra|cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar)\b/.test(normalized)
     && /\b(?:funcionario|funcionário|colaborador|vaqueiro|ordenhador|tratador|tratadora|gerente)\b/.test(normalized);
   if (isEmployeeCreate) {
     const phone = extractWhatsappPhone(original);
@@ -277,7 +406,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       horario: extractPointTime(normalized),
       data_referencia: extractDateReference(normalized) || "hoje"
     };
-    return finalize("PONTO_FUNCIONARIO", dados, buildMissing("PONTO_FUNCIONARIO", dados));
+    return finalize("PONTO_FUNCIONARIO", dados, buildMissing("PONTO_FUNCIONARIO", dados), 0.88);
   }
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);

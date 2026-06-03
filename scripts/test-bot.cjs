@@ -241,7 +241,10 @@ function createBotTestTables() {
         fazenda_id: BOT_TEST_FARM_ID,
         nome: "Joao",
         funcao: "Ordenhador",
+        cpf: "11122233344",
         contato_whatsapp: BOT_TEST_WORKER_PHONE,
+        salario_base: 1800,
+        tipo_acesso: "bot_only",
         ativo: true,
         deleted_at: null
       }
@@ -609,6 +612,7 @@ function missingContains(parsed, field) {
     valor: /valor|custou/.test(text),
     descricao: /descri|descricao|registro/.test(text),
     telefone: /whatsapp|ddd/.test(text),
+    funcionario_nome: /funcionario|funcion/.test(text),
     item_nome: /item|estoque/.test(text),
     sexo: /sexo|femea|macho/.test(text),
     fase: /fase|lactacao|gestante|seca|vazia|crescimento|engorda/.test(text),
@@ -616,7 +620,8 @@ function missingContains(parsed, field) {
     lote_animal: /lote/.test(text),
     data_nascimento: /nascimento|data/.test(text),
     campo_alterado: /dado|atualizar/.test(text),
-    novo_valor: /valor|cadastro/.test(text)
+    novo_valor: /valor|cadastro/.test(text),
+    horario: /horario|horario|7:30|17:00/.test(text)
   };
   return Boolean(checks[field]);
 }
@@ -663,6 +668,11 @@ function assertExpected(test, parsed) {
   if (expected.descricao && !normalize(dados.descricao).includes(normalize(expected.descricao))) failures.push(`descrição esperada ${expected.descricao}, recebida ${dados.descricao}`);
   if (expected.funcionario_nome && normalize(dados.funcionario_nome) !== normalize(expected.funcionario_nome)) failures.push(`funcionário esperado ${expected.funcionario_nome}, recebido ${dados.funcionario_nome}`);
   if (expected.telefone && normalizeWhatsappNumber(dados.telefone) !== expected.telefone) failures.push(`telefone esperado ${expected.telefone}, recebido ${dados.telefone}`);
+  if ("salario_base" in expected && Number(dados.salario_base) !== Number(expected.salario_base)) failures.push(`salario_base esperado ${expected.salario_base}, recebido ${dados.salario_base}`);
+  if (expected.cpf && String(dados.cpf || "").replace(/\D/g, "") !== String(expected.cpf).replace(/\D/g, "")) failures.push(`cpf esperado ${expected.cpf}, recebido ${dados.cpf}`);
+  if (expected.tipo_acesso && normalize(dados.tipo_acesso) !== normalize(expected.tipo_acesso)) failures.push(`tipo_acesso esperado ${expected.tipo_acesso}, recebido ${dados.tipo_acesso}`);
+  if (expected.consulta_campo && normalize(dados.consulta_campo) !== normalize(expected.consulta_campo)) failures.push(`consulta_campo esperado ${expected.consulta_campo}, recebido ${dados.consulta_campo}`);
+  if ("agora" in expected && Boolean(dados.agora) !== Boolean(expected.agora)) failures.push(`agora esperado ${expected.agora}, recebido ${dados.agora}`);
   if (expected.ponto_tipo && dados.ponto_tipo !== expected.ponto_tipo) failures.push(`ponto_tipo esperado ${expected.ponto_tipo}, recebido ${dados.ponto_tipo}`);
   if (expected.horario && dados.horario !== expected.horario) failures.push(`horário esperado ${expected.horario}, recebido ${dados.horario}`);
   if (expected.destino && normalize(dados.destino) !== normalize(expected.destino)) failures.push(`destino esperado ${expected.destino}, recebido ${dados.destino}`);
@@ -716,7 +726,7 @@ function assertExpected(test, parsed) {
 function adminActionDenied(test, parsed) {
   const actor = mockUsers.find((user) => user.nome === test.actor);
   if (!actor || actor.admin) return null;
-  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO"].includes(parsed.tipo)) {
+  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO"].includes(parsed.tipo)) {
     return parsed.tipo === "CRIAR_ITEM_ESTOQUE"
       ? "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item."
       : "Você não tem permissão para cadastrar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
@@ -821,7 +831,7 @@ const extraTests = [
   { phrase: "Maria saiu as 17h", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "maria", ponto_tipo: "saida", horario: "17:00" } },
   { phrase: "registrar ponto do João", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "João", ponto_tipo: "entrada" } },
   { phrase: "Maria entrou 8 horas", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "maria", ponto_tipo: "entrada", horario: "08:00" } },
-  { phrase: "cadastrar funcionário Pedro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", missing: ["telefone"] } },
+  { phrase: "cadastrar funcionário Pedro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", noMissing: true } },
   { phrase: "cria funcionário Maria 83911112222", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", telefone: "5583911112222", noMissing: true } },
   { phrase: "adicionar funcionário Ana WhatsApp +55 (83) 98888-7777", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5583988887777", noMissing: true } },
   { phrase: "cadastrar vaqueiro José 83922223333", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "José", telefone: "5583922223333", noMissing: true } },
@@ -1145,6 +1155,50 @@ const animalConsultationAndUpdateTests = [
   { phrase: "B-002 observacao: mancando da pata", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "mancando da pata" } },
   { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", exactTipo: true, animal: "B-002" } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } }
+];
+
+const employeePointPayrollParserTests = [
+  { module: "funcionarios", phrase: "cadastra funcionario Bruno", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
+  { module: "funcionarios", phrase: "cadastra Bruno salario 1500", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", salario_base: 1500, noMissing: true } },
+  { module: "funcionarios", phrase: "cadastra funcionario Ana WhatsApp 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", noMissing: true } },
+  { module: "funcionarios", phrase: "cadastra Bruno so no WhatsApp", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", tipo_acesso: "bot_only", missing: ["telefone"] } },
+  { module: "funcionarios", phrase: "Bruno trabalha como vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
+  { module: "funcionarios", phrase: "adicionar colaboradora Ana telefone 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", noMissing: true } },
+  { module: "funcionarios", phrase: "criar funcionario Pedro cpf 12345678901 salario 2200 cargo vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", cpf: "12345678901", salario_base: 2200, noMissing: true } },
+  { module: "funcionarios", phrase: "novo funcionario Carlos", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Carlos", noMissing: true } },
+  { module: "funcionarios", phrase: "contratei Maria", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", noMissing: true } },
+  { module: "funcionarios", phrase: "cadastrar funcionario Rafael salario 1900", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Rafael", salario_base: 1900, noMissing: true } },
+  { module: "funcionarios", phrase: "muda salario do Bruno para 1800", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Bruno", campo_alterado: "salario_base", novo_valor: 1800, noMissing: true } },
+  { module: "funcionarios", phrase: "Bruno agora ganha 2000", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Bruno", campo_alterado: "salario_base", novo_valor: 2000, noMissing: true } },
+  { module: "funcionarios", phrase: "altera cargo da Ana para gerente", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Ana", campo_alterado: "funcao", novo_valor: "gerente", noMissing: true } },
+  { module: "funcionarios", phrase: "trocar WhatsApp do Joao para 31988887777", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Joao", campo_alterado: "contato_whatsapp", novo_valor: "5531988887777", noMissing: true } },
+  { module: "funcionarios", phrase: "alterar cpf do Joao para 12345678901", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Joao", campo_alterado: "cpf", novo_valor: "12345678901", noMissing: true } },
+  { module: "funcionarios", phrase: "reativar funcionario Joao", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Joao", campo_alterado: "ativo", novo_valor: true, noMissing: true } },
+  { module: "funcionarios", phrase: "desliga funcionario Bruno", expected: { tipo: "DESLIGAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
+  { module: "funcionarios", phrase: "exclui funcionario Pedro", expected: { tipo: "EXCLUIR_FUNCIONARIO", funcionario_nome: "Pedro", noMissing: true } },
+  { module: "funcionarios", phrase: "apagar colaborador Ana", expected: { tipo: "EXCLUIR_FUNCIONARIO", funcionario_nome: "Ana", noMissing: true } },
+  { module: "funcionarios", phrase: "Bruno nao trabalha mais", expected: { tipo: "DESLIGAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
+  { module: "funcionarios", phrase: "salario do Joao", expected: { tipo: "CONSULTA_FUNCIONARIO", funcionario_nome: "Joao", consulta_campo: "salario_base", noMissing: true } },
+  { module: "funcionarios", phrase: "cpf do Joao", expected: { tipo: "CONSULTA_FUNCIONARIO", funcionario_nome: "Joao", consulta_campo: "cpf", noMissing: true } },
+  { module: "funcionarios", phrase: "WhatsApp do Joao", expected: { tipo: "CONSULTA_FUNCIONARIO", funcionario_nome: "Joao", consulta_campo: "contato_whatsapp", noMissing: true } },
+  { module: "funcionarios", phrase: "cargo do Joao", expected: { tipo: "CONSULTA_FUNCIONARIO", funcionario_nome: "Joao", consulta_campo: "funcao", noMissing: true } },
+  { module: "funcionarios", phrase: "listar funcionarios", expected: { tipo: "CONSULTA_FUNCIONARIO", noMissing: true } },
+  { module: "funcionarios", phrase: "quantos funcionarios ativos", expected: { tipo: "CONSULTA_FUNCIONARIO", noMissing: true } },
+  { module: "ponto", phrase: "Joao entrou as 7", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "joao", ponto_tipo: "entrada", horario: "07:00", noMissing: true } },
+  { module: "ponto", phrase: "Joao saiu as 17", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "joao", ponto_tipo: "saida", horario: "17:00", noMissing: true } },
+  { module: "ponto", phrase: "Bruno terminou agora", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "Bruno", ponto_tipo: "saida", agora: true, noMissing: true } },
+  { module: "ponto", phrase: "registrar ponto", expected: { tipo: "PONTO_FUNCIONARIO", missing: ["funcionario_nome", "horario"] } },
+  { module: "ponto", phrase: "entrada do Joao", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "Joao", ponto_tipo: "entrada", missing: ["horario"] } },
+  { module: "ponto", phrase: "ponto do Joao hoje", expected: { tipo: "CONSULTA_PONTO", funcionario_nome: "Joao", consulta: true, noMissing: true } },
+  { module: "ponto", phrase: "relatorio de ponto do Joao hoje", expected: { tipo: "CONSULTA_PONTO", funcionario_nome: "Joao", consulta: true, noMissing: true } },
+  { module: "ponto", phrase: "ponto do mes", expected: { tipo: "CONSULTA_PONTO", consulta: true, noMissing: true } },
+  { module: "ponto", phrase: "quem bateu ponto hoje", expected: { tipo: "CONSULTA_PONTO", consulta: true, noMissing: true } },
+  { module: "ponto", phrase: "horas do Joao hoje", expected: { tipo: "CONSULTA_PONTO", funcionario_nome: "Joao", consulta: true, noMissing: true } },
+  { module: "folha", phrase: "folha do mes", expected: { tipo: "CONSULTA_FINANCEIRO", noMissing: true } },
+  { module: "folha", phrase: "paguei salario do Joao 1500", expected: { tipo: "DESPESA", valor: 1500, descricao: "salario do Joao", noMissing: true } },
+  { module: "folha", phrase: "pagamento funcionario Bruno 800", expected: { tipo: "DESPESA", valor: 800, descricao: "funcionario Bruno", noMissing: true } },
+  { module: "folha", phrase: "paguei diaria da Ana 120", expected: { tipo: "DESPESA", valor: 120, descricao: "diaria da Ana", noMissing: true } },
+  { module: "folha", phrase: "salario pago Joao 1800", expected: { tipo: "DESPESA", valor: 1800, descricao: "salario pago Joao", noMissing: true } }
 ];
 
 const botConversationTests = [
@@ -2308,12 +2362,251 @@ const financeFrameworkCases = [
   }
 ];
 
+const employeePointPayrollFrameworkCases = [
+  {
+    name: "admin cadastra funcionario sem whatsapp e nao cria usuario whatsapp",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastra funcionario Bruno", "sim"],
+    expected: {
+      finalIntent: "CRIAR_FUNCIONARIO",
+      entities: { funcionario_nome: "Bruno" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.funcionarios],
+      shouldSaveValues: { nome: "Bruno" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin cadastra funcionario com whatsapp e simula acesso bot",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastra funcionario Ana WhatsApp 31999999999", "sim"],
+    expected: {
+      finalIntent: "CRIAR_FUNCIONARIO",
+      entities: { funcionario_nome: "Ana", telefone: "5531999999999" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.funcionarios, BOT_TEST_TABLES.whatsappUsuarios],
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastro bot only pergunta whatsapp antes de confirmar",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastra Bruno so no WhatsApp", "31999999999", "sim"],
+    expected: {
+      finalIntent: "CRIAR_FUNCIONARIO",
+      entities: { funcionario_nome: "Bruno", telefone: "5531999999999", tipo_acesso: "bot_only" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.funcionarios, BOT_TEST_TABLES.whatsappUsuarios],
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao cadastra funcionario",
+    module: "funcionarios",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["cadastra funcionario Bruno"],
+    expected: {
+      finalIntent: "CRIAR_FUNCIONARIO",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin atualiza salario de funcionario",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["muda salario do Joao para 2000", "sim"],
+    expected: {
+      finalIntent: "ATUALIZAR_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", campo_alterado: "salario_base", novo_valor: 2000 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.funcionarios],
+      shouldSaveValues: { campo_alterado: "salario_base" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao altera salario",
+    module: "funcionarios",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["muda salario do Joao para 2000"],
+    expected: {
+      finalIntent: "ATUALIZAR_FUNCIONARIO",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin desliga funcionario",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["desliga funcionario Joao", "sim"],
+    expected: {
+      finalIntent: "DESLIGAR_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.funcionarios],
+      shouldSaveValues: { ativo: false },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin exclui funcionario como acao logica",
+    module: "funcionarios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["exclui funcionario Joao", "sim"],
+    expected: {
+      finalIntent: "EXCLUIR_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.funcionarios],
+      shouldSaveValues: { ativo: false },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "ponto completo salva apenas apos confirmacao",
+    module: "ponto",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["Joao entrou as 7", "sim"],
+    expected: {
+      finalIntent: "PONTO_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", ponto_tipo: "entrada", horario: "07:00" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.registrosPonto],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "ponto em etapas pergunta horario",
+    module: "ponto",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["entrada do Joao", "7:30", "sim"],
+    expected: {
+      finalIntent: "PONTO_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", ponto_tipo: "entrada", horario: "07:30" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.registrosPonto],
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario registra proprio ponto sem nome quando whatsapp vinculado",
+    module: "ponto",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["registrar ponto agora", "sim"],
+    expected: {
+      finalIntent: "PONTO_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", ponto_tipo: "entrada", agora: true },
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.registrosPonto],
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin consulta ponto sem confirmacao",
+    module: "ponto",
+    phone: BOT_TEST_ADMIN_PHONE,
+    pointRecords: [{ funcionario_id: "func-joao", tipo: "entrada" }, { funcionario_id: "func-joao", tipo: "saida" }],
+    messages: ["ponto do Joao hoje"],
+    expected: {
+      finalIntent: "CONSULTA_PONTO",
+      entities: { funcionario_nome: "Joao" },
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao consulta ponto",
+    module: "ponto",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["ponto do Joao hoje"],
+    expected: {
+      finalIntent: "CONSULTA_PONTO",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta salario de funcionario nao salva",
+    module: "folha",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["salario do Joao"],
+    expected: {
+      finalIntent: "CONSULTA_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", consulta_campo: "salario_base" },
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "pagamento de salario vira despesa apos confirmacao",
+    module: "folha",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei salario do Joao 1500", "sim"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 1500 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { tipo: "saida", valor: 1500 },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao consulta folha financeira",
+    module: "folha",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["folha do mes"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
   ...animalFrameworkCases,
   ...inventoryFrameworkCases,
   ...financeFrameworkCases,
+  ...employeePointPayrollFrameworkCases,
   {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
@@ -2524,6 +2817,44 @@ function createSupabaseForScenario(test = {}) {
       data_transacao: row.data_transacao || new Date().toISOString().slice(0, 10)
     })));
   }
+  if (test.employees) {
+    supabase.tables[BOT_TEST_TABLES.funcionarios] = test.employees.map((row, index) => ({
+      id: row.id || `func-custom-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      nome: row.nome,
+      funcao: row.funcao || "Funcionário",
+      cpf: row.cpf || null,
+      contato_whatsapp: row.contato_whatsapp || null,
+      salario_base: row.salario_base ?? 0,
+      tipo_acesso: row.tipo_acesso || "bot_only",
+      ativo: row.ativo !== false,
+      deleted_at: row.deleted_at || null
+    }));
+  }
+  if (test.extraEmployees) {
+    supabase.tables[BOT_TEST_TABLES.funcionarios].push(...test.extraEmployees.map((row, index) => ({
+      id: row.id || `func-extra-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      nome: row.nome,
+      funcao: row.funcao || "Funcionário",
+      cpf: row.cpf || null,
+      contato_whatsapp: row.contato_whatsapp || null,
+      salario_base: row.salario_base ?? 0,
+      tipo_acesso: row.tipo_acesso || "bot_only",
+      ativo: row.ativo !== false,
+      deleted_at: row.deleted_at || null
+    })));
+  }
+  if (test.pointRecords) {
+    supabase.tables[BOT_TEST_TABLES.registrosPonto].push(...test.pointRecords.map((row, index) => ({
+      id: row.id || `ponto-extra-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      funcionario_id: row.funcionario_id,
+      tipo: row.tipo || "entrada",
+      registrado_em: row.registrado_em || new Date().toISOString(),
+      origem: row.origem || "whatsapp"
+    })));
+  }
   if (test.stockItems) {
     supabase.tables[BOT_TEST_TABLES.estoqueItens] = test.stockItems.map((item, itemIndex) => ({
       id: item.id || `stock-custom-${itemIndex + 1}`,
@@ -2680,6 +3011,63 @@ function simulatedSaveActionsForResult(result, phone) {
         funcionario_nome: dados.funcionario_nome,
         tipo: dados.ponto_tipo || "entrada",
         horario: dados.horario || null
+      }
+    }];
+  }
+
+  if (tipo === "CRIAR_FUNCIONARIO") {
+    const actions = [{
+      ...base,
+      table: BOT_TEST_TABLES.funcionarios,
+      payload: {
+        fazenda_id: fazendaId,
+        nome: dados.funcionario_nome,
+        funcao: dados.funcao || "Funcionário",
+        cpf: dados.cpf || null,
+        contato_whatsapp: dados.telefone || null,
+        salario_base: Number(dados.salario_base || 0),
+        tipo_acesso: dados.tipo_acesso || "bot_only"
+      }
+    }];
+    if (dados.telefone) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.whatsappUsuarios,
+        payload: {
+          fazenda_id: fazendaId,
+          telefone_e164: normalizeWhatsappNumber(dados.telefone),
+          nome_exibicao: dados.funcionario_nome,
+          papel_bot: "funcionario"
+        }
+      });
+    }
+    return actions;
+  }
+
+  if (tipo === "ATUALIZAR_FUNCIONARIO") {
+    return [{
+      ...base,
+      type: "update",
+      table: BOT_TEST_TABLES.funcionarios,
+      payload: {
+        fazenda_id: fazendaId,
+        funcionario_nome: dados.funcionario_nome,
+        campo_alterado: dados.campo_alterado,
+        novo_valor: dados.novo_valor
+      }
+    }];
+  }
+
+  if (tipo === "DESLIGAR_FUNCIONARIO" || tipo === "EXCLUIR_FUNCIONARIO") {
+    return [{
+      ...base,
+      type: "update",
+      table: BOT_TEST_TABLES.funcionarios,
+      payload: {
+        fazenda_id: fazendaId,
+        funcionario_nome: dados.funcionario_nome,
+        ativo: false,
+        deleted_at: tipo === "EXCLUIR_FUNCIONARIO" ? "simulado" : null
       }
     }];
   }
@@ -2974,7 +3362,8 @@ const allTests = [
   ...financeHumanParserTests,
   ...inventoryHumanParserTests,
   ...productionRobustnessTests,
-  ...animalConsultationAndUpdateTests
+  ...animalConsultationAndUpdateTests,
+  ...employeePointPayrollParserTests
 ];
 
 if (allTests.length < 90) {
@@ -3094,6 +3483,11 @@ function writeBotTestReports(summary) {
   const financialFailed = financialResults.filter((result) => !result.ok);
   const financialPassed = financialResults.length - financialFailed.length;
   const financialSuccessRate = financialResults.length ? Number(((financialPassed / financialResults.length) * 100).toFixed(2)) : 0;
+  const employeePayrollModules = new Set(["funcionarios", "ponto", "folha"]);
+  const employeePayrollResults = summary.results.filter((result) => employeePayrollModules.has(resultModule(result)));
+  const employeePayrollFailed = employeePayrollResults.filter((result) => !result.ok);
+  const employeePayrollPassed = employeePayrollResults.length - employeePayrollFailed.length;
+  const employeePayrollSuccessRate = employeePayrollResults.length ? Number(((employeePayrollPassed / employeePayrollResults.length) * 100).toFixed(2)) : 0;
   const report = {
     generatedAt: new Date().toISOString(),
     command: "npm run test:bot",
@@ -3119,6 +3513,22 @@ function writeBotTestReports(summary) {
         failed: financialFailed.length,
         successRate: financialSuccessRate,
         failures: financialFailed.map((result) => resultName(result))
+      },
+      funcionariosPontoFolha: {
+        total: employeePayrollResults.length,
+        passed: employeePayrollPassed,
+        failed: employeePayrollFailed.length,
+        successRate: employeePayrollSuccessRate,
+        coverage: [
+          "cadastro de funcionario com e sem WhatsApp",
+          "atualizacao, desligamento e exclusao logica",
+          "registro de ponto completo e em etapas",
+          "consulta de ponto e dados de funcionario",
+          "folha/salario como consulta financeira ou despesa",
+          "permissoes de admin versus funcionario comum",
+          "dry-run sem WhatsApp real e sem escrita real de negocio"
+        ],
+        failures: employeePayrollFailed.map((result) => resultName(result))
       }
     },
     failed: summary.failed.map(compactResultForReport),
@@ -3159,6 +3569,16 @@ function writeBotTestReports(summary) {
     "- Cobertura: entradas, saidas, vendas, compras/despesas, salarios, valores em reais, contexto, confirmacao, correcao, cancelamento, repeticao, consultas, permissoes e rancho_id.",
     "- Observacao: testes usam modoTeste=true, salvarReal=false, Supabase mockado e nao enviam WhatsApp real.",
     "- Recomendacao: manter os casos financeiros criticos na bateria completa sempre que o NLP do bot mudar.",
+    "",
+    "## Funcionarios, Ponto e Folha",
+    "",
+    `- Total funcionarios/ponto/folha: ${report.summary.funcionariosPontoFolha.total}`,
+    `- Aprovados funcionarios/ponto/folha: ${report.summary.funcionariosPontoFolha.passed}`,
+    `- Falhos funcionarios/ponto/folha: ${report.summary.funcionariosPontoFolha.failed}`,
+    `- Taxa funcionarios/ponto/folha: ${report.summary.funcionariosPontoFolha.successRate}%`,
+    "- Cobertura: cadastro com e sem WhatsApp, bot_only com pergunta de telefone, atualizacao salarial/cargo/CPF/WhatsApp, desligamento, exclusao logica, registro de ponto, ponto em etapas, consulta de ponto, consulta salarial, pagamento de salario como despesa e permissoes.",
+    "- Correcoes/fragilidades observadas: a bateria protege contra cadastro virando consulta/financeiro, CPF virando telefone, ponto sem horario sendo confirmado cedo demais e funcionario comum executando acao administrativa.",
+    "- Observacao: as acoes salvas no relatorio sao simuladas; o dry-run nao promete gravacao real.",
     "",
     "## Seguranca",
     "",

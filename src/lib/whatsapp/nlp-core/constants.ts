@@ -23,6 +23,7 @@ export const questionByField: Record<string, string> = {
   funcionario_nome: "Qual funcionário?",
   telefone: "Qual é o WhatsApp do funcionário?Envie com DDD.",
   ponto_tipo: "Foi entrada ou saída?",
+  horario: "Qual horário? Envie por exemplo: 7:30 ou 17:00.",
   categoria_animal: "Qual é a categoria do animal?Ex: vaca, bezerro ou touro.",
   sexo: "Quer informar o sexo do animal?Envie fêmea, macho ou 2 para pular.",
   fase: "Quer informar a fase?Ex: lactação, seca, gestante, vazia, crescimento, engorda ou 2 para pular.",

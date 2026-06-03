@@ -103,11 +103,18 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_ESTOQUE_ITEM",
   "CONSULTA_ESTOQUE_GERAL",
   "CONSULTA_FUNCIONARIO",
+  "CONSULTA_PONTO",
   "CONSULTA_ANIMAL",
   "CONSULTA_REGISTROS_HOJE",
   "AJUDA"
 ]);
 const ANIMAL_RECORD_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"]);
+const EMPLOYEE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "CRIAR_FUNCIONARIO",
+  "ATUALIZAR_FUNCIONARIO",
+  "DESLIGAR_FUNCIONARIO",
+  "EXCLUIR_FUNCIONARIO"
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -397,6 +404,9 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     ESTOQUE_ENTRADA: "entrada de estoque",
     ESTOQUE_SAIDA: "baixa de estoque",
     CRIAR_FUNCIONARIO: "cadastro de funcionário",
+    ATUALIZAR_FUNCIONARIO: "atualização de funcionário",
+    DESLIGAR_FUNCIONARIO: "desligamento de funcionário",
+    EXCLUIR_FUNCIONARIO: "exclusão de funcionário",
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
     ATUALIZACAO_ANIMAL: "atualização de animal",
@@ -409,6 +419,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CONSULTA_ESTOQUE_ITEM: "consulta de estoque",
     CONSULTA_ESTOQUE_GERAL: "consulta de estoque",
     CONSULTA_FUNCIONARIO: "consulta de funcionário",
+    CONSULTA_PONTO: "consulta de ponto",
     CONSULTA_REGISTROS_HOJE: "consulta de registros",
     ORDEM_SERVICO: "ordem de serviço",
     LOTE_REGISTROS: "registros em lote",
@@ -819,7 +830,7 @@ function milkStockDebug(resolution: MilkStockResolution, totalLitros: number, de
 async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
   const { data, error } = await supabase
     .from(TABLES.funcionarios)
-    .select("id,nome,funcao,ativo,deleted_at")
+    .select("id,nome,funcao,cpf,contato_whatsapp,salario_base,tipo_acesso,ativo,deleted_at")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
@@ -942,6 +953,21 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       dados.lote_nao_encontrado = dados.lote_nome;
       dados.lote_nome = undefined;
       dados.lote_id = undefined;
+      changed = true;
+    }
+  }
+
+  if (parsed.tipo === "PONTO_FUNCIONARIO" && !dados.funcionario_nome && owner.funcionario_id) {
+    const { data, error } = await supabase
+      .from(TABLES.funcionarios)
+      .select("id,nome,ativo,deleted_at")
+      .eq("id", owner.funcionario_id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data && data.ativo !== false && !data.deleted_at) {
+      dados.funcionario_nome = data.nome || owner.nome_exibicao || "";
+      dados.funcionario_id = data.id;
       changed = true;
     }
   }
@@ -1432,7 +1458,8 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     const phone = normalizeWhatsappNumber(dados.telefone);
-    if (!isValidBotPhone(phone)) {
+    const requiresPhone = Boolean(dados.telefone_obrigatorio || dados.tipo_acesso === "bot_only");
+    if (requiresPhone && !isValidBotPhone(phone)) {
       return {
         response: "Informe um WhatsApp válido para o funcionário.",
         nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { telefone: undefined }) } }
@@ -1446,64 +1473,260 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       .limit(2000);
     if (employeesError) throw new Error(employeesError.message);
 
-    const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
-      row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
-    ));
-    if (duplicateEmployee) {
-      return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
+    if (phone) {
+      const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
+        row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
+      ));
+      if (duplicateEmployee) {
+        return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
+      }
     }
 
-    const { data: whatsappRows, error: whatsappError } = await supabase
-      .from(TABLES.whatsappUsuarios)
-      .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
-      .eq("fazenda_id", owner.fazenda_id)
-      .limit(2000);
-    if (whatsappError) throw new Error(whatsappError.message);
+    let whatsappRows: AnyRecord[] = [];
+    if (phone) {
+      const { data, error } = await supabase
+        .from(TABLES.whatsappUsuarios)
+        .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
+        .eq("fazenda_id", owner.fazenda_id)
+        .limit(2000);
+      if (error) throw new Error(error.message);
+      whatsappRows = (data || []) as AnyRecord[];
 
-    const activeWhatsapp = ((whatsappRows || []) as AnyRecord[]).find((row) => (
-      row.ativo !== false && whatsappNumbersMatch(phone, String(row.telefone_e164 || ""))
-    ));
-    if (activeWhatsapp) {
-      return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está ativo para ${activeWhatsapp.nome_exibicao || "outro usuário"}.` };
+      const activeWhatsapp = whatsappRows.find((row) => (
+        row.ativo !== false && whatsappNumbersMatch(phone, String(row.telefone_e164 || ""))
+      ));
+      if (activeWhatsapp) {
+        return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está ativo para ${activeWhatsapp.nome_exibicao || "outro usuário"}.` };
+      }
     }
 
     const employee = await insertRealRecord(supabase, owner, TABLES.funcionarios, {
       fazenda_id: owner.fazenda_id,
       nome: dados.funcionario_nome,
       funcao: dados.funcao || "Funcionário",
-      contato_whatsapp: phone,
-      salario_base: 0,
+      cpf: dados.cpf || null,
+      contato_whatsapp: phone || null,
+      salario_base: Number(dados.salario_base || 0),
       data_admissao: dateOnly(),
       carga_horaria_mensal: 220,
       valor_hora_extra: 0,
+      tipo_acesso: dados.tipo_acesso || "bot_only",
+      papel_sistema: "bot_only",
       ativo: true
     });
 
-    const reusableWhatsapp = ((whatsappRows || []) as AnyRecord[]).find((row) => (
-      whatsappNumbersMatch(phone, String(row.telefone_e164 || "")) && (row.ativo === false || !row.funcionario_id)
-    ));
-    const whatsappPayload = {
-      fazenda_id: owner.fazenda_id,
-      telefone_e164: phone,
-      usuario_id: null,
-      funcionario_id: employee.id,
-      nome_exibicao: dados.funcionario_nome,
-      papel_bot: "funcionario",
-      ativo: true
-    };
+    const savedTables: string[] = [TABLES.funcionarios];
+    if (phone) {
+      const reusableWhatsapp = whatsappRows.find((row) => (
+        whatsappNumbersMatch(phone, String(row.telefone_e164 || "")) && (row.ativo === false || !row.funcionario_id)
+      ));
+      const whatsappPayload = {
+        fazenda_id: owner.fazenda_id,
+        telefone_e164: phone,
+        usuario_id: null,
+        funcionario_id: employee.id,
+        nome_exibicao: dados.funcionario_nome,
+        papel_bot: "funcionario",
+        ativo: true
+      };
 
-    if (reusableWhatsapp?.id) {
-      const { error } = await supabase
-        .from(TABLES.whatsappUsuarios)
-        .update(whatsappPayload)
-        .eq("id", reusableWhatsapp.id)
-        .eq("fazenda_id", owner.fazenda_id);
-      if (error) throw new Error(error.message);
-    } else {
-      await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
+      if (reusableWhatsapp?.id) {
+        const { error } = await supabase
+          .from(TABLES.whatsappUsuarios)
+          .update(whatsappPayload)
+          .eq("id", reusableWhatsapp.id)
+          .eq("fazenda_id", owner.fazenda_id);
+        if (error) throw new Error(error.message);
+      } else {
+        await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
+      }
+      savedTables.push(TABLES.whatsappUsuarios);
     }
 
-    return realSaveResult(`Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${formatWhatsappForBot(phone)}.`, [TABLES.funcionarios, TABLES.whatsappUsuarios]);
+    const phoneText = phone ?formatWhatsappForBot(phone) : "sem WhatsApp vinculado";
+    return realSaveResult(`Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${phoneText}.`, savedTables);
+  }
+
+  if (pending.tipo === "ATUALIZAR_FUNCIONARIO") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para atualizar funcionários pelo bot. Peça para um administrador fazer essa alteração." };
+    }
+
+    const found = await findEmployee(supabase, owner, String(dados.funcionario_nome || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei o funcionário "${dados.funcionario_nome || ""}". Me envie o nome como está cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { funcionario_nome: undefined }) } }
+      };
+    }
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { funcionario_nome: found.row.nome });
+      return {
+        response: `Encontrei um funcionário parecido: ${found.row.nome}. Quer usar esse funcionário?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const field = String(dados.campo_alterado || "");
+    const value = dados.novo_valor;
+    let payload: AnyRecord = {};
+    let label = field;
+    const savedTables: string[] = [TABLES.funcionarios];
+
+    if (field === "salario_base") {
+      payload = { salario_base: Number(value || 0) };
+      label = "salário";
+    } else if (field === "contato_whatsapp") {
+      const phone = normalizeWhatsappNumber(value);
+      if (!isValidBotPhone(phone)) {
+        return {
+          response: "Informe um WhatsApp válido para o funcionário.",
+          nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { novo_valor: undefined }) } }
+        };
+      }
+
+      const { data: employees, error: employeesError } = await supabase
+        .from(TABLES.funcionarios)
+        .select("id,nome,contato_whatsapp,ativo,deleted_at")
+        .eq("fazenda_id", owner.fazenda_id)
+        .limit(2000);
+      if (employeesError) throw new Error(employeesError.message);
+      const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
+        row.id !== found.row.id && row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
+      ));
+      if (duplicateEmployee) {
+        return { response: `Não atualizei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
+      }
+
+      const { data: whatsappRows, error: whatsappError } = await supabase
+        .from(TABLES.whatsappUsuarios)
+        .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
+        .eq("fazenda_id", owner.fazenda_id)
+        .limit(2000);
+      if (whatsappError) throw new Error(whatsappError.message);
+      const rows = (whatsappRows || []) as AnyRecord[];
+      const activeWhatsapp = rows.find((row) => (
+        row.funcionario_id !== found.row.id && row.ativo !== false && whatsappNumbersMatch(phone, String(row.telefone_e164 || ""))
+      ));
+      if (activeWhatsapp) {
+        return { response: `Não atualizei. O WhatsApp ${formatWhatsappForBot(phone)} já está ativo para ${activeWhatsapp.nome_exibicao || "outro usuário"}.` };
+      }
+
+      payload = { contato_whatsapp: phone };
+      label = "WhatsApp";
+    } else if (field === "cpf") {
+      const cpf = String(value || "").replace(/\D/g, "");
+      if (cpf && cpf.length !== 11) {
+        return {
+          response: "Informe um CPF com 11 dígitos ou envie cancelar.",
+          nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { novo_valor: undefined }) } }
+        };
+      }
+      payload = { cpf: cpf || null };
+      label = "CPF";
+    } else if (field === "nome") {
+      payload = { nome: String(value || "").trim() };
+      label = "nome";
+    } else if (field === "funcao") {
+      payload = { funcao: String(value || "").trim() };
+      label = "cargo";
+    } else if (field === "ativo") {
+      payload = { ativo: Boolean(value) };
+      label = "status";
+    } else {
+      return {
+        response: "Não reconheci qual dado do funcionário deve ser atualizado. Envie de novo com salário, cargo, WhatsApp, CPF, nome ou status.",
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { campo_alterado: undefined, novo_valor: undefined }) } }
+      };
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.funcionarios)
+      .update(payload)
+      .eq("id", found.row.id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    await logAudit(supabase, owner, TABLES.funcionarios, "update", data || { ...found.row, ...payload });
+
+    if (field === "contato_whatsapp" && payload.contato_whatsapp) {
+      const { data: whatsappRows, error: whatsappError } = await supabase
+        .from(TABLES.whatsappUsuarios)
+        .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
+        .eq("fazenda_id", owner.fazenda_id)
+        .limit(2000);
+      if (whatsappError) throw new Error(whatsappError.message);
+      const rows = (whatsappRows || []) as AnyRecord[];
+      const current = rows.find((row) => row.funcionario_id === found.row.id)
+        || rows.find((row) => whatsappNumbersMatch(payload.contato_whatsapp, String(row.telefone_e164 || "")) && (row.ativo === false || !row.funcionario_id));
+      const whatsappPayload = {
+        fazenda_id: owner.fazenda_id,
+        telefone_e164: payload.contato_whatsapp,
+        usuario_id: null,
+        funcionario_id: found.row.id,
+        nome_exibicao: payload.nome || found.row.nome,
+        papel_bot: "funcionario",
+        ativo: true
+      };
+      if (current?.id) {
+        const { error: updateWhatsappError } = await supabase
+          .from(TABLES.whatsappUsuarios)
+          .update(whatsappPayload)
+          .eq("id", current.id)
+          .eq("fazenda_id", owner.fazenda_id);
+        if (updateWhatsappError) throw new Error(updateWhatsappError.message);
+      } else {
+        await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
+      }
+      savedTables.push(TABLES.whatsappUsuarios);
+    }
+
+    return realSaveResult(`Pronto, funcionário atualizado com sucesso.\n${found.row.nome}: ${label} atualizado.`, savedTables);
+  }
+
+  if (pending.tipo === "DESLIGAR_FUNCIONARIO" || pending.tipo === "EXCLUIR_FUNCIONARIO") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para desligar ou excluir funcionários pelo bot. Peça para um administrador fazer essa alteração." };
+    }
+
+    const found = await findEmployee(supabase, owner, String(dados.funcionario_nome || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei o funcionário "${dados.funcionario_nome || ""}". Me envie o nome como está cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { funcionario_nome: undefined }) } }
+      };
+    }
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { funcionario_nome: found.row.nome });
+      return {
+        response: `Encontrei um funcionário parecido: ${found.row.nome}. Quer usar esse funcionário?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const payload = pending.tipo === "EXCLUIR_FUNCIONARIO"
+      ? { ativo: false, deleted_at: nowIso() }
+      : { ativo: false };
+    const { data, error } = await supabase
+      .from(TABLES.funcionarios)
+      .update(payload)
+      .eq("id", found.row.id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    await logAudit(supabase, owner, TABLES.funcionarios, "update", data || { ...found.row, ...payload });
+
+    const { error: whatsappError } = await supabase
+      .from(TABLES.whatsappUsuarios)
+      .update({ ativo: false })
+      .eq("funcionario_id", found.row.id)
+      .eq("fazenda_id", owner.fazenda_id);
+    if (whatsappError) throw new Error(whatsappError.message);
+
+    const action = pending.tipo === "EXCLUIR_FUNCIONARIO" ?"excluído" : "desligado";
+    return realSaveResult(`Pronto, funcionário ${action} com sucesso.\n${found.row.nome}.`, [TABLES.funcionarios, TABLES.whatsappUsuarios]);
   }
 
   if (pending.tipo === "PONTO_FUNCIONARIO") {
@@ -1679,8 +1902,21 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
 
   if (parsed.tipo === "CONSULTA_FUNCIONARIO") {
     if (parsed.dados.funcionario_nome) {
+      if (!isBotAdmin(owner)) return "Você não tem permissão para consultar dados de funcionários pelo WhatsApp.";
       const found = await findEmployee(supabase, owner, String(parsed.dados.funcionario_nome));
-      if (found) return `${found.row.nome}: ${found.row.funcao || "função não informada"} - ${found.row.ativo === false ?"inativo" : "ativo"}.`;
+      if (found) {
+        const field = String(parsed.dados.consulta_campo || "");
+        if (field === "salario_base") return `${found.row.nome}: salário-base ${formatMoney(found.row.salario_base)}.`;
+        if (field === "cpf") return `${found.row.nome}: CPF ${found.row.cpf || "não informado"}.`;
+        if (field === "contato_whatsapp") return `${found.row.nome}: WhatsApp ${found.row.contato_whatsapp ?formatWhatsappForBot(found.row.contato_whatsapp) : "não informado"}.`;
+        if (field === "funcao") return `${found.row.nome}: ${found.row.funcao || "função não informada"}.`;
+        return [
+          `${found.row.nome}: ${found.row.funcao || "função não informada"} - ${found.row.ativo === false ?"inativo" : "ativo"}.`,
+          `Salário-base: ${formatMoney(found.row.salario_base)}.`,
+          `WhatsApp: ${found.row.contato_whatsapp ?formatWhatsappForBot(found.row.contato_whatsapp) : "não informado"}.`,
+          `Acesso: ${found.row.tipo_acesso || "bot_only"}.`
+        ].join("\n");
+      }
     }
 
     const { data, error } = await supabase
@@ -1691,6 +1927,45 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     if (error) throw new Error(error.message);
     const active = (data || []).filter((row) => row.ativo !== false && !row.deleted_at).length;
     return `Funcionários ativos: ${active}.`;
+  }
+
+  if (parsed.tipo === "CONSULTA_PONTO") {
+    if (!isBotAdmin(owner)) return "Você não tem permissão para consultar ponto pelo WhatsApp.";
+    const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
+    const range = periodRange(period);
+    let employeeId: string | null = null;
+    let employeeName = "";
+
+    if (parsed.dados.funcionario_nome) {
+      const found = await findEmployee(supabase, owner, String(parsed.dados.funcionario_nome));
+      if (!found?.row) return `Não encontrei o funcionário "${parsed.dados.funcionario_nome}".`;
+      employeeId = String(found.row.id);
+      employeeName = String(found.row.nome || parsed.dados.funcionario_nome);
+    }
+
+    let query = supabase
+      .from(TABLES.registrosPonto)
+      .select("funcionario_id,tipo,registrado_em")
+      .eq("fazenda_id", owner.fazenda_id)
+      .gte("registrado_em", range.start)
+      .lt("registrado_em", range.end);
+    if (employeeId) query = query.eq("funcionario_id", employeeId);
+
+    const { data, error } = await query.limit(2000);
+    if (error) throw new Error(error.message);
+    const rows = (data || []) as AnyRecord[];
+    parsed.dados.consulta_executada = "ponto";
+    parsed.dados.resultado = { registros: rows.length, funcionario_id: employeeId, periodo: period };
+    if (!rows.length) {
+      return employeeId
+        ?`Não encontrei ponto registrado ${periodLabel(period)} para ${employeeName}.`
+        :`Não encontrei ponto registrado ${periodLabel(period)}.`;
+    }
+    const entradas = rows.filter((row) => row.tipo === "entrada").length;
+    const saidas = rows.filter((row) => row.tipo === "saida").length;
+    return employeeId
+      ?`Ponto de ${employeeName} ${periodLabel(period)}: ${rows.length} registro(s), ${entradas} entrada(s) e ${saidas} saída(s).`
+      :`Ponto ${periodLabel(period)}: ${rows.length} registro(s), ${entradas} entrada(s) e ${saidas} saída(s).`;
   }
 
   if (parsed.tipo === "CONSULTA_REGISTROS_HOJE") {
@@ -1754,9 +2029,9 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item.";
   }
 
-  if (parsed.tipo === "CRIAR_FUNCIONARIO" && !isBotAdmin(owner)) {
+  if (EMPLOYEE_ADMIN_INTENTS.has(parsed.tipo) && !isBotAdmin(owner)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Você não tem permissão para cadastrar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
+    return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
   }
 
   if (parsed.perguntas_faltantes.length) {
@@ -1905,6 +2180,11 @@ async function handleConfirmation(
     if (CONSULT_INTENTS.has(replacement.tipo)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return handleConsultation(supabase, owner, replacement);
+    }
+
+    if (EMPLOYEE_ADMIN_INTENTS.has(replacement.tipo) && !isBotAdmin(owner)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
     }
 
     if (replacement.perguntas_faltantes.length) {

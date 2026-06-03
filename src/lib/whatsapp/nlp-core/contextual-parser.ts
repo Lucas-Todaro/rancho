@@ -13,7 +13,10 @@ import {
   extractAnimalSex,
   extractDateReference,
   extractEmployeeCreationName,
+  extractEmployeeAccessMode,
+  extractEmployeeCpf,
   extractEmployeeName,
+  extractEmployeeSalary,
   extractFinanceDescription,
   extractLiters,
   extractMoneyValue,
@@ -72,6 +75,18 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "funcionario_nome" && original) dados.funcionario_nome = extractEmployeeCreationName(original) || original;
     if (expectedField === "telefone" && contextualPhone) dados.telefone = contextualPhone;
     if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);
+    if (expectedField === "horario") dados.horario = extractPointTime(normalized) || original;
+    if (expectedField === "campo_alterado" && original) {
+      if (/\b(?:salario|salário|slario|ganha)\b/.test(normalized)) dados.campo_alterado = "salario_base";
+      else if (/\b(?:whatsapp|telefone|zap|celular)\b/.test(normalized)) dados.campo_alterado = "contato_whatsapp";
+      else if (/\bcpf\b/.test(normalized)) dados.campo_alterado = "cpf";
+      else if (/\b(?:cargo|funcao|função)\b/.test(normalized)) dados.campo_alterado = "funcao";
+      else if (/\bnome\b/.test(normalized)) dados.campo_alterado = "nome";
+      else if (/\b(?:ativo|inativo|reativar|reativa)\b/.test(normalized)) dados.campo_alterado = "ativo";
+    }
+    if (expectedField === "novo_valor" && original) {
+      dados.novo_valor = contextualPhone || extractEmployeeCpf(original) || extractEmployeeSalary(original, normalized) || original;
+    }
     if (expectedField === "categoria_animal") dados.categoria = extractAnimalCategory(normalized) || original.toLowerCase();
     if (expectedField === "sexo") dados.sexo = extractAnimalSex(normalized);
     if (expectedField === "fase") dados.fase = extractAnimalPhase(normalized);
@@ -94,6 +109,9 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const itemName = extractStockItem(original);
   const employeeName = extractEmployeeName(original, normalized);
   const employeeCreationName = extractEmployeeCreationName(original);
+  const employeeSalary = extractEmployeeSalary(original, normalized);
+  const employeeCpf = extractEmployeeCpf(original);
+  const employeeAccessMode = extractEmployeeAccessMode(original, normalized);
   const phone = extractWhatsappPhone(original);
   const pointType = extractPointType(normalized);
   const pointTime = extractPointTime(normalized);
@@ -121,10 +139,29 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (quantity !== undefined && stockIntent && (!hasValue(dados.quantidade) || expectedField === "quantidade" || isCorrection)) dados.quantidade = quantity;
   if (itemName && stockIntent && (!dados.item_nome || expectedField === "item_nome" || (isCorrection && correctionItemLooksUseful))) dados.item_nome = itemName;
   if (employeeName && current.tipo === "PONTO_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeName;
-  if (employeeCreationName && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeCreationName;
-  if (phone && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.telefone || expectedField === "telefone")) dados.telefone = phone;
-  if (pointType && current.tipo === "PONTO_FUNCIONARIO" && (!dados.ponto_tipo || expectedField === "ponto_tipo")) dados.ponto_tipo = pointType;
-  if (pointTime && current.tipo === "PONTO_FUNCIONARIO" && !dados.horario) dados.horario = pointTime;
+  if (employeeCreationName && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome" || isCorrection)) dados.funcionario_nome = employeeCreationName;
+  if (employeeSalary !== undefined && current.tipo === "CRIAR_FUNCIONARIO" && (!hasValue(dados.salario_base) || expectedField === "salario_base" || isCorrection)) dados.salario_base = employeeSalary;
+  if (employeeCpf && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.cpf || expectedField === "cpf" || isCorrection)) dados.cpf = employeeCpf;
+  if (employeeAccessMode && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.tipo_acesso || expectedField === "tipo_acesso" || isCorrection)) {
+    dados.tipo_acesso = employeeAccessMode;
+    dados.telefone_obrigatorio = true;
+  }
+  if (phone && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.telefone || expectedField === "telefone" || isCorrection)) dados.telefone = phone;
+  if (current.tipo === "ATUALIZAR_FUNCIONARIO") {
+    if (employeeName && (!dados.funcionario_nome || expectedField === "funcionario_nome" || isCorrection)) dados.funcionario_nome = employeeName;
+    if (phone && (!dados.novo_valor || expectedField === "novo_valor" || isCorrection)) {
+      dados.campo_alterado = "contato_whatsapp";
+      dados.novo_valor = phone;
+    } else if (employeeCpf && (!dados.novo_valor || expectedField === "novo_valor" || isCorrection)) {
+      dados.campo_alterado = "cpf";
+      dados.novo_valor = employeeCpf;
+    } else if (employeeSalary !== undefined && (!hasValue(dados.novo_valor) || expectedField === "novo_valor" || isCorrection)) {
+      dados.campo_alterado = "salario_base";
+      dados.novo_valor = employeeSalary;
+    }
+  }
+  if (pointType && current.tipo === "PONTO_FUNCIONARIO" && (!dados.ponto_tipo || expectedField === "ponto_tipo" || isCorrection)) dados.ponto_tipo = pointType;
+  if (pointTime && current.tipo === "PONTO_FUNCIONARIO" && (!dados.horario || expectedField === "horario" || isCorrection)) dados.horario = pointTime;
 
   if (turno && (!dados.turno || isCorrection)) dados.turno = turno;
   if (dateReference && (!dados.data_referencia || isCorrection)) dados.data_referencia = dateReference;

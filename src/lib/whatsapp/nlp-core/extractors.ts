@@ -573,6 +573,15 @@ export function extractEmployeeCreationName(original: string) {
     .replace(/\s+/g, " ")
     .trim();
 
+  const directCreateName = withoutPhone.match(/\b(?:cadastra|cadastrar|cadastre|cadatra|adicionar|adiciona|novo|nova|cria|criar)\s+(?:funcionario|funcionaria|funcionário|funcionária|colaborador|colaboradora|vaqueiro|ordenhador|tratador|tratadora|gerente)?\s*([a-zA-ZÀ-ÿ\s]+?)(?:\s+(?:cargo|funcao|função|salario|salário|cpf|bot|only|so|só|apenas|whatsapp|telefone|zap)\b|\s+\d|$)/i)?.[1];
+  const directCleaned = cleanAnswer(directCreateName || "")
+    .replace(/\b(?:com|de|do|da|no|na|para|pra|zap|whatsapp|telefone|celular)\b.*$/i, "")
+    .replace(/\b(?:cargo|funcao|função|salario|salário|cpf|bot|only|so|só|apenas)\b.*$/i, "")
+    .replace(/\b(?:funcionario|funcionaria|funcionário|funcionária|colaborador|colaboradora|vaqueiro|ordenhador|ordenhadora|tratador|tratadora|gerente)\b/gi, "")
+    .replace(/^(?:o|a)\s+/i, "")
+    .trim();
+  if (directCleaned) return directCleaned;
+
   const afterAction = withoutPhone.match(/\b(?:cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar)\s+(?:funcion[aá]rio|colaborador|vaqueiro|ordenhador|tratador|tratadora|gerente)?\s*([a-zA-ZÀ-ÿ\s]+?)\s*$/i)?.[1];
   const cleaned = cleanAnswer(afterAction || "")
     .replace(/\b(?:com|de|do|da|no|na|para|pra|zap|whatsapp|telefone|celular)\b.*$/i, "")
@@ -582,9 +591,65 @@ export function extractEmployeeCreationName(original: string) {
   return cleaned || undefined;
 }
 
+function cleanEmployeeName(value?: string | null) {
+  return cleanAnswer(value || "")
+    .replace(/\b(?:funcionario|funcionaria|funcionário|funcionária|colaborador|colaboradora|vaqueiro|ordenhador|ordenhadora|tratador|tratadora|gerente|cargo|funcao|função|salario|salário|cpf|whatsapp|telefone|zap|celular|bot|only|sistema|acesso|como|com|nome|para|pra|do|da|de|o|a)\b/gi, " ")
+    .replace(/\b(?:agora|hoje|ontem|mes|mês|semana)\b/gi, " ")
+    .replace(/\b(?:nao|não|mais)\b/gi, " ")
+    .replace(/\b(?:quem|ponto|relatorio|relatório|horas|faltas)\b/gi, " ")
+    .replace(/\b(?:r\$|reais|real)\b/gi, " ")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\b`, "gi"), " ")
+    .replace(/[.,;:!?()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^(?:o|a)\s+/i, "")
+    .trim();
+}
+
+export function extractEmployeeLooseName(original: string, normalized: string) {
+  const fromCreation = extractEmployeeCreationName(original);
+  if (fromCreation) return fromCreation;
+
+  const patterns = [
+    /\b(?:funcionario|funcionaria|funcionário|funcionária|colaborador|colaboradora)\s+(?:com\s+nome\s+)?([a-zA-ZÀ-ÿ\s]+?)(?:\s+(?:cargo|funcao|função|salario|salário|cpf|telefone|whatsapp|zap|bot|so|só|apenas|como)\b|\s+\d|$)/i,
+    /\b(?:contratei|contratar|desliga|desligar|demite|demitir|inativa|inativar|desativar|reativa|reativar|ativa|ativar|exclui|excluir|apaga|apagar|remove|remover|deleta|deletar)\s+(?:o|a)?\s*([a-zA-ZÀ-ÿ\s]+?)(?:\s|$)/i,
+    /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,2})\s+(?:trabalha|começou|comecou|iniciou|ganha|recebeu|virou|entrou|saiu|terminou|encerrou|foi embora|bateu)\b/i,
+    /\b(?:do|da|de|para|pra|pro)\s+([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,2})\b/i
+  ];
+
+  for (const pattern of patterns) {
+    const candidate = cleanEmployeeName(original.match(pattern)?.[1]);
+    if (candidate) return candidate;
+  }
+
+  const normalizedCandidate = normalized.match(/^([a-z][a-z\s]{1,35})\s+(?:ganha|recebeu|trabalha|comecou|começou|virou|entrou|saiu)\b/)?.[1];
+  return cleanEmployeeName(normalizedCandidate) || undefined;
+}
+
+export function extractEmployeeAccessMode(original: string, normalized: string) {
+  if (/\b(?:bot only|so no whatsapp|só no whatsapp|apenas para o bot|so vai usar o bot|só vai usar o bot|sem acesso ao sistema|so whatsapp|só whatsapp)\b/i.test(original)
+    || /\b(?:bot_only|so whatsapp|so no whatsapp|apenas bot|apenas para o bot|sem acesso ao sistema)\b/.test(normalized)) {
+    return "bot_only";
+  }
+  return undefined;
+}
+
+export function extractEmployeeCpf(original: string) {
+  if (!/\bcpf\b/i.test(original)) return undefined;
+  const digits = original.replace(/\D/g, "");
+  return digits.length >= 11 ?digits.slice(0, 11) : undefined;
+}
+
+export function extractEmployeeSalary(original: string, normalized: string) {
+  if (!/\b(?:salario|salário|slario|ganha|ganhar|recebe|receber|remuneracao|remuneração)\b/i.test(original)
+    && !/\b(?:salario|slario|ganha|recebe|remuneracao)\b/.test(normalized)) {
+    return undefined;
+  }
+  return extractMoneyValue(normalized);
+}
+
 export function extractPointType(text: string) {
-  if (/\b(?:saida|saiu|sair|encerrou)\b/.test(text)) return "saida";
-  if (/\b(?:entrada|entrou|entrar|chegou|bate ponto|ponto)\b/.test(text)) return "entrada";
+  if (/\b(?:saida|saiu|sair|encerrou|terminou|terminei|fim|fechou|embora)\b/.test(text)) return "saida";
+  if (/\b(?:entrada|entrou|entrar|chegou|cheguei|começou|comecou|comecei|iniciou|inicio|início|bate ponto|ponto)\b/.test(text)) return "entrada";
   return undefined;
 }
 
