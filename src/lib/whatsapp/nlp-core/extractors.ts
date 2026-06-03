@@ -44,6 +44,9 @@ export function normalizeAnimalCode(value: string | number | null | undefined) {
   const labeled = normalized.match(/\b(?:VACA|ANIMAL|GADO|BOI|TOURO|BEZERRO|BEZERRA|NOVILHA|BRINCO|NUMERO|N)\s+([A-Z]*\d[A-Z0-9-]*|[A-Z]+-[A-Z0-9]+)\b/);
   if (labeled?.[1]) return labeled[1];
 
+  const spacedCode = normalized.match(/^([A-Z]+)\s+(\d[A-Z0-9-]*)$/);
+  if (spacedCode) return `${spacedCode[1]}-${spacedCode[2]}`;
+
   const compact = normalized.replace(/\s*-\s*/g, "-");
   if (animalCodePattern.test(compact)) return compact;
 
@@ -81,19 +84,62 @@ export function removeWhatsappPhone(original: string) {
     .trim();
 }
 
+const monthNumbers: Record<string, number> = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  marcoo: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12
+};
+
+function stripDateFragments(text: string) {
+  return normalizeRanchoText(text)
+    .replace(/\b(?:19|20)\d{2}[/-]\d{1,2}[/-]\d{1,2}\b/g, " ")
+    .replace(/\b\d{1,2}[/-]\d{1,2}(?:[/-](?:19|20)?\d{2})?\b/g, " ")
+    .replace(/\b(?:dia|em|no dia)?\s*\d{1,2}\s+de\s+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+(?:19|20)\d{2})?\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractTurno(text: string) {
-  if (/\bmanha\b/.test(text)) return "manha";
-  if (/\btarde\b/.test(text)) return "tarde";
-  if (/\bnoite\b/.test(text)) return "noite";
+  if (/\b(?:manha|primeira ordenha)\b/.test(text)) return "manha";
+  if (/\b(?:tarde|segunda ordenha)\b/.test(text)) return "tarde";
+  if (/\b(?:noite|terceira ordenha)\b/.test(text)) return "noite";
   return undefined;
 }
 
 export function extractDateReference(text: string) {
-  if (/\bontem\b/.test(text)) return "ontem";
-  if (/\bamanha\b/.test(text)) return "amanha";
-  if (/\bhoje\b/.test(text)) return "hoje";
-  if (/\bsemana\b|\bsemanal\b|\bessa semana\b|\bnesta semana\b/.test(text)) return "semana";
-  if (/\bmes\b|\bmensal\b|\bdo mes\b/.test(text)) return "mes";
+  const normalized = normalizeRanchoText(text);
+  const isoDate = normalized.match(/\b((?:19|20)\d{2})[/-](\d{1,2})[/-](\d{1,2})\b/);
+  if (isoDate) return validDateParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+
+  const brDate = normalized.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-]((?:19|20)?\d{2}))?\b/);
+  if (brDate) {
+    const rawYear = brDate[3] ? Number(brDate[3]) : new Date().getFullYear();
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    return validDateParts(year, Number(brDate[2]), Number(brDate[1]));
+  }
+
+  const namedDate = normalized.match(/\b(?:dia|em|no dia)?\s*(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+((?:19|20)\d{2}))?\b/);
+  if (namedDate) {
+    const year = namedDate[3] ? Number(namedDate[3]) : new Date().getFullYear();
+    return validDateParts(year, monthNumbers[namedDate[2]], Number(namedDate[1]));
+  }
+
+  if (/\banteontem\b/.test(normalized)) return "anteontem";
+  if (/\bontem+\b/.test(normalized)) return "ontem";
+  if (/\bamanha\b/.test(normalized)) return "amanha";
+  if (/\b(?:hoje|hj|agora)\b/.test(normalized)) return "hoje";
+  if (/\bsemana\b|\bsemanal\b|\bessa semana\b|\bnesta semana\b/.test(normalized)) return "semana";
+  if (/\bmes\b|\bmensal\b|\bdo mes\b/.test(normalized)) return "mes";
   return undefined;
 }
 
@@ -146,8 +192,9 @@ export function candidateFromMatch(value?: string | null) {
 }
 
 export function extractAnimalCode(text: string, intent?: RanchoIntent) {
-  const standalone = normalizeAnimalCandidate(text);
-  if (standalone && !/\s/.test(text.trim())) return standalone;
+  const searchable = stripDateFragments(text);
+  const standalone = normalizeAnimalCandidate(searchable);
+  if (standalone && !/\s/.test(searchable.trim())) return standalone;
 
   const explicitPatterns = [
     /\b(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)\s+(?:da|do|de|a|o)?\s*([a-z]*\d[a-z0-9-]*|[a-z]+-[a-z0-9]+)\b/g,
@@ -156,51 +203,80 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   ];
 
   for (const pattern of explicitPatterns) {
-    let match = pattern.exec(text);
+    let match = pattern.exec(searchable);
     while (match) {
       const raw = match[1];
       const index = match.index + match[0].lastIndexOf(raw);
       const candidate = normalizeAnimalCandidate(raw);
-      if (candidate && !numberHasUnitOrMoneyContext(text, index, raw)) return candidate;
-      match = pattern.exec(text);
+      if (candidate && !numberHasUnitOrMoneyContext(searchable, index, raw)) return candidate;
+      match = pattern.exec(searchable);
     }
   }
 
-  const direct = text.match(new RegExp(`\\b${animalWords}\\s+(?:da|do|de|a|o)?\\s*([a-z0-9][a-z0-9-]*)\\b`));
+  const direct = searchable.match(new RegExp(`\\b${animalWords}\\s+(?:da|do|de|a|o)?\\s*([a-z0-9][a-z0-9-]*)\\b`));
   const directCandidate = candidateFromMatch(direct?.[1]);
   if (directCandidate) return normalizeAnimalCandidate(directCandidate) || directCandidate.toUpperCase();
 
-  const productionNamed = text.match(/\b(?:producao|ordenha)\s+(?:da|do|de)?\s*([a-z0-9][a-z0-9-]*)\b/);
+  const productionNamed = searchable.match(/\b(?:producao|ordenha)\s+(?:da|do|de)?\s*([a-z0-9][a-z0-9-]*)\b/);
   const productionCandidate = candidateFromMatch(productionNamed?.[1]);
   if (productionCandidate) return normalizeAnimalCandidate(productionCandidate) || productionCandidate.toUpperCase();
 
-  const beforeVerb = text.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu)\b/);
+  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu)\b/);
   const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]);
   if (beforeVerbCandidate && !/^(registra|registrar|lanca|lancar|anota|anotar)$/.test(beforeVerbCandidate)) {
     return normalizeAnimalCandidate(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();
   }
 
-  const beforeLiters = text.match(new RegExp(`^([a-z][a-z0-9-]*)\\s+${decimalNumberPattern}\\s*(?:l|lt|lts|litro|litros)?\\b`));
-  if (beforeLiters?.[1] && intent === "PRODUCAO_LEITE") return normalizeAnimalCandidate(beforeLiters[1]) || beforeLiters[1].toUpperCase();
+  const beforeLiters = searchable.match(new RegExp(`^([a-z][a-z0-9-]*)\\s+${decimalNumberPattern}\\s*(?:l|lt|lts|litro|litros)?\\b`));
+  const beforeLitersCandidate = candidateFromMatch(beforeLiters?.[1]);
+  if (beforeLitersCandidate && intent === "PRODUCAO_LEITE") return normalizeAnimalCandidate(beforeLitersCandidate) || beforeLitersCandidate.toUpperCase();
 
-  const numbers = numberMatches(text);
-  if (intent === "PRODUCAO_LEITE" && numbers.length >= 2 && !numberHasUnitOrMoneyContext(text, numbers[0].index, numbers[0].raw)) return numbers[0].raw.toUpperCase();
+  const numbers = numberMatches(searchable);
+  if (intent === "PRODUCAO_LEITE" && numbers.length >= 2 && !numberHasUnitOrMoneyContext(searchable, numbers[0].index, numbers[0].raw)) return numbers[0].raw.toUpperCase();
 
   return undefined;
 }
 
+function hasMilkUnitAfter(text: string, index: number, raw: string) {
+  const after = text.slice(index + raw.length, index + raw.length + 24);
+  return /^\s*(?:l|lt|lts|litro\w*|lito\w*|litr\w*)\b/.test(after);
+}
+
+function hasNonMilkProductionUnitAfter(text: string, index: number, raw: string) {
+  const after = text.slice(index + raw.length, index + raw.length + 24);
+  return /^\s*(?:kg|quilos?|gramas?|g|reais|real|r\$)\b/.test(after);
+}
+
 export function extractLiters(text: string) {
+  if (new RegExp(`-\\s*${decimalNumberPattern}\\s*(?:l|lt|lts|litro|litros)\\b`).test(text)) return undefined;
+  if (/\bzero\s+(?:l|lt|lts|litro|litros)\b/.test(text)) return 0;
+
+  const half = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s+e\\s+meio\\b`));
+  if (half?.[1] && !hasNonMilkProductionUnitAfter(text, half.index || 0, half[0])) {
+    const value = parseDecimalNumber(half[1]);
+    if (value !== undefined) return value + 0.5;
+  }
+
+  if (/\bmeio\s+(?:l|lt|lts|litro|litros)\b/.test(text)) return 0.5;
+
   const withMilUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s+mil\\s*(?:l|lt|lts|litro|litros)\\b`));
   if (withMilUnit?.[1]) {
     const value = parseDecimalNumber(withMilUnit[1]);
     return value === undefined ?undefined : value * 1000;
   }
 
-  const withUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s*(?:l|lt|lts|litro|litros)\\b`));
+  const withUnit = text.match(new RegExp(`\\b(${decimalNumberPattern})\\s*(?:l|lt|lts|litro\\w*|lito\\w*|litr\\w*)\\b`));
   if (withUnit?.[1]) return parseDecimalNumber(withUnit[1]);
 
+  const wordWithUnit = numberMatches(text).find((match) => hasMilkUnitAfter(text, match.index, match.raw));
+  if (wordWithUnit) return wordWithUnit.value;
+
   const afterProductionVerb = text.match(new RegExp(`\\b(?:deu|produziu|fez|ordenhou|tirei|tirou)\\s+(${decimalNumberPattern})\\b`));
-  if (afterProductionVerb?.[1]) return parseDecimalNumber(afterProductionVerb[1]);
+  if (afterProductionVerb?.[1]) {
+    const raw = afterProductionVerb[1];
+    const index = (afterProductionVerb.index || 0) + afterProductionVerb[0].lastIndexOf(raw);
+    if (!hasNonMilkProductionUnitAfter(text, index, raw)) return parseDecimalNumber(raw);
+  }
 
   return undefined;
 }
@@ -210,6 +286,7 @@ export function extractLooseProductionLiters(text: string) {
   const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
   const animalKey = compactKey(animal);
   const quantity = [...numberMatches(normalized)].reverse().find((match) => {
+    if (normalized[match.index - 1] === "-") return false;
     if (compactKey(match.raw) === animalKey) return false;
     return !numberHasUnitOrMoneyContext(normalized, match.index, match.raw);
   });

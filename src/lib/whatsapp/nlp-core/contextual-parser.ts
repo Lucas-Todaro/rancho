@@ -47,7 +47,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (parsedAnswer.tipo === current.tipo) {
     Object.entries(parsedAnswer.dados).forEach(([key, value]) => {
       if (value === undefined || value === null || value === "") return;
-      if (!expectedField || key === expectedField || dados[key] === undefined || dados[key] === null || dados[key] === "") {
+      if (key === expectedField || dados[key] === undefined || dados[key] === null || dados[key] === "") {
         dados[key] = value;
       }
     });
@@ -82,7 +82,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "data_nascimento") dados.data_nascimento = extractAnimalBirthDate(original);
   }
 
-  const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL"].includes(current.tipo);
+  const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(current.tipo);
   const animalCode = animalIntent && expectedField && expectedField !== "animal_codigo"
     ?undefined
     : animalIntent ?extractAnimalCode(normalized, current.tipo) : undefined;
@@ -95,9 +95,15 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const phone = extractWhatsappPhone(original);
   const pointType = extractPointType(normalized);
   const pointTime = extractPointTime(normalized);
+  const dateReference = extractDateReference(normalized);
+  const turno = extractTurno(normalized);
+  const isCorrection = !expectedField && /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
 
-  if (animalCode && (!dados.animal_codigo || expectedField === "animal_codigo")) dados.animal_codigo = animalCode;
-  if (liters && current.tipo === "PRODUCAO_LEITE" && (!dados.litros || expectedField === "litros")) dados.litros = liters;
+  if (animalCode && (!dados.animal_codigo || expectedField === "animal_codigo" || (isCorrection && current.tipo !== "CADASTRO_ANIMAL"))) dados.animal_codigo = animalCode;
+  if (liters !== undefined && current.tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || expectedField === "litros" || isCorrection)) dados.litros = liters;
+  if (current.tipo === "PRODUCAO_LEITE" && isCorrection && liters === undefined && firstNumber(normalized) !== undefined && /(?:litro|l\b|foi|era|valor|quantidade)/.test(normalized)) {
+    dados.litros = firstNumber(normalized);
+  }
   const isFinancialValueCorrection = value !== undefined
     && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo)
     && !expectedField
@@ -111,8 +117,8 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (pointType && current.tipo === "PONTO_FUNCIONARIO" && (!dados.ponto_tipo || expectedField === "ponto_tipo")) dados.ponto_tipo = pointType;
   if (pointTime && current.tipo === "PONTO_FUNCIONARIO" && !dados.horario) dados.horario = pointTime;
 
-  if (!dados.turno) dados.turno = extractTurno(normalized);
-  if (!dados.data_referencia) dados.data_referencia = extractDateReference(normalized);
+  if (turno && (!dados.turno || isCorrection)) dados.turno = turno;
+  if (dateReference && (!dados.data_referencia || isCorrection)) dados.data_referencia = dateReference;
   if (!dados.unidade && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.unidade = extractStockUnit(normalized);
   if (!dados.produto && current.tipo === "VACINA_MEDICAMENTO") dados.produto = extractProduct(answer, normalized);
   if (!dados.descricao && ["DESPESA", "RECEITA_VENDA", "ORDEM_SERVICO"].includes(current.tipo)) dados.descricao = removeValueAndCommonWords(original) || original;

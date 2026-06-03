@@ -213,8 +213,13 @@ function createBotTestTables() {
       fazenda_id: BOT_TEST_FARM_ID,
       nome: animal.brinco === "B-002" ? "Mimosa" : animal.brinco,
       categoria: index % 2 === 0 ? "vaca" : "boi",
+      sexo: index % 2 === 0 ? "femea" : "macho",
+      fase: animal.brinco === "B-002" ? "gestante" : "lactacao",
       status: "ativo",
       raca: "Girolando",
+      lote_id: "lote-lactacao-1",
+      data_nascimento: animal.brinco === "B-002" ? "2021-05-10" : null,
+      peso: animal.brinco === "B-002" ? 450 : null,
       observacoes: ""
     })),
     [BOT_TEST_TABLES.estoqueItens]: mockStock.map((item, index) => ({
@@ -605,7 +610,9 @@ function missingContains(parsed, field) {
     fase: /fase|lactacao|gestante|seca|vazia|crescimento|engorda/.test(text),
     raca: /raca/.test(text),
     lote_animal: /lote/.test(text),
-    data_nascimento: /nascimento|data/.test(text)
+    data_nascimento: /nascimento|data/.test(text),
+    campo_alterado: /dado|atualizar/.test(text),
+    novo_valor: /valor|cadastro/.test(text)
   };
   return Boolean(checks[field]);
 }
@@ -633,6 +640,11 @@ function assertExpected(test, parsed) {
   if (expected.lote && normalize(dados.lote_nome) !== normalize(expected.lote)) failures.push(`lote esperado ${expected.lote}, recebido ${dados.lote_nome}`);
   if (expected.loteId && dados.lote_id !== expected.loteId) failures.push(`lote_id esperado ${expected.loteId}, recebido ${dados.lote_id}`);
   if (expected.data_nascimento && dados.data_nascimento !== expected.data_nascimento) failures.push(`data_nascimento esperada ${expected.data_nascimento}, recebida ${dados.data_nascimento}`);
+  if (expected.data_referencia && dados.data_referencia !== expected.data_referencia) failures.push(`data_referencia esperada ${expected.data_referencia}, recebida ${dados.data_referencia}`);
+  if (expected.turno && normalize(dados.turno) !== normalize(expected.turno)) failures.push(`turno esperado ${expected.turno}, recebido ${dados.turno}`);
+  if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
+  if ("novo_valor" in expected && normalize(dados.novo_valor) !== normalize(expected.novo_valor)) failures.push(`novo_valor esperado ${expected.novo_valor}, recebido ${dados.novo_valor}`);
+  if ("consulta" in expected && Boolean(dados.consulta) !== Boolean(expected.consulta)) failures.push(`consulta esperada ${expected.consulta}, recebida ${dados.consulta}`);
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
   if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
@@ -917,6 +929,46 @@ const decimalRegressionTests = [
   { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
   { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
+];
+
+const productionRobustnessTests = [
+  { phrase: "B-002 deu 32l", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, data_referencia: "hoje" } },
+  { phrase: "B-002 deu 32lt ontem", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, data_referencia: "ontem" } },
+  { phrase: "B-002 deu 32lts anteontem", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, data_referencia: "anteontem" } },
+  { phrase: "B-002 deu 32 litros 2026-06-01", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, data_referencia: "2026-06-01" } },
+  { phrase: "B-002 deu 32 litros 01/06/2026", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, data_referencia: "2026-06-01" } },
+  { phrase: "B-002 deu 32 litros primeira ordenha", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, turno: "manha" } },
+  { phrase: "B-002 deu 32 litros segunda ordenha", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, turno: "tarde" } },
+  { phrase: "B-002 deu 32 litros terceira ordenha", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32, turno: "noite" } },
+  { phrase: "B-002 deu 32 e meio litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32.5 } },
+  { phrase: "B-002 deu meio litro", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 0.5 } },
+  { phrase: "B-002 deu -5 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", missing: ["litros"] } },
+  { phrase: "B-002 deu 32 kg", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", missing: ["litros"] } },
+  { phrase: "B-002 deu 300 reais", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", missing: ["litros"] } },
+  { phrase: "B 002 deu 32 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32 } },
+  { phrase: "malhada 32 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "MALHADA", litros: 32 } },
+  { phrase: "vaca B-002 deu 32 lito", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32 } },
+  { phrase: "B-002 32 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32 } },
+  { phrase: "era 32,5", pending: () => pendingFrom("B-002 deu 31 litros ontem"), expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32.5, data_referencia: "ontem", noMissing: true } },
+  { phrase: "corrigir 20 litros", pending: () => pendingFrom("B-002 deu 18 litros"), expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 20, noMissing: true } }
+];
+
+const animalConsultationAndUpdateTests = [
+  { phrase: "B-002 esta prenha?", expected: { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true } },
+  { phrase: "status da B-002?", expected: { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true } },
+  { phrase: "ver ficha da B-002", expected: { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true } },
+  { phrase: "dados do animal B-002", expected: { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true } },
+  { phrase: "mudar B-002 para lote Piquete 2", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "lote_id", novo_valor: "Piquete 2" } },
+  { phrase: "B-002 450kg", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "peso", novo_valor: 450 } },
+  { phrase: "B-002 ficou prenha", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" } },
+  { phrase: "B-002 ficou seca", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "seca" } },
+  { phrase: "B-002 vendida", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "status", novo_valor: "vendido" } },
+  { phrase: "trocar nome da B-002 para Mimosa Nova", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "nome", novo_valor: "Mimosa Nova" } },
+  { phrase: "mudar raca da B-002 para Jersey", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "raca", novo_valor: "Jersey" } },
+  { phrase: "corrigir nascimento da B-002 para 10/05/2024", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "data_nascimento", novo_valor: "2024-05-10" } },
+  { phrase: "B-002 observacao: mancando da pata", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "mancando da pata" } },
+  { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", exactTipo: true, animal: "B-002" } },
+  { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } }
 ];
 
 const botConversationTests = [
@@ -1219,6 +1271,131 @@ const botConversationTests = [
     ]
   },
   {
+    name: "consulta de animal usa cadastro sem abrir confirmacao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "B-002 esta prenha?",
+        expected: {
+          intent: "CONSULTA_ANIMAL",
+          estadoNovo: "livre",
+          dados: { animal_codigo: "B-002" },
+          responseIncludes: "Fase: gestante"
+        }
+      }
+    ]
+  },
+  {
+    name: "atualizacao de animal pede confirmacao e nao grava no dry-run",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "mudar B-002 para lote Piquete 2",
+        expected: {
+          intent: "ATUALIZACAO_ANIMAL",
+          estadoNovo: "aguardando_confirmacao",
+          dados: {
+            animal_codigo: "B-002",
+            campo_alterado: "lote_id",
+            novo_valor: "Piquete 2"
+          },
+          responseIncludes: "atualizar lote_id"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "ATUALIZACAO_ANIMAL",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "cancelamento explicito durante confirmacao limpa sem salvar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "B-002 deu 30 litros",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-002", litros: 30 }
+        }
+      },
+      {
+        text: "nao salvar",
+        expected: {
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "livre",
+          responseIncludes: "Cancelado"
+        }
+      }
+    ]
+  },
+  {
+    name: "rejeicao simples durante confirmacao limpa sem salvar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "B-002 deu 30 litros",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-002", litros: 30 }
+        }
+      },
+      {
+        text: "negativo",
+        expected: {
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "livre",
+          responseIncludes: "Nada foi salvo"
+        }
+      }
+    ]
+  },
+  {
+    name: "nova operacao substitui pendente antes de confirmar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "B-002 deu 30 litros",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-002", litros: 30 }
+        }
+      },
+      {
+        text: "comprei 3 sacos de milho por 120 reais",
+        expected: {
+          intent: "ESTOQUE_ENTRADA",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { item_nome: "Milho", quantidade: 3, unidade: "saco", valor: 120 },
+          responseIncludes: "Troquei"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: "ESTOQUE_ENTRADA",
+          estadoNovo: "livre",
+          eventoConfirmado: true,
+          responseIncludes: "Nenhum registro real foi salvo"
+        }
+      }
+    ]
+  },
+  {
     name: "consulta de item de estoque usa item real",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,
@@ -1372,7 +1549,92 @@ const botConversationTests = [
   }
 ];
 
+const positiveConfirmationFrameworkCases = ["s", "ss", "ok", "pode salvar", "salvar", "registrar", "fechou", "show"].map((confirmation) => ({
+  name: `confirmacao positiva aceita: ${confirmation}`,
+  module: "confirmacao",
+  phone: BOT_TEST_ADMIN_PHONE,
+  messages: ["B-002 deu 32 litros", confirmation],
+  expected: {
+    finalIntent: "PRODUCAO_LEITE",
+    entities: { animal_codigo: "B-002", litros: 32 },
+    shouldAskConfirmation: true,
+    shouldSaveBeforeConfirmation: false,
+    savedAfterConfirmation: true,
+    simulatedSaveCount: 1,
+    savedTables: [BOT_TEST_TABLES.ordenhas],
+    shouldNotDuplicate: true,
+    shouldNotWriteBusiness: true,
+    ranchId: BOT_TEST_FARM_ID
+  }
+}));
+
+const negativeConfirmationFrameworkCases = ["cancelar", "nao salvar", "esquece", "deixa pra la", "negativo", "2"].map((rejection) => ({
+  name: `confirmacao negativa limpa: ${rejection}`,
+  module: "confirmacao",
+  phone: BOT_TEST_ADMIN_PHONE,
+  messages: ["B-002 deu 32 litros", rejection],
+  expected: {
+    finalIntent: "PRODUCAO_LEITE",
+    entities: { animal_codigo: "B-002", litros: 32 },
+    shouldAskConfirmation: true,
+    shouldSaveBeforeConfirmation: false,
+    savedAfterConfirmation: false,
+    shouldClearSession: true,
+    shouldNotWriteBusiness: true
+  }
+}));
+
+const animalFrameworkCases = [
+  {
+    name: "consulta de animal nao passa por confirmacao",
+    module: "animais",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 esta prenha?"],
+    expected: {
+      finalIntent: "CONSULTA_ANIMAL",
+      entities: { animal_codigo: "B-002" },
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "atualizacao de animal confirma em dry-run sem escrita real",
+    module: "animais",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mudar B-002 para lote Piquete 2", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B-002", campo_alterado: "lote_id", novo_valor: "Piquete 2" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { campo_alterado: "lote_id", novo_valor: "Piquete 2" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "nova operacao substitui producao pendente",
+    module: "confirmacao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 deu 30 litros", "comprei 3 sacos de milho por 120 reais"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Milho", quantidade: 3, unidade: "saco", valor: 120 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
+  ...positiveConfirmationFrameworkCases,
+  ...negativeConfirmationFrameworkCases,
+  ...animalFrameworkCases,
   {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
@@ -1738,6 +2000,20 @@ function simulatedSaveActionsForResult(result, phone) {
     }];
   }
 
+  if (tipo === "ATUALIZACAO_ANIMAL") {
+    return [{
+      ...base,
+      type: "update",
+      table: BOT_TEST_TABLES.animais,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        animal_codigo: dados.animal_codigo,
+        campo_alterado: dados.campo_alterado,
+        novo_valor: dados.novo_valor
+      }
+    }];
+  }
+
   return [];
 }
 
@@ -1986,7 +2262,15 @@ async function runConversationTest(test, index) {
   };
 }
 
-const allTests = [...mandatoryTests, ...extraTests, ...regressionTests, ...consultationParserTests, ...decimalRegressionTests];
+const allTests = [
+  ...mandatoryTests,
+  ...extraTests,
+  ...regressionTests,
+  ...consultationParserTests,
+  ...decimalRegressionTests,
+  ...productionRobustnessTests,
+  ...animalConsultationAndUpdateTests
+];
 
 if (allTests.length < 90) {
   console.error(`Erro interno do test:bot: esperado ao menos 90 testes, recebido ${allTests.length}.`);

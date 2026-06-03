@@ -85,6 +85,13 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CONSULTA_PRODUCAO") return "consultar produção de leite";
   if (tipo === "CONSULTA_PRODUCAO_HOJE") return "consultar produção de leite de hoje";
   if (tipo === "CONSULTA_PRODUCAO_ANIMAL") return `consultar produção${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}`;
+  if (tipo === "ATUALIZACAO_ANIMAL") {
+    const value = hasValue(dados.novo_valor) ?` para ${dados.novo_valor}` : "";
+    return `atualizar ${dados.campo_alterado || "dados"} do animal ${dados.animal_codigo || "informado"}${value}`;
+  }
+
+  if (tipo === "CONSULTA_ANIMAL") return `consultar animal${dados.animal_codigo ?` ${dados.animal_codigo}` : ""}`;
+
   if (tipo === "CONSULTA_FINANCEIRO") return "consultar financeiro";
   if (tipo === "CONSULTA_ESTOQUE") return dados.item_nome ?`consultar estoque de ${dados.item_nome}` : "consultar estoque";
   if (tipo === "CONSULTA_ESTOQUE_ITEM") return dados.item_nome ?`consultar estoque de ${dados.item_nome}` : "consultar item do estoque";
@@ -126,8 +133,8 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   const missing: string[] = [];
   const stockCreateIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo);
   const stockMovementIntent = ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo);
-  if (["PRODUCAO_LEITE", "PARTO", "MORTE"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
-  if (tipo === "PRODUCAO_LEITE" && !hasValue(dados.litros)) missing.push("litros");
+  if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
+  if (tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || Number(dados.litros) <= 0)) missing.push("litros");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.animal_codigo) missing.push("animal_codigo");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !hasValue(dados.valor)) missing.push("valor");
@@ -152,6 +159,10 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
         missing.push(field);
       }
     });
+  }
+  if (tipo === "ATUALIZACAO_ANIMAL") {
+    if (!dados.campo_alterado) missing.push("campo_alterado");
+    if (!hasValue(dados.novo_valor)) missing.push("novo_valor");
   }
   return missing;
 }

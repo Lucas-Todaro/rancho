@@ -89,9 +89,9 @@ type MilkStockResolution = {
   reason: string;
 };
 
-const CONFIRM_WORDS = new Set(["sim", "s", "confirmar", "confirma", "correto", "ok", "pode", "pode salvar", "isso", "certo", "1"]);
-const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "nao e isso", "refazer", "2"]);
-const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "deixa"]);
+const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "1"]);
+const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao e isso", "refazer", "refaz", "incorreto", "negativo", "na verdade", "2"]);
+const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
@@ -102,6 +102,7 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_ESTOQUE_ITEM",
   "CONSULTA_ESTOQUE_GERAL",
   "CONSULTA_FUNCIONARIO",
+  "CONSULTA_ANIMAL",
   "CONSULTA_REGISTROS_HOJE",
   "AJUDA"
 ]);
@@ -117,6 +118,11 @@ function expirationIso() {
 
 function dateFromReference(reference?: string) {
   const date = new Date();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(reference || ""))) {
+    const parsed = new Date(`${reference}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (reference === "anteontem") date.setDate(date.getDate() - 2);
   if (reference === "ontem") date.setDate(date.getDate() - 1);
   if (reference === "amanha") date.setDate(date.getDate() + 1);
   return date;
@@ -176,6 +182,7 @@ function periodRange(period?: string) {
 function periodLabel(period?: string) {
   if (period === "semana") return "esta semana";
   if (period === "mes") return "este mês";
+  if (period === "anteontem") return "anteontem";
   if (period === "ontem") return "ontem";
   return "hoje";
 }
@@ -280,15 +287,15 @@ function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
 }
 
 function isConfirmCommand(command: string) {
-  return CONFIRM_WORDS.has(command) || /\b(?:sim|confirma|confirmar|correto|pode salvar|pode|ok|certo|isso)\b/.test(command);
+  return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode|salvar|salva|registrar|registra|lancar|lanca|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
 }
 
 function isRejectCommand(command: string) {
-  return REJECT_WORDS.has(command) || /^(?:nao|n|errado|corrigir|refazer)\b/.test(command);
+  return REJECT_WORDS.has(command) || /^(?:nao|n|errado|corrigir|corrige|quero corrigir|refazer|refaz|incorreto|negativo|na verdade|foi|era)\b/.test(command) || /\berrad[ao]\b/.test(command);
 }
 
 function isCancelCommand(command: string) {
-  return CANCEL_WORDS.has(command);
+  return CANCEL_WORDS.has(command) || /^(?:cancelar|cancela|cancela essa|esquece|deixa(?: pra la| para la)?|pare|para|apaga isso|nao salva|nao salvar|nao registrar)\b/.test(command);
 }
 
 function isMenuCommand(command: string) {
@@ -387,6 +394,8 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CRIAR_FUNCIONARIO: "cadastro de funcionário",
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
+    ATUALIZACAO_ANIMAL: "atualização de animal",
+    CONSULTA_ANIMAL: "consulta de animal",
     CONSULTA_PRODUCAO: "consulta de produção",
     CONSULTA_PRODUCAO_HOJE: "consulta de produção",
     CONSULTA_PRODUCAO_ANIMAL: "consulta de produção por animal",
@@ -657,7 +666,7 @@ function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
   const { data, error } = await supabase
     .from(TABLES.animais)
-    .select("id,brinco,nome,categoria,fase,status,raca,observacoes")
+    .select("id,brinco,nome,categoria,sexo,fase,status,raca,lote_id,data_nascimento,peso,observacoes")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
@@ -1138,6 +1147,78 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
   }
 
+  if (pending.tipo === "ATUALIZACAO_ANIMAL") {
+    const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei o animal "${dados.animal_codigo || ""}" no rebanho. Me envie o brinco cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
+      };
+    }
+
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => `- ${row.brinco}`).join("\n");
+      return {
+        response: `Encontrei mais de um animal parecido. Me envie o brinco correto:\n${options}`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
+      };
+    }
+
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { animal_codigo: found.row.brinco });
+      return {
+        response: `Encontrei um animal parecido: ${found.row.brinco}. Quer usar esse animal?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const animal = found.row;
+    const field = String(dados.campo_alterado || "");
+    const value = dados.novo_valor;
+    let payload: AnyRecord = {};
+    let label = field;
+
+    if (field === "lote_id") {
+      const lot = await findLot(supabase, owner, String(value || dados.lote_nome || ""));
+      if (!lot?.row) {
+        return {
+          response: `Não encontrei o lote "${value || ""}". Me envie o nome de um lote cadastrado ou envie cancelar.`,
+          nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { novo_valor: undefined, lote_nome: undefined }) } }
+        };
+      }
+      if (!lot.exact) {
+        const nextPending = pendingWithData(pending, { novo_valor: lot.row.nome, lote_nome: lot.row.nome, lote_id: lot.row.id });
+        return {
+          response: `Encontrei um lote parecido: ${lot.row.nome}. Quer usar esse lote?\n1 - Confirmar\n2 - Corrigir`,
+          nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+        };
+      }
+      payload = { lote_id: lot.row.id };
+      label = "lote";
+    } else if (["fase", "status", "nome", "raca", "data_nascimento", "observacoes"].includes(field)) {
+      payload = { [field]: String(value || "") };
+    } else if (field === "peso") {
+      payload = { peso: Number(value) };
+    } else {
+      return {
+        response: "Não reconheci qual dado do animal deve ser atualizado. Envie de novo com lote, fase, status, nome, raça, peso, nascimento ou observação.",
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { campo_alterado: undefined, novo_valor: undefined }) } }
+      };
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.animais)
+      .update(payload)
+      .eq("id", animal.id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    await logAudit(supabase, owner, TABLES.animais, "update", data || { ...animal, ...payload });
+
+    return realSaveResult(`Pronto, animal atualizado com sucesso.\n${animal.brinco}: ${label} atualizado.`, [TABLES.animais]);
+  }
+
   if (pending.tipo === "CADASTRO_ANIMAL") {
     await insertRealRecord(supabase, owner, TABLES.animais, {
       fazenda_id: owner.fazenda_id,
@@ -1465,6 +1546,29 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
+  if (parsed.tipo === "CONSULTA_ANIMAL") {
+    const animalReference = String(parsed.dados.animal_codigo || "").trim();
+    const found = animalReference ?await findAnimal(supabase, owner, animalReference) : undefined;
+    if (!found?.row) return `Não encontrei o animal "${animalReference || "informado"}" no cadastro.`;
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => row.brinco || row.nome).filter(Boolean).join(", ");
+      return `Encontrei mais de um animal parecido. Tente pelo brinco cadastrado. Opções: ${options}.`;
+    }
+
+    const animal = found.row;
+    const details = [
+      `Animal ${animal.brinco || animal.nome || animalReference}`,
+      animal.nome && animal.nome !== animal.brinco ?`Nome: ${animal.nome}` : "",
+      animal.categoria ?`Categoria: ${animal.categoria}` : "",
+      animal.fase ?`Fase: ${animal.fase}` : "",
+      animal.status ?`Status: ${animal.status}` : "",
+      animal.raca ?`Raça: ${animal.raca}` : "",
+      animal.data_nascimento ?`Nascimento: ${animal.data_nascimento}` : "",
+      animal.peso !== undefined && animal.peso !== null && animal.peso !== "" ?`Peso: ${formatNumber(animal.peso, " kg")}` : ""
+    ].filter(Boolean);
+    return details.join("\n");
+  }
+
   if (parsed.tipo === "CONSULTA_PRODUCAO" || parsed.tipo === "CONSULTA_PRODUCAO_HOJE") {
     const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
     const range = periodRange(period);
@@ -1771,9 +1875,13 @@ async function handleConfirmation(
   }
 
   if (isRejectCommand(command)) {
-    const correction = normalizeRanchoText(text).replace(/^(?:nao|n|errado|corrigir|refazer|foi|era)\b\s*,?\s*/g, "").trim();
-    if (correction && correction !== command) {
-      const next = mergeRanchoMessageData(pending, correction);
+    const correction = normalizeRanchoText(text).replace(/^(?:nao|n|errado|incorreto|corrigir|corrige|quero corrigir|refazer|refaz|na verdade|foi|era|animal errado)\b\s*,?\s*/g, "").trim();
+    const correctionLooksLikeCancel = /^(?:salvar|salva|registrar|registra|lancar|lanca)$/i.test(correction);
+    if (correction && correction !== command && !correctionLooksLikeCancel) {
+      const correctionText = /^(?:nao|n|errado|incorreto|corrigir|corrige|na verdade|foi|era|animal errado)\b/.test(correction)
+        ?correction
+        : `foi ${correction}`;
+      const next = mergeRanchoMessageData(pending, correctionText);
       if (next.perguntas_faltantes.length) {
         await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
         return missingText(next);
@@ -1785,6 +1893,22 @@ async function handleConfirmation(
 
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return "Tudo bem. Nada foi salvo. Me envie a informação novamente quando quiser.";
+  }
+
+  const replacement = await enrichWithCatalog(supabase, owner, parseRanchoMessage(text));
+  if (!["DESCONHECIDO", "AJUDA"].includes(replacement.tipo) && replacement.confianca >= 0.55) {
+    if (CONSULT_INTENTS.has(replacement.tipo)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return handleConsultation(supabase, owner, replacement);
+    }
+
+    if (replacement.perguntas_faltantes.length) {
+      await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: replacement } });
+      return `Troquei a operação pendente.\n${missingText(replacement)}`;
+    }
+
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: replacement } });
+    return `Troquei a operação pendente.\n${confirmationText(replacement)}`;
   }
 
   return "Responda 1 para confirmar ou 2 para corrigir. Se quiser parar, envie cancelar.";
