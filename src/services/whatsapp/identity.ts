@@ -17,7 +17,7 @@ export type WhatsAppOwner = {
 
 export type ResolveWhatsAppOwnerResult = {
   owner: WhatsAppOwner | null;
-  reason?: "not_registered" | "no_farm" | "farm_inactive" | "user_inactive";
+  reason?: "not_registered" | "no_farm" | "farm_inactive" | "user_inactive" | "multiple_farms";
 };
 
 function matchesIncomingPhone(value: unknown, incomingCandidates: Set<string>) {
@@ -69,6 +69,21 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
   const whatsappUsers = await findWhatsAppUsers(supabase, incomingCandidates);
   if (whatsappUsers.length > 0) {
     let blockedReason: ResolveWhatsAppOwnerResult["reason"] = "user_inactive";
+    const activeUsers = whatsappUsers.filter((row) => row.ativo !== false && row.fazenda_id);
+    const activeFarmIds = new Set(activeUsers.map((row) => String(row.fazenda_id)));
+
+    if (activeFarmIds.size > 1) {
+      console.log("[BOT AUTH]", {
+        fromRaw: from,
+        normalized: normalizedPhone,
+        source: "whatsapp_usuarios",
+        userFound: true,
+        ranchoFound: true,
+        reason: "multiple_farms"
+      });
+
+      return { owner: null, reason: "multiple_farms" };
+    }
 
     for (const whatsappUser of whatsappUsers) {
       if (whatsappUser.ativo === false) continue;
@@ -117,6 +132,21 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
   const ownerUsers = await findOwnerUsers(supabase, incomingCandidates);
   if (ownerUsers.length > 0) {
     let blockedReason: ResolveWhatsAppOwnerResult["reason"] = "user_inactive";
+    const activeUsers = ownerUsers.filter((row) => row.ativo !== false && row.fazenda_id);
+    const activeFarmIds = new Set(activeUsers.map((row) => String(row.fazenda_id)));
+
+    if (activeFarmIds.size > 1) {
+      console.log("[BOT AUTH]", {
+        fromRaw: from,
+        normalized: normalizedPhone,
+        source: "usuarios",
+        userFound: true,
+        ranchoFound: true,
+        reason: "multiple_farms"
+      });
+
+      return { owner: null, reason: "multiple_farms" };
+    }
 
     for (const user of ownerUsers) {
       if (user.ativo === false) continue;

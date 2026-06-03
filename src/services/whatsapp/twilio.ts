@@ -126,6 +126,10 @@ const EMPLOYEE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const GENEALOGY_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "ATUALIZACAO_GENEALOGIA"
 ]);
+const FINANCE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "DESPESA",
+  "RECEITA_VENDA"
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -232,6 +236,23 @@ function isValidBotPhone(value: string | number | null | undefined) {
   const national = phone.slice(2);
   const ddd = Number(national.slice(0, 2));
   return ddd >= 11 && ddd <= 99 && national[2] === "9" && !/^(\d)\1+$/.test(national);
+}
+
+function permissionDeniedMessage(owner: WhatsAppOwner, parsed?: ParsedRanchoMessage | null) {
+  if (!parsed?.tipo || isBotAdmin(owner)) return null;
+  if (parsed.tipo === "CRIAR_ITEM_ESTOQUE") {
+    return "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item.";
+  }
+  if (EMPLOYEE_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
+  }
+  if (GENEALOGY_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+  }
+  if (FINANCE_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para acessar o financeiro.";
+  }
+  return null;
 }
 
 function formatWhatsappForBot(value: string | number | null | undefined) {
@@ -2272,19 +2293,10 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return genealogyBlock;
   }
 
-  if (parsed.tipo === "CRIAR_ITEM_ESTOQUE" && !isBotAdmin(owner)) {
+  const denied = permissionDeniedMessage(owner, parsed);
+  if (denied) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item.";
-  }
-
-  if (EMPLOYEE_ADMIN_INTENTS.has(parsed.tipo) && !isBotAdmin(owner)) {
-    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
-  }
-
-  if (GENEALOGY_ADMIN_INTENTS.has(parsed.tipo) && !isBotAdmin(owner)) {
-    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+    return denied;
   }
 
   if (parsed.perguntas_faltantes.length) {
@@ -2365,9 +2377,10 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return genealogyBlock;
   }
-  if (GENEALOGY_ADMIN_INTENTS.has(next.tipo) && !isBotAdmin(owner)) {
+  const denied = permissionDeniedMessage(owner, next);
+  if (denied) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+    return denied;
   }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
@@ -2393,6 +2406,12 @@ async function handleConfirmation(
   }
 
   if (isConfirmCommand(command)) {
+    const denied = permissionDeniedMessage(owner, pending);
+    if (denied) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return denied;
+    }
+
     botLog("confirmation", owner, {
       pending,
       status: "aguardando_confirmacao",
@@ -2449,14 +2468,10 @@ async function handleConfirmation(
       return handleConsultation(supabase, owner, replacement);
     }
 
-    if (EMPLOYEE_ADMIN_INTENTS.has(replacement.tipo) && !isBotAdmin(owner)) {
+    const denied = permissionDeniedMessage(owner, replacement);
+    if (denied) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
-    }
-
-    if (GENEALOGY_ADMIN_INTENTS.has(replacement.tipo) && !isBotAdmin(owner)) {
-      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+      return denied;
     }
 
     const genealogyBlock = relationBlockMessage(replacement);
@@ -2479,15 +2494,18 @@ async function handleConfirmation(
 
 function ownerBlockedMessage(reason: Awaited<ReturnType<typeof resolveWhatsAppOwner>>["reason"]) {
   if (reason === "no_farm") {
-    return "Seu WhatsApp está cadastrado, mas não está vinculado a uma fazenda. Fale com o administrador.";
+    return "Não encontrei um rancho vinculado a este WhatsApp.";
   }
   if (reason === "farm_inactive") {
-    return "O rancho vinculado a este WhatsApp está inativo. Fale com o administrador.";
+    return "O acesso deste rancho não está ativo no momento. Fale com o administrador ou suporte.";
   }
   if (reason === "user_inactive") {
     return "Este WhatsApp está cadastrado, mas está inativo para usar o bot. Fale com o administrador do Rancho.";
   }
-  return "Este WhatsApp ainda não está autorizado no Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
+  if (reason === "multiple_farms") {
+    return "Encontrei este WhatsApp em mais de um rancho. Peça ao administrador para definir qual rancho deve usar o bot.";
+  }
+  return "Este WhatsApp ainda não está autorizado a usar o bot do Rancho. Peça ao administrador para cadastrar seu número na aba WhatsApp do sistema.";
 }
 
 function pendingFromSession(session?: BotSession | null) {
@@ -2596,6 +2614,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       }
     } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isConfirmCommand(command)) {
       parsed = pendingFromSession(previousSession);
+      const denied = permissionDeniedMessage(owner, parsed);
+      if (denied) {
+        eventConfirmed = false;
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        response = denied;
+      } else {
       eventConfirmed = true;
       await saveSession(supabase, owner, {
         etapa: "livre",
@@ -2607,6 +2631,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         }
       });
       response = dryRunConfirmationText(parsed);
+      }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
       eventConfirmed = isConfirmCommand(command);
