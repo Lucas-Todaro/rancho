@@ -117,6 +117,19 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
     return `cadastrar ${dados.categoria || "animal"}${dados.nome ?` ${dados.nome}` : ""}${dados.animal_codigo ?` com brinco ${dados.animal_codigo}` : ""}${details.length ?` (${details.join(", ")})` : ""}`;
   }
 
+  if (tipo === "CRIAR_LOTE") return `criar lote${dados.lote_nome ?` ${dados.lote_nome}` : ""}`;
+  if (tipo === "CONSULTA_REBANHO") {
+    const filtros = [
+      dados.categoria ?`categoria ${dados.categoria}` : "",
+      dados.sexo ?`sexo ${dados.sexo}` : "",
+      dados.status ?`status ${dados.status}` : "",
+      dados.lote_nome ?`lote ${dados.lote_nome}` : "",
+      dados.sem_lote ?"sem lote" : ""
+    ].filter(Boolean);
+    return `consultar rebanho${filtros.length ?` (${filtros.join(", ")})` : ""}`;
+  }
+  if (tipo === "CONSULTA_LOTES") return dados.lote_nome ?`consultar lote ${dados.lote_nome}` : "consultar lotes";
+
   if (tipo === "CONSULTA_PRODUCAO") return "consultar produção de leite";
   if (tipo === "CONSULTA_PRODUCAO_HOJE") return "consultar produção de leite de hoje";
   if (tipo === "CONSULTA_PRODUCAO_ANIMAL") return `consultar produção${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}`;
@@ -208,6 +221,7 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "PONTO_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.ponto_tipo) missing.push("ponto_tipo");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.horario && !dados.agora) missing.push("horario");
+  if (tipo === "CRIAR_LOTE" && !dados.lote_nome) missing.push("lote_nome");
   if (tipo === "CADASTRO_ANIMAL") {
     if (!dados.animal_codigo) missing.push("animal_codigo");
     if (!dados.categoria) missing.push("categoria_animal");

@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-03T18:54:35.312Z
+Gerado em: 2026-06-03T19:29:50.560Z
 
 ## Resumo Geral
 
-- Total geral de testes: 858
-- Aprovados: 858
+- Total geral de testes: 884
+- Aprovados: 884
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -24,6 +24,7 @@ Gerado em: 2026-06-03T18:54:35.312Z
 | Folha/salarios | 8 | 8 | 0 | 100% |
 | Eventos/vacinas/medicamentos | 173 | 173 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
+| Rebanho/lotes | 26 | 26 | 0 | 100% |
 | Dashboard/relatorios | 8 | 8 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
@@ -41,6 +42,8 @@ Gerado em: 2026-06-03T18:54:35.312Z
 - suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao
 - resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar
 - relatorio de producao agora entra em consulta de producao, sem pedir confirmacao
+- consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento
+- criacao de lote exige admin e confirmacao antes de salvar
 
 ## Falhas Restantes
 
@@ -66,7 +69,13 @@ Gerado em: 2026-06-03T18:54:35.312Z
 ## Arquivos Alterados/Criados
 
 - scripts/test-bot.cjs
+- src/lib/whatsapp/nlp-core/contextual-parser.ts
 - src/lib/whatsapp/nlp-core/intent-detector.ts
+- src/lib/whatsapp/nlp-core/result.ts
+- src/lib/whatsapp/nlp-core/types.ts
+- src/lib/whatsapp/nlp-core/constants.ts
+- src/lib/whatsapp/nlp-text.ts
+- src/services/whatsapp/twilio.ts
 - bot-evaluation-report.json
 - bot-final-regression-report.md
 

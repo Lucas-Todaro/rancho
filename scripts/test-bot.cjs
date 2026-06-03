@@ -888,6 +888,7 @@ function missingContains(parsed, field) {
     fase: /fase|lactacao|gestante|seca|vazia|crescimento|engorda/.test(text),
     raca: /raca/.test(text),
     lote_animal: /lote/.test(text),
+    lote_nome: /lote/.test(text),
     data_nascimento: /nascimento|data/.test(text),
     campo_alterado: /dado|atualizar/.test(text),
     novo_valor: /valor|cadastro/.test(text),
@@ -917,7 +918,11 @@ function assertExpected(test, parsed) {
   if (expected.animalId && dados.animal_id !== expected.animalId) failures.push(`animal_id esperado ${expected.animalId}, recebido ${dados.animal_id}`);
   if (expected.categoria && normalize(dados.categoria) !== normalize(expected.categoria)) failures.push(`categoria esperada ${expected.categoria}, recebida ${dados.categoria}`);
   if (expected.nome && normalize(dados.nome) !== normalize(expected.nome)) failures.push(`nome esperado ${expected.nome}, recebido ${dados.nome}`);
+  if (expected.modo && normalize(dados.modo) !== normalize(expected.modo)) failures.push(`modo esperado ${expected.modo}, recebido ${dados.modo}`);
   if (expected.sexo && normalize(dados.sexo) !== normalize(expected.sexo)) failures.push(`sexo esperado ${expected.sexo}, recebido ${dados.sexo}`);
+  if (expected.status && normalize(dados.status) !== normalize(expected.status)) failures.push(`status esperado ${expected.status}, recebido ${dados.status}`);
+  if ("sem_lote" in expected && Boolean(dados.sem_lote) !== Boolean(expected.sem_lote)) failures.push(`sem_lote esperado ${expected.sem_lote}, recebido ${dados.sem_lote}`);
+  if ("pagina" in expected && Number(dados.pagina) !== Number(expected.pagina)) failures.push(`pagina esperada ${expected.pagina}, recebida ${dados.pagina}`);
   if (expected.fase && normalize(dados.fase) !== normalize(expected.fase)) failures.push(`fase esperada ${expected.fase}, recebida ${dados.fase}`);
   if (expected.raca && normalize(dados.raca) !== normalize(expected.raca)) failures.push(`raca esperada ${expected.raca}, recebida ${dados.raca}`);
   if (expected.lote && normalize(dados.lote_nome) !== normalize(expected.lote)) failures.push(`lote esperado ${expected.lote}, recebido ${dados.lote_nome}`);
@@ -1008,9 +1013,12 @@ function assertExpected(test, parsed) {
 function adminActionDenied(test, parsed) {
   const actor = mockUsers.find((user) => user.nome === test.actor);
   if (!actor || actor.admin) return null;
-  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA"].includes(parsed.tipo)) {
+  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA", "CRIAR_LOTE"].includes(parsed.tipo)) {
     if (parsed.tipo === "ATUALIZACAO_GENEALOGIA") {
       return "VocÃª nÃ£o tem permissÃ£o para alterar genealogia pelo bot. PeÃ§a para um administrador fazer essa alteraÃ§Ã£o.";
+    }
+    if (parsed.tipo === "CRIAR_LOTE") {
+      return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
     }
     return parsed.tipo === "CRIAR_ITEM_ESTOQUE"
       ? "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item."
@@ -1217,6 +1225,23 @@ const consultationParserTests = [
   { phrase: "vaca B-002 deu 30 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 30 } },
   { phrase: "usei 20kg de ração de boi", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Ração de boi", quantidade: 20, unidade: "kg" } },
   { phrase: "comprei 10 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Ração", quantidade: 10, unidade: "saco", valor: 300 } }
+];
+
+const herdLotParserTests = [
+  { module: "rebanho-lotes", phrase: "quais animais eu tenho cadastrado", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, modo: "lista", consulta: true } },
+  { module: "rebanho-lotes", phrase: "quantos animais tenho?", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, modo: "contagem", consulta: true } },
+  { module: "rebanho-lotes", phrase: "quais vacas eu tenho", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", modo: "lista", consulta: true } },
+  { module: "rebanho-lotes", phrase: "quantas femeas tenho", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, sexo: "femea", modo: "contagem", consulta: true } },
+  { module: "rebanho-lotes", phrase: "quais animais mortos eu tenho", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, status: "morto", consulta: true } },
+  { module: "rebanho-lotes", phrase: "animais sem lote", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, sem_lote: true, consulta: true } },
+  { module: "rebanho-lotes", phrase: "pagina 2 do rebanho", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, pagina: 2, consulta: true } },
+  { module: "rebanho-lotes", phrase: "quais lotes existem?", expected: { tipo: "CONSULTA_LOTES", exactTipo: true, consulta: true } },
+  { module: "rebanho-lotes", phrase: "quantos animais no lote Lactacao 1", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, lote: "Lactacao 1", modo: "contagem", consulta: true } },
+  { module: "rebanho-lotes", phrase: "quais vacas estao no lote Lactacao 1", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", lote: "Lactacao 1", consulta: true } },
+  { module: "rebanho-lotes", phrase: "cria um lote chamado Bezerras", expected: { tipo: "CRIAR_LOTE", exactTipo: true, lote: "Bezerras", noMissing: true } },
+  { module: "rebanho-lotes", phrase: "criar lote", expected: { tipo: "CRIAR_LOTE", exactTipo: true, missing: ["lote_nome"] } },
+  { module: "rebanho-lotes", phrase: "cria loti Bezeras", expected: { tipo: "CRIAR_LOTE", exactTipo: true, lote: "bezerras", noMissing: true } },
+  { module: "rebanho-lotes", phrase: "quais animas maxos no loti Lactacao 1", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, sexo: "macho", lote: "lactacao 1", consulta: true } }
 ];
 
 const decimalRegressionTests = [
@@ -2366,6 +2391,179 @@ const animalFrameworkCases = [
       entities: { item_nome: "Milho", quantidade: 3, unidade: "saco", valor: 120 },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
+const herdLotFrameworkCases = [
+  {
+    name: "consulta de rebanho nao pede confirmacao",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["quais animais eu tenho cadastrado"],
+    expected: {
+      finalIntent: "CONSULTA_REBANHO",
+      responseIncludes: "Encontrei",
+      responseNotIncludes: "Está correto",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta rebanho por categoria e lote",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["quais vacas estao no lote Lactacao 1"],
+    expected: {
+      finalIntent: "CONSULTA_REBANHO",
+      entities: { categoria: "vaca", lote_nome: "Lactacao 1" },
+      responseIncludes: "Lactacao 1",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta rebanho sem lote",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    messages: ["animais sem lote"],
+    expected: {
+      finalIntent: "CONSULTA_REBANHO",
+      entities: { sem_lote: true },
+      responseIncludes: "sem lote",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta detalhe de animal mostra lote",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["dados da B-002"],
+    expected: {
+      finalIntent: "CONSULTA_ANIMAL",
+      entities: { animal_codigo: "B-002" },
+      responseIncludes: "Lote:",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta lotes nao salva",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["quais lotes existem?"],
+    expected: {
+      finalIntent: "CONSULTA_LOTES",
+      responseIncludes: "Você tem",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta rebanho pagina segunda pagina",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    extraAnimals: Array.from({ length: 10 }, (_, index) => ({
+      brinco: `PX-${index + 1}`,
+      nome: `Pagina ${index + 1}`,
+      lote_id: "lote-lactacao-1"
+    })),
+    messages: ["pagina 2 do rebanho"],
+    expected: {
+      finalIntent: "CONSULTA_REBANHO",
+      entities: { pagina: 2 },
+      responseIncludes: "Mostrando",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "criacao de lote pede confirmacao e salva so apos sim",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["criar lote Bezerras", "sim"],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      entities: { lote_nome: "Bezerras" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.lotes],
+      shouldSaveValues: { nome: "Bezerras" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "criacao de lote em etapas coleta nome antes de confirmar",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["criar lote", "Recria 2026", "sim"],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      entities: { lote_nome: "Recria 2026" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.lotes],
+      shouldSaveValues: { nome: "Recria 2026" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "criacao de lote duplicado nao salva",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["criar lote Lactacao 1"],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      responseIncludes: "Já existe",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao cria lote",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["criar lote Bezerras"],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      responseIncludes: "não tem permissão",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "criacao de lote no rancho b usa fazenda correta",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    messages: ["criar lote Recria B", "sim"],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.lotes],
+      shouldSaveValues: { nome: "Recria B" },
+      ranchId: BOT_TEST_FARM_ID_B,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "rancho b nao lista lotes do rancho a",
+    module: "rebanho-lotes",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    messages: ["quais lotes existem?"],
+    expected: {
+      finalIntent: "CONSULTA_LOTES",
+      responseNotIncludes: "Lactacao",
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
     }
@@ -4418,6 +4616,7 @@ const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
   ...animalFrameworkCases,
+  ...herdLotFrameworkCases,
   ...eventFrameworkCases,
   ...inventoryFrameworkCases,
   ...financeFrameworkCases,
@@ -4644,6 +4843,15 @@ function createSupabaseForScenario(test = {}) {
       genealogia_observacoes: animal.genealogia_observacoes || null
     })));
   }
+  if (test.extraLots) {
+    supabase.tables[BOT_TEST_TABLES.lotes].push(...test.extraLots.map((lot, index) => ({
+      id: lot.id || `lote-extra-${index + 1}`,
+      fazenda_id: lot.fazenda_id || BOT_TEST_FARM_ID,
+      nome: lot.nome,
+      descricao: lot.descricao || lot.nome,
+      ativo: lot.ativo !== false
+    })));
+  }
   if (test.financeTransactions) {
     supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(...test.financeTransactions.map((row, index) => ({
       id: row.id || `financeiro-extra-${index + 1}`,
@@ -4821,6 +5029,18 @@ function simulatedSaveActionsForResult(result, phone) {
         nome: dados.item_nome,
         quantidade_atual: Number(dados.quantidade || 0),
         unidade_medida: dados.unidade || "unidade"
+      }
+    }];
+  }
+
+  if (tipo === "CRIAR_LOTE") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.lotes,
+      payload: {
+        fazenda_id: fazendaId,
+        nome: dados.lote_nome,
+        ativo: true
       }
     }];
   }
@@ -5242,6 +5462,7 @@ const allTests = [
   ...extraTests,
   ...regressionTests,
   ...consultationParserTests,
+  ...herdLotParserTests,
   ...decimalRegressionTests,
   ...financeHumanParserTests,
   ...inventoryHumanParserTests,
@@ -5375,6 +5596,7 @@ const FINAL_REGRESSION_MODULES = [
   { key: "folha", label: "Folha/salarios", modules: ["folha"] },
   { key: "eventos", label: "Eventos/vacinas/medicamentos", modules: ["eventos"] },
   { key: "genealogia", label: "Genealogia", modules: ["genealogia"] },
+  { key: "rebanhoLotes", label: "Rebanho/lotes", modules: ["rebanho-lotes"] },
   { key: "dashboardRelatorios", label: "Dashboard/relatorios", modules: ["dashboard-relatorios"] },
   { key: "suporte", label: "Suporte", modules: ["suporte"] },
   { key: "whatsappAutorizado", label: "WhatsApp autorizado", modules: ["seguranca-whatsapp"] },
@@ -5397,6 +5619,7 @@ function finalRegressionModule(result) {
   if (["PONTO_FUNCIONARIO", "CONSULTA_PONTO"].includes(tipo)) return "ponto";
   if (["PARTO", "VACINA_MEDICAMENTO"].includes(tipo)) return "eventos";
   if (["ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(tipo)) return "genealogia";
+  if (["CRIAR_LOTE", "CONSULTA_REBANHO", "CONSULTA_LOTES"].includes(tipo)) return "rebanho-lotes";
   if (tipo === "CONSULTA_REGISTROS_HOJE") return "dashboard-relatorios";
   if (tipo === "AJUDA") return "suporte";
   if (result.test?.phrase && /\b(?:oi|ola|olá|menu|cancelar|sim|nao|não|ok)\b/i.test(result.test.phrase)) return "comandos";
@@ -5451,7 +5674,9 @@ function buildFinalRegressionReport(report, summary) {
     criticalFailuresFixedInThisRun: [
       "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
       "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
-      "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao"
+      "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao",
+      "consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento",
+      "criacao de lote exige admin e confirmacao antes de salvar"
     ],
     remainingFailures: summary.failed.map(compactResultForReport),
     remainingRisks: [
@@ -5471,7 +5696,13 @@ function buildFinalRegressionReport(report, summary) {
     },
     changedFilesExpected: [
       "scripts/test-bot.cjs",
+      "src/lib/whatsapp/nlp-core/contextual-parser.ts",
       "src/lib/whatsapp/nlp-core/intent-detector.ts",
+      "src/lib/whatsapp/nlp-core/result.ts",
+      "src/lib/whatsapp/nlp-core/types.ts",
+      "src/lib/whatsapp/nlp-core/constants.ts",
+      "src/lib/whatsapp/nlp-text.ts",
+      "src/services/whatsapp/twilio.ts",
       "bot-evaluation-report.json",
       "bot-final-regression-report.md"
     ],
@@ -5579,6 +5810,10 @@ function writeBotTestReports(summary) {
   const genealogyFailed = genealogyResults.filter((result) => !result.ok);
   const genealogyPassed = genealogyResults.length - genealogyFailed.length;
   const genealogySuccessRate = genealogyResults.length ? Number(((genealogyPassed / genealogyResults.length) * 100).toFixed(2)) : 0;
+  const herdLotResults = summary.results.filter((result) => resultModule(result) === "rebanho-lotes");
+  const herdLotFailed = herdLotResults.filter((result) => !result.ok);
+  const herdLotPassed = herdLotResults.length - herdLotFailed.length;
+  const herdLotSuccessRate = herdLotResults.length ? Number(((herdLotPassed / herdLotResults.length) * 100).toFixed(2)) : 0;
   const securityResults = summary.results.filter((result) => resultModule(result).startsWith("seguranca"));
   const securityFailed = securityResults.filter((result) => !result.ok);
   const securityPassed = securityResults.length - securityFailed.length;
@@ -5658,6 +5893,20 @@ function writeBotTestReports(summary) {
           "nomes duplicados, codigos alfanumericos, permissao e isolamento por fazenda"
         ],
         failures: genealogyFailed.map((result) => resultName(result))
+      },
+      rebanhoLotes: {
+        total: herdLotResults.length,
+        passed: herdLotPassed,
+        failed: herdLotFailed.length,
+        successRate: herdLotSuccessRate,
+        coverage: [
+          "consulta de rebanho geral, por categoria, sexo, status, lote e sem lote",
+          "consulta de detalhe de animal com lote",
+          "listagem de lotes com contagem de animais",
+          "paginacao por pedido de pagina",
+          "criacao de lote com campo em etapas, confirmacao, permissao e isolamento por fazenda"
+        ],
+        failures: herdLotFailed.map((result) => resultName(result))
       },
       permissoesMultiFazendaWhatsapp: {
         total: securityResults.length,
@@ -5756,6 +6005,15 @@ function writeBotTestReports(summary) {
     `- Taxa genealogia: ${report.summary.genealogia.successRate}%`,
     "- Cobertura: consulta de arvore, pai/mae, filhos, descendentes, avos, definicao/remocao de pai e mae, correcao, cancelamento, repeticao, confirmacao duplicada, permissao, ciclos, auto-parentesco, nomes duplicados, codigos alfanumericos e isolamento por fazenda.",
     "- Observacao: alteracoes genealogicas seguem entender, coletar campos, resumir, pedir confirmacao e simular salvamento apenas apos confirmacao; nenhuma genealogia real e alterada em test:bot.",
+    "",
+    "## Rebanho e Lotes",
+    "",
+    `- Total rebanho/lotes: ${report.summary.rebanhoLotes.total}`,
+    `- Aprovados rebanho/lotes: ${report.summary.rebanhoLotes.passed}`,
+    `- Falhos rebanho/lotes: ${report.summary.rebanhoLotes.failed}`,
+    `- Taxa rebanho/lotes: ${report.summary.rebanhoLotes.successRate}%`,
+    "- Cobertura: consultas de rebanho por categoria, sexo, status, lote e sem lote, detalhe de animal com lote, listagem de lotes, paginacao, criacao de lote com confirmacao, permissao e multi-fazenda.",
+    "- Observacao: consultas nao salvam nem pedem confirmacao; criacao de lote so gera acao simulada apos confirmacao.",
     "",
     "## Permissoes, Multi-Fazenda e WhatsApp",
     "",

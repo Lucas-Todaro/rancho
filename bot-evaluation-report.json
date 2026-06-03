@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-03T18:54:35.312Z",
+  "generatedAt": "2026-06-03T19:29:50.560Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 858,
-    "passed": 858,
+    "total": 884,
+    "passed": 884,
     "failed": 0,
     "successRate": 100
   },
@@ -111,6 +111,14 @@
       "successRate": 100,
       "criticalFailures": []
     },
+    "rebanhoLotes": {
+      "label": "Rebanho/lotes",
+      "total": 26,
+      "passed": 26,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
     "dashboardRelatorios": {
       "label": "Dashboard/relatorios",
       "total": 8,
@@ -172,7 +180,9 @@
   "criticalFailuresFixedInThisRun": [
     "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
     "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
-    "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao"
+    "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao",
+    "consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento",
+    "criacao de lote exige admin e confirmacao antes de salvar"
   ],
   "remainingFailures": [],
   "remainingRisks": [
@@ -192,7 +202,13 @@
   },
   "changedFilesExpected": [
     "scripts/test-bot.cjs",
+    "src/lib/whatsapp/nlp-core/contextual-parser.ts",
     "src/lib/whatsapp/nlp-core/intent-detector.ts",
+    "src/lib/whatsapp/nlp-core/result.ts",
+    "src/lib/whatsapp/nlp-core/types.ts",
+    "src/lib/whatsapp/nlp-core/constants.ts",
+    "src/lib/whatsapp/nlp-text.ts",
+    "src/services/whatsapp/twilio.ts",
     "bot-evaluation-report.json",
     "bot-final-regression-report.md"
   ],

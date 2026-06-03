@@ -71,6 +71,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "unidade") dados.unidade = extractStockUnit(normalized) || original;
     if (expectedField === "produto" && original) dados.produto = original;
     if (expectedField === "item_nome" && original) dados.item_nome = extractStockItem(original) || original;
+    if (expectedField === "lote_nome" && original) dados.lote_nome = original;
     if (expectedField === "descricao" && original) dados.descricao = original;
     if (expectedField === "funcionario_nome" && original) dados.funcionario_nome = extractEmployeeCreationName(original) || original;
     if (expectedField === "telefone" && contextualPhone) dados.telefone = contextualPhone;
@@ -125,6 +126,10 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const dateReference = extractDateReference(normalized);
   const turno = extractTurno(normalized);
   const isCorrection = !expectedField && /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
+
+  if (current.tipo === "CRIAR_LOTE" && original && (!dados.lote_nome || expectedField === "lote_nome" || isCorrection)) {
+    dados.lote_nome = original.replace(/^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era)\b\s*,?\s*/i, "").trim() || original;
+  }
 
   if (animalCode && (!dados.animal_codigo || expectedField === "animal_codigo" || (isCorrection && current.tipo !== "CADASTRO_ANIMAL"))) dados.animal_codigo = animalCode;
   if (liters !== undefined && current.tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || expectedField === "litros" || isCorrection)) dados.litros = liters;

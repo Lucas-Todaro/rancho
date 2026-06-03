@@ -6,6 +6,8 @@ export const BOT_EXAMPLES = [
   "- Vendi leite por 900 reais",
   "- Comprei ração por 300 reais",
   "- Entrou 10 sacos de ração no estoque",
+  "- Quais vacas estao no lote Lactacao 1",
+  "- Criar lote Bezerras",
   "- João entrou às 7:30"
 ];
 
@@ -32,6 +34,7 @@ export const questionByField: Record<string, string> = {
   fase: "Quer informar a fase?Ex: lactação, seca, gestante, vazia, crescimento, engorda ou 2 para pular.",
   raca: "Quer informar a raça?Envie o nome da raça ou 2 para pular.",
   lote_animal: "Quer informar o lote?Envie o nome do lote já cadastrado ou 2 para pular.",
+  lote_nome: "Qual sera o nome do lote?",
   data_nascimento: "Quer informar o nascimento?Envie a data (DD/MM/AAAA ou AAAA-MM-DD) ou 2 para pular."
 };
 

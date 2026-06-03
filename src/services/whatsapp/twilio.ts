@@ -106,6 +106,8 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PONTO",
   "CONSULTA_ANIMAL",
   "CONSULTA_GENEALOGIA",
+  "CONSULTA_REBANHO",
+  "CONSULTA_LOTES",
   "CONSULTA_REGISTROS_HOJE",
   "AJUDA"
 ]);
@@ -129,6 +131,9 @@ const GENEALOGY_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const FINANCE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "DESPESA",
   "RECEITA_VENDA"
+]);
+const LOT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "CRIAR_LOTE"
 ]);
 
 function nowIso() {
@@ -251,6 +256,9 @@ function permissionDeniedMessage(owner: WhatsAppOwner, parsed?: ParsedRanchoMess
   }
   if (FINANCE_ADMIN_INTENTS.has(parsed.tipo)) {
     return "Você não tem permissão para acessar o financeiro.";
+  }
+  if (LOT_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
   }
   return null;
 }
@@ -443,6 +451,9 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CADASTRO_ANIMAL: "cadastro de animal",
     ATUALIZACAO_ANIMAL: "atualização de animal",
     CONSULTA_ANIMAL: "consulta de animal",
+    CRIAR_LOTE: "cadastro de lote",
+    CONSULTA_REBANHO: "consulta de rebanho",
+    CONSULTA_LOTES: "consulta de lotes",
     ATUALIZACAO_GENEALOGIA: "atualização de genealogia",
     CONSULTA_GENEALOGIA: "consulta de genealogia",
     CONSULTA_PRODUCAO: "consulta de produção",
@@ -751,6 +762,50 @@ function animalLabel(animal?: AnyRecord | null) {
   return brinco || nome || String(animal.id || "Animal");
 }
 
+function lotLabel(lot?: AnyRecord | null) {
+  if (!lot) return "Sem lote";
+  return String(lot.nome || lot.descricao || lot.id || "Lote");
+}
+
+function animalStatusLabel(animal: AnyRecord) {
+  return animalStatusValue(animal) || String(animal.status || "ativo");
+}
+
+function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, index: number) {
+  const lot = animal.lote_id ?lotById.get(String(animal.lote_id)) : null;
+  const details = [
+    animal.categoria || "animal",
+    animal.sexo || "",
+    animalStatusLabel(animal),
+    lotLabel(lot)
+  ].filter(Boolean).join(" | ");
+  return `${index + 1}. ${animalLabel(animal)} - ${details}`;
+}
+
+function filterLabel(dados: AnyRecord, lotName?: string) {
+  const labels = [
+    dados.categoria ?String(dados.categoria) : "animais",
+    dados.sexo && dados.sexo !== "nao_informado" ?`sexo ${dados.sexo}` : "",
+    dados.sexo === "nao_informado" ?"sem sexo informado" : "",
+    dados.status ?`status ${dados.status}` : "",
+    dados.sem_lote ?"sem lote" : "",
+    lotName ?`no lote ${lotName}` : ""
+  ].filter(Boolean);
+  return labels.join(", ");
+}
+
+function paginateRows<T>(rows: T[], page?: unknown, pageSize = 8) {
+  const currentPage = Math.max(1, Number(page || 1) || 1);
+  const start = (currentPage - 1) * pageSize;
+  return {
+    currentPage,
+    start,
+    end: Math.min(start + pageSize, rows.length),
+    rows: rows.slice(start, start + pageSize),
+    totalPages: Math.max(1, Math.ceil(rows.length / pageSize))
+  };
+}
+
 function animalOptionsText(rows?: AnyRecord[]) {
   const options = (rows || []).slice(0, 5).map((row) => `- ${animalLabel(row)}`).join("\n");
   return options || "- Nenhuma opção segura encontrada";
@@ -805,6 +860,17 @@ async function findLot(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: stri
   if (error) throw new Error(error.message);
   const activeRows = ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
   return bestMatch(activeRows, name, (row) => [row.nome, row.descricao]);
+}
+
+async function listLots(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.lotes)
+    .select("id,nome,descricao,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[]).filter((row) => row.ativo !== false);
 }
 
 async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string): Promise<StockLookupResult> {
@@ -1484,6 +1550,35 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${details}`, [TABLES.animais]);
   }
 
+  if (pending.tipo === "CRIAR_LOTE") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro." };
+    }
+
+    const lotName = String(dados.lote_nome || "").trim();
+    if (!lotName) {
+      return {
+        response: "Qual será o nome do lote?",
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { lote_nome: undefined }) } }
+      };
+    }
+
+    const found = await findLot(supabase, owner, lotName);
+    if (found?.row && found.exact) {
+      return { response: `Já existe um lote chamado ${found.row.nome}. Nada foi salvo.` };
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.lotes, {
+      fazenda_id: owner.fazenda_id,
+      nome: lotName,
+      descricao: null,
+      ativo: true,
+      created_by: owner.usuario_id || null
+    });
+
+    return realSaveResult(`Pronto, lote ${lotName} criado com sucesso.`, [TABLES.lotes]);
+  }
+
   if (pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") {
     const tipo = pending.tipo === "DESPESA" ?"saida" : "entrada";
     if (pending.tipo === "DESPESA" && dados.item_extraido) {
@@ -1978,8 +2073,134 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   return { response: unknownText() };
 }
 
+async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const lots = await listLots(supabase, owner);
+  const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
+  let lotFilter: AnyRecord | null = null;
+
+  if (dados.lote_nome) {
+    const foundLot = await findLot(supabase, owner, String(dados.lote_nome));
+    if (!foundLot?.row) return `Não encontrei o lote "${dados.lote_nome}".`;
+    lotFilter = foundLot.row;
+  }
+
+  const animals = await listAnimals(supabase, owner);
+  const filtered = animals.filter((animal) => {
+    if (dados.categoria && normalizeRanchoText(animal.categoria || "") !== normalizeRanchoText(String(dados.categoria))) return false;
+    if (dados.sexo && normalizeRanchoText(animal.sexo || "nao_informado") !== normalizeRanchoText(String(dados.sexo))) return false;
+    if (dados.status && normalizeRanchoText(animalStatusLabel(animal)) !== normalizeRanchoText(String(dados.status))) return false;
+    if (dados.sem_lote && animal.lote_id) return false;
+    if (lotFilter && String(animal.lote_id || "") !== String(lotFilter.id || "")) return false;
+    return true;
+  });
+
+  const statusCounts = filtered.reduce((acc, animal) => {
+    const key = animalStatusLabel(animal);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const categoryCounts = filtered.reduce((acc, animal) => {
+    const key = String(animal.categoria || "sem categoria");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const label = filterLabel(dados, lotFilter ?lotLabel(lotFilter) : undefined);
+
+  parsed.dados.consulta_executada = "rebanho";
+  parsed.dados.resultado = {
+    total: filtered.length,
+    filtros: {
+      categoria: dados.categoria || null,
+      sexo: dados.sexo || null,
+      status: dados.status || null,
+      lote_id: lotFilter?.id || null,
+      lote_nome: lotFilter ?lotLabel(lotFilter) : null,
+      sem_lote: Boolean(dados.sem_lote)
+    },
+    status: statusCounts,
+    categorias: categoryCounts
+  };
+
+  if (!filtered.length) return `Não encontrei ${label} cadastrados.`;
+
+  const mode = String(dados.modo || "lista");
+  if (mode === "contagem") {
+    return `Encontrei ${filtered.length} ${label} cadastrados.`;
+  }
+
+  if (mode === "resumo") {
+    const categories = Object.entries(categoryCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
+    const statuses = Object.entries(statusCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
+    return `Resumo do rebanho (${label}): ${filtered.length} animais.\nCategorias: ${categories || "sem dados"}.\nStatus: ${statuses || "sem dados"}.`;
+  }
+
+  const page = paginateRows(filtered, dados.pagina);
+  const lines = page.rows.map((animal, index) => animalListLine(animal, lotById, page.start + index)).join("\n");
+  const pageText = page.end < filtered.length
+    ?`\nMostrando ${page.start + 1}-${page.end} de ${filtered.length}. Para continuar, peça "pagina ${Math.min(page.currentPage + 1, page.totalPages)} do rebanho".`
+    : "";
+  return `Encontrei ${filtered.length} ${label} cadastrados:\n${lines}${pageText}`;
+}
+
+async function handleLotConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  if (dados.sem_lote) return handleHerdConsultation(supabase, owner, { ...parsed, tipo: "CONSULTA_REBANHO" });
+
+  const lots = await listLots(supabase, owner);
+  const animals = await listAnimals(supabase, owner);
+  const countsByLot = animals.reduce((acc, animal) => {
+    const key = String(animal.lote_id || "");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  parsed.dados.consulta_executada = "lotes";
+  parsed.dados.resultado = {
+    total_lotes: lots.length,
+    lotes: lots.map((lot) => ({
+      id: lot.id,
+      nome: lotLabel(lot),
+      animais: countsByLot[String(lot.id)] || 0
+    })),
+    sem_lote: countsByLot[""] || 0
+  };
+
+  if (!lots.length) return "Não há lotes cadastrados nesse rancho.";
+
+  const page = paginateRows(lots, dados.pagina, 10);
+  const lines = page.rows.map((lot) => `- ${lotLabel(lot)}: ${countsByLot[String(lot.id)] || 0} animais`).join("\n");
+  const semLoteText = countsByLot[""] ?`\nSem lote: ${countsByLot[""]} animais.` : "";
+  const pageText = page.end < lots.length
+    ?`\nMostrando ${page.start + 1}-${page.end} de ${lots.length}. Para continuar, peça "pagina ${Math.min(page.currentPage + 1, page.totalPages)} dos lotes".`
+    : "";
+  return `Você tem ${lots.length} lotes cadastrados:\n${lines}${semLoteText}${pageText}`;
+}
+
+async function lotCreationPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  if (parsed.tipo !== "CRIAR_LOTE" || parsed.perguntas_faltantes.length) return null;
+  const lotName = String(parsed.dados?.lote_nome || "").trim();
+  if (!lotName) return null;
+  const found = await findLot(supabase, owner, lotName);
+  if (found?.row && found.exact) {
+    return `Já existe um lote chamado ${found.row.nome}. Nada foi salvo.`;
+  }
+  if (found?.row && found.score >= 0.9) {
+    return `Encontrei um lote parecido: ${found.row.nome}. Se quiser criar outro lote, envie o nome completo do lote novo.`;
+  }
+  return null;
+}
+
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
+
+  if (parsed.tipo === "CONSULTA_REBANHO") {
+    return handleHerdConsultation(supabase, owner, parsed);
+  }
+
+  if (parsed.tipo === "CONSULTA_LOTES") {
+    return handleLotConsultation(supabase, owner, parsed);
+  }
 
   if (parsed.tipo === "CONSULTA_ANIMAL") {
     const animalReference = String(parsed.dados.animal_codigo || "").trim();
@@ -1991,6 +2212,8 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     }
 
     const animal = found.row;
+    const lots = await listLots(supabase, owner);
+    const lot = animal.lote_id ?lots.find((row) => String(row.id || "") === String(animal.lote_id)) : null;
     const details = [
       `Animal ${animal.brinco || animal.nome || animalReference}`,
       animal.nome && animal.nome !== animal.brinco ?`Nome: ${animal.nome}` : "",
@@ -1998,6 +2221,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
       animal.fase ?`Fase: ${animal.fase}` : "",
       animal.status ?`Status: ${animal.status}` : "",
       animal.raca ?`Raça: ${animal.raca}` : "",
+      `Lote: ${lotLabel(lot)}`,
       animal.data_nascimento ?`Nascimento: ${animal.data_nascimento}` : "",
       animal.peso !== undefined && animal.peso !== null && animal.peso !== "" ?`Peso: ${formatNumber(animal.peso, " kg")}` : ""
     ].filter(Boolean);
@@ -2299,6 +2523,12 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return denied;
   }
 
+  const lotPreflight = await lotCreationPreflight(supabase, owner, parsed);
+  if (lotPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return lotPreflight;
+  }
+
   if (parsed.perguntas_faltantes.length) {
     botLog("missing_data", owner, {
       pending: parsed,
@@ -2381,6 +2611,11 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   if (denied) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return denied;
+  }
+  const lotPreflight = await lotCreationPreflight(supabase, owner, next);
+  if (lotPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return lotPreflight;
   }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
@@ -2478,6 +2713,12 @@ async function handleConfirmation(
     if (genealogyBlock) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return genealogyBlock;
+    }
+
+    const lotPreflight = await lotCreationPreflight(supabase, owner, replacement);
+    if (lotPreflight) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return lotPreflight;
     }
 
     if (replacement.perguntas_faltantes.length) {
