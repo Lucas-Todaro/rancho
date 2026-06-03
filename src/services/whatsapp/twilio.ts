@@ -2857,6 +2857,132 @@ async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: Wh
   return lines.join("\n");
 }
 
+function nonEmptyId(value?: string | null) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function formatRegistrationLineFromPayload(payload: AnyRecord, entidade: string, acao: string | undefined, index: number) {
+  if (entidade === TABLES.ordenhas || payload.tipo === "PRODUCAO_LEITE") {
+    return `${index + 1}. Produção: ${payload.animal_codigo || payload.animal_id || "animal"}, ${formatNumber(payload.litros)} litros`;
+  }
+  if (entidade === TABLES.estoqueMovimentacoes || payload.tipo === "ESTOQUE_BAIXA" || payload.tipo === "ESTOQUE_ENTRADA") {
+    const movement = payload.movimento_tipo || payload.tipo_movimentacao || payload.tipo || acao || "movimento";
+    return `${index + 1}. Estoque: ${movement} de ${formatStockAmount(payload.quantidade, payload.unidade_medida || payload.unidade)} ${payload.item_nome || payload.item || ""}`.trim();
+  }
+  if (entidade === TABLES.transacoesFinanceiras || payload.tipo === "RECEITA_VENDA" || payload.tipo === "DESPESA") {
+    return `${index + 1}. Financeiro: ${payload.financeiro_tipo || payload.tipo || "lançamento"} de ${formatMoney(payload.valor)}${payload.descricao ?` com ${payload.descricao}` : ""}`;
+  }
+  if (entidade === TABLES.eventosAnimal || ["VACINA_MEDICAMENTO", "PARTO", "MORTE"].includes(String(payload.tipo || ""))) {
+    return `${index + 1}. Evento: ${payload.animal_codigo || payload.animal_id || "animal"}${payload.produto ?` - ${payload.produto}` : ""}${payload.descricao ?` - ${payload.descricao}` : ""}`;
+  }
+  return `${index + 1}. ${entidade || "Registro"}: ${acao || "salvo"}`;
+}
+
+function auditLogBelongsToOwner(log: AnyRecord, owner: WhatsAppOwner) {
+  const payload = (log.depois || {}) as AnyRecord;
+  const usuarioId = nonEmptyId(owner.usuario_id);
+  const whatsappUsuarioId = nonEmptyId(owner.whatsapp_usuario_id);
+  const funcionarioId = nonEmptyId(owner.funcionario_id);
+  const phone = owner.telefone_e164;
+
+  if (usuarioId && String(log.usuario_id || "") === usuarioId) return true;
+  if (usuarioId && String(payload.usuario_id || payload.created_by || payload.responsavel_usuario_id || "") === usuarioId) return true;
+  if (whatsappUsuarioId && String(payload.whatsapp_usuario_id || "") === whatsappUsuarioId) return true;
+  if (funcionarioId && String(payload.funcionario_id || "") === funcionarioId) return true;
+  if (phone && whatsappNumbersMatch(String(payload.telefone_e164 || payload.telefone || payload.from || ""), phone)) return true;
+  return false;
+}
+
+function registrationLineFromWhatsappMessage(row: AnyRecord, index: number) {
+  const body = String(((row.payload || {}) as AnyRecord).body || row.body || "").trim();
+  if (!body) return null;
+  const parsed = parseRanchoMessage(body);
+  if (CONSULT_INTENTS.has(parsed.tipo) || parsed.tipo === "DESCONHECIDO" || parsed.tipo === "AJUDA") return null;
+  return formatRegistrationLineFromPayload({ ...parsed.dados, tipo: parsed.tipo }, parsed.tipo, "mensagem", index);
+}
+
+async function queryTodayWhatsappMessageRegistrations(supabase: SupabaseAdmin, owner: WhatsAppOwner, range: { start: string; end: string }) {
+  const { data, error } = await supabase
+    .from(TABLES.whatsappMensagens)
+    .select("payload,body,telefone_e164,direcao,created_at,processada_em")
+    .eq("fazenda_id", owner.fazenda_id)
+    .eq("direcao", "entrada")
+    .gte("processada_em", range.start)
+    .lt("processada_em", range.end)
+    .order("processada_em", { ascending: false })
+    .limit(30);
+
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[])
+    .filter((row) => whatsappNumbersMatch(String(row.telefone_e164 || ""), owner.telefone_e164))
+    .map((row, index) => registrationLineFromWhatsappMessage(row, index))
+    .filter(Boolean) as string[];
+}
+
+async function handleTodayRecordsConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const range = dayRange("hoje");
+  const usuarioId = nonEmptyId(owner.usuario_id);
+  const whatsappUsuarioId = nonEmptyId(owner.whatsapp_usuario_id);
+  const funcionarioId = nonEmptyId(owner.funcionario_id);
+  const filters = [
+    "fazenda_id",
+    "created_at >= hoje.inicio",
+    "created_at < hoje.fim"
+  ];
+
+  let query = supabase
+    .from(TABLES.auditoriaLogs)
+    .select("entidade,acao,depois,created_at,usuario_id,origem")
+    .eq("fazenda_id", owner.fazenda_id)
+    .gte("created_at", range.start)
+    .lt("created_at", range.end);
+
+  if (usuarioId) {
+    query = query.eq("usuario_id", usuarioId);
+    filters.push("usuario_id");
+  } else {
+    filters.push("sem_usuario_id_vazio");
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+
+  const rawLogs = (data || []) as AnyRecord[];
+  const logs = usuarioId ? rawLogs : rawLogs.filter((log) => auditLogBelongsToOwner(log, owner));
+  const auditLines = logs.slice(0, 5).map((log, index) => formatRegistrationLineFromPayload((log.depois || {}) as AnyRecord, String(log.entidade || ""), String(log.acao || ""), index));
+  const messageLines = auditLines.length ? [] : await queryTodayWhatsappMessageRegistrations(supabase, owner, range);
+  const lines = auditLines.length ? auditLines : messageLines.slice(0, 5);
+
+  parsed.dados.consulta_executada = "registros_hoje";
+  parsed.dados.resultado = {
+    fazenda_id: owner.fazenda_id,
+    telefone: owner.telefone_e164,
+    funcionario_id: funcionarioId,
+    whatsapp_usuario_id: whatsappUsuarioId,
+    usuario_id: usuarioId,
+    filtros_aplicados: filters,
+    registros: lines.length,
+    origem: auditLines.length ? "auditoria_logs" : "whatsapp_mensagens"
+  };
+
+  botLog("today_records_query", owner, {
+    fazenda_id_usado: owner.fazenda_id,
+    telefone_usado: owner.telefone_e164,
+    funcionario_id_usado: funcionarioId,
+    whatsapp_usuario_id_usado: whatsappUsuarioId,
+    usuario_id_usado: usuarioId,
+    filtros_aplicados: filters,
+    quantidade_registros_encontrados: lines.length,
+    origem: auditLines.length ? "auditoria_logs" : "whatsapp_mensagens"
+  });
+
+  if (!lines.length) return "Você ainda não registrou nada hoje pelo WhatsApp.";
+  return `Hoje você registrou:\n${lines.join("\n")}`;
+}
+
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
@@ -3105,33 +3231,7 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
       return handleEventsReportConsultation(supabase, owner, parsed);
     }
     if (parsed.dados.precisa_periodo) return handleEventsReportConsultation(supabase, owner, parsed);
-
-    const range = dayRange("hoje");
-    const { data, error } = await supabase
-      .from(TABLES.auditoriaLogs)
-      .select("entidade,acao,depois,created_at")
-      .eq("fazenda_id", owner.fazenda_id)
-      .eq("usuario_id", owner.usuario_id || "")
-      .gte("created_at", range.start)
-      .lt("created_at", range.end)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (error) throw new Error(error.message);
-    const logs = (data || []) as AnyRecord[];
-    parsed.dados.consulta_executada = "registros_hoje";
-    parsed.dados.resultado = { registros: logs.length };
-    if (!logs.length) return "Você ainda não registrou nada hoje pelo WhatsApp.";
-
-    const lines = logs.map((log, index) => {
-      const payload = (log.depois || {}) as AnyRecord;
-      if (log.entidade === TABLES.ordenhas) return `${index + 1}. Produção: ${payload.animal_codigo || payload.animal_id || "animal"}, ${formatNumber(payload.litros)} litros`;
-      if (log.entidade === TABLES.estoqueMovimentacoes) return `${index + 1}. Estoque: ${payload.tipo || log.acao} de ${formatStockAmount(payload.quantidade, payload.unidade_medida || payload.unidade)} ${payload.item_nome || ""}`.trim();
-      if (log.entidade === TABLES.transacoesFinanceiras) return `${index + 1}. Financeiro: ${payload.tipo || "lançamento"} de ${formatMoney(payload.valor)}${payload.descricao ?` com ${payload.descricao}` : ""}`;
-      return `${index + 1}. ${log.entidade || "Registro"}: ${log.acao || "salvo"}`;
-    }).join("\n");
-
-    return `Hoje você registrou ${logs.length} ${logs.length === 1 ?"lançamento" : "lançamentos"} pelo WhatsApp:\n${lines}`;
+    return handleTodayRecordsConsultation(supabase, owner, parsed);
   }
 
   return unknownText();

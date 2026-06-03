@@ -548,6 +548,7 @@ class BotTestQueryBuilder {
     this.operation = "select";
     this.payload = null;
     this.conflictColumns = [];
+    this.forcedError = null;
   }
 
   select() {
@@ -555,6 +556,9 @@ class BotTestQueryBuilder {
   }
 
   eq(field, value) {
+    if (["id", "fazenda_id", "rancho_id", "usuario_id", "whatsapp_usuario_id", "funcionario_id", "animal_id", "item_id"].includes(field) && value === "") {
+      this.forcedError = { message: 'invalid input syntax for type uuid: ""' };
+    }
     this.filters.push((row) => row?.[field] === value || String(row?.[field]) === String(value));
     return this;
   }
@@ -728,6 +732,7 @@ class BotTestQueryBuilder {
   }
 
   execute(singleMode) {
+    if (this.forcedError) return { data: null, error: this.forcedError };
     let rows;
     if (this.operation === "insert") rows = this.executeInsert();
     else if (this.operation === "upsert") rows = this.executeUpsert();
@@ -5242,6 +5247,67 @@ const structuredBotEvaluationCases = [
   ...genealogyFrameworkCases,
   ...permissionMultiFarmWhatsappSecurityCases,
   {
+    name: "consulta registros hoje sem usuario_id nao quebra uuid vazio",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["o que eu registrei hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "Você ainda não registrou nada hoje pelo WhatsApp.",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta registros hoje lista auditoria mockada do funcionario",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_WORKER_PHONE,
+    auditLogs: [
+      {
+        entidade: BOT_TEST_TABLES.ordenhas,
+        acao: "insert",
+        depois: { funcionario_id: "func-joao", telefone_e164: BOT_TEST_WORKER_PHONE, animal_codigo: "B-002", litros: 30 }
+      },
+      {
+        entidade: BOT_TEST_TABLES.estoqueMovimentacoes,
+        acao: "insert",
+        depois: { funcionario_id: "func-joao", telefone_e164: BOT_TEST_WORKER_PHONE, tipo: "baixa", quantidade: 20, unidade_medida: "kg", item_nome: "Racao de boi" }
+      },
+      {
+        entidade: BOT_TEST_TABLES.transacoesFinanceiras,
+        acao: "insert",
+        depois: { funcionario_id: "func-joao", telefone_e164: BOT_TEST_WORKER_PHONE, tipo: "receita", valor: 15000 }
+      }
+    ],
+    messages: ["o que eu registrei hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "Produção: B-002, 30 litros",
+      responseRawIncludes: "Financeiro",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta meus registros usa whatsapp mensagens como fallback",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_WORKER_PHONE,
+    whatsappMessages: [
+      { telefone_e164: BOT_TEST_WORKER_PHONE, body: "B-002 deu 30 litros" },
+      { telefone_e164: BOT_TEST_WORKER_PHONE, body: "meus registros de hoje" }
+    ],
+    messages: ["meus registros de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "Produção: B-002, 30 litros",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -5507,6 +5573,31 @@ function createSupabaseForScenario(test = {}) {
       { id: "report-point-a-1", fazenda_id: BOT_TEST_FARM_ID, funcionario_id: "func-joao", tipo: "entrada", registrado_em: `${today}T07:00:00.000Z`, origem: "whatsapp" },
       { id: "report-point-a-2", fazenda_id: BOT_TEST_FARM_ID, funcionario_id: "func-bruno-a", tipo: "entrada", registrado_em: `${today}T07:30:00.000Z`, origem: "whatsapp" }
     );
+  }
+  if (test.auditLogs) {
+    supabase.tables[BOT_TEST_TABLES.auditoriaLogs].push(...test.auditLogs.map((row, index) => ({
+      id: row.id || `audit-extra-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      usuario_id: row.usuario_id ?? null,
+      entidade: row.entidade,
+      acao: row.acao || "insert",
+      depois: row.depois || {},
+      origem: row.origem || "whatsapp",
+      created_at: row.created_at || new Date().toISOString()
+    })));
+  }
+  if (test.whatsappMessages) {
+    supabase.tables[BOT_TEST_TABLES.whatsappMensagens].push(...test.whatsappMessages.map((row, index) => ({
+      id: row.id || `wa-message-extra-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      telefone_e164: row.telefone_e164 || test.phone || BOT_TEST_ADMIN_PHONE,
+      wa_message_id: row.wa_message_id || `wa-message-extra-${index + 1}`,
+      direcao: row.direcao || "entrada",
+      tipo: row.tipo || "text",
+      payload: row.payload || { body: row.body || "" },
+      processada_em: row.processada_em || new Date().toISOString(),
+      created_at: row.created_at || row.processada_em || new Date().toISOString()
+    })));
   }
   if (test.financeTransactions) {
     supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(...test.financeTransactions.map((row, index) => ({
