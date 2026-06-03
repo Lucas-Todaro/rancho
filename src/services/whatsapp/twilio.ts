@@ -94,6 +94,8 @@ const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao 
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
 const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "mostrar de novo", "resumo", "resumir"]);
+const STOCK_PAGINATION_WORDS = new Set(["mais", "ver mais", "proximos", "proximo", "continuar", "continua"]);
+const STOCK_PAGE_SIZE = 8;
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
   "CONSULTA_PRODUCAO_HOJE",
@@ -352,6 +354,10 @@ function isMenuCommand(command: string) {
 
 function isRepeatCommand(command: string) {
   return REPEAT_WORDS.has(command) || /^(?:repete|repetir|repita|mostra(?:r)? de novo|resumo|resumir)\b/.test(command);
+}
+
+function isStockPaginationCommand(command: string) {
+  return STOCK_PAGINATION_WORDS.has(command) || /^(?:mais|ver mais|proximos?|continuar|continua)\b/.test(command);
 }
 
 function milkStockStatusText(parsed: ParsedRanchoMessage) {
@@ -912,6 +918,19 @@ async function findStockItem(supabase: SupabaseAdmin, owner: WhatsAppOwner, name
   };
 }
 
+async function listStockItems(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.estoqueItens)
+    .select("id,nome,categoria,quantidade_atual,quantidade_minima,unidade_medida,valor_unitario,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[])
+    .filter((row) => row.ativo !== false)
+    .sort((left, right) => String(left.nome || "").localeCompare(String(right.nome || ""), "pt-BR"));
+}
+
 function isMilkStockUnit(unit: unknown) {
   const normalized = normalizeRanchoText(String(unit || ""));
   return ["l", "litro", "litros"].includes(normalized);
@@ -1004,10 +1023,119 @@ async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name:
 
 function stockCategoryFromName(name: string) {
   const normalized = normalizeRanchoText(name);
-  if (/\b(?:racao|ração|silagem|sal|farelo|milho)\b/.test(normalized)) return "racao";
-  if (/\b(?:vacina|remedio|remédio|medicamento|antibiotico|antibiótico)\b/.test(normalized)) return "medicamento";
+  if (/\b(?:vacina|aftosa|brucelose|raiva)\b/.test(normalized)) return "vacina";
+  if (/\b(?:racao|silagem|sal|farelo|milho)\b/.test(normalized)) return "racao";
+  if (/\b(?:remedio|medicamento|vermifugo|terramicina|antibiotico|carrapaticida)\b/.test(normalized)) return "medicamento";
   if (/\b(?:luva|seringa|insumo)\b/.test(normalized)) return "insumo";
   return "outro";
+}
+
+function normalizeStockCategory(value: unknown) {
+  const normalized = normalizeRanchoText(String(value || ""));
+  if (/\b(?:vacina|vacinas|aftosa|brucelose|raiva)\b/.test(normalized)) return "vacina";
+  if (/\b(?:medicamento|medicamentos|remedio|remedios|veterinario|veterinarios|vermifugo|terramicina|antibiotico|antibioticos|carrapaticida)\b/.test(normalized)) return "medicamento";
+  if (/\b(?:racao|racoes|silagem|farelo|milho|sal|mineral)\b/.test(normalized)) return "racao";
+  if (/\b(?:insumo|insumos)\b/.test(normalized)) return "insumo";
+  return normalized || "outro";
+}
+
+function stockCategoryLabel(category: unknown) {
+  const normalized = normalizeStockCategory(category);
+  if (normalized === "vacina") return "vacinas";
+  if (normalized === "medicamento") return "medicamentos";
+  if (normalized === "racao") return "rações";
+  if (normalized === "insumo") return "insumos";
+  return "itens";
+}
+
+function stockRowMatchesCategory(row: AnyRecord, category: unknown) {
+  const requested = normalizeStockCategory(category);
+  const rowCategory = normalizeStockCategory(row.categoria);
+  const nameCategory = stockCategoryFromName(String(row.nome || ""));
+  const name = normalizeRanchoText(String(row.nome || ""));
+
+  if (requested === "vacina") return rowCategory === "vacina" || nameCategory === "vacina" || /\b(?:vacina|aftosa|brucelose|raiva)\b/.test(name);
+  if (requested === "medicamento") return rowCategory === "medicamento" || nameCategory === "medicamento" || /\b(?:remedio|medicamento|vermifugo|terramicina|antibiotico|carrapaticida)\b/.test(name);
+  if (requested === "racao") return rowCategory === "racao" || nameCategory === "racao" || /\b(?:racao|silagem|farelo|milho|sal|mineral)\b/.test(name);
+  if (requested === "insumo") return rowCategory === "insumo" || nameCategory === "insumo" || /\b(?:insumo|luva|seringa)\b/.test(name);
+  return rowCategory === requested || nameCategory === requested;
+}
+
+function stockQuantity(row: AnyRecord) {
+  return Number(row.quantidade_atual || 0);
+}
+
+function stockMinimum(row: AnyRecord) {
+  return Number(row.quantidade_minima || 0);
+}
+
+function formatStockListLine(row: AnyRecord, index: number, options: { showMinimum?: boolean } = {}) {
+  const minimumText = options.showMinimum && stockMinimum(row) > 0
+    ?` (mínimo ${formatStockAmount(row.quantidade_minima, row.unidade_medida)})`
+    : "";
+  return `${index}. ${row.nome || "Item"} - ${formatStockAmount(row.quantidade_atual, row.unidade_medida)}${minimumText}`;
+}
+
+function stockListRowsForMode(rows: AnyRecord[], mode: string, category?: unknown) {
+  if (mode === "baixo") return rows.filter((row) => stockMinimum(row) > 0 && stockQuantity(row) < stockMinimum(row));
+  if (mode === "zerado") return rows.filter((row) => stockQuantity(row) <= 0);
+  if (mode === "categoria" && category) return rows.filter((row) => stockRowMatchesCategory(row, category));
+  return rows;
+}
+
+function stockEmptyText(mode: string, category?: unknown) {
+  if (mode === "baixo") return "Nenhum item está abaixo do mínimo agora.";
+  if (mode === "zerado") return "Nenhum item está zerado no estoque.";
+  if (mode === "categoria") return `Não encontrei ${stockCategoryLabel(category)} no estoque deste rancho.`;
+  return "Nenhum item cadastrado no estoque deste rancho.";
+}
+
+function stockListHeader(mode: string, total: number, pageSize: number, category?: unknown) {
+  if (mode === "baixo") return `Encontrei ${total} ${total === 1 ?"item abaixo" : "itens abaixo"} do mínimo no estoque:`;
+  if (mode === "zerado") return `Encontrei ${total} ${total === 1 ?"item zerado" : "itens zerados"} no estoque:`;
+  if (mode === "categoria") return `Encontrei ${total} ${stockCategoryLabel(category)} no estoque:`;
+  if (total > pageSize) return `Você tem ${total} itens no estoque. Aqui estão alguns:`;
+  return `Você tem ${total} ${total === 1 ?"item" : "itens"} no estoque:`;
+}
+
+function buildStockListText(rows: AnyRecord[], mode: string, offset: number, pageSize: number, category?: unknown) {
+  const total = rows.length;
+  if (!total) {
+    return { text: stockEmptyText(mode, category), nextOffset: offset, hasMore: false, total };
+  }
+
+  const pageRows = rows.slice(offset, offset + pageSize);
+  const showMinimum = mode === "baixo";
+  const lines = pageRows.map((row, index) => formatStockListLine(row, offset + index + 1, { showMinimum })).join("\n");
+  const nextOffset = offset + pageRows.length;
+  const hasMore = nextOffset < total;
+  const header = offset === 0
+    ? stockListHeader(mode, total, pageSize, category)
+    : `Mostrando mais ${pageRows.length} ${pageRows.length === 1 ?"item" : "itens"} do estoque:`;
+  const footer = hasMore ?"\n\nQuer ver mais?" : offset > 0 ?"\n\nFim da lista." : "";
+  return { text: `${header}\n${lines}${footer}`, nextOffset, hasMore, total };
+}
+
+async function saveStockPagination(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  mode: string,
+  nextOffset: number,
+  pageSize: number,
+  category?: unknown
+) {
+  await saveSession(supabase, owner, {
+    etapa: "livre",
+    dados: {
+      estoque_paginacao: {
+        tipo: "estoque_lista",
+        consulta_estoque: mode,
+        categoria: category || null,
+        offset: nextOffset,
+        pageSize
+      }
+    }
+  });
 }
 
 async function validateBatchRecordReady(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage) {
@@ -2191,6 +2319,116 @@ async function lotCreationPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwne
   return null;
 }
 
+async function handleStockHistoryConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const itemName = String(parsed.dados.item_nome || "").trim();
+  let itemId: string | null = null;
+  let itemLabel = itemName;
+
+  if (itemName) {
+    const found = await findStockItem(supabase, owner, itemName);
+    if (found.ambiguousRows?.length) {
+      const options = found.ambiguousRows.slice(0, 5).map((row) => row.nome).filter(Boolean).join(", ");
+      return `Encontrei mais de um item parecido no estoque. Tente pelo nome cadastrado. Opções: ${options}.`;
+    }
+    if (!found.row) return `Não encontrei ${itemName} no estoque deste rancho.`;
+    itemId = String(found.row.id);
+    itemLabel = String(found.row.nome || itemName);
+  }
+
+  let query = supabase
+    .from(TABLES.estoqueMovimentacoes)
+    .select("*")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(1000);
+
+  if (itemId) query = query.eq("item_id", itemId);
+  if (parsed.dados.movimento_tipo) query = query.eq("tipo", String(parsed.dados.movimento_tipo));
+  if (parsed.dados.data_referencia) {
+    const range = periodRange(String(parsed.dados.data_referencia));
+    query = query.gte("created_at", range.start).lt("created_at", range.end);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const items = await listStockItems(supabase, owner);
+  const itemById = new Map(items.map((row) => [String(row.id), row]));
+  const rows = ((data || []) as AnyRecord[])
+    .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")))
+    .slice(0, 5);
+
+  parsed.dados.consulta_executada = "estoque_historico";
+  parsed.dados.resultado = { registros: rows.length, item_id: itemId, tipo: parsed.dados.movimento_tipo || null };
+
+  if (!rows.length) {
+    return itemId
+      ?`Ainda não encontrei movimentações de estoque para ${itemLabel}.`
+      :"Ainda não encontrei movimentações de estoque para esse período.";
+  }
+
+  const lines = rows.map((row, index) => {
+    const item = itemById.get(String(row.item_id || ""));
+    const date = row.created_at ?String(row.created_at).slice(0, 10) : "sem data";
+    const unit = item?.unidade_medida || row.unidade_medida || row.unidade;
+    const itemText = item?.nome || itemLabel || row.item_nome || "item";
+    return `${index + 1}. ${date}: ${row.tipo || "movimentação"} de ${formatStockAmount(row.quantidade, unit)} - ${itemText}`;
+  }).join("\n");
+
+  return `Últimas movimentações de estoque:\n${lines}`;
+}
+
+async function handleStockListConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const mode = String(parsed.dados.consulta_estoque || "lista");
+  if (mode === "historico") return handleStockHistoryConsultation(supabase, owner, parsed);
+
+  const category = parsed.dados.categoria;
+  const rows = stockListRowsForMode(await listStockItems(supabase, owner), mode, category);
+  const page = buildStockListText(rows, mode, 0, STOCK_PAGE_SIZE, category);
+
+  parsed.dados.consulta_executada = "estoque_geral";
+  parsed.dados.resultado = {
+    modo: mode,
+    categoria: category || null,
+    total: rows.length,
+    exibidos: Math.min(rows.length, STOCK_PAGE_SIZE),
+    tem_mais: page.hasMore
+  };
+
+  if (page.hasMore) {
+    await saveStockPagination(supabase, owner, mode, page.nextOffset, STOCK_PAGE_SIZE, category);
+  }
+
+  return page.text;
+}
+
+async function handleStockPagination(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession) {
+  const pagination = session.dados?.estoque_paginacao as AnyRecord | undefined;
+  if (!pagination || pagination.tipo !== "estoque_lista") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há mais itens para mostrar agora.";
+  }
+
+  const mode = String(pagination.consulta_estoque || "lista");
+  const category = pagination.categoria || undefined;
+  const offset = Math.max(0, Number(pagination.offset || 0));
+  const pageSize = Math.max(1, Math.min(20, Number(pagination.pageSize || STOCK_PAGE_SIZE)));
+  const rows = stockListRowsForMode(await listStockItems(supabase, owner), mode, category);
+
+  if (!rows.length || offset >= rows.length) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há mais itens para mostrar agora.";
+  }
+
+  const page = buildStockListText(rows, mode, offset, pageSize, category);
+  if (page.hasMore) {
+    await saveStockPagination(supabase, owner, mode, page.nextOffset, pageSize, category);
+  } else {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+
+  return page.text;
+}
+
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
@@ -2348,12 +2586,13 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
 
   if (parsed.tipo === "CONSULTA_ESTOQUE" || parsed.tipo === "CONSULTA_ESTOQUE_ITEM") {
     if (parsed.dados.item_nome) {
-      const found = await findStockItem(supabase, owner, String(parsed.dados.item_nome));
+      const itemLabel = String(parsed.dados.item_nome || "").trim();
+      const found = await findStockItem(supabase, owner, itemLabel);
       if (found.ambiguousRows?.length) {
         const options = found.ambiguousRows.slice(0, 5).map((row) => row.nome).filter(Boolean).join(", ");
         return `Encontrei mais de um item parecido no estoque. Tente pelo nome cadastrado. Opções: ${options}.`;
       }
-      if (!found.row) return "Não encontrei esse item no estoque. Tente pelo nome cadastrado ou peça para um administrador cadastrar.";
+      if (!found.row) return `Não encontrei esse item${itemLabel ?` (${itemLabel})` : ""} no estoque deste rancho.`;
 
       const current = Number(found.row.quantidade_atual || 0);
       const minimum = Number(found.row.quantidade_minima || 0);
@@ -2368,24 +2607,12 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
         unidade: found.row.unidade_medida,
         status
       };
-      return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)}.${hasMinimum ?` Mínimo: ${formatStockAmount(found.row.quantidade_minima, found.row.unidade_medida)}. Status: ${status}.` : ""}`;
+      return `Estoque de ${found.row.nome}: ${formatStockAmount(found.row.quantidade_atual, found.row.unidade_medida)} disponíveis no estoque.${hasMinimum ?` Mínimo: ${formatStockAmount(found.row.quantidade_minima, found.row.unidade_medida)}. Status: ${status}.` : ""}`;
     }
   }
 
   if (parsed.tipo === "CONSULTA_ESTOQUE" || parsed.tipo === "CONSULTA_ESTOQUE_GERAL") {
-    const { data, error } = await supabase
-      .from(TABLES.estoqueItens)
-      .select("nome,quantidade_atual,quantidade_minima,unidade_medida")
-      .eq("fazenda_id", owner.fazenda_id)
-      .limit(1000);
-    if (error) throw new Error(error.message);
-    const critical = (data || []).filter((row) => Number(row.quantidade_minima || 0) > 0 && Number(row.quantidade_atual || 0) < Number(row.quantidade_minima || 0));
-    const examples = critical.slice(0, 5).map((row) => `- ${row.nome}: ${formatStockAmount(row.quantidade_atual, row.unidade_medida)} (mínimo ${formatStockAmount(row.quantidade_minima, row.unidade_medida)})`).join("\n");
-    parsed.dados.consulta_executada = "estoque_geral";
-    parsed.dados.resultado = { itens_abaixo_minimo: critical.length };
-    return critical.length
-      ?`Itens abaixo do mínimo no estoque:\n${examples}`
-      : "Nenhum item está abaixo do mínimo agora.";
+    return handleStockListConsultation(supabase, owner, parsed);
   }
 
   if (parsed.tipo === "CONSULTA_FUNCIONARIO") {
@@ -2844,6 +3071,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (isCancelCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
+    } else if (isStockPaginationCommand(command) && previousSession.dados?.estoque_paginacao) {
+      response = await handleStockPagination(supabase, owner, previousSession);
     } else if (isRepeatCommand(command)) {
       parsed = pendingFromSession(previousSession);
       if (previousSession.etapa === "aguardando_confirmacao" && parsed) {

@@ -1206,6 +1206,26 @@ const consultationParserTests = [
   { phrase: "Ainda tem aftosa?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Aftosa", itemId: "item-aftosa", itemFound: true } },
   { phrase: "Como está o estoque?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true } },
   { phrase: "O que está acabando?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true } },
+  { module: "estoque-consultas", phrase: "o que tem no estoque?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "quais itens tenho no estoque?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "me mostra o estoq", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "quais iten tenho no estoque", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "quanto tenho de racao?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Racao", itemId: "item-racao", itemFound: true } },
+  { module: "estoque-consultas", phrase: "quantos sacos de racao tem?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "racao", itemId: "item-racao", itemFound: true } },
+  { module: "estoque-consultas", phrase: "racao tem quanto?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "racao", itemId: "item-racao", itemFound: true } },
+  { module: "estoque-consultas", phrase: "quantas doses de aftoza tem?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "aftosa", itemId: "item-aftosa", itemFound: true } },
+  { module: "estoque-consultas", phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "o que precisa repor?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "produto baxo", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "estoque baicho", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "itens zerados", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "o que acabou?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { module: "estoque-consultas", phrase: "quais medicamentos tenho?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true, categoria: "medicamento" } },
+  { module: "estoque-consultas", phrase: "listar vacinas", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true, categoria: "vacina" } },
+  { module: "estoque-consultas", phrase: "estoque de racoes", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true, categoria: "racao" } },
+  { module: "estoque-consultas", phrase: "cria um item chamado racao no estoque", expected: { tipo: "CRIAR_ITEM_ESTOQUE", exactTipo: true, item: "racao", missing: ["unidade"] } },
+  { module: "estoque-consultas", phrase: "adiciona 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { module: "estoque-consultas", phrase: "baixa 3 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 3, unidade: "saco" } },
   { phrase: "O que eu registrei hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
   { phrase: "Meus registros de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
   { module: "dashboard-relatorios", phrase: "resumo do dia", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
@@ -2983,6 +3003,24 @@ const eventFrameworkCases = [
   }
 ];
 
+const stockConsultationItems = [
+  { id: "stock-racao-consulta", nome: "Racao", categoria: "racao", quantidade_atual: 10, quantidade_minima: 5, unidade_medida: "saco" },
+  { id: "stock-sal-consulta", nome: "Sal mineral", categoria: "racao", quantidade_atual: 25, quantidade_minima: 5, unidade_medida: "kg" },
+  { id: "stock-aftosa-consulta", nome: "Aftosa", categoria: "vacina", quantidade_atual: 8, quantidade_minima: 5, unidade_medida: "dose" },
+  { id: "stock-vermifugo-consulta", nome: "Vermifugo", categoria: "medicamento", quantidade_atual: 3, quantidade_minima: 1, unidade_medida: "unidade" }
+];
+
+function stockPaginationItems(total = 12) {
+  return Array.from({ length: total }, (_, index) => ({
+    id: `stock-page-${index + 1}`,
+    nome: `Item ${String(index + 1).padStart(2, "0")}`,
+    categoria: index % 2 === 0 ? "racao" : "insumo",
+    quantidade_atual: index + 1,
+    quantidade_minima: 0,
+    unidade_medida: "saco"
+  }));
+}
+
 const inventoryFrameworkCases = [
   {
     name: "entrada de estoque completa pede confirmacao e nao salva antes",
@@ -3042,6 +3080,130 @@ const inventoryFrameworkCases = [
     expected: {
       finalIntent: "CONSULTA_ESTOQUE_ITEM",
       entities: { item_nome: "Racao" },
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta geral lista itens e quantidades do estoque",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockConsultationItems,
+    messages: ["o que tem no estoque?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Racao - 10 sacos",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta de item especifico responde saldo com plural correto",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockConsultationItems,
+    messages: ["quantos sacos de racao tem?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_ITEM",
+      entities: { item_nome: "Racao" },
+      responseIncludes: "10 sacos",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta estoque baixo lista abaixo do minimo",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: [
+      { id: "stock-low-racao", nome: "Racao", categoria: "racao", quantidade_atual: 2, quantidade_minima: 5, unidade_medida: "saco" },
+      { id: "stock-ok-sal", nome: "Sal mineral", categoria: "racao", quantidade_atual: 25, quantidade_minima: 5, unidade_medida: "kg" }
+    ],
+    messages: ["estoque baixo"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Racao - 2 sacos",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta itens zerados lista quantidade zero",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: [
+      { id: "stock-zero-aftosa", nome: "Aftosa", categoria: "vacina", quantidade_atual: 0, quantidade_minima: 5, unidade_medida: "dose" },
+      { id: "stock-ok-racao", nome: "Racao", categoria: "racao", quantidade_atual: 10, quantidade_minima: 5, unidade_medida: "saco" }
+    ],
+    messages: ["itens zerados"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Aftosa - 0 doses",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta por categoria lista apenas vacinas",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockConsultationItems,
+    messages: ["quais vacinas tenho?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Aftosa - 8 doses",
+      responseNotIncludes: "Racao",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta geral paginada continua com ver mais",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockPaginationItems(12),
+    messages: ["me mostra o estoque", "ver mais"],
+    expected: {
+      responseIncludes: "Item 09",
+      shouldClearSession: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cancelar limpa paginacao de estoque",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockPaginationItems(12),
+    messages: ["me mostra o estoque", "cancelar"],
+    expected: {
+      responseIncludes: "Cancelado",
+      shouldClearSession: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta de estoque com erro de digitacao nao salva",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: stockConsultationItems,
+    messages: ["qnt tem de racao?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_ITEM",
+      responseIncludes: "10 sacos",
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -4432,6 +4594,46 @@ const multiFarmSecurityCases = [
     }
   },
   {
+    name: "funcionario pode consultar estoque sem salvar",
+    module: "seguranca-permissao",
+    phone: SECURITY_WORKER_A_PHONE,
+    whatsappUsers: securityWhatsappUsers(),
+    messages: ["o que tem no estoque?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Você tem",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta estoque A nao mostra estoque do rancho B",
+    module: "seguranca-multifazenda",
+    phone: SECURITY_OWNER_A_PHONE,
+    whatsappUsers: securityWhatsappUsers(),
+    messages: ["o que tem no estoque?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseNotIncludes: "80 sacos",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta estoque B lista apenas itens do rancho B",
+    module: "seguranca-multifazenda",
+    phone: SECURITY_OWNER_B_PHONE,
+    whatsappUsers: securityWhatsappUsers(),
+    messages: ["o que tem no estoque?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_GERAL",
+      responseIncludes: "Racao - 80 sacos",
+      responseNotIncludes: "boi",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "estoque A baixa item do rancho A",
     module: "seguranca-multifazenda",
     phone: SECURITY_OWNER_A_PHONE,
@@ -5589,7 +5791,7 @@ const FINAL_REGRESSION_MODULES = [
   { key: "geralComandos", label: "Geral/comandos humanos", modules: ["comandos", "confirmacao"] },
   { key: "producao", label: "Producao", modules: ["producao"] },
   { key: "animais", label: "Animais", modules: ["animais", "status-animal"] },
-  { key: "estoque", label: "Estoque", modules: ["estoque"] },
+  { key: "estoque", label: "Estoque", modules: ["estoque", "estoque-consultas"] },
   { key: "financeiro", label: "Financeiro", modules: ["financeiro"] },
   { key: "funcionarios", label: "Funcionarios", modules: ["funcionarios"] },
   { key: "ponto", label: "Ponto", modules: ["ponto"] },
@@ -5648,6 +5850,12 @@ function buildFinalRegressionReport(report, summary) {
     return acc;
   }, {});
 
+  const stockConsultationResults = summary.results.filter((result) => {
+    const text = normalize(`${resultModule(result)} ${resultName(result)} ${result.test?.phrase || ""}`);
+    return /estoque/.test(text) && /consulta|baixo|zerado|categoria|pagin|digitacao|multifazenda|permissao|o que tem|quantos|racao tem quanto|vacinas|medicamentos/.test(text);
+  });
+  const stockConsultationFailed = stockConsultationResults.filter((result) => !result.ok);
+
   const criticalFailures = summary.failed
     .filter((result) => /seguranca|permissao|whatsapp|multifazenda|confirmacao|duplicada|autorizado/i.test(`${resultModule(result)} ${resultName(result)}`))
     .map(compactResultForReport);
@@ -5670,13 +5878,32 @@ function buildFinalRegressionReport(report, summary) {
       successRate: report.summary.successRate
     },
     moduleBreakdown,
+    stockConsultationCoverage: {
+      addedTestsThisRun: 31,
+      totalRelatedTests: stockConsultationResults.length,
+      passed: stockConsultationResults.length - stockConsultationFailed.length,
+      failed: stockConsultationFailed.length,
+      coveredConsultations: [
+        "lista geral de itens e quantidades",
+        "item especifico por saldo/quantidade/tem quanto",
+        "estoque baixo e abaixo do minimo",
+        "itens zerados",
+        "categoria/tipo: vacinas, medicamentos, racoes e insumos",
+        "paginacao por sessao com ver mais e cancelamento",
+        "plural de unidades na resposta",
+        "erros de digitacao comuns",
+        "nao confundir consulta com entrada, baixa ou criacao",
+        "permissoes e isolamento por fazenda_id"
+      ]
+    },
     criticalFailures,
     criticalFailuresFixedInThisRun: [
       "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
       "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
       "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao",
       "consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento",
-      "criacao de lote exige admin e confirmacao antes de salvar"
+      "criacao de lote exige admin e confirmacao antes de salvar",
+      "consultas de estoque agora listam itens, item especifico, baixo, zerado, categoria e paginacao sem salvar"
     ],
     remainingFailures: summary.failed.map(compactResultForReport),
     remainingRisks: [
@@ -5746,6 +5973,15 @@ function writeFinalRegressionReports(finalReport) {
     "| Modulo | Total | Aprovados | Falhos | Taxa |",
     "| --- | ---: | ---: | ---: | ---: |",
     ...moduleLines,
+    "",
+    "## Estoque - Consultas",
+    "",
+    `- Testes adicionados nesta rodada: ${finalReport.stockConsultationCoverage.addedTestsThisRun}`,
+    `- Testes relacionados cobertos: ${finalReport.stockConsultationCoverage.totalRelatedTests}`,
+    `- Aprovados: ${finalReport.stockConsultationCoverage.passed}`,
+    `- Falhos: ${finalReport.stockConsultationCoverage.failed}`,
+    "- Coberturas:",
+    ...finalReport.stockConsultationCoverage.coveredConsultations.map((item) => `  - ${item}`),
     "",
     "## Falhas Criticas",
     "",

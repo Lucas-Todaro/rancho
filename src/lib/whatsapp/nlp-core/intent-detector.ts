@@ -57,6 +57,152 @@ const reproductiveObservationCue = /\b(?:cio|ia|inseminada|inseminado|inseminaca
 const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
 const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
 
+type StockConsultationDetection = {
+  tipo: ParsedRanchoMessage["tipo"];
+  dados: Record<string, unknown>;
+  confidence: number;
+};
+
+function cleanStockSpecificItemCandidate(candidate?: string | null) {
+  const cleaned = normalizeRanchoText(cleanAnswer(candidate || ""))
+    .replace(/\b(?:no|na|em|do|da)\s+estoque\b/g, " ")
+    .replace(/^(?:de|do|da|dos|das|o|a|os|as|um|uma)\s+/g, " ")
+    .replace(/^(?:saco|sacos|kg|quilo|quilos|dose|doses|unidade|unidades|litro|litros|caixa|caixas|fardo|fardos)\s+(?:de|do|da)?\s*/g, " ")
+    .replace(/\b(?:tem|tenho|resta|disponivel|disponiveis|guardado|guardados|agora|hoje|por favor)\b$/g, " ")
+    .replace(/\b(?:estoque|item|itens|produto|produtos|consulta|consultar|ver|mostra|mostrar|quanto|quantos|quantas|saldo|qual|quais|me|eu|tenho)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return undefined;
+  if (/^(?:baixo|baixos|zerado|zerados|acabando|minimo|categoria|coisa|algo|guardado|disponivel)$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+function stockCategoryFromQuery(normalized: string) {
+  if (/\b(?:vacina|vacinas|aftosa|brucelose|raiva)\b/.test(normalized)) return "vacina";
+  if (/\b(?:medicamento|medicamentos|remedio|remedios|veterinario|veterinarios|vermifugo|terramicina|antibiotico|antibioticos|carrapaticida)\b/.test(normalized)) return "medicamento";
+  if (/\b(?:racao|racoes|silagem|farelo|milho)\b/.test(normalized)) return "racao";
+  if (/\b(?:insumo|insumos)\b/.test(normalized)) return "insumo";
+  return undefined;
+}
+
+function isStockMutationActionForConsultation(normalized: string) {
+  const restockQuestion = /\b(?:preciso comprar(?: o que)?|comprar o que|o que precisa repor|precisa repor|preciso repor|itens para repor|produtos para repor)\b/.test(normalized);
+  const movementQuestion = /\b(?:movimentacoes?|historico|ultimas?\s+(?:baixas|entradas)|o que entrou|o que saiu|quem deu baixa|baixas de estoque|entradas de estoque)\b/.test(normalized);
+  if (movementQuestion) return false;
+  if (restockQuestion) return false;
+  return /\b(?:comprei|compramos|comprar|compra|chegou|chegaram|chego|xegou|entrou|entrada|recebi|recebemos|usei|tira|tirar|retirei|baixa|baixar|bota|botar|botei|coloca|colocar|coloquei|adiciona|adicionar|adicionei|inclui|incluir|lanca|lancar|cria|criar|cadastra|cadastrar|cadastre|novo|nova|paguei|gastei|saiu|saida|consumi|descartei)\b/.test(normalized);
+}
+
+function extractSpecificStockQueryItem(original: string, normalized: string) {
+  const fromCleanStockQuery = cleanStockQueryItem(original, normalized);
+  const normalizedCleanStockQuery = normalizeRanchoText(fromCleanStockQuery || "");
+  if (fromCleanStockQuery && !/\b(?:quantos?|quantas?)\b/.test(normalizedCleanStockQuery) && !/^(?:estoque|baixo|zerado|itens|produtos)$/.test(normalizedCleanStockQuery)) return fromCleanStockQuery;
+
+  const patterns = [
+    /\bquanto\s+(?:eu\s+)?(?:tenho|tem|resta)\s+(?:de|do|da)\s+(.+?)(?:\s+(?:no|na|em)\s+estoque)?$/,
+    /\bquanto\s+(?:de|do|da)\s+(.+?)\s+(?:tem|tenho|resta)(?:\s+(?:no|na|em)\s+estoque)?$/,
+    /\bquantos?\s+(?:sacos?|kg|quilo|quilos|litros?|caixas?|fardos?|unidades?)\s+(?:de|do|da)\s+(.+?)(?:\s+(?:tem|tenho|resta))?(?:\s+(?:no|na|em)\s+estoque)?$/,
+    /\bquantas?\s+(?:doses?|unidades?|caixas?|litros?)\s+(?:de|do|da)\s+(.+?)(?:\s+(?:tem|tenho|resta))?(?:\s+(?:no|na|em)\s+estoque)?$/,
+    /\btem\s+(.+?)\s+(?:no|na|em)\s+estoque$/,
+    /\bainda\s+tem\s+(.+)$/,
+    /\btem\s+((?:vacina\s+)?(?:aftosa|brucelose|raiva)|vermifugo|remedio|medicamento|terramicina|antibiotico|carrapaticida)(?:\s+.+)?$/,
+    /\bqual\s+saldo\s+(?:de|do|da)\s+(.+)$/,
+    /\bsaldo\s+(?:do\s+estoque\s+)?(?:de|do|da)\s+(.+)$/,
+    /^(.+?)\s+tem\s+quanto$/,
+    /\bquantidade\s+(?:de|do|da)\s+(.+)$/,
+    /\bconsulta\s+(?:estoque\s+(?:de|do|da)\s+)?(.+)$/,
+    /\bver\s+item\s+(.+)$/,
+    /\bme\s+mostra\s+(.+?)\s+(?:no|na|em)\s+estoque$/,
+    /\bestoque\s+(?:de|do|da)\s+(.+)$/,
+    /^(.+?)\s+disponivel(?:\s+(?:no|na|em)\s+estoque)?$/
+  ];
+
+  for (const pattern of patterns) {
+    const item = cleanStockSpecificItemCandidate(normalized.match(pattern)?.[1]);
+    if (item) return item;
+  }
+
+  return undefined;
+}
+
+function extractStockHistoryItem(normalized: string) {
+  const patterns = [
+    /\bhistorico\s+(?:de|do|da)\s+(.+?)(?:\s+hoje|\s+ontem|\s+dia\s+\d|$)/,
+    /\bmovimentacoes?\s+(?:de|do|da)\s+(.+?)(?:\s+hoje|\s+ontem|\s+dia\s+\d|$)/,
+    /\bultimas?\s+(?:baixas|entradas)\s+(?:de|do|da)\s+(.+?)(?:\s+hoje|\s+ontem|\s+dia\s+\d|$)/
+  ];
+  for (const pattern of patterns) {
+    const item = cleanStockSpecificItemCandidate(normalized.match(pattern)?.[1]);
+    if (item) return item;
+  }
+  return undefined;
+}
+
+function detectStockConsultation(original: string, normalized: string): StockConsultationDetection | null {
+  if (isStockMutationActionForConsultation(normalized)) return null;
+  if (/\bleite\b/.test(normalized) && /\b(?:hoje|ontem|semana|mes|tirou|ordenha|ordenhado|ordenhados|produziu|producao|litros?)\b/.test(normalized) && !/\bestoque\b/.test(normalized)) return null;
+  if (/\b(?:vacina|medicamento|remedio)\b/.test(normalized) && Boolean(extractAnimalCode(normalized, "CONSULTA_ANIMAL"))) return null;
+
+  const stockSubject = /\b(?:estoque|racao|racoes|milho|feno|sal|mineral|aftosa|vacina|vacinas|remedio|remedios|medicamento|medicamentos|vermifugo|terramicina|antibiotico|leite|suplemento|insumo|insumos)\b/.test(normalized);
+  const lowQuery = /\b(?:estoque baixo|baixo estoque|abaixo do minimo|itens abaixo|item abaixo|acabando|preciso comprar(?: o que)?|o que precisa repor|precisa repor|itens para repor|estoque minimo|alertas? de estoque|pouco estoque|falta alguma coisa no estoque|produto baixo|produtos baixos)\b/.test(normalized)
+    || (/\b(?:baixo|baixos|minimo|repor|acabando|pouco|alertas?)\b/.test(normalized) && /\b(?:estoque|itens?|produtos?|insumos?)\b/.test(normalized));
+  if (lowQuery) {
+    return { tipo: "CONSULTA_ESTOQUE_GERAL", dados: { consulta: true, consulta_estoque: "baixo" }, confidence: 0.9 };
+  }
+
+  const zeroQuery = /\b(?:itens? zerados?|produtos? zerados?|estoque zerado|sem estoque|sem quantidade|nao tem mais no estoque|o que acabou|quais itens estao zerados|tem algum item zerado)\b/.test(normalized);
+  if (zeroQuery) {
+    return { tipo: "CONSULTA_ESTOQUE_GERAL", dados: { consulta: true, consulta_estoque: "zerado" }, confidence: 0.9 };
+  }
+
+  const historyQuery = /\b(?:movimentacoes?|historico|ultimas?|entradas?|baixas?|quem deu baixa|o que entrou|o que saiu|o que foi usado)\b/.test(normalized)
+    && /\b(?:estoque|racao|sal|mineral|aftosa|vacina|vermifugo|medicamento|remedio|milho|feno)\b/.test(normalized);
+  if (historyQuery) {
+    return {
+      tipo: "CONSULTA_ESTOQUE_GERAL",
+      dados: {
+        consulta: true,
+        consulta_estoque: "historico",
+        item_nome: extractStockHistoryItem(normalized),
+        movimento_tipo: /\b(?:baixa|baixas|saiu|saida|usado|usei|quem deu baixa)\b/.test(normalized) ?"saida" : /\b(?:entrada|entradas|entrou)\b/.test(normalized) ?"entrada" : undefined,
+        data_referencia: extractDateReference(normalized) || (/\bhoje\b/.test(normalized) ?"hoje" : undefined)
+      },
+      confidence: 0.87
+    };
+  }
+
+  const category = stockCategoryFromQuery(normalized);
+  const categoryQuery = Boolean(category) && (
+    /\bquais\s+(?:medicamentos|vacinas|racoes|insumos|produtos veterinarios)\s+(?:eu\s+)?tenho\b/.test(normalized)
+    || /\b(?:listar|lista|mostrar|mostra|ver)\s+(?:medicamentos|vacinas|racoes|insumos|produtos veterinarios)\b/.test(normalized)
+    || /\bestoque\s+(?:de|do|da)\s+(?:medicamentos|vacinas|racoes|insumos|produtos veterinarios)\b/.test(normalized)
+    || /\b(?:produtos|itens)\s+(?:da|de)\s+categoria\s+(?:medicamento|vacina|racao|insumo)\b/.test(normalized)
+  );
+  if (categoryQuery) {
+    return { tipo: "CONSULTA_ESTOQUE_GERAL", dados: { consulta: true, consulta_estoque: "categoria", categoria: category }, confidence: 0.89 };
+  }
+
+  const itemQueryCue = stockSubject && (
+    /\b(?:quanto|quantos|quantas|saldo|quantidade|resta|disponivel|consulta|consultar|ver item|tem quanto|ainda tem)\b/.test(normalized)
+    || /\btem\s+.+\s+(?:no|na|em)\s+estoque\b/.test(normalized)
+    || /^.+\s+tem\s+quanto$/.test(normalized)
+    || /\bestoque\s+(?:de|do|da)\s+.+/.test(normalized)
+  );
+  if (itemQueryCue) {
+    const itemNome = extractSpecificStockQueryItem(original, normalized);
+    if (itemNome) return { tipo: "CONSULTA_ESTOQUE_ITEM", dados: { item_nome: itemNome, consulta: true }, confidence: 0.9 };
+  }
+
+  const listQuery = /\b(?:o que tem no estoque|quais itens tenho no estoque|quais itens eu tenho no estoque|me mostra o estoque|mostrar estoque|mostra estoque|listar estoque|lista o estoque|ver estoque|consultar estoque|como esta o estoque|como ta o estoque|resumo do estoque|itens do estoque|produtos no estoque|quais produtos tenho|quais produtos eu tenho|quais insumos tenho|quais insumos eu tenho|me fala meu estoque|estoque atual|saldo do estoque|o que eu tenho guardado|o que tem disponivel no estoque)\b/.test(normalized)
+    || (/\b(?:estoque|itens|produtos|insumos)\b/.test(normalized) && /\b(?:listar|lista|mostra|mostrar|ver|consultar|consulta|resumo|saldo|atual|quais|o que)\b/.test(normalized));
+  if (listQuery) {
+    return { tipo: "CONSULTA_ESTOQUE_GERAL", dados: { consulta: true, consulta_estoque: "lista" }, confidence: 0.89 };
+  }
+
+  return null;
+}
+
 function cleanLotName(value?: string | null) {
   const cleaned = cleanAnswer(value || "")
     .replace(/[.:,;!?]+$/g, "")
@@ -427,6 +573,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     && /\b(?:registrei|registros|eventos|lancei|lancamentos|lanÃ§amentos|hoje)\b/.test(normalized)
     || /\b(?:eventos|registros|lancamentos)\s+(?:de\s+)?hoje\b/.test(normalized);
   if (isTodayRecordsQuery) return finalize("CONSULTA_REGISTROS_HOJE", { data_referencia: "hoje", consulta: true }, [], 0.9);
+
+  const earlyStockConsultation = detectStockConsultation(original, normalized);
+  if (earlyStockConsultation) {
+    return finalize(earlyStockConsultation.tipo, earlyStockConsultation.dados, [], earlyStockConsultation.confidence);
+  }
 
   const earlyStockActionForQuery = /\b(?:comprei|compramos|comprar|compra|chegou|entrou|usei|tira|tirar|retirei|baixa|baixar|bota|botar|botei|coloca|colocar|coloquei|adiciona|adicionar|adicionei|lanca|lancar|cria|criar|cadastra|cadastrar|cadastre|novo|nova)\b/.test(normalized);
   const earlyGeneralStockQuery = !earlyStockActionForQuery && (

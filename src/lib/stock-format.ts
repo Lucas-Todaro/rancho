@@ -1,9 +1,9 @@
 import { formatNumber } from "@/lib/utils";
 
 const unitLabels: Record<string, { singular: string; plural: string }> = {
-  kg: { singular: "quilo", plural: "quilos" },
-  quilo: { singular: "quilo", plural: "quilos" },
-  quilos: { singular: "quilo", plural: "quilos" },
+  kg: { singular: "kg", plural: "kg" },
+  quilo: { singular: "kg", plural: "kg" },
+  quilos: { singular: "kg", plural: "kg" },
   g: { singular: "grama", plural: "gramas" },
   grama: { singular: "grama", plural: "gramas" },
   gramas: { singular: "grama", plural: "gramas" },

@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-03T19:29:50.560Z
+Gerado em: 2026-06-03T20:00:54.239Z
 
 ## Resumo Geral
 
-- Total geral de testes: 884
-- Aprovados: 884
+- Total geral de testes: 915
+- Aprovados: 915
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -17,7 +17,7 @@ Gerado em: 2026-06-03T19:29:50.560Z
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
 | Producao | 54 | 54 | 0 | 100% |
 | Animais | 30 | 30 | 0 | 100% |
-| Estoque | 156 | 156 | 0 | 100% |
+| Estoque | 184 | 184 | 0 | 100% |
 | Financeiro | 132 | 132 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
 | Ponto | 19 | 19 | 0 | 100% |
@@ -28,10 +28,28 @@ Gerado em: 2026-06-03T19:29:50.560Z
 | Dashboard/relatorios | 8 | 8 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
-| Permissoes | 11 | 11 | 0 | 100% |
-| Multi-fazenda | 9 | 9 | 0 | 100% |
+| Permissoes | 12 | 12 | 0 | 100% |
+| Multi-fazenda | 11 | 11 | 0 | 100% |
 | Sessao/contexto | 29 | 29 | 0 | 100% |
 | Seguranca/mensagens maliciosas | 13 | 13 | 0 | 100% |
+
+## Estoque - Consultas
+
+- Testes adicionados nesta rodada: 31
+- Testes relacionados cobertos: 43
+- Aprovados: 43
+- Falhos: 0
+- Coberturas:
+  - lista geral de itens e quantidades
+  - item especifico por saldo/quantidade/tem quanto
+  - estoque baixo e abaixo do minimo
+  - itens zerados
+  - categoria/tipo: vacinas, medicamentos, racoes e insumos
+  - paginacao por sessao com ver mais e cancelamento
+  - plural de unidades na resposta
+  - erros de digitacao comuns
+  - nao confundir consulta com entrada, baixa ou criacao
+  - permissoes e isolamento por fazenda_id
 
 ## Falhas Criticas
 
@@ -44,6 +62,7 @@ Gerado em: 2026-06-03T19:29:50.560Z
 - relatorio de producao agora entra em consulta de producao, sem pedir confirmacao
 - consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento
 - criacao de lote exige admin e confirmacao antes de salvar
+- consultas de estoque agora listam itens, item especifico, baixo, zerado, categoria e paginacao sem salvar
 
 ## Falhas Restantes
 

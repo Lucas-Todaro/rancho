@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-03T19:29:50.560Z",
+  "generatedAt": "2026-06-03T20:00:54.239Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 884,
-    "passed": 884,
+    "total": 915,
+    "passed": 915,
     "failed": 0,
     "successRate": 100
   },
@@ -57,8 +57,8 @@
     },
     "estoque": {
       "label": "Estoque",
-      "total": 156,
-      "passed": 156,
+      "total": 184,
+      "passed": 184,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []
@@ -145,16 +145,16 @@
     },
     "permissoes": {
       "label": "Permissoes",
-      "total": 11,
-      "passed": 11,
+      "total": 12,
+      "passed": 12,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []
     },
     "multiFazenda": {
       "label": "Multi-fazenda",
-      "total": 9,
-      "passed": 9,
+      "total": 11,
+      "passed": 11,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []
@@ -176,13 +176,32 @@
       "criticalFailures": []
     }
   },
+  "stockConsultationCoverage": {
+    "addedTestsThisRun": 31,
+    "totalRelatedTests": 43,
+    "passed": 43,
+    "failed": 0,
+    "coveredConsultations": [
+      "lista geral de itens e quantidades",
+      "item especifico por saldo/quantidade/tem quanto",
+      "estoque baixo e abaixo do minimo",
+      "itens zerados",
+      "categoria/tipo: vacinas, medicamentos, racoes e insumos",
+      "paginacao por sessao com ver mais e cancelamento",
+      "plural de unidades na resposta",
+      "erros de digitacao comuns",
+      "nao confundir consulta com entrada, baixa ou criacao",
+      "permissoes e isolamento por fazenda_id"
+    ]
+  },
   "criticalFailures": [],
   "criticalFailuresFixedInThisRun": [
     "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
     "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
     "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao",
     "consultas de rebanho e lotes respondem sem confirmacao e sem acao de salvamento",
-    "criacao de lote exige admin e confirmacao antes de salvar"
+    "criacao de lote exige admin e confirmacao antes de salvar",
+    "consultas de estoque agora listam itens, item especifico, baixo, zerado, categoria e paginacao sem salvar"
   ],
   "remainingFailures": [],
   "remainingRisks": [
