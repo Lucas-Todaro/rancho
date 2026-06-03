@@ -5,6 +5,9 @@ const nodeCrypto = require("crypto");
 const ts = require("typescript");
 
 const root = path.resolve(__dirname, "..");
+const BOT_TEST_REPORT_JSON = path.join(root, "bot-test-report.json");
+const BOT_TEST_REPORT_MD = path.join(root, "bot-test-report.md");
+const BOT_TEST_VERBOSE = process.env.BOT_TEST_VERBOSE === "1";
 let activeBotTestSupabase = null;
 
 const originalResolveFilename = Module._resolveFilename;
@@ -1369,6 +1372,133 @@ const botConversationTests = [
   }
 ];
 
+const structuredBotEvaluationCases = [
+  {
+    name: "producao completa pede confirmacao e nao salva antes",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 deu 32 litros"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 32 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "producao completa salva apenas apos sim em dry-run",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 deu 32 litros", "sim"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 32 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.ordenhas],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "producao em etapas acumula contexto sem salvar",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["registrar producao", "B-002", "32"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 32 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cancelamento limpa sessao sem salvar",
+    module: "comandos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["registrar producao", "B-002", "cancelar"],
+    expected: {
+      shouldClearSession: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "correcao antes de salvar troca valor antigo",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi vaca por 5 reais", "nao, foi 5000", "sim"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 5000 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { valor: 5000 },
+      shouldNotSaveValues: { valor: 5 },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "criacao de item de estoque nao vira estoque baixo",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cria um item chamado racao no estoque"],
+    expected: {
+      finalIntent: "CRIAR_ITEM_ESTOQUE",
+      avoidIntents: ["CONSULTA_ESTOQUE", "CONSULTA_ESTOQUE_ITEM", "CONSULTA_ESTOQUE_GERAL"],
+      entities: { item_nome: "racao" },
+      shouldAskFollowUp: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "contexto aguardando valor interpreta numero solto",
+    module: "contexto",
+    phone: BOT_TEST_ADMIN_PHONE,
+    initialSession: () => ({
+      etapa: "aguardando_dado",
+      dados: { pending: parseResolved("vendi leite") }
+    }),
+    messages: ["360"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 360 },
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "contexto aguardando vacina interpreta produto",
+    module: "contexto",
+    phone: BOT_TEST_ADMIN_PHONE,
+    initialSession: () => ({
+      etapa: "aguardando_dado",
+      dados: { pending: parseResolved("apliquei vacina na B-002") }
+    }),
+    messages: ["Aftosa"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "Aftosa" },
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 function assertProcessResult(expected = {}, result) {
   const failures = [];
   const dados = result.dadosExtraidos || {};
@@ -1431,7 +1561,7 @@ function assertProcessResult(expected = {}, result) {
   return failures;
 }
 
-async function runConversationTest(test, index) {
+function createSupabaseForScenario(test = {}) {
   const supabase = new BotTestSupabase();
   if (test.whatsappUsers) {
     supabase.tables[BOT_TEST_TABLES.whatsappUsuarios] = clone(test.whatsappUsers);
@@ -1464,6 +1594,361 @@ async function runConversationTest(test, index) {
       ativo: item.ativo !== false
     })));
   }
+  seedInitialSession(supabase, test);
+  return supabase;
+}
+
+function materializeInitialSession(initialSession) {
+  if (!initialSession) return null;
+  const session = typeof initialSession === "function" ? initialSession() : initialSession;
+  if (!session) return null;
+  if (session.dados?.pending) return session;
+  if (session.pending) {
+    return {
+      etapa: session.etapa || "aguardando_dado",
+      dados: { pending: session.pending }
+    };
+  }
+  return session;
+}
+
+function seedInitialSession(supabase, test = {}) {
+  const session = materializeInitialSession(test.initialSession);
+  if (!session) return;
+  const phone = test.phone || BOT_TEST_ADMIN_PHONE;
+  const whatsappUser = supabase.tables[BOT_TEST_TABLES.whatsappUsuarios].find((row) => row.telefone_e164 === phone) || {};
+  supabase.tables[BOT_TEST_TABLES.whatsappSessoes].push({
+    id: `session-${phone}`,
+    fazenda_id: test.ranch?.id || whatsappUser.fazenda_id || BOT_TEST_FARM_ID,
+    whatsapp_usuario_id: whatsappUser.id || "wa-admin",
+    telefone_e164: phone,
+    fluxo: session.etapa === "livre" ? null : "nlp_local",
+    etapa: session.etapa || "livre",
+    dados: clone(session.dados || {}),
+    status: "ativa",
+    ultimo_interacao_em: new Date().toISOString(),
+    expira_em: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  });
+}
+
+function simulatedSaveActionsForResult(result, phone) {
+  if (!result.eventoConfirmado) return [];
+  const tipo = result.intencaoDetectada;
+  const dados = result.dadosExtraidos || {};
+  const base = {
+    type: "create",
+    dryRun: true,
+    source: "processWhatsappMessage:modoTeste",
+    phone: maskPhone(phone)
+  };
+
+  if (tipo === "PRODUCAO_LEITE") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.ordenhas,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        animal_id: dados.animal_id || null,
+        animal_codigo: dados.animal_codigo,
+        litros: Number(dados.litros),
+        origem: "whatsapp"
+      }
+    }];
+  }
+
+  if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.transacoesFinanceiras,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        tipo: tipo === "DESPESA" ? "saida" : "entrada",
+        valor: Number(dados.valor),
+        descricao: dados.descricao || null,
+        origem: "whatsapp"
+      }
+    }];
+  }
+
+  if (tipo === "VACINA_MEDICAMENTO" || tipo === "PARTO" || tipo === "MORTE") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.eventosAnimal,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        animal_id: dados.animal_id || null,
+        animal_codigo: dados.animal_codigo,
+        produto: dados.produto || null,
+        evento_tipo: dados.evento_tipo || tipo,
+        origem: "whatsapp"
+      }
+    }];
+  }
+
+  if (tipo === "CRIAR_ITEM_ESTOQUE" || tipo === "ESTOQUE_CADASTRO") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.estoqueItens,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        nome: dados.item_nome,
+        quantidade_atual: Number(dados.quantidade || 0),
+        unidade_medida: dados.unidade || "unidade"
+      }
+    }];
+  }
+
+  if (tipo === "ESTOQUE_ENTRADA" || tipo === "ESTOQUE_SAIDA") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.estoqueMovimentacoes,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        item_id: dados.item_id || null,
+        item_nome: dados.item_nome,
+        tipo: tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida",
+        quantidade: Number(dados.quantidade || 0)
+      }
+    }];
+  }
+
+  if (tipo === "PONTO_FUNCIONARIO") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.registrosPonto,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        funcionario_nome: dados.funcionario_nome,
+        tipo: dados.ponto_tipo || "entrada",
+        horario: dados.horario || null
+      }
+    }];
+  }
+
+  if (tipo === "CADASTRO_ANIMAL") {
+    return [{
+      ...base,
+      table: BOT_TEST_TABLES.animais,
+      payload: {
+        fazenda_id: BOT_TEST_FARM_ID,
+        brinco: dados.animal_codigo,
+        nome: dados.nome || null,
+        categoria: dados.categoria || null
+      }
+    }];
+  }
+
+  return [];
+}
+
+function maskPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `***${digits.slice(-4)}` : "";
+}
+
+function hasAskedConfirmation(steps) {
+  return steps.some((step) => (
+    step.result.estadoNovo === "aguardando_confirmacao"
+    || normalize(step.result.respostaTexto).includes("correto")
+    || normalize(step.result.respostaTexto).includes("confirmar")
+  ));
+}
+
+function hasAskedFollowUp(steps) {
+  return steps.some((step) => ["aguardando_dado", "aguardando_confirmacao"].includes(step.result.estadoNovo));
+}
+
+function firstConfirmationIndex(steps) {
+  return steps.findIndex((step) => step.result.eventoConfirmado);
+}
+
+function sameValue(received, expected) {
+  if (typeof expected === "number") return Number(received) === expected;
+  return normalize(received) === normalize(expected);
+}
+
+function actionPayloadHas(actions, field, expected) {
+  return actions.some((action) => sameValue(action.payload?.[field], expected));
+}
+
+function uniqueActionKey(action) {
+  return `${action.type}:${action.table}:${JSON.stringify(action.payload || {})}`;
+}
+
+function detectStuckFlow(steps) {
+  const failures = [];
+  for (let index = 1; index < steps.length; index += 1) {
+    const previous = steps[index - 1].result;
+    const current = steps[index].result;
+    if (
+      previous.estadoNovo === "aguardando_dado"
+      && current.estadoNovo === "aguardando_dado"
+      && normalize((previous.camposFaltantes || []).join("|")) === normalize((current.camposFaltantes || []).join("|"))
+    ) {
+      failures.push(`fluxo possivelmente preso apos mensagem ${index + 1}: ${steps[index].text}`);
+    }
+  }
+  return failures;
+}
+
+function evaluateStructuredCase(test, trace) {
+  const failures = [];
+  const expected = test.expected || {};
+  const finalStep = trace.steps[trace.steps.length - 1];
+  const finalResult = finalStep?.result || {};
+  const finalData = finalResult.dadosExtraidos || {};
+  const simulatedActions = trace.simulatedSaveActions || [];
+  const confirmIndex = firstConfirmationIndex(trace.steps);
+
+  if (expected.finalIntent && finalResult.intencaoDetectada !== expected.finalIntent) {
+    failures.push(`intent final esperado ${expected.finalIntent}, recebido ${finalResult.intencaoDetectada}`);
+  }
+
+  for (const forbiddenIntent of expected.avoidIntents || []) {
+    if (trace.steps.some((step) => step.result.intencaoDetectada === forbiddenIntent)) {
+      failures.push(`intent proibido detectado: ${forbiddenIntent}`);
+    }
+  }
+
+  for (const [field, value] of Object.entries(expected.entities || {})) {
+    const received = finalData[field];
+    if (!sameValue(received, value)) failures.push(`entidade ${field} esperada ${value}, recebida ${received}`);
+  }
+
+  if (expected.shouldAskConfirmation && !hasAskedConfirmation(trace.steps)) {
+    failures.push("esperava pedido de confirmacao");
+  }
+
+  if (expected.shouldAskFollowUp && !hasAskedFollowUp(trace.steps)) {
+    failures.push("esperava pergunta de campo faltante ou confirmacao");
+  }
+
+  if (expected.shouldSaveBeforeConfirmation === false) {
+    const beforeConfirmSteps = confirmIndex >= 0 ? trace.steps.slice(0, confirmIndex) : trace.steps;
+    const wroteBeforeConfirm = beforeConfirmSteps.some((step) => step.businessWritesDelta.length || step.simulatedSaveActions.length);
+    if (wroteBeforeConfirm) failures.push("houve tentativa de salvamento antes da confirmacao");
+  }
+
+  if (expected.savedAfterConfirmation === true && !simulatedActions.length) {
+    failures.push("esperava acao simulada de salvamento apos confirmacao positiva");
+  }
+
+  if (expected.savedAfterConfirmation === false && simulatedActions.length) {
+    failures.push(`nao esperava salvamento simulado, recebeu ${simulatedActions.length}`);
+  }
+
+  if (typeof expected.simulatedSaveCount === "number" && simulatedActions.length !== expected.simulatedSaveCount) {
+    failures.push(`acoes simuladas esperadas ${expected.simulatedSaveCount}, recebidas ${simulatedActions.length}`);
+  }
+
+  for (const table of expected.savedTables || []) {
+    if (!simulatedActions.some((action) => action.table === table)) failures.push(`tabela simulada esperada ${table} nao capturada`);
+  }
+
+  if (expected.shouldNotDuplicate) {
+    const keys = simulatedActions.map(uniqueActionKey);
+    if (new Set(keys).size !== keys.length) failures.push("salvamento simulado duplicado detectado");
+  }
+
+  for (const [field, value] of Object.entries(expected.shouldSaveValues || {})) {
+    if (!actionPayloadHas(simulatedActions, field, value)) failures.push(`acao simulada deveria salvar ${field}=${value}`);
+  }
+
+  for (const [field, value] of Object.entries(expected.shouldNotSaveValues || {})) {
+    if (actionPayloadHas(simulatedActions, field, value)) failures.push(`acao simulada nao deveria salvar ${field}=${value}`);
+  }
+
+  if (expected.shouldClearSession && finalResult.estadoNovo !== "livre") {
+    failures.push(`sessao deveria ficar livre, recebeu ${finalResult.estadoNovo}`);
+  }
+
+  if (expected.ranchId) {
+    const wrongRanch = simulatedActions.find((action) => action.payload?.fazenda_id && action.payload.fazenda_id !== expected.ranchId);
+    if (wrongRanch) failures.push(`acao com fazenda_id incorreto: ${wrongRanch.payload.fazenda_id}`);
+  }
+
+  if (expected.shouldNotWriteBusiness !== false && trace.businessWrites.length) {
+    failures.push(`dry-run gerou escrita de negocio: ${trace.businessWrites.map((write) => `${write.tableName}:${write.action}`).join(", ")}`);
+  }
+
+  if (expected.detectStuck !== false) failures.push(...detectStuckFlow(trace.steps));
+
+  return failures;
+}
+
+async function runStructuredEvaluationCase(test, index) {
+  const supabase = createSupabaseForScenario(test);
+  activeBotTestSupabase = supabase;
+  const steps = [];
+  const failures = [];
+
+  try {
+    for (let messageIndex = 0; messageIndex < test.messages.length; messageIndex += 1) {
+      const message = test.messages[messageIndex];
+      const text = typeof message === "string" ? message : message.text;
+      const beforeBusinessWrites = supabase.businessWrites().length;
+      const result = await processWhatsappMessage({
+        telefone: test.phone || BOT_TEST_ADMIN_PHONE,
+        mensagem: text,
+        provider: "simulador",
+        modoTeste: true,
+        salvarReal: false,
+        messageSid: `bot-eval-${index + 1}-${messageIndex + 1}`
+      });
+      const businessWritesDelta = supabase.businessWrites().slice(beforeBusinessWrites);
+      const simulatedSaveActions = simulatedSaveActionsForResult(result, test.phone || BOT_TEST_ADMIN_PHONE);
+      steps.push({ text, result, businessWritesDelta, simulatedSaveActions });
+
+      if (BOT_TEST_VERBOSE) {
+        console.log("[BOT EVAL STEP]", JSON.stringify({
+          test: test.name,
+          message: text,
+          intent: result.intencaoDetectada,
+          estado: result.estadoNovo,
+          missing: result.camposFaltantes,
+          simulatedSaveActions
+        }));
+      }
+    }
+
+    const trace = {
+      steps,
+      businessWrites: supabase.businessWrites(),
+      simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions)
+    };
+    failures.push(...evaluateStructuredCase(test, trace));
+
+    return {
+      index,
+      kind: "framework",
+      module: test.module || "geral",
+      test,
+      steps,
+      businessWrites: trace.businessWrites,
+      simulatedSaveActions: trace.simulatedSaveActions,
+      ok: failures.length === 0,
+      failures
+    };
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+    return {
+      index,
+      kind: "framework",
+      module: test.module || "geral",
+      test,
+      steps,
+      businessWrites: supabase.businessWrites(),
+      simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions),
+      ok: false,
+      failures
+    };
+  } finally {
+    activeBotTestSupabase = null;
+  }
+}
+
+async function runConversationTest(test, index) {
+  const supabase = createSupabaseForScenario(test);
   activeBotTestSupabase = supabase;
   const steps = [];
   const failures = [];
@@ -1544,27 +2029,197 @@ const animalResults = animalStatusTests.map((test, index) => {
   };
 });
 
+function resultModule(result) {
+  if (result.module) return result.module;
+  if (result.test?.module) return result.test.module;
+  if (result.steps) return "conversas";
+  if (result.test?.animal) return "status-animal";
+  return "parser";
+}
+
+function resultName(result) {
+  return result.test?.name || result.test?.phrase || `teste ${result.index}`;
+}
+
+function failureSummaryByModule(failed) {
+  return failed.reduce((summary, result) => {
+    const moduleName = resultModule(result);
+    summary[moduleName] = (summary[moduleName] || 0) + 1;
+    return summary;
+  }, {});
+}
+
+function compactStepForReport(step, index) {
+  return {
+    index: index + 1,
+    mensagem: step.text,
+    resposta: step.result.respostaTexto,
+    intent: step.result.intencaoDetectada,
+    estadoAnterior: step.result.estadoAnterior,
+    estadoNovo: step.result.estadoNovo,
+    camposFaltantes: step.result.camposFaltantes,
+    dados: step.result.dadosExtraidos,
+    confirmado: step.result.eventoConfirmado,
+    erro: step.result.erro,
+    acoesSimuladas: step.simulatedSaveActions || [],
+    escritasNegocio: step.businessWritesDelta || []
+  };
+}
+
+function compactResultForReport(result) {
+  const base = {
+    index: result.index,
+    name: resultName(result),
+    module: resultModule(result),
+    kind: result.kind || (result.steps ? "conversation" : "parser"),
+    ok: result.ok,
+    failures: result.failures || []
+  };
+
+  if (result.steps) {
+    return {
+      ...base,
+      expected: result.test?.expected || result.test?.messages?.map((step) => step.expected),
+      steps: result.steps.map(compactStepForReport),
+      simulatedSaveActions: result.simulatedSaveActions || [],
+      businessWrites: result.businessWrites || []
+    };
+  }
+
+  return {
+    ...base,
+    phrase: result.test?.phrase || null,
+    expected: result.test?.expected || null,
+    received: result.parsed ? {
+      tipo: result.parsed.tipo,
+      dados: result.parsed.dados,
+      perguntas_faltantes: result.parsed.perguntas_faltantes,
+      resumo: result.parsed.resumo,
+      response: result.response
+    } : { response: result.response || null }
+  };
+}
+
+function writeBotTestReports(summary) {
+  const report = {
+    generatedAt: new Date().toISOString(),
+    command: "npm run test:bot",
+    safety: {
+      modoTeste: true,
+      salvarReal: false,
+      whatsappReal: false,
+      supabase: "mock-local-em-memoria",
+      productionWrites: false
+    },
+    summary: {
+      total: summary.results.length,
+      passed: summary.passed,
+      failed: summary.failed.length,
+      successRate: summary.successRate,
+      parserAndStatus: summary.parserAndStatus,
+      conversations: summary.conversations,
+      frameworkCases: summary.frameworkCases,
+      failuresByModule: failureSummaryByModule(summary.failed)
+    },
+    failed: summary.failed.map(compactResultForReport),
+    frameworkCases: summary.evaluationResults.map(compactResultForReport)
+  };
+
+  fs.writeFileSync(BOT_TEST_REPORT_JSON, JSON.stringify(report, null, 2), "utf8");
+
+  const failureLines = summary.failed.length
+    ? summary.failed.map((result) => (
+      `- [${resultModule(result)}] ${resultName(result)}: ${(result.failures || []).join("; ")}`
+    )).join("\n")
+    : "- Nenhuma falha.";
+  const moduleLines = Object.entries(failureSummaryByModule(summary.failed))
+    .map(([moduleName, count]) => `- ${moduleName}: ${count}`)
+    .join("\n") || "- Nenhuma falha por modulo.";
+  const md = [
+    "# Bot Test Report",
+    "",
+    `Gerado em: ${report.generatedAt}`,
+    "",
+    "## Resumo",
+    "",
+    `- Total: ${report.summary.total}`,
+    `- Aprovados: ${report.summary.passed}`,
+    `- Falhos: ${report.summary.failed}`,
+    `- Taxa de sucesso: ${report.summary.successRate}%`,
+    `- Parser/status: ${report.summary.parserAndStatus}`,
+    `- Conversas reais simuladas: ${report.summary.conversations}`,
+    `- Casos estruturados de framework: ${report.summary.frameworkCases}`,
+    "",
+    "## Seguranca",
+    "",
+    "- WhatsApp real: nao envia mensagens.",
+    "- Supabase: mock local em memoria.",
+    "- modoTeste=true e salvarReal=false.",
+    "- Escritas de negocio reais: bloqueadas pelo dry-run.",
+    "",
+    "## Falhas Por Modulo",
+    "",
+    moduleLines,
+    "",
+    "## Falhas",
+    "",
+    failureLines,
+    "",
+    "## Casos Estruturados",
+    "",
+    ...summary.evaluationResults.map((result) => (
+      `- [${result.ok ? "ok" : "falha"}] ${result.module}: ${resultName(result)}`
+    )),
+    ""
+  ].join("\n");
+  fs.writeFileSync(BOT_TEST_REPORT_MD, md, "utf8");
+}
+
 async function main() {
   const conversationResults = [];
   for (let index = 0; index < botConversationTests.length; index += 1) {
     conversationResults.push(await runConversationTest(botConversationTests[index], parserResults.length + animalResults.length + index + 1));
   }
 
-  const results = [...parserResults, ...animalResults, ...conversationResults];
+  const evaluationResults = [];
+  const evaluationBaseIndex = parserResults.length + animalResults.length + conversationResults.length;
+  for (let index = 0; index < structuredBotEvaluationCases.length; index += 1) {
+    evaluationResults.push(await runStructuredEvaluationCase(structuredBotEvaluationCases[index], evaluationBaseIndex + index + 1));
+  }
+
+  const results = [...parserResults, ...animalResults, ...conversationResults, ...evaluationResults];
 
 const failed = results.filter((result) => !result.ok);
 const passed = results.length - failed.length;
+const successRate = results.length ? Number(((passed / results.length) * 100).toFixed(2)) : 0;
+const failuresByModule = failureSummaryByModule(failed);
+
+writeBotTestReports({
+  results,
+  failed,
+  passed,
+  successRate,
+  parserAndStatus: parserResults.length + animalResults.length,
+  conversations: conversationResults.length,
+  frameworkCases: evaluationResults.length,
+  evaluationResults
+});
 
 console.log("Bot test offline Rancho");
 console.log(`Usuarios mockados: ${mockUsers.length}`);
 console.log(`Parser/status: ${parserResults.length + animalResults.length}`);
 console.log(`Conversas reais simuladas: ${conversationResults.length}`);
+console.log(`Casos estruturados de framework: ${evaluationResults.length}`);
 console.log("Motor real: processWhatsappMessage em modoTeste=true, salvarReal=false");
 console.log("WhatsApp real: nao envia mensagens");
 console.log("Persistencia: Supabase mockado local; dry-run bloqueia escritas de negocio");
 console.log(`Total: ${results.length}`);
 console.log(`Aprovados: ${passed}`);
 console.log(`Falhos: ${failed.length}`);
+console.log(`Taxa de sucesso: ${successRate}%`);
+console.log(`Falhas por modulo: ${Object.keys(failuresByModule).length ? JSON.stringify(failuresByModule) : "nenhuma"}`);
+console.log(`Relatorio JSON: ${BOT_TEST_REPORT_JSON}`);
+console.log(`Relatorio Markdown: ${BOT_TEST_REPORT_MD}`);
 
 for (const result of failed) {
   console.log("\n--- Falha", result.index, "---");

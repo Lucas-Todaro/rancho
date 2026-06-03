@@ -9,3 +9,5 @@ out
 coverage
 *.tsbuildinfo
 .next-layout.js
+bot-test-report.json
+bot-test-report.md

@@ -98,7 +98,11 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
 
   if (animalCode && (!dados.animal_codigo || expectedField === "animal_codigo")) dados.animal_codigo = animalCode;
   if (liters && current.tipo === "PRODUCAO_LEITE" && (!dados.litros || expectedField === "litros")) dados.litros = liters;
-  if (value && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo) && (!dados.valor || expectedField === "valor")) dados.valor = value;
+  const isFinancialValueCorrection = value !== undefined
+    && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo)
+    && !expectedField
+    && /^(?:foi|era|valor|r\$|\d)/.test(normalized);
+  if (value !== undefined && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo) && (!hasValue(dados.valor) || expectedField === "valor" || isFinancialValueCorrection)) dados.valor = value;
   if (quantity !== undefined && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo) && (!hasValue(dados.quantidade) || expectedField === "quantidade")) dados.quantidade = quantity;
   if (itemName && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo) && (!dados.item_nome || expectedField === "item_nome")) dados.item_nome = itemName;
   if (employeeName && current.tipo === "PONTO_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeName;
