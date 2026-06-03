@@ -93,6 +93,7 @@ const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confi
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao e isso", "refazer", "refaz", "incorreto", "negativo", "na verdade", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
+const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "mostrar de novo", "resumo", "resumir"]);
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
   "CONSULTA_PRODUCAO_HOJE",
@@ -300,6 +301,10 @@ function isCancelCommand(command: string) {
 
 function isMenuCommand(command: string) {
   return MENU_WORDS.has(command);
+}
+
+function isRepeatCommand(command: string) {
+  return REPEAT_WORDS.has(command) || /^(?:repete|repetir|repita|mostra(?:r)? de novo|resumo|resumir)\b/.test(command);
 }
 
 function milkStockStatusText(parsed: ParsedRanchoMessage) {
@@ -2022,6 +2027,15 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (isCancelCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
+    } else if (isRepeatCommand(command)) {
+      parsed = pendingFromSession(previousSession);
+      if (previousSession.etapa === "aguardando_confirmacao" && parsed) {
+        await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
+        response = confirmationText(parsed);
+      } else {
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        response = "Não há operação pendente para repetir. Envie um novo registro.";
+      }
     } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isConfirmCommand(command)) {
       parsed = pendingFromSession(previousSession);
       eventConfirmed = true;

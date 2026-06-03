@@ -127,7 +127,9 @@ const BOT_TEST_BUSINESS_TABLES = new Set([
 ]);
 
 const BOT_TEST_FARM_ID = "mock-fazenda-1";
+const BOT_TEST_FARM_ID_B = "mock-fazenda-2";
 const BOT_TEST_ADMIN_PHONE = "5583999999999";
+const BOT_TEST_ADMIN_PHONE_B = "5583777777777";
 const BOT_TEST_WORKER_PHONE = "5583888888888";
 
 function clone(value) {
@@ -605,6 +607,7 @@ function missingContains(parsed, field) {
     unidade: /unidade/.test(text),
     produto: /medicamento|vacina|manejo|produto/.test(text),
     valor: /valor|custou/.test(text),
+    descricao: /descri|descricao|registro/.test(text),
     telefone: /whatsapp|ddd/.test(text),
     item_nome: /item|estoque/.test(text),
     sexo: /sexo|femea|macho/.test(text),
@@ -930,6 +933,113 @@ const decimalRegressionTests = [
   { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
   { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
+];
+
+function financeParser(phrase, expected) {
+  return { module: "financeiro", phrase, expected };
+}
+
+const financeHumanParserTests = [
+  financeParser("vendi leite por 900 reais", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite", data_referencia: "hoje" }),
+  financeParser("venda de leite 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
+  financeParser("recebi 800 da venda de leite", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 800, descricao: "leite" }),
+  financeParser("entrada 500 venda de queijo", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 500, descricao: "queijo" }),
+  financeParser("vendi uma vaca por 5000", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 5000, descricao: "vaca" }),
+  financeParser("recebemos 1200", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200 }),
+  financeParser("entrou 300 no caixa", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300 }),
+  financeParser("ganhei 750 com leite", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 750, descricao: "leite" }),
+  financeParser("venda animal B-002 por 4500", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 4500, descricao: "animal" }),
+  financeParser("cliente pagou 650", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 650 }),
+  financeParser("recebi 1.200 reais", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200 }),
+  financeParser("recebi R$ 1.200,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200.5 }),
+  financeParser("vendi leite 1200,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200.5, descricao: "leite" }),
+  financeParser("venda de bezerro 800", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 800, descricao: "bezerro" }),
+  financeParser("vendi bezerro por 800", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 800, descricao: "bezerro" }),
+  financeParser("vendi vaca por cinco mil", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 5000, descricao: "vaca" }),
+  financeParser("entrou dinheiro da venda de leite 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
+  financeParser("pagamento recebido 450", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 450 }),
+  financeParser("recebemos do comprador 3000", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 3000 }),
+  financeParser("venda de gado 7000", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 7000, descricao: "gado" }),
+  financeParser("vendi esterco por 150", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 150, descricao: "esterco" }),
+  financeParser("receita de leite 2500", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 2500, descricao: "leite" }),
+  financeParser("receita 1200 leite", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200, descricao: "leite" }),
+  financeParser("entrada leite 1300", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1300, descricao: "leite" }),
+  financeParser("paguei salario do Joao 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "salario" }),
+  financeParser("gastei 360 com vacina", { tipo: "DESPESA", exactTipo: true, valor: 360, descricao: "vacina" }),
+  financeParser("saida 250 veterinario", { tipo: "DESPESA", exactTipo: true, valor: 250, descricao: "veterinario" }),
+  financeParser("paguei energia 400", { tipo: "DESPESA", exactTipo: true, valor: 400, descricao: "energia" }),
+  financeParser("despesa veterinario 600", { tipo: "DESPESA", exactTipo: true, valor: 600, descricao: "veterinario" }),
+  financeParser("paguei 80 de combustivel", { tipo: "DESPESA", exactTipo: true, valor: 80, descricao: "combustivel" }),
+  financeParser("gasto com manutencao 900", { tipo: "DESPESA", exactTipo: true, valor: 900, descricao: "manutencao" }),
+  financeParser("paguei conta de luz 500", { tipo: "DESPESA", exactTipo: true, valor: 500, descricao: "luz" }),
+  financeParser("paguei agua 120", { tipo: "DESPESA", exactTipo: true, valor: 120, descricao: "agua" }),
+  financeParser("paguei vacina aftosa por 450", { tipo: "DESPESA", exactTipo: true, valor: 450, descricao: "aftosa" }),
+  financeParser("paguei o veterinario 700", { tipo: "DESPESA", exactTipo: true, valor: 700, descricao: "veterinario" }),
+  financeParser("gastei 1000 em manutencao", { tipo: "DESPESA", exactTipo: true, valor: 1000, descricao: "manutencao" }),
+  financeParser("despesa com funcionario 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "funcionario" }),
+  financeParser("paguei frete 350", { tipo: "DESPESA", exactTipo: true, valor: 350, descricao: "frete" }),
+  financeParser("paguei diesel 600", { tipo: "DESPESA", exactTipo: true, valor: 600, descricao: "diesel" }),
+  financeParser("paguei aluguel 2000", { tipo: "DESPESA", exactTipo: true, valor: 2000, descricao: "aluguel" }),
+  financeParser("gasto racao 300", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
+  financeParser("despesa racao 300", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
+  financeParser("paguei 300 na racao", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
+  financeParser("pagamento funcionario Joao 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "funcionario" }),
+  financeParser("diaria do vaqueiro 120", { tipo: "DESPESA", exactTipo: true, valor: 120, descricao: "vaqueiro" }),
+  financeParser("folha de pagamento 3200", { tipo: "DESPESA", exactTipo: true, valor: 3200, descricao: "folha" }),
+  financeParser("recebi 300", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300 }),
+  financeParser("recebi 300,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300.5 }),
+  financeParser("recebi 300.50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300.5 }),
+  financeParser("recebi R$ 300,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300.5 }),
+  financeParser("recebi 1.300,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1300.5 }),
+  financeParser("recebi 1300,50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1300.5 }),
+  financeParser("recebi 1,300.50", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1300.5 }),
+  financeParser("paguei 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500 }),
+  financeParser("paguei 1.500", { tipo: "DESPESA", exactTipo: true, valor: 1500 }),
+  financeParser("paguei 1.500,00", { tipo: "DESPESA", exactTipo: true, valor: 1500 }),
+  financeParser("paguei R$1500", { tipo: "DESPESA", exactTipo: true, valor: 1500 }),
+  financeParser("paguei R$ 1.500,00", { tipo: "DESPESA", exactTipo: true, valor: 1500 }),
+  financeParser("comprei por abc", { tipo: "DESPESA", exactTipo: true, missing: ["valor"] }),
+  financeParser("registrar entrada", { tipo: "RECEITA_VENDA", exactTipo: true, missing: ["valor"] }),
+  financeParser("registrar saida", { tipo: "DESPESA", exactTipo: true, missing: ["valor", "descricao"] }),
+  financeParser("recebi dinheiro", { tipo: "RECEITA_VENDA", exactTipo: true, missing: ["valor"] }),
+  financeParser("paguei uma conta", { tipo: "DESPESA", exactTipo: true, missing: ["valor"] }),
+  financeParser("saida 300", { tipo: "DESPESA", exactTipo: true, valor: 300, missing: ["descricao"] }),
+  financeParser("vendi leite", { tipo: "RECEITA_VENDA", exactTipo: true, descricao: "leite", missing: ["valor"] }),
+  financeParser("paguei salario", { tipo: "DESPESA", exactTipo: true, descricao: "salario", missing: ["valor"] }),
+  { module: "financeiro", phrase: "900", pending: () => pendingFrom("vendi leite"), expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite", noMissing: true } },
+  { module: "financeiro", phrase: "300", pending: () => pendingFrom("paguei energia"), expected: { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "energia", noMissing: true } },
+  { module: "financeiro", phrase: "1.500,50", pending: () => pendingFrom("paguei salario do Joao"), expected: { tipo: "DESPESA", exactTipo: true, valor: 1500.5, descricao: "salario", noMissing: true } },
+  { module: "financeiro", phrase: "racao", pending: () => pendingFrom("saida 300"), expected: { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao", noMissing: true } },
+  financeParser("vendii leite por 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
+  financeParser("vendi leiti por 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
+  financeParser("recebi dinhero 800", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 800 }),
+  financeParser("despeza veterinario 600", { tipo: "DESPESA", exactTipo: true, valor: 600, descricao: "veterinario" }),
+  financeParser("gastei con racao 400", { tipo: "DESPESA", exactTipo: true, valor: 400, descricao: "racao" }),
+  financeParser("finaceiro do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto entro esse mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto saiu ese mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("resutado do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("como ta o financeiro do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("financeiro do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("resultado do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto entrou esse mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto saiu esse mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("saldo financeiro", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("mostrar transacoes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("entradas de hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("saidas de hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("financeiro de ontem", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("relatorio financeiro", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("me mostra o caixa", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto vendemos esse mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("quanto gastamos esse mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("lucro do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("resultado de hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("transacoes da semana", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("despesas do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("receitas do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true }),
+  financeParser("Joao entrou as 7:30", { tipo: "PONTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "joao", ponto_tipo: "entrada", horario: "07:30" }),
+  financeParser("comprei 10 sacos de racao por 300 reais", { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Racao", quantidade: 10, unidade: "saco", valor: 300 })
 ];
 
 const inventoryHumanParserTests = [
@@ -1887,11 +1997,323 @@ const inventoryFrameworkCases = [
   }
 ];
 
+const financeFrameworkCases = [
+  {
+    name: "entrada financeira completa pede confirmacao e nao salva antes",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 900, descricao: "venda de leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "entrada financeira salva uma vez apos confirmacao em dry-run",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "sim"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 900, descricao: "venda de leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { tipo: "entrada", valor: 900 },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "saida financeira salva uma vez apos confirmacao em dry-run",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei energia 400", "ok"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 400, descricao: "energia" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { tipo: "saida", valor: 400 },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "saida incompleta coleta valor antes de confirmar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei energia", "400"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 400, descricao: "energia" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "saida incompleta coleta descricao antes de confirmar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["saida 300", "racao"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 300, descricao: "racao" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "correcao de valor financeiro antes de salvar usa valor corrigido",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei energia 40", "na verdade foi 400", "sim"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 400, descricao: "energia" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { valor: 400 },
+      shouldNotSaveValues: { valor: 40 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "correcao de descricao financeira antes de salvar usa descricao corrigida",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei energia 400", "era racao", "sim"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 400, descricao: "racao" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { descricao: "racao" },
+      shouldNotSaveValues: { descricao: "energia" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "troca operacao financeira pendente e salva somente a nova",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "paguei energia 400", "sim"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { valor: 400, descricao: "energia" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { tipo: "saida", valor: 400 },
+      shouldNotSaveValues: { valor: 900 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "cancelamento financeiro limpa sessao e confirmacao antiga nao salva",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "cancelar", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "rejeicao financeira limpa sessao sem salvar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "nao"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 900, descricao: "venda de leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "repetir resumo financeiro mantem pendencia e salva uma vez",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "repete", "sim"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 900, descricao: "venda de leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "repetir sem pendencia nao salva",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["repete"],
+    expected: {
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "confirmacao duplicada financeira nao duplica salvamento",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi leite por 900", "sim", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "consulta financeira nao pede confirmacao nem salva",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 1200, descricao: "leite" },
+      { tipo: "saida", valor: 300, descricao: "racao" }
+    ],
+    messages: ["financeiro do mes"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "valor zero em financeiro fica aguardando dado e nao salva",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei 0 na racao"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { descricao: "racao" },
+      shouldAskFollowUp: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "valor negativo em financeiro fica aguardando dado e nao salva",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["paguei -300 na racao"],
+    expected: {
+      finalIntent: "DESPESA",
+      entities: { descricao: "racao" },
+      shouldAskFollowUp: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "telefone nao autorizado nao executa financeiro sensivel",
+    module: "financeiro",
+    phone: "5583000000000",
+    messages: ["vendi leite por 900"],
+    expected: {
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario nao consulta financeiro",
+    module: "financeiro",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["financeiro do mes"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "financeiro respeita fazenda do usuario whatsapp",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    ranches: [{ id: BOT_TEST_FARM_ID_B, nome: "Fazenda B" }],
+    whatsappUsers: [
+      {
+        id: "wa-admin-b",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        usuario_id: "user-admin-b",
+        funcionario_id: null,
+        telefone_e164: BOT_TEST_ADMIN_PHONE_B,
+        nome_exibicao: "Dono B",
+        papel_bot: "admin",
+        ativo: true
+      }
+    ],
+    messages: ["vendi leite por 900", "sim"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { valor: 900, descricao: "venda de leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { tipo: "entrada", valor: 900 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID_B
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
   ...animalFrameworkCases,
   ...inventoryFrameworkCases,
+  ...financeFrameworkCases,
   {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
@@ -2082,8 +2504,25 @@ function assertProcessResult(expected = {}, result) {
 
 function createSupabaseForScenario(test = {}) {
   const supabase = new BotTestSupabase();
+  if (test.ranches) {
+    supabase.tables[BOT_TEST_TABLES.fazendas].push(...test.ranches.map((ranch) => ({
+      id: ranch.id,
+      ativa: ranch.ativa !== false,
+      nome: ranch.nome || ranch.id
+    })));
+  }
   if (test.whatsappUsers) {
     supabase.tables[BOT_TEST_TABLES.whatsappUsuarios] = clone(test.whatsappUsers);
+  }
+  if (test.financeTransactions) {
+    supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(...test.financeTransactions.map((row, index) => ({
+      id: row.id || `financeiro-extra-${index + 1}`,
+      fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+      tipo: row.tipo || "entrada",
+      valor: row.valor,
+      descricao: row.descricao || "transacao teste",
+      data_transacao: row.data_transacao || new Date().toISOString().slice(0, 10)
+    })));
   }
   if (test.stockItems) {
     supabase.tables[BOT_TEST_TABLES.estoqueItens] = test.stockItems.map((item, itemIndex) => ({
@@ -2160,13 +2599,14 @@ function simulatedSaveActionsForResult(result, phone) {
     source: "processWhatsappMessage:modoTeste",
     phone: maskPhone(phone)
   };
+  const fazendaId = farmIdForPhone(phone);
 
   if (tipo === "PRODUCAO_LEITE") {
     return [{
       ...base,
       table: BOT_TEST_TABLES.ordenhas,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         animal_id: dados.animal_id || null,
         animal_codigo: dados.animal_codigo,
         litros: Number(dados.litros),
@@ -2180,7 +2620,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.transacoesFinanceiras,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         tipo: tipo === "DESPESA" ? "saida" : "entrada",
         valor: Number(dados.valor),
         descricao: dados.descricao || null,
@@ -2194,7 +2634,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.eventosAnimal,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         animal_id: dados.animal_id || null,
         animal_codigo: dados.animal_codigo,
         produto: dados.produto || null,
@@ -2209,7 +2649,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.estoqueItens,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         nome: dados.item_nome,
         quantidade_atual: Number(dados.quantidade || 0),
         unidade_medida: dados.unidade || "unidade"
@@ -2222,7 +2662,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.estoqueMovimentacoes,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         item_id: dados.item_id || null,
         item_nome: dados.item_nome,
         tipo: tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida",
@@ -2236,7 +2676,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.registrosPonto,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         funcionario_nome: dados.funcionario_nome,
         tipo: dados.ponto_tipo || "entrada",
         horario: dados.horario || null
@@ -2249,7 +2689,7 @@ function simulatedSaveActionsForResult(result, phone) {
       ...base,
       table: BOT_TEST_TABLES.animais,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         brinco: dados.animal_codigo,
         nome: dados.nome || null,
         categoria: dados.categoria || null
@@ -2263,7 +2703,7 @@ function simulatedSaveActionsForResult(result, phone) {
       type: "update",
       table: BOT_TEST_TABLES.animais,
       payload: {
-        fazenda_id: BOT_TEST_FARM_ID,
+        fazenda_id: fazendaId,
         animal_codigo: dados.animal_codigo,
         campo_alterado: dados.campo_alterado,
         novo_valor: dados.novo_valor
@@ -2277,6 +2717,12 @@ function simulatedSaveActionsForResult(result, phone) {
 function maskPhone(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   return digits ? `***${digits.slice(-4)}` : "";
+}
+
+function farmIdForPhone(phone) {
+  const normalized = normalizeWhatsappNumber(phone) || String(phone || "");
+  const whatsappUser = activeBotTestSupabase?.tables?.[BOT_TEST_TABLES.whatsappUsuarios]?.find((row) => row.telefone_e164 === normalized);
+  return whatsappUser?.fazenda_id || BOT_TEST_FARM_ID;
 }
 
 function hasAskedConfirmation(steps) {
@@ -2525,6 +2971,7 @@ const allTests = [
   ...regressionTests,
   ...consultationParserTests,
   ...decimalRegressionTests,
+  ...financeHumanParserTests,
   ...inventoryHumanParserTests,
   ...productionRobustnessTests,
   ...animalConsultationAndUpdateTests
@@ -2643,6 +3090,10 @@ function compactResultForReport(result) {
 }
 
 function writeBotTestReports(summary) {
+  const financialResults = summary.results.filter((result) => resultModule(result) === "financeiro");
+  const financialFailed = financialResults.filter((result) => !result.ok);
+  const financialPassed = financialResults.length - financialFailed.length;
+  const financialSuccessRate = financialResults.length ? Number(((financialPassed / financialResults.length) * 100).toFixed(2)) : 0;
   const report = {
     generatedAt: new Date().toISOString(),
     command: "npm run test:bot",
@@ -2661,7 +3112,14 @@ function writeBotTestReports(summary) {
       parserAndStatus: summary.parserAndStatus,
       conversations: summary.conversations,
       frameworkCases: summary.frameworkCases,
-      failuresByModule: failureSummaryByModule(summary.failed)
+      failuresByModule: failureSummaryByModule(summary.failed),
+      financeiro: {
+        total: financialResults.length,
+        passed: financialPassed,
+        failed: financialFailed.length,
+        successRate: financialSuccessRate,
+        failures: financialFailed.map((result) => resultName(result))
+      }
     },
     failed: summary.failed.map(compactResultForReport),
     frameworkCases: summary.evaluationResults.map(compactResultForReport)
@@ -2691,6 +3149,16 @@ function writeBotTestReports(summary) {
     `- Parser/status: ${report.summary.parserAndStatus}`,
     `- Conversas reais simuladas: ${report.summary.conversations}`,
     `- Casos estruturados de framework: ${report.summary.frameworkCases}`,
+    "",
+    "## Financeiro",
+    "",
+    `- Total financeiro: ${report.summary.financeiro.total}`,
+    `- Aprovados financeiro: ${report.summary.financeiro.passed}`,
+    `- Falhos financeiro: ${report.summary.financeiro.failed}`,
+    `- Taxa financeiro: ${report.summary.financeiro.successRate}%`,
+    "- Cobertura: entradas, saidas, vendas, compras/despesas, salarios, valores em reais, contexto, confirmacao, correcao, cancelamento, repeticao, consultas, permissoes e rancho_id.",
+    "- Observacao: testes usam modoTeste=true, salvarReal=false, Supabase mockado e nao enviam WhatsApp real.",
+    "- Recomendacao: manter os casos financeiros criticos na bateria completa sempre que o NLP do bot mudar.",
     "",
     "## Seguranca",
     "",

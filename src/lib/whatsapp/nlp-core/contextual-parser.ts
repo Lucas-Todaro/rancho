@@ -14,6 +14,7 @@ import {
   extractDateReference,
   extractEmployeeCreationName,
   extractEmployeeName,
+  extractFinanceDescription,
   extractLiters,
   extractMoneyValue,
   extractPointTime,
@@ -55,13 +56,14 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
 
   if (expectedField) {
     const contextualNumber = firstNumber(normalized);
+    const contextualValue = extractMoneyValue(normalized);
     const contextualQuantity = extractStockQuantity(original);
     const contextualPhone = extractWhatsappPhone(original);
     const contextualAnimal = expectedField === "animal_codigo" ?normalizeAnimalCandidate(original) || extractAnimalCode(normalized, current.tipo) : undefined;
 
     if (expectedField === "animal_codigo" && contextualAnimal) dados.animal_codigo = contextualAnimal;
     if (expectedField === "litros" && contextualNumber) dados.litros = contextualNumber;
-    if (expectedField === "valor" && contextualNumber) dados.valor = contextualNumber;
+    if (expectedField === "valor" && contextualValue !== undefined) dados.valor = contextualValue;
     if (expectedField === "quantidade" && contextualQuantity !== undefined) dados.quantidade = contextualQuantity;
     if (expectedField === "unidade") dados.unidade = extractStockUnit(normalized) || original;
     if (expectedField === "produto" && original) dados.produto = original;
@@ -109,6 +111,10 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     && !expectedField
     && /^(?:foi|era|valor|r\$|\d)/.test(normalized);
   if (value !== undefined && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo) && (!hasValue(dados.valor) || expectedField === "valor" || isFinancialValueCorrection)) dados.valor = value;
+  const financeIntent = ["DESPESA", "RECEITA_VENDA"].includes(current.tipo);
+  const financeDescription = financeIntent ?extractFinanceDescription(original, normalized, current.tipo as "DESPESA" | "RECEITA_VENDA") : undefined;
+  const correctionDescriptionLooksUseful = Boolean(financeDescription && /[a-z]/.test(normalizeRanchoText(financeDescription)) && !/^(?:foi|foram|era|valor|quantidade)$/.test(normalizeRanchoText(financeDescription)));
+  if (financeDescription && financeIntent && (!dados.descricao || expectedField === "descricao" || (isCorrection && correctionDescriptionLooksUseful && value === undefined))) dados.descricao = financeDescription;
   const stockIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo);
   const normalizedItemName = normalizeRanchoText(itemName || "");
   const correctionItemLooksUseful = Boolean(itemName && /[a-z]/.test(normalizedItemName) && !/^(?:na verdade|verdade|foi|foram|era|quantidade|valor)$/.test(normalizedItemName));
@@ -134,6 +140,12 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (!dados.data_nascimento) dados.data_nascimento = extractAnimalBirthDate(original);
   }
 
-  const missing = buildMissing(current.tipo, dados);
-  return finalize(current.tipo, dados, missing);
+  let nextTipo = current.tipo;
+  if (financeIntent && isCorrection) {
+    if (/\b(?:saida|saída|despesa|gasto|gastei|paguei|comprei|compra)\b/.test(normalized)) nextTipo = "DESPESA";
+    if (/\b(?:entrada|receita|venda|vendi|recebi|recebemos|ganhei|entrou)\b/.test(normalized)) nextTipo = "RECEITA_VENDA";
+  }
+
+  const missing = buildMissing(nextTipo, dados);
+  return finalize(nextTipo, dados, missing);
 }

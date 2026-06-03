@@ -33,7 +33,7 @@ function splitBatchSegments(text: string) {
   const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é|Ã©)m|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
 
   return cleanAnswer(String(text || ""))
-    .split(/[\n;]+|,(?=\s*\S)/g)
+    .split(/[\n;]+|,(?!\d)(?=\s*\S)/g)
     .flatMap((chunk) => chunk.split(connectorPattern))
     .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=\d)/i))
     .map((chunk) => chunk.trim())

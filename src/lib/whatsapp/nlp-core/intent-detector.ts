@@ -173,7 +173,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isProductionQuery = /\b(?:quanto|total|media|média|consulta|consultar|ver)\b/.test(normalized) && /\b(?:produziu|producao|produção|leite|ordenha)\b/.test(normalized);
   if (isProductionQuery) return finalize("CONSULTA_PRODUCAO", { data_referencia: extractDateReference(normalized) || "hoje" }, [], 0.9);
 
-  const isFinanceQuery = /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro)\b/.test(normalized) && /\b(?:financeiro|mes|mês|caixa|entradas|saidas|saídas|lucro)\b/.test(normalized);
+  const explicitFinanceValue = hasValue(extractMoneyValue(normalized));
+  const isFinanceQuery = !explicitFinanceValue && ((
+    /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro|relatorio|relatório|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
+    && /\b(?:financeiro|mes|mês|hoje|ontem|semana|caixa|entradas|saidas|saídas|lucro|resultado|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
+  ) || /\bquanto\s+(?:entrou|saiu|vendemos|gastamos)\b/.test(normalized));
   if (isFinanceQuery) return finalize("CONSULTA_FINANCEIRO", { data_referencia: extractDateReference(normalized) || "mes" }, [], 0.9);
 
   const isEmployeeCreate = /\b(?:cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar)\b/.test(normalized)
@@ -250,10 +254,19 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CONSULTA_ANIMAL", { animal_codigo: animalQueryCode, consulta: true }, [], 0.88);
   }
 
-  const isEmployeeQuery = /\b(?:consultar|ver|funcionario|funcionário|equipe|colaborador)\b/.test(normalized) && !/\b(?:entrou|saiu|ponto|entrada|saida|saída)\b/.test(normalized);
+  const isEmployeeQuery = /\b(?:consultar|ver|funcionario|funcionário|equipe|colaborador)\b/.test(normalized)
+    && !explicitFinanceValue
+    && !/\b(?:pagamento|despesa|salario|folha|diaria|paguei)\b/.test(normalized)
+    && !/\b(?:entrou|saiu|ponto|entrada|saida|saída)\b/.test(normalized);
   if (isEmployeeQuery) return finalize("CONSULTA_FUNCIONARIO", { funcionario_nome: extractEmployeeName(original, normalized) }, [], 0.8);
 
-  const hasFinanceOperation = /\b(?:venda|vendi|recebi|receita|despesa|paguei|financeiro|caixa|lucro)\b/.test(normalized);
+  const hasFinancialEntryCue = /\b(?:entrada|entrou|saida|saída)\b/.test(normalized)
+    && hasValue(extractMoneyValue(normalized))
+    && !extractPointTime(normalized);
+  const explicitFinanceLaunch = /\b(?:registrar|registra|lancar|lanca|lançar|lança|anotar|anota)\s+(?:entrada|saida|saída|receita|despesa)\b/.test(normalized);
+  const hasFinanceOperation = /\b(?:venda|vendi|vendii|recebi|recebemos|receita|despesa|pagamento|paguei|financeiro|caixa|lucro|salario|folha|diaria|gasto|ganhei)\b/.test(normalized)
+    || hasFinancialEntryCue
+    || explicitFinanceLaunch;
   const isPoint = /\b(?:ponto|entrou|entrada|saiu|saida|saída|bateu|bater ponto|registrar ponto)\b/.test(normalized)
     && !physicalQuantity
     && !hasFinanceOperation;
@@ -305,14 +318,14 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
   }
 
-  const isExpense = /\b(?:gastei|despesa|paguei|comprei|custo|saida|saída|pagamento)\b/.test(normalized);
-  const isRevenue = /\b(?:vendi|venda|recebi|receita|entrada|entrou|faturou)\b/.test(normalized);
+  const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
+  const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized);
 
   if (isRevenue && !isExpense) {
     const dados = {
       valor: extractMoneyValue(normalized),
       descricao: extractFinanceDescription(original, normalized, "RECEITA_VENDA"),
-      data_referencia: extractDateReference(normalized)
+      data_referencia: extractDateReference(normalized) || "hoje"
     };
     return finalize("RECEITA_VENDA", dados, buildMissing("RECEITA_VENDA", dados));
   }
@@ -321,7 +334,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     const dados = {
       valor: extractMoneyValue(normalized),
       descricao: extractFinanceDescription(original, normalized, "DESPESA"),
-      data_referencia: extractDateReference(normalized)
+      data_referencia: extractDateReference(normalized) || "hoje"
     };
     return finalize("DESPESA", dados, buildMissing("DESPESA", dados));
   }

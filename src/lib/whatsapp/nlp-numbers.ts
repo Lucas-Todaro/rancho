@@ -184,6 +184,8 @@ export function lastFinancialNumber(text: string) {
   const numbers = financialNumberMatches(text);
   const combinedMil = numbers.filter((match) => /\d.*\bmil\b/.test(match.raw));
   if (combinedMil.length) return combinedMil[combinedMil.length - 1]?.value;
+  const wordMil = numbers.filter((match) => /\bmil\b/.test(match.raw) && /[a-z]/i.test(match.raw.replace(/\bmil\b/i, "")));
+  if (wordMil.length) return wordMil[wordMil.length - 1]?.value;
   const standaloneMil = numbers.filter((match) => /\bmil\b/.test(match.raw));
   if (standaloneMil.length) return standaloneMil[standaloneMil.length - 1]?.value;
   return numbers[numbers.length - 1]?.value;

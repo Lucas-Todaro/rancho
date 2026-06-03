@@ -295,7 +295,15 @@ export function extractLooseProductionLiters(text: string) {
 }
 
 export function extractMoneyValue(text: string) {
-  return lastFinancialNumber(text);
+  const normalized = normalizeRanchoText(text);
+  const negative = normalized.match(new RegExp(`(?:^|\\s)-\\s*(${decimalNumberPattern})`))?.[1];
+  if (negative) {
+    const value = parseDecimalNumber(negative);
+    return value === undefined ?undefined : -value;
+  }
+  const value = lastFinancialNumber(text);
+  if (value === 1 && /\b(?:um|uma)\s+(?!mil\b|reais?\b)[a-z]/.test(normalized)) return undefined;
+  return value;
 }
 
 export function removeValueAndCommonWords(value: string) {
@@ -309,23 +317,46 @@ export function removeValueAndCommonWords(value: string) {
     .trim();
 }
 
+function cleanFinanceDescriptionCandidate(value: string) {
+  return removeValueAndCommonWords(value)
+    .replace(/\b(?:hoje|hj|ontem|anteontem|amanha|agora)\b.*$/gi, " ")
+    .replace(/\b(?:semana passada|semana que vem|essa semana|esta semana|nesta semana|mes passado|este mes|neste mes)\b.*$/gi, " ")
+    .replace(/\b(?:dia|em|no dia)?\s*\d{1,2}\s+de\s+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+(?:19|20)\d{2})?\b.*$/gi, " ")
+    .replace(/\b(?:19|20)\d{2}[/-]\d{1,2}[/-]\d{1,2}\b.*$/g, " ")
+    .replace(/\b\d{1,2}[/-]\d{1,2}(?:[/-](?:19|20)?\d{2})?\b.*$/g, " ")
+    .replace(/(?:^|\s)-\s*/g, " ")
+    .replace(/\b(?:conprei)\b/gi, "comprei")
+    .replace(/\b(?:vendii)\b/gi, "vendi")
+    .replace(/\b(?:leiti)\b/gi, "leite")
+    .replace(/\b(?:dinhero)\b/gi, "dinheiro")
+    .replace(/\b(?:despeza)\b/gi, "despesa")
+    .replace(/\b(?:slario|salaro)\b/gi, "salario")
+    .replace(/\b(?:con)\b/gi, "com")
+    .replace(/\b(?:cliente|comprador|pagamento|recebido|recebida|dinheiro|caixa)\b/gi, " ")
+    .replace(/^\s*(?:foi|era|foram)\s+/gi, " ")
+    .replace(/^\s*(?:de|do|da|com|no|na|em|o|a|um|uma|pra|para)\s+/gi, " ")
+    .replace(/\s+(?:de|do|da|com|no|na|em|o|a|um|uma|pra|para)$/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractFinanceDescription(original: string, normalized: string, tipo: "DESPESA" | "RECEITA_VENDA") {
-  const sale = original.match(/\b(?:vendi|vendeu|venda)\s+(?:uma|um|o|a)?\s*(.+?)(?:\s+por|\s+de\s+r\$?|\s+\d|$)/i)?.[1];
+  const sale = original.match(/\b(?:vendi|vendeu|vendii|venda)\s+(?:(?:uma|um|o|a|de)\b\s*)?(.+?)(?:\s+por|\s+de\s+r\$?|\s+\d|$)/i)?.[1];
   if (tipo === "RECEITA_VENDA" && sale) {
-    const item = removeValueAndCommonWords(sale);
+    const item = cleanFinanceDescriptionCandidate(sale);
     if (item) return `venda de ${item}`;
   }
 
-  const purchase = original.match(/\b(?:comprei|compra|paguei|gastei|despesa)\s+(?:com|de|do|da|o|a)?\s*(.+?)(?:\s+por|\s+de\s+r\$?|\s+\d|$)/i)?.[1];
+  const purchase = original.match(/\b(?:comprei|conprei|compra|paguei|gastei|gasto|despesa|despeza|saida|saída)\s+(?:(?:com|de|do|da|em|no|na|o|a)\b\s*)?(.+?)(?:\s+por|\s+de\s+r\$?|\s+\d|$)/i)?.[1];
   if (tipo === "DESPESA" && purchase) {
-    const item = removeValueAndCommonWords(purchase);
+    const item = cleanFinanceDescriptionCandidate(purchase);
     if (item) return item;
   }
 
-  const cleanedOriginal = removeValueAndCommonWords(original.replace(/\b(?:gastei|despesa|paguei|comprei|recebi|vendi|venda|receita|entrada|saida)\b/gi, ""));
+  const cleanedOriginal = cleanFinanceDescriptionCandidate(original.replace(/\b(?:registrar|registra|lancar|lanca|lançar|lança|anotar|anota|gastei|gasto|despesa|despeza|paguei|pagamento|comprei|conprei|recebi|recebemos|vendi|vendii|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida|saída)\b/gi, ""));
   if (cleanedOriginal) return cleanedOriginal;
 
-  const cleanedNormalized = removeValueAndCommonWords(normalized.replace(/\b(?:gastei|despesa|paguei|comprei|recebi|vendi|venda|receita|entrada|saida)\b/g, ""));
+  const cleanedNormalized = cleanFinanceDescriptionCandidate(normalized.replace(/\b(?:registrar|registra|lancar|lanca|anotar|anota|gastei|gasto|despesa|paguei|pagamento|comprei|recebi|recebemos|vendi|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida)\b/g, ""));
   if (cleanedNormalized) return cleanedNormalized;
 
   return tipo === "RECEITA_VENDA" ?"receita via WhatsApp" : undefined;

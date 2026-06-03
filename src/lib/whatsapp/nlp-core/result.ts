@@ -137,7 +137,7 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || Number(dados.litros) <= 0)) missing.push("litros");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.animal_codigo) missing.push("animal_codigo");
-  if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !hasValue(dados.valor)) missing.push("valor");
+  if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && (!hasValue(dados.valor) || Number(dados.valor) <= 0)) missing.push("valor");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !dados.descricao) missing.push("descricao");
   if ((stockCreateIntent || stockMovementIntent) && !dados.item_nome) missing.push("item_nome");
   if (stockCreateIntent && !dados.unidade) missing.push("unidade");
