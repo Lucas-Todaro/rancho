@@ -199,6 +199,22 @@ function monthRange(period: string) {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+function previousMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function lastDaysRange(days: number) {
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setDate(start.getDate() - Math.max(0, days - 1));
+  start.setHours(0, 0, 0, 0);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 function currentWeekRange() {
   const now = new Date();
   const start = new Date(now);
@@ -212,6 +228,8 @@ function currentWeekRange() {
 }
 
 function periodRange(period?: string) {
+  if (period === "ultimos_7") return lastDaysRange(7);
+  if (period === "mes_passado") return previousMonthRange();
   if (period === "semana") return currentWeekRange();
   if (period === "mes") return currentMonthRange();
   if (/^\d{4}-\d{2}$/.test(String(period || ""))) return monthRange(String(period));
@@ -219,6 +237,8 @@ function periodRange(period?: string) {
 }
 
 function periodLabel(period?: string) {
+  if (period === "ultimos_7") return "nos últimos 7 dias";
+  if (period === "mes_passado") return "no mês passado";
   if (period === "semana") return "esta semana";
   if (period === "mes") return "este mês";
   if (/^\d{4}-\d{2}$/.test(String(period || ""))) return `o mês ${String(period)}`;
@@ -364,7 +384,7 @@ function isMenuCommand(command: string) {
 }
 
 function isRepeatCommand(command: string) {
-  return REPEAT_WORDS.has(command) || /^(?:repete|repetir|repita|mostra(?:r)? de novo|resumo|resumir)\b/.test(command);
+  return REPEAT_WORDS.has(command) || /^(?:repete|repetir|repita|mostra(?:r)? de novo|resumir)\b/.test(command);
 }
 
 function isStockPaginationCommand(command: string) {
@@ -2630,6 +2650,213 @@ async function handleFinanceConsultation(supabase: SupabaseAdmin, owner: WhatsAp
   return buildFinanceSummaryText(rows, period, type, filter);
 }
 
+function eventTypeMatches(row: AnyRecord, requested?: string) {
+  if (!requested) return true;
+  const text = normalizeRanchoText([row.tipo, row.descricao, row.medicamento].filter(Boolean).join(" "));
+  if (requested === "clinico") return /\b(?:doenca|doente|observacao|clinico|clinica|apetite|mastite|problema)\b/.test(text);
+  if (requested === "reprodutivo") return /\b(?:cio|prenhez|inseminacao|cobertura|reprodutivo)\b/.test(text);
+  return text.includes(requested);
+}
+
+function eventTypeLabel(row: AnyRecord) {
+  const tipo = normalizeRanchoText(row.tipo || "");
+  if (tipo === "vacina") return `Vacina${row.medicamento ?` ${row.medicamento}` : ""}`;
+  if (tipo === "tratamento") return `Tratamento${row.medicamento ?` ${row.medicamento}` : ""}`;
+  if (tipo === "parto") return "Parto registrado";
+  if (tipo === "observacao") return "Observação clínica";
+  if (tipo === "doenca") return "Ocorrência clínica";
+  if (tipo === "cio") return "Cio registrado";
+  if (tipo === "inseminacao") return "Inseminação registrada";
+  return row.tipo || "Evento";
+}
+
+function animalMap(rows: AnyRecord[]) {
+  return new Map(rows.map((row) => [String(row.id), row]));
+}
+
+function animalShortLabel(row?: AnyRecord | null) {
+  if (!row) return "Animal";
+  return row.brinco && row.nome && row.nome !== row.brinco ?`${row.nome} (${row.brinco})` : row.brinco || row.nome || "Animal";
+}
+
+async function queryEventRows(supabase: SupabaseAdmin, owner: WhatsAppOwner, period: string, requestedType?: string) {
+  const range = periodRange(period);
+  const { data, error } = await supabase
+    .from(TABLES.eventosAnimal)
+    .select("id,animal_id,tipo,descricao,medicamento,data_evento,created_at")
+    .eq("fazenda_id", owner.fazenda_id)
+    .gte("data_evento", range.start)
+    .lt("data_evento", range.end)
+    .order("data_evento", { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[]).filter((row) => eventTypeMatches(row, requestedType));
+}
+
+function eventSummaryCounts(rows: AnyRecord[]) {
+  return {
+    vacina: rows.filter((row) => eventTypeMatches(row, "vacina")).length,
+    tratamento: rows.filter((row) => eventTypeMatches(row, "tratamento")).length,
+    clinico: rows.filter((row) => eventTypeMatches(row, "clinico")).length,
+    parto: rows.filter((row) => eventTypeMatches(row, "parto")).length,
+    reprodutivo: rows.filter((row) => eventTypeMatches(row, "reprodutivo")).length
+  };
+}
+
+function buildEventListText(rows: AnyRecord[], animalsById: Map<string, AnyRecord>, period: string, requestedType?: string) {
+  const label = requestedType ?`${requestedType} ` : "";
+  if (!rows.length) return `Não encontrei eventos ${label}registrados no rebanho ${periodLabel(period)}.`;
+  const lines = rows.slice(0, 8).map((row, index) => {
+    const animal = animalShortLabel(animalsById.get(String(row.animal_id || "")));
+    const description = row.descricao ?`: ${row.descricao}` : "";
+    return `${index + 1}. ${animal} - ${eventTypeLabel(row)}${description}`;
+  }).join("\n");
+  const extra = rows.length > 8 ?`\n...e mais ${rows.length - 8} evento(s).` : "";
+  return `Eventos ${periodLabel(period)} no rebanho:\n${lines}${extra}`;
+}
+
+async function productionReportData(supabase: SupabaseAdmin, owner: WhatsAppOwner, period: string, animalsById: Map<string, AnyRecord>) {
+  const range = periodRange(period);
+  const { data, error } = await supabase
+    .from(TABLES.ordenhas)
+    .select("animal_id,litros,ordenhado_em")
+    .eq("fazenda_id", owner.fazenda_id)
+    .gte("ordenhado_em", range.start)
+    .lt("ordenhado_em", range.end)
+    .limit(2000);
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as AnyRecord[];
+  const total = rows.reduce((sum, row) => sum + Number(row.litros || 0), 0);
+  const byAnimal = new Map<string, number>();
+  const days = new Set<string>();
+  for (const row of rows) {
+    byAnimal.set(String(row.animal_id || ""), (byAnimal.get(String(row.animal_id || "")) || 0) + Number(row.litros || 0));
+    if (row.ordenhado_em) days.add(String(row.ordenhado_em).slice(0, 10));
+  }
+  const top = Array.from(byAnimal.entries()).sort((left, right) => right[1] - left[1])[0];
+  return {
+    rows,
+    total,
+    count: rows.length,
+    days: days.size,
+    topAnimal: top ? animalShortLabel(animalsById.get(top[0])) : null,
+    topLiters: top ? top[1] : 0,
+    averageByDay: days.size ? total / days.size : 0
+  };
+}
+
+async function stockReportData(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const rows = await listStockItems(supabase, owner);
+  const low = rows.filter((row) => Number(row.quantidade_minima || 0) > 0 && Number(row.quantidade_atual || 0) < Number(row.quantidade_minima || 0));
+  const zero = rows.filter((row) => Number(row.quantidade_atual || 0) <= 0);
+  return { rows, low, zero };
+}
+
+async function pointReportData(supabase: SupabaseAdmin, owner: WhatsAppOwner, period: string) {
+  const range = periodRange(period);
+  const { data, error } = await supabase
+    .from(TABLES.registrosPonto)
+    .select("funcionario_id,tipo,registrado_em")
+    .eq("fazenda_id", owner.fazenda_id)
+    .gte("registrado_em", range.start)
+    .lt("registrado_em", range.end)
+    .limit(2000);
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as AnyRecord[];
+  return {
+    rows,
+    entradas: rows.filter((row) => row.tipo === "entrada").length,
+    funcionarios: new Set(rows.map((row) => String(row.funcionario_id || "")).filter(Boolean)).size
+  };
+}
+
+function reportAnalysis(production: Awaited<ReturnType<typeof productionReportData>>, finance: ReturnType<typeof financeTotals> | null, stock: Awaited<ReturnType<typeof stockReportData>>, events: AnyRecord[]) {
+  const alerts: string[] = [];
+  if (!production.count) alerts.push("sem produção registrada");
+  if (finance && finance.resultado < 0) alerts.push("saídas maiores que entradas");
+  if (stock.low.length) alerts.push(`${stock.low.length} item(ns) abaixo do mínimo`);
+  if (stock.zero.length) alerts.push(`${stock.zero.length} item(ns) zerado(s)`);
+  if (events.some((row) => eventTypeMatches(row, "clinico"))) alerts.push("ocorrência clínica no rebanho");
+  const positive = Boolean(production.count) && (!finance || finance.resultado >= 0) && !stock.low.length && !stock.zero.length;
+  if (positive) return "Análise: está indo bem com os dados disponíveis.";
+  if (alerts.length) return `Análise: exige atenção em ${alerts.slice(0, 3).join(", ")}.`;
+  return "Análise: dados ainda insuficientes para dizer se está bom ou ruim.";
+}
+
+async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
+  if (parsed.dados.precisa_periodo) return "Você quer relatório de hoje, da semana ou do mês?";
+
+  const mode = String(parsed.dados.relatorio_modo || "resumo");
+  const kind = String(parsed.dados.consulta_registros || "whatsapp");
+  const requestedType = parsed.dados.evento_tipo ?String(parsed.dados.evento_tipo) : undefined;
+  const animals = await listAnimals(supabase, owner);
+  const animalsById = animalMap(animals);
+
+  if (kind === "eventos") {
+    const events = await queryEventRows(supabase, owner, period, requestedType);
+    parsed.dados.consulta_executada = "eventos_rebanho";
+    parsed.dados.resultado = { periodo: period, registros: events.length, evento_tipo: requestedType || null };
+    return buildEventListText(events, animalsById, period, requestedType);
+  }
+
+  const production = await productionReportData(supabase, owner, period, animalsById);
+  const eventRows = await queryEventRows(supabase, owner, period);
+  const stock = await stockReportData(supabase, owner);
+  const financeRows = isBotAdmin(owner) ? await queryFinanceRows(supabase, owner, period) : [];
+  const finance = isBotAdmin(owner) ? financeTotals(financeRows) : null;
+  const point = isBotAdmin(owner) ? await pointReportData(supabase, owner, period) : null;
+  const eventCounts = eventSummaryCounts(eventRows);
+
+  parsed.dados.consulta_executada = kind === "alertas" ? "alertas" : "relatorio_geral";
+  parsed.dados.resultado = {
+    periodo: period,
+    modo: mode,
+    producao_litros: production.total,
+    eventos: eventRows.length,
+    estoque_baixo: stock.low.length,
+    estoque_zerado: stock.zero.length,
+    financeiro_resultado: finance?.resultado ?? null,
+    ponto_registros: point?.rows.length ?? null
+  };
+
+  const alerts = [
+    ...stock.low.map((row) => `${row.nome} abaixo do mínimo`),
+    ...stock.zero.map((row) => `${row.nome} zerado`),
+    ...eventRows.filter((row) => eventTypeMatches(row, "clinico")).slice(0, 3).map((row) => `${animalShortLabel(animalsById.get(String(row.animal_id || "")))} com ocorrência clínica`),
+    !production.count ? "produção ainda não registrada" : "",
+    finance && finance.resultado < 0 ? "resultado financeiro negativo" : ""
+  ].filter(Boolean);
+
+  if (kind === "alertas") {
+    return alerts.length ?`Alertas ${periodLabel(period)}:\n${alerts.slice(0, 6).map((line, index) => `${index + 1}. ${line}`).join("\n")}` :"Não encontrei alertas críticos agora.";
+  }
+
+  if (!production.count && !eventRows.length && !financeRows.length && !stock.low.length && !stock.zero.length && !point?.rows.length) {
+    return period === "mes"
+      ?"Ainda não há dados suficientes neste mês para gerar um relatório completo."
+      :"Hoje ainda não encontrei registros suficientes para gerar um relatório completo.";
+  }
+
+  const lines = [
+    `${mode === "rapido" ?"Resumo rápido" : "Relatório"} de ${periodLabel(period)}:`,
+    "",
+    `Produção: ${formatNumber(production.total)} litros em ${production.count} registro(s).${production.topAnimal ?` Maior: ${production.topAnimal} com ${formatNumber(production.topLiters)} L.` : ""}`,
+    finance ?`Financeiro: entradas ${formatMoney(finance.entrada)}, saídas ${formatMoney(finance.saida)}, resultado ${formatMoney(finance.resultado)}.` :"Financeiro: você não tem permissão para visualizar esses dados.",
+    `Estoque: ${stock.low.length} item(ns) abaixo do mínimo${stock.low.length ?` - ${stock.low.slice(0, 3).map((row) => row.nome).join(", ")}` : ""}.`,
+    `Rebanho: ${eventRows.length} evento(s). Vacinas: ${eventCounts.vacina}, clínicos: ${eventCounts.clinico}, partos: ${eventCounts.parto}, reprodutivos: ${eventCounts.reprodutivo}.`,
+    point ?`Ponto: ${point.funcionarios} funcionário(s) com ${point.entradas} entrada(s) registrada(s).` :"Ponto: você não tem permissão para visualizar esses dados.",
+    "",
+    reportAnalysis(production, finance, stock, eventRows)
+  ];
+
+  if (mode === "detalhado" && eventRows.length) {
+    lines.splice(lines.length - 1, 0, "", buildEventListText(eventRows.slice(0, 5), animalsById, period));
+  }
+
+  return lines.join("\n");
+}
+
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
@@ -2874,6 +3101,11 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
   }
 
   if (parsed.tipo === "CONSULTA_REGISTROS_HOJE") {
+    if (parsed.dados.consulta_registros && parsed.dados.consulta_registros !== "whatsapp") {
+      return handleEventsReportConsultation(supabase, owner, parsed);
+    }
+    if (parsed.dados.precisa_periodo) return handleEventsReportConsultation(supabase, owner, parsed);
+
     const range = dayRange("hoje");
     const { data, error } = await supabase
       .from(TABLES.auditoriaLogs)

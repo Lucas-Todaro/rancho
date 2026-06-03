@@ -139,6 +139,60 @@ function financeQueryData(normalized: string) {
   };
 }
 
+function reportQueryPeriod(normalized: string) {
+  if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
+  if (/\bmes\s+passado\b/.test(normalized)) return "mes_passado";
+  const reference = extractDateReference(normalized);
+  if (reference) return reference;
+  const namedMonth = financeNamedMonthPeriod(normalized);
+  if (namedMonth) return namedMonth;
+  if (/\b(?:semana|semanal)\b/.test(normalized)) return "semana";
+  if (/\b(?:mes|mensal|mez)\b/.test(normalized)) return "mes";
+  if (/\b(?:ontem|anteontem)\b/.test(normalized)) return extractDateReference(normalized);
+  return "hoje";
+}
+
+function reportEventType(normalized: string) {
+  if (/\b(?:vacina|vacinas|vacinacao|vacinados|aftosa)\b/.test(normalized)) return "vacina";
+  if (/\b(?:medicamento|medicamentos|medicacao|medicacoes|tratamento|tratamentos|medicados|remedio|vermifugo)\b/.test(normalized)) return "tratamento";
+  if (/\b(?:doente|doenca|clinico|clinica|observacao|observacoes|problema|problemas|apetite|mastite)\b/.test(normalized)) return "clinico";
+  if (/\b(?:parto|partos|nascimento|nascimentos|pariram|pariu)\b/.test(normalized)) return "parto";
+  if (/\b(?:cio|cios|prenhez|prenhezes|inseminacao|inseminacoes|reprodutivo|reprodutivos)\b/.test(normalized)) return "reprodutivo";
+  return undefined;
+}
+
+function reportQueryData(normalized: string) {
+  const consulta_registros = /\b(?:alerta|alertas|atencao|atenção|preoculpante|preocupante|critico|crítico|problema|problemas|resolver|pendencia|pendência)\b/.test(normalized)
+    ? "alertas"
+    : /\b(?:eventos?|acontecimentos?|ocorrencias?|historico|vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized)
+      ? "eventos"
+      : "relatorio";
+  const relatorio_modo = /\b(?:detalhado|detalhes|completo|tudo)\b/.test(normalized)
+    ? "detalhado"
+    : /\b(?:rapido|rapidao|resumao|principal|principais|preciso saber)\b/.test(normalized)
+      ? "rapido"
+      : /\b(?:bem|mal|bom|positivo|lucro|preocupante|preoculpante|indo)\b/.test(normalized)
+        ? "analise"
+        : "resumo";
+  return {
+    data_referencia: reportQueryPeriod(normalized),
+    periodo: reportQueryPeriod(normalized),
+    consulta: true,
+    consulta_registros,
+    relatorio_modo,
+    evento_tipo: reportEventType(normalized)
+  };
+}
+
+function isAmbiguousReportQuery(normalized: string) {
+  return /^(?:relatorio|relatirio|resumo|resumao|eventos|acontecimentos|historico|alertas|problemas|dados)$/.test(normalized);
+}
+
+function isReportPeriodTokenAsAnimalCode(code?: string | null) {
+  if (!code) return false;
+  return /^(?:HOJE|HJ|ONTEM|NTEM|ANTEONTEM|SEMANA|SEMANAL|MES|MEZ|MENSAL|JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)$/i.test(code);
+}
+
 function cleanStockSpecificItemCandidate(candidate?: string | null) {
   const cleaned = normalizeRanchoText(cleanAnswer(candidate || ""))
     .replace(/\b(?:no|na|em|do|da)\s+estoque\b/g, " ")
@@ -638,6 +692,24 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const original = cleanAnswer(text);
   const normalized = normalizeRanchoText(original);
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
+
+  if (isAmbiguousReportQuery(normalized)) {
+    return finalize("CONSULTA_REGISTROS_HOJE", { consulta: true, precisa_periodo: true, consulta_registros: "relatorio" }, [], 0.75);
+  }
+
+  const reportAnimalCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
+  const reportAnimalSpecific = Boolean(reportAnimalCode && !financeNamedMonthPeriod(normalized) && !isReportPeriodTokenAsAnimalCode(reportAnimalCode));
+  const eventQueryCue = /\b(?:quais|qual|teve|foram|foi|mostra|mostrar|ver|historico|ultimos|ultimas|registrados?|registradas?|ocorreram|aconteceu|acontecimentos?|ocorrencias?|rebanho|do mes|da semana|de hoje|de ontem)\b/.test(normalized);
+  const reportCue = /\b(?:relatorio|relatirio|resumo|resumao|mez|panorama|visao geral|fechamento|balanco|status do dia|status do mes|como foi|como esta indo|esta indo|ta indo|principais|alertas?|atencao|preocupante|preoculpante|critico|problemas?|eventos?|ocorrencias?|acontecimentos?)\b/.test(normalized);
+  const eventTypeCue = /\b(?:vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized);
+  const earlyReportQuery = (
+    (reportCue || (eventTypeCue && eventQueryCue))
+    && !/\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|apliquei|aplicar|vacinei|mediquei|tratei|pariu|ficou doente|observacao:|deu cria)\b/.test(normalized)
+    && !/\b(?:financeiro|ponto|pagina|tenho)\b/.test(normalized)
+    && !reportAnimalSpecific
+    && !(/\b(?:mimosa|estrela|vaca|novilha|animal)\b/.test(normalized) && !eventQueryCue && !/\b(?:fazenda|rancho|rebanho)\b/.test(normalized))
+  );
+  if (earlyReportQuery) return finalize("CONSULTA_REGISTROS_HOJE", reportQueryData(normalized), [], 0.9);
 
   const earlyFinanceQuery = (
     /\b(?:quanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)|quais\s+(?:entradas?|saidas?|transacoes?|despesas?|receitas?)|transacoes?|movimentacoes?|extrato|resultado|resutado|financeiro|finaceiro|financeirro|caixa|saldo|lucro|despesas?|despezas?|receitas?|vendas?|compras?)\b/.test(normalized)

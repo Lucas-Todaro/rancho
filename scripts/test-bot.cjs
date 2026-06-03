@@ -933,6 +933,8 @@ function assertExpected(test, parsed) {
   if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
   if ("novo_valor" in expected && normalize(dados.novo_valor) !== normalize(expected.novo_valor)) failures.push(`novo_valor esperado ${expected.novo_valor}, recebido ${dados.novo_valor}`);
   if ("consulta" in expected && Boolean(dados.consulta) !== Boolean(expected.consulta)) failures.push(`consulta esperada ${expected.consulta}, recebida ${dados.consulta}`);
+  if (expected.consulta_registros && normalize(dados.consulta_registros) !== normalize(expected.consulta_registros)) failures.push(`consulta_registros esperada ${expected.consulta_registros}, recebida ${dados.consulta_registros}`);
+  if (expected.relatorio_modo && normalize(dados.relatorio_modo) !== normalize(expected.relatorio_modo)) failures.push(`relatorio_modo esperado ${expected.relatorio_modo}, recebido ${dados.relatorio_modo}`);
   if (expected.financeiro_modo && normalize(dados.financeiro_modo) !== normalize(expected.financeiro_modo)) failures.push(`financeiro_modo esperado ${expected.financeiro_modo}, recebido ${dados.financeiro_modo}`);
   if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
   if (expected.filtro_texto && normalize(dados.filtro_texto) !== normalize(expected.filtro_texto)) failures.push(`filtro_texto esperado ${expected.filtro_texto}, recebido ${dados.filtro_texto}`);
@@ -1235,7 +1237,7 @@ const consultationParserTests = [
   { module: "dashboard-relatorios", phrase: "dashboard", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "dashboard-relatorios", phrase: "como esta a fazenda hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "dashboard-relatorios", phrase: "relatorio de producao", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true, data_referencia: "hoje" } },
-  { module: "dashboard-relatorios", phrase: "relatorio do mes", expected: { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "mes" } },
+  { module: "dashboard-relatorios", phrase: "relatorio do mes", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
   { module: "dashboard-relatorios", phrase: "me da um resumo", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "suporte", phrase: "suporte", expected: { tipo: "AJUDA", exactTipo: true } },
   { module: "suporte", phrase: "preciso de ajuda", expected: { tipo: "AJUDA", exactTipo: true } },
@@ -1652,6 +1654,29 @@ const eventHumanParserTests = [
   eventParser("partos da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-001", consulta: true }),
   eventParser("historico reprodutivo da B-002", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
   eventParser("eventos de hoje", { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" }),
+  { module: "eventos-relatorios", phrase: "quais eventos ocorreram no rebanho?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "eventos" } },
+  { module: "eventos-relatorios", phrase: "eventos do rebanho", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "eventos" } },
+  { module: "eventos-relatorios", phrase: "eventos de ontem", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "ontem", consulta_registros: "eventos" } },
+  { module: "eventos-relatorios", phrase: "eventos da semana", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "semana", consulta_registros: "eventos" } },
+  { module: "eventos-relatorios", phrase: "teve vacina hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "eventos", evento_tipo: "vacina" } },
+  { module: "eventos-relatorios", phrase: "tratamentos de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "eventos", evento_tipo: "tratamento" } },
+  { module: "eventos-relatorios", phrase: "teve animal doente hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "eventos", evento_tipo: "clinico" } },
+  { module: "eventos-relatorios", phrase: "partos do mes", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "eventos", evento_tipo: "parto" } },
+  { module: "eventos-relatorios", phrase: "cios registrados", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "eventos", evento_tipo: "reprodutivo" } },
+  { module: "eventos-relatorios", phrase: "relatorio de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "resumo do mes", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio da semana", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "semana", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio dos ultimos 7 dias", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "ultimos_7", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio do mes passado", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes_passado", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio de junho", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "esta indo bem?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_modo: "analise" } },
+  { module: "eventos-relatorios", phrase: "resumo rapido", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_modo: "rapido" } },
+  { module: "eventos-relatorios", phrase: "relatorio detalhado", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_modo: "detalhado" } },
+  { module: "eventos-relatorios", phrase: "alertas hj", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "alertas" } },
+  { module: "eventos-relatorios", phrase: "eventos do rebanio", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "eventos" } },
+  { module: "eventos-relatorios", phrase: "relatirio de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "resumo do mez", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
 
   eventParser("B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] }, { pending: () => pendingFrom("registrar vacina") }),
   eventParser("Aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Aftosa", noMissing: true }, { pending: () => pendingFrom("registrar vacina", ["B-002"]) }),
@@ -2961,6 +2986,229 @@ const eventFrameworkCases = [
     messages: ["eventos de hoje"],
     expected: {
       finalIntent: "CONSULTA_REGISTROS_HOJE",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta eventos do rebanho lista eventos reais do rancho",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["quais eventos ocorreram no rebanho?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "eventos" },
+      responseIncludes: "Vacina Aftosa",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta vacina hoje filtra eventos de vacina",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["teve vacina hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "eventos", evento_tipo: "vacina" },
+      responseIncludes: "Aftosa",
+      responseNotIncludes: "queda de apetite",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta animal doente hoje filtra ocorrencia clinica",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["teve animal doente hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "eventos", evento_tipo: "clinico" },
+      responseIncludes: "queda de apetite",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio do dia resume producao financeiro estoque eventos e ponto",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["relatorio do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
+      responseIncludes: "65 litros",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio do mes usa periodo mensal e nao salva",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["resumo do mes"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "mes" },
+      responseIncludes: "Relatório de este mês",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "analise se esta indo bem usa dados e alertas",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["esta indo bem?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { relatorio_modo: "analise" },
+      responseIncludes: "Análise",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "resumo rapido fica curto e mostra pontos principais",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["resumo rapido"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { relatorio_modo: "rapido" },
+      responseIncludes: "Resumo rápido",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio detalhado inclui lista de eventos sem salvar",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["relatorio detalhado de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { relatorio_modo: "detalhado" },
+      responseIncludes: "Eventos hoje no rebanho",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "alertas de hoje destaca estoque baixo e clinico",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["alertas hj"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "alertas" },
+      responseIncludes: "Aftosa abaixo do mínimo",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio ambiguo pergunta periodo sem salvar",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["relatorio"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "hoje, da semana ou do mês",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta evento nao vira cadastro de vacina",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["teve vacina hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      avoidIntents: ["VACINA_MEDICAMENTO"],
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastro de evento continua pedindo confirmacao",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["apliquei aftosa na B-002"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum recebe relatorio sem valores financeiros",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_WORKER_PHONE,
+    reportFixture: true,
+    messages: ["relatorio do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "não tem permissão",
+      allResponsesNotInclude: ["R$"],
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio multi fazenda A nao mostra dados do rancho B",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["relatorio do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "65 litros",
+      responseNotIncludes: "20 litros",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio multi fazenda B nao mostra dados do rancho A",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    reportFixture: true,
+    messages: ["relatorio do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "20 litros",
+      responseNotIncludes: "65 litros",
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -5222,6 +5470,44 @@ function createSupabaseForScenario(test = {}) {
       ativo: lot.ativo !== false
     })));
   }
+  if (test.reportFixture) {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    for (const table of [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.transacoesFinanceiras, BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.registrosPonto, BOT_TEST_TABLES.estoqueItens]) {
+      supabase.tables[table] = supabase.tables[table].filter((row) => ![BOT_TEST_FARM_ID, BOT_TEST_FARM_ID_B].includes(row.fazenda_id));
+    }
+    supabase.tables[BOT_TEST_TABLES.ordenhas].push(
+      { id: "report-ordenha-a-1", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-002", litros: 32, ordenhado_em: `${today}T08:00:00.000Z` },
+      { id: "report-ordenha-a-2", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-003", litros: 18, ordenhado_em: `${today}T08:10:00.000Z` },
+      { id: "report-ordenha-a-3", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-001", litros: 15, ordenhado_em: `${today}T08:20:00.000Z` },
+      { id: "report-ordenha-a-old", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-002", litros: 60, ordenhado_em: `${yesterday}T08:00:00.000Z` },
+      { id: "report-ordenha-b-1", fazenda_id: BOT_TEST_FARM_ID_B, animal_id: "animal-b2-b-002", litros: 20, ordenhado_em: `${today}T08:00:00.000Z` }
+    );
+    supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(
+      { id: "report-fin-a-1", fazenda_id: BOT_TEST_FARM_ID, tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite", data_transacao: today },
+      { id: "report-fin-a-2", fazenda_id: BOT_TEST_FARM_ID, tipo: "saida", valor: 300, descricao: "Compra de racao", categoria: "racao", data_transacao: today },
+      { id: "report-fin-a-3", fazenda_id: BOT_TEST_FARM_ID, tipo: "saida", valor: 150, descricao: "Energia", categoria: "energia", data_transacao: today },
+      { id: "report-fin-b-1", fazenda_id: BOT_TEST_FARM_ID_B, tipo: "entrada", valor: 200, descricao: "Venda B", categoria: "leite", data_transacao: today },
+      { id: "report-fin-b-2", fazenda_id: BOT_TEST_FARM_ID_B, tipo: "saida", valor: 300, descricao: "Racao B", categoria: "racao", data_transacao: today }
+    );
+    supabase.tables[BOT_TEST_TABLES.estoqueItens].push(
+      { id: "report-stock-a-racao", fazenda_id: BOT_TEST_FARM_ID, nome: "Racao", descricao: "Racao", categoria: "racao", quantidade_atual: 10, quantidade_minima: 5, unidade_medida: "saco", ativo: true },
+      { id: "report-stock-a-sal", fazenda_id: BOT_TEST_FARM_ID, nome: "Sal mineral", descricao: "Sal mineral", categoria: "insumo", quantidade_atual: 25, quantidade_minima: 5, unidade_medida: "kg", ativo: true },
+      { id: "report-stock-a-aftosa", fazenda_id: BOT_TEST_FARM_ID, nome: "Aftosa", descricao: "Aftosa", categoria: "medicamento", quantidade_atual: 2, quantidade_minima: 5, unidade_medida: "dose", ativo: true },
+      { id: "report-stock-b-racao", fazenda_id: BOT_TEST_FARM_ID_B, nome: "Racao", descricao: "Racao", categoria: "racao", quantidade_atual: 0, quantidade_minima: 10, unidade_medida: "saco", ativo: true }
+    );
+    supabase.tables[BOT_TEST_TABLES.eventosAnimal].push(
+      { id: "report-event-a-1", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-002", tipo: "vacina", medicamento: "Aftosa", descricao: "Vacina Aftosa aplicada", data_evento: `${today}T09:00:00.000Z` },
+      { id: "report-event-a-2", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-001", tipo: "observacao", medicamento: null, descricao: "queda de apetite", data_evento: `${today}T10:00:00.000Z` },
+      { id: "report-event-a-3", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-003", tipo: "cio", medicamento: null, descricao: "cio registrado", data_evento: `${today}T11:00:00.000Z` },
+      { id: "report-event-a-old", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-001", tipo: "parto", medicamento: null, descricao: "parto registrado", data_evento: `${yesterday}T11:00:00.000Z` },
+      { id: "report-event-b-1", fazenda_id: BOT_TEST_FARM_ID_B, animal_id: "animal-b2-b-002", tipo: "observacao", medicamento: null, descricao: "observacao B", data_evento: `${today}T11:00:00.000Z` }
+    );
+    supabase.tables[BOT_TEST_TABLES.registrosPonto].push(
+      { id: "report-point-a-1", fazenda_id: BOT_TEST_FARM_ID, funcionario_id: "func-joao", tipo: "entrada", registrado_em: `${today}T07:00:00.000Z`, origem: "whatsapp" },
+      { id: "report-point-a-2", fazenda_id: BOT_TEST_FARM_ID, funcionario_id: "func-bruno-a", tipo: "entrada", registrado_em: `${today}T07:30:00.000Z`, origem: "whatsapp" }
+    );
+  }
   if (test.financeTransactions) {
     supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(...test.financeTransactions.map((row, index) => ({
       id: row.id || `financeiro-extra-${index + 1}`,
@@ -6205,6 +6491,10 @@ function writeBotTestReports(summary) {
   const eventFailed = eventResults.filter((result) => !result.ok);
   const eventPassed = eventResults.length - eventFailed.length;
   const eventSuccessRate = eventResults.length ? Number(((eventPassed / eventResults.length) * 100).toFixed(2)) : 0;
+  const eventReportResults = summary.results.filter((result) => resultModule(result) === "eventos-relatorios");
+  const eventReportFailed = eventReportResults.filter((result) => !result.ok);
+  const eventReportPassed = eventReportResults.length - eventReportFailed.length;
+  const eventReportSuccessRate = eventReportResults.length ? Number(((eventReportPassed / eventReportResults.length) * 100).toFixed(2)) : 0;
   const financialResults = summary.results.filter((result) => resultModule(result) === "financeiro");
   const financialFailed = financialResults.filter((result) => !result.ok);
   const financialPassed = financialResults.length - financialFailed.length;
@@ -6263,6 +6553,31 @@ function writeBotTestReports(summary) {
           "estoque de vacina/medicamento permanece fluxo separado quando o usuario fala em baixar dose"
         ],
         failures: eventFailed.map((result) => resultName(result))
+      },
+      eventosRelatorios: {
+        total: eventReportResults.length,
+        passed: eventReportPassed,
+        failed: eventReportFailed.length,
+        successRate: eventReportSuccessRate,
+        coverage: [
+          "consulta de eventos do rebanho por hoje, ontem, semana, mes e periodo explicito",
+          "filtros de vacina, tratamento, clinico, parto e reprodutivo",
+          "relatorio do dia, relatorio do mes, resumo rapido, relatorio detalhado e analise bom/ruim",
+          "alertas de estoque baixo, ocorrencia clinica, producao ausente e financeiro negativo",
+          "diferenciacao entre consulta e cadastro de evento",
+          "permissoes de financeiro/ponto e isolamento por fazenda_id"
+        ],
+        fixes: [
+          "consultas de eventos agora leem eventos_animal por fazenda_id e periodo",
+          "relatorios gerais usam dados reais/mockados de producao, financeiro, estoque, eventos e ponto",
+          "respostas de relatorio nao pedem confirmacao e nao geram acao simulada de salvamento",
+          "consultas ambiguas perguntam o periodo em vez de inventar relatorio"
+        ],
+        fragileCases: [
+          "permissoes granulares por modulo ainda dependem das roles atuais do bot",
+          "relatorio detalhado mantem lista curta para caber melhor no WhatsApp"
+        ],
+        failures: eventReportFailed.map((result) => resultName(result))
       },
       financeiro: {
         total: financialResults.length,
@@ -6392,6 +6707,16 @@ function writeBotTestReports(summary) {
     "- Correcoes feitas: produto corrigido antes de salvar substitui o antigo, erros comuns de digitacao sao normalizados, observacoes clinicas/reprodutivas entram em fluxo de confirmacao, e consultas/atualizacoes de animal usam catalogo do rancho.",
     "- Casos frageis: consultas gerais de calendario/proximas vacinas ainda precisam de consulta dedicada; baixa de estoque por dose continua fluxo separado e nao movimenta estoque real em teste.",
     "- Observacao: nenhum evento real, WhatsApp real ou baixa real de estoque e executado nesta bateria.",
+    "",
+    "## Eventos + Relatorios",
+    "",
+    `- Total eventos/relatorios: ${report.summary.eventosRelatorios.total}`,
+    `- Aprovados eventos/relatorios: ${report.summary.eventosRelatorios.passed}`,
+    `- Falhos eventos/relatorios: ${report.summary.eventosRelatorios.failed}`,
+    `- Taxa eventos/relatorios: ${report.summary.eventosRelatorios.successRate}%`,
+    "- Cobertura: eventos do rebanho, filtros por tipo, historico por periodo, relatorio do dia, relatorio do mes, resumo rapido, relatorio detalhado, analise bom/ruim, alertas, permissoes e isolamento por fazenda_id.",
+    "- Correcoes feitas: consultas e relatorios leem dados mockados/reais por tabela de negocio e nao pedem confirmacao nem geram salvamento.",
+    "- Observacao: relatorios nao inventam dados; se nao houver base suficiente, respondem que nao encontraram registros suficientes.",
     "",
     "## Financeiro",
     "",

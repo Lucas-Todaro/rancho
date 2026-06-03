@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-03T22:03:10.129Z
+Gerado em: 2026-06-03T22:22:11.018Z
 
 ## Resumo Geral
 
-- Total geral de testes: 940
-- Aprovados: 940
+- Total geral de testes: 978
+- Aprovados: 978
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -36,8 +36,8 @@ Gerado em: 2026-06-03T22:03:10.129Z
 ## Estoque - Consultas
 
 - Testes adicionados nesta rodada: 31
-- Testes relacionados cobertos: 44
-- Aprovados: 44
+- Testes relacionados cobertos: 45
+- Aprovados: 45
 - Falhos: 0
 - Coberturas:
   - lista geral de itens e quantidades
