@@ -159,8 +159,8 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   const stockMovementIntent = ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo);
   if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
   if (tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || Number(dados.litros) <= 0)) missing.push("litros");
-  if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.animal_codigo) missing.push("animal_codigo");
+  if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && (!hasValue(dados.valor) || Number(dados.valor) <= 0)) missing.push("valor");
   if (["DESPESA", "RECEITA_VENDA"].includes(tipo) && !dados.descricao) missing.push("descricao");
   if ((stockCreateIntent || stockMovementIntent) && !dados.item_nome) missing.push("item_nome");

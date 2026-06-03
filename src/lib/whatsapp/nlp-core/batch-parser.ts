@@ -109,7 +109,12 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
       && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(previous.tipo)
       && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(parsed.tipo)
       && !hasExplicitStockMovementAction(segment));
-    const next: ParsedRanchoMessage | null = shouldPreferStockContext ?contextual : directIsReadyAction ?parsed : contextual;
+    const shouldPreferFinanceContext: boolean = Boolean(contextual
+      && previous
+      && ["DESPESA", "RECEITA_VENDA"].includes(previous.tipo)
+      && ["DESPESA", "RECEITA_VENDA"].includes(contextual.tipo)
+      && parsed.tipo === "VACINA_MEDICAMENTO");
+    const next: ParsedRanchoMessage | null = shouldPreferStockContext || shouldPreferFinanceContext ?contextual : directIsReadyAction ?parsed : contextual;
     if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
     registros.push(next);
     previous = next;

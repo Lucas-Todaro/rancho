@@ -52,8 +52,14 @@ function cleanUpdateValue(value?: string | null) {
     .trim();
 }
 
+const clinicalObservationCue = /\b(?:mancando|doente|doenca|doença|recuperou|febre|diarreia|sem comer|mastite|carrapato|triste|fraco|tossindo|ferida|veterinario|queda de producao|problema no casco|casco)\b/;
+const reproductiveObservationCue = /\b(?:cio|ia|inseminada|inseminado|inseminacao|inseminar|cobertura|coberta|coberto|aborto)\b/;
+const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
+const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
+
 function extractAnimalUpdateData(original: string, normalized: string) {
   const animal_codigo = extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL");
+  const data_referencia = extractDateReference(normalized);
   const phase = extractAnimalPhase(normalized);
   const birthDate = extractAnimalBirthDate(original);
   const breedForUpdate = original.match(/\b(?:raca|raça)\b.*?\bpara\s+(.+)$/i)?.[1];
@@ -90,7 +96,19 @@ function extractAnimalUpdateData(original: string, normalized: string) {
     return { animal_codigo, campo_alterado: "nome", novo_valor: cleanUpdateValue(explicitName) };
   }
 
-  if (phase && /\b(?:ficou|esta|ta|marcar|marca|alterar|status|prenhe|prenha|seca|lactante|lactacao)\b/.test(normalized)) {
+  if (/\b(?:nao esta prenha|nao ficou prenha|prenhez negativa|diagnostico negativo de prenhez)\b/.test(normalized)) {
+    return { animal_codigo, campo_alterado: "fase", novo_valor: "vazia" };
+  }
+
+  if (/\b(?:confirmar prenhez|prenhez positiva|diagnostico positivo de prenhez|esta gestante|esta prenha)\b/.test(normalized)) {
+    return { animal_codigo, campo_alterado: "fase", novo_valor: "gestante" };
+  }
+
+  if (/\bprenhez\b/.test(normalized)) {
+    return { animal_codigo, campo_alterado: "fase", novo_valor: "gestante" };
+  }
+
+  if (phase && /\b(?:ficou|esta|ta|marcar|marca|alterar|status|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|lactacao)\b/.test(normalized)) {
     return { animal_codigo, campo_alterado: "fase", novo_valor: phase };
   }
 
@@ -98,8 +116,13 @@ function extractAnimalUpdateData(original: string, normalized: string) {
     return { animal_codigo, campo_alterado: "peso", novo_valor: weight };
   }
 
-  if (observation || /\b(?:mancando|doente|recuperou|observacao|observação|obs)\b/.test(normalized)) {
-    return { animal_codigo, campo_alterado: "observacoes", novo_valor: cleanUpdateValue(observation || original) };
+  if (observation || clinicalObservationCue.test(normalized) || reproductiveObservationCue.test(normalized) || /\b(?:observacao|observação|obs)\b/.test(normalized)) {
+    return {
+      animal_codigo,
+      campo_alterado: "observacoes",
+      novo_valor: cleanUpdateValue(observation || original),
+      data_referencia
+    };
   }
 
   return { animal_codigo };
@@ -133,7 +156,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (isHelp) return finalize("AJUDA", {}, [], 0.95);
 
   const isTodayRecordsQuery = /\b(?:o que|quais|meus|minhas|ultimos|Ãºltimos|ultimas|Ãºltimas)\b/.test(normalized)
-    && /\b(?:registrei|registros|lancei|lancamentos|lanÃ§amentos|hoje)\b/.test(normalized);
+    && /\b(?:registrei|registros|eventos|lancei|lancamentos|lanÃ§amentos|hoje)\b/.test(normalized)
+    || /\b(?:eventos|registros|lancamentos)\s+(?:de\s+)?hoje\b/.test(normalized);
   if (isTodayRecordsQuery) return finalize("CONSULTA_REGISTROS_HOJE", { data_referencia: "hoje", consulta: true }, [], 0.9);
 
   const earlyStockActionForQuery = /\b(?:comprei|compramos|comprar|compra|chegou|entrou|usei|tira|tirar|retirei|baixa|baixar|bota|botar|botei|coloca|colocar|coloquei|adiciona|adicionar|adicionei|lanca|lancar|cria|criar|cadastra|cadastrar|cadastre|novo|nova)\b/.test(normalized);
@@ -174,7 +198,9 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const productionAnimalReport = /\b(?:producao|produção|historico|histórico|ultima|última|media|média)\b/.test(normalized)
     && Boolean(extractAnimalCode(normalized, "CONSULTA_PRODUCAO_ANIMAL"))
-    && !hasValue(extractLiters(normalized));
+    && !hasValue(extractLiters(normalized))
+    && !clinicalObservationCue.test(normalized)
+    && !/\b(?:vacina|vacinas|evento|eventos|medicamento|medicamentos|tratamento|tratamentos|parto|partos|clinico|reprodutivo)\b/.test(normalized);
   if (productionAnimalReport) {
     return finalize("CONSULTA_PRODUCAO_ANIMAL", {
       animal_codigo: extractAnimalCode(normalized, "CONSULTA_PRODUCAO_ANIMAL"),
@@ -251,11 +277,13 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("DESLIGAR_FUNCIONARIO", dados, buildMissing("DESLIGAR_FUNCIONARIO", dados), 0.86);
   }
 
+  const employeeUpdateBlockedByAnimal = Boolean(extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL"))
+    && /\b(?:animal|vaca|boi|touro|bezerro|bezerra|novilha|brinco|lote|piquete|pasto|raca|raça|nascimento|nasceu|fase|peso|pesou|prenhe|prenha|prenhez|gestante|vazia|seca|lactante)\b/.test(normalized);
   const employeeUpdate = (
     /\b(?:muda|mudar|altera|alterar|atualiza|atualizar|corrige|corrigir|troca|trocar|define|definir|reativa|reativar|ativa|ativar|virou|agora ganha|ganha|salario|salário|slario|cpf|whatsapp|telefone)\b/.test(normalized)
     && !/\b(?:cadastra|cadastrar|cadastre|adicionar|adiciona|novo|nova|cria|criar|contratei|contratar)\b/.test(normalized)
     && !/\b(?:paguei|pagamento|salario pago|salário pago|diaria|diária|recebeu)\b/.test(normalized)
-    && !extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL")
+    && !employeeUpdateBlockedByAnimal
     && (employeeName || employeeSalary !== undefined || employeePhone || employeeCpf)
   );
   if (employeeUpdate) {
@@ -296,6 +324,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const earlyPoint = /\b(?:ponto|entrou|entrada|saiu|saida|bateu|bater ponto|registrar ponto|chegou|cheguei|comecei|comecou|iniciou|inicio|terminou|terminei|encerrou|fim do expediente|foi embora|fechou o ponto)\b/.test(normalized)
     && pointContext
     && !stockLikePointText
+    && !reproductiveObservationCue.test(normalized)
     && !hasValue(extractMoneyValue(normalized))
     && !/\b(?:paguei|pagamento|salario|salário|folha|diaria|diária|financeiro|despesa|receita|venda|vendi)\b/.test(normalized);
   if (earlyPoint) {
@@ -369,16 +398,18 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (isStockQuery) return finalize("CONSULTA_ESTOQUE", { item_nome: stockItemName }, [], 0.85);
 
   const animalQueryCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
-  const animalUpdateVerb = /\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|marcar|marca|para|prenhe|prenha|seca|lactante|peso|pesou|nome|vendida|vendido|saiu do rebanho)\b/.test(normalized);
+  const animalUpdateVerb = /\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|em|marcar|marca|para|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|peso|pesou|nome|vendida|vendido|saiu do rebanho)\b/.test(normalized)
+    || clinicalObservationCue.test(normalized)
+    || reproductiveObservationCue.test(normalized);
   const isQuestion = /\?/.test(original);
   const animalCreationCue = /\b(?:cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
-  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|deu cria)\b/.test(normalized);
+  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria)\b/.test(normalized);
   const isAnimalConsultation = Boolean(animalQueryCode)
     && !animalCreationCue
     && !animalEventCue
     && (!animalUpdateVerb || isQuestion)
-    && (/\b(?:consultar|consulta|ver|mostra|mostrar|dados|informacoes|informações|ficha|historico|histórico|status|idade|nasceu|nascimento|raca|raça|lote)\b/.test(normalized) || /\?/.test(original));
+    && (/\b(?:consultar|consulta|ver|mostra|mostrar|dados|informacoes|informações|ficha|historico|histórico|eventos|vacinas|medicamentos|tratamentos|partos|clinico|reprodutivo|ultima vacina|quando|status|idade|nasceu|nascimento|raca|raça|lote)\b/.test(normalized) || /\?/.test(original));
   if (isAnimalConsultation) {
     return finalize("CONSULTA_ANIMAL", { animal_codigo: animalQueryCode, consulta: true }, [], 0.88);
   }
@@ -398,7 +429,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     || explicitFinanceLaunch;
   const isPoint = /\b(?:ponto|entrou|entrada|saiu|saida|saída|bateu|bater ponto|registrar ponto)\b/.test(normalized)
     && !physicalQuantity
-    && !hasFinanceOperation;
+    && !hasFinanceOperation
+    && !reproductiveObservationCue.test(normalized);
   if (isPoint) {
     const dados = {
       funcionario_nome: extractEmployeeName(original, normalized),
@@ -410,7 +442,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);
-  const stockOutWithoutQuantity = !physicalQuantity && stockOutVerb && hasStockItemHint && !explicitMoney && (!hasValue(stockQuantity) || !/\bgastei\b/.test(normalized));
+  const medicineAnimalCue = (vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized)) && Boolean(extractAnimalCode(normalized, "VACINA_MEDICAMENTO"));
+  const stockOutWithoutQuantity = !physicalQuantity && stockOutVerb && hasStockItemHint && !medicineAnimalCue && !explicitMoney && (!hasValue(stockQuantity) || !/\bgastei\b/.test(normalized));
   const isStockOut = (physicalQuantity && stockOutVerb) || stockOutWithoutQuantity;
   if (isStockOut) {
     const dados = {
@@ -448,7 +481,9 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
-  const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized);
+  const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized)
+    && !clinicalObservationCue.test(normalized)
+    && !reproductiveObservationCue.test(normalized);
 
   if (isRevenue && !isExpense) {
     const dados = {
@@ -468,7 +503,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("DESPESA", dados, buildMissing("DESPESA", dados));
   }
 
-  const isParto = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|deu cria)\b/.test(normalized);
+  const isParto = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|deu cria|teve bezerro|teve bezerra|teve cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
   if (isParto) {
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PARTO"),
@@ -477,12 +512,15 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("PARTO", dados, buildMissing("PARTO", dados));
   }
 
-  const isMedicine = /\b(?:vacina|vacinei|apliquei|aplicou|aftosa|brucelose|mediquei|medicou|tratei|tratou|tratamento|manejo|remedio|remédio|medicamento|terramicina|tomou)\b/.test(normalized);
+  const isMedicine = /\b(?:apliquei|aplicar|aplicou|recebeu|tomou|dose)\b/.test(normalized) && (vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized))
+    || vaccineProductCue.test(normalized)
+    || treatmentProductCue.test(normalized);
   if (isMedicine) {
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "VACINA_MEDICAMENTO"),
       produto: extractProduct(original, normalized),
-      evento_tipo: /\b(?:vacina|vacinei|aftosa|brucelose)\b/.test(normalized) ?"vacina" : "tratamento"
+      evento_tipo: vaccineProductCue.test(normalized) ?"vacina" : "tratamento",
+      data_referencia: extractDateReference(normalized)
     };
     return finalize("VACINA_MEDICAMENTO", dados, buildMissing("VACINA_MEDICAMENTO", dados));
   }
@@ -500,10 +538,17 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const animalUpdateData = extractAnimalUpdateData(original, normalized);
   const isAnimalUpdate = Boolean(animalUpdateData.animal_codigo)
     && !animalCreationCue
-    && /\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|marcar|marca|prenhe|prenha|seca|lactante|lote|piquete|pasto|peso|pesou|kg|nome|raca|raça|observacao|observação|mancando|doente|recuperou|vendida|vendido|saiu do rebanho)\b/.test(normalized)
+    && (/\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|em|marcar|marca|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|lote|piquete|pasto|peso|pesou|kg|nome|raca|raça|observacao|observação|vendida|vendido|saiu do rebanho)\b/.test(normalized)
+      || clinicalObservationCue.test(normalized)
+      || reproductiveObservationCue.test(normalized))
     && !/\bdeu\b/.test(normalized)
     && !isQuestion;
-  if (isAnimalUpdate) {
+  const isIncompleteAnimalUpdate = !animalCreationCue
+    && !isQuestion
+    && !animalUpdateData.animal_codigo
+    && (clinicalObservationCue.test(normalized) || reproductiveObservationCue.test(normalized))
+    && /\b(?:animal|vaca|gado|novilha|registrar|registra|observacao|observação|doenca|doença|clinica|clinico|cio|prenhez|inseminacao|cobertura)\b/.test(normalized);
+  if (isAnimalUpdate || isIncompleteAnimalUpdate) {
     return finalize("ATUALIZACAO_ANIMAL", animalUpdateData, buildMissing("ATUALIZACAO_ANIMAL", animalUpdateData));
   }
 

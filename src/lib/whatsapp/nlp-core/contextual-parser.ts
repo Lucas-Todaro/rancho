@@ -166,7 +166,8 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (turno && (!dados.turno || isCorrection)) dados.turno = turno;
   if (dateReference && (!dados.data_referencia || isCorrection)) dados.data_referencia = dateReference;
   if (!dados.unidade && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo)) dados.unidade = extractStockUnit(normalized);
-  if (!dados.produto && current.tipo === "VACINA_MEDICAMENTO") dados.produto = extractProduct(answer, normalized);
+  const medicineProduct = current.tipo === "VACINA_MEDICAMENTO" ?extractProduct(original, normalized) : undefined;
+  if (medicineProduct && current.tipo === "VACINA_MEDICAMENTO" && expectedField !== "animal_codigo" && (!dados.produto || expectedField === "produto" || isCorrection)) dados.produto = medicineProduct;
   if (!dados.descricao && ["DESPESA", "RECEITA_VENDA", "ORDEM_SERVICO"].includes(current.tipo)) dados.descricao = removeValueAndCommonWords(original) || original;
   if (current.tipo === "CADASTRO_ANIMAL") {
     if (!dados.categoria) dados.categoria = extractAnimalCategory(normalized);

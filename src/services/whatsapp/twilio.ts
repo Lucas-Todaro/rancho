@@ -109,6 +109,11 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "AJUDA"
 ]);
 const ANIMAL_RECORD_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"]);
+const ANIMAL_LOOKUP_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  ...Array.from(ANIMAL_RECORD_INTENTS),
+  "ATUALIZACAO_ANIMAL",
+  "CONSULTA_ANIMAL"
+]);
 const EMPLOYEE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CRIAR_FUNCIONARIO",
   "ATUALIZAR_FUNCIONARIO",
@@ -920,7 +925,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     return refreshRanchoMessage(parsed, dados);
   }
 
-  if (ANIMAL_RECORD_INTENTS.has(parsed.tipo) && dados.animal_codigo) {
+  if (ANIMAL_LOOKUP_INTENTS.has(parsed.tipo) && dados.animal_codigo) {
     const found = await findAnimal(supabase, owner, String(dados.animal_codigo));
     if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.9)) {
       dados.animal_codigo = found.row.brinco;
@@ -2338,7 +2343,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (previousSession.etapa === "aguardando_dado") {
       response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
     } else {
-      parsed = parseRanchoMessage(input.mensagem);
+      parsed = await enrichWithCatalog(supabase, owner, parseRanchoMessage(input.mensagem));
       response = await handleFreeText(supabase, owner, input.mensagem, parsed);
     }
 

@@ -187,7 +187,7 @@ export function candidateFromMatch(value?: string | null) {
     .replace(/\b(?:da|do|de|na|no|a|o|uma|um|para|pra|producao|ordenha)\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned || isForbiddenAnimalCode(cleaned)) return undefined;
+  if (!cleaned || /\s/.test(cleaned) || isForbiddenAnimalCode(cleaned)) return undefined;
   return cleaned;
 }
 
@@ -195,6 +195,16 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const searchable = stripDateFragments(text);
   const standalone = normalizeAnimalCandidate(searchable);
   if (standalone && !/\s/.test(searchable.trim())) return standalone;
+
+  const leadingCandidateMatch = searchable.match(/^\s*(?:a|o)?\s*([a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*)\b/);
+  const leadingCandidate = normalizeAnimalCandidate(leadingCandidateMatch?.[1]);
+  if (leadingCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) return leadingCandidate;
+
+  const earlyNamedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:a|o)?\s*([a-z][a-z0-9-]*)\b/);
+  const earlyNamedReferenceCandidate = candidateFromMatch(earlyNamedReference?.[1]);
+  if (earlyNamedReferenceCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) {
+    return normalizeAnimalCandidate(earlyNamedReferenceCandidate) || earlyNamedReferenceCandidate.toUpperCase();
+  }
 
   const explicitPatterns = [
     /\b(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)\s+(?:da|do|de|a|o)?\s*([a-z]*\d[a-z0-9-]*|[a-z]+-[a-z0-9]+)\b/g,
@@ -217,12 +227,24 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const directCandidate = candidateFromMatch(direct?.[1]);
   if (directCandidate) return normalizeAnimalCandidate(directCandidate) || directCandidate.toUpperCase();
 
+  const namedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:a|o)?\s*([a-z][a-z0-9-]*)\b/);
+  const namedReferenceCandidate = candidateFromMatch(namedReference?.[1]);
+  if (namedReferenceCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) {
+    return normalizeAnimalCandidate(namedReferenceCandidate) || namedReferenceCandidate.toUpperCase();
+  }
+
+  const afterEventAction = searchable.match(/\b(?:vacinei|mediquei|tratei|apliquei|aplicar|medicar|tratar|registrar|registra|inseminar|cobertura|cio)\s+(?:a|o)?\s*([a-z][a-z0-9-]*)\b/);
+  const afterEventActionCandidate = candidateFromMatch(afterEventAction?.[1]);
+  if (afterEventActionCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL"].includes(intent)) {
+    return normalizeAnimalCandidate(afterEventActionCandidate) || afterEventActionCandidate.toUpperCase();
+  }
+
   const productionNamed = searchable.match(/\b(?:producao|ordenha)\s+(?:da|do|de)?\s*([a-z0-9][a-z0-9-]*)\b/);
   const productionCandidate = candidateFromMatch(productionNamed?.[1]);
   if (productionCandidate) return normalizeAnimalCandidate(productionCandidate) || productionCandidate.toUpperCase();
 
-  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu)\b/);
-  const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]);
+  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu|recebeu|ficou|esta|ta|entrou|apresentou|precisa|teve|foi|com|inseminada|inseminado|coberta|coberto)\b/);
+  const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]?.replace(/\bnao\b/g, " "));
   if (beforeVerbCandidate && !/^(registra|registrar|lanca|lancar|anota|anotar)$/.test(beforeVerbCandidate)) {
     return normalizeAnimalCandidate(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();
   }
@@ -367,17 +389,23 @@ export function stripAnimalReferences(value: string) {
     .replace(new RegExp(`\\b${animalWords}\\s+(?:da|do|de|a|o)?\\s*[a-z0-9][a-z0-9-]*\\b`, "gi"), "")
     .replace(/\b(?:na|no|em|a|o|da|do|de)\s+[a-z]+-\d[a-z0-9-]*\b/gi, "")
     .replace(/\b(?:na|no|em|a|o|da|do|de)\s+[a-z]*\d[a-z0-9-]*\b/gi, "")
+    .replace(/\b[a-z]+-\d[a-z0-9-]*\b/gi, "")
+    .replace(/\b[a-z]*\d[a-z0-9-]*\b/gi, "")
     .replace(/\b(?:os|as|nos|nas|aos|pros|pras|para os|para as)?\s*(?:bois|vacas|gado|bezerros|bezerra|bezerro|novilhas)\b/gi, "")
     .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, "")
-    .replace(/\b(?:recebeu|tomou|vacinei|apliquei|aplicado|aplicou|mediquei|medicou|tratei|tratou|tratar|manejo|com)\b/gi, "")
+    .replace(/\b(?:recebeu|recebi|tomou|vacinei|vacinada|vacinado|apliquei|aplicar|aplicado|aplicou|mediquei|medicar|medicou|tratei|tratamento|tratou|tratar|manejo|com|foi)\b/gi, "")
+    .replace(/\b(?:registrar|registra|lancar|lanca|anotar|anota)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export function cleanMedicineProduct(value: string | undefined) {
   const cleaned = stripAnimalReferences(value || "")
+    .replace(/^(?:(?:nao|não|n|foi|era|na verdade|verdade)\s*,?\s*)+/i, "")
+    .replace(/^(?:(?:dose|doses)\s+(?:de|da|do)\s+)+/i, "")
     .replace(/^(?:(?:vacina|medicamento|rem[eé]dio|tratamento|manejo)\s+)+/i, "")
     .replace(/^(?:(?:da|de|do|contra|pra|para)\s+)+/i, "")
+    .replace(/\s+(?:na|no|em|para|pra)\s+[a-z][a-z0-9-]*$/i, "")
     .replace(/\s+(?:da|de|do|contra|pra|para|na|no|em|a|o)$/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -386,17 +414,19 @@ export function cleanMedicineProduct(value: string | undefined) {
 }
 
 export function extractProduct(original: string, normalized: string) {
-  const knownProduct = normalized.match(/\b(?:aftosa|brucelose|terramicina|remedio|medicamento)\b/)?.[0];
+  const knownProduct = normalized.match(/\b(?:aftosa|brucelose|raiva|clostridial|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento|remedio|medicamento)\b/)?.[0];
   const afterCom = original.match(/\bcom\s+(.+)$/i)?.[1];
-  const afterAction = original.match(/\b(?:vacina|vacinei|apliquei|aplicou|tomou|mediquei|medicou|tratei|tratou)\s+(.+)$/i)?.[1];
-  const product = cleanMedicineProduct(afterCom || afterAction || original);
+  const afterFoi = original.match(/\b(?:foi|era)\s+(.+)$/i)?.[1];
+  const afterAction = original.match(/\b(?:vacina|vacinei|vacinada|vacinado|apliquei|aplicar|aplicou|tomou|recebeu|mediquei|medicar|medicou|tratei|tratamento|tratou|dei|passei|usei)\s+(.+)$/i)?.[1];
+  const product = cleanMedicineProduct(afterCom || afterFoi || afterAction || original);
   const generic = normalizeRanchoText(product || "");
 
-  if (product && !["vacina", "tomou", "tratei", "tratamento", "manejo", "bois", "gado"].includes(generic)) return product;
+  if (product && knownProduct && generic.includes(knownProduct)) return knownProduct;
+  if (product && !["a", "o", "um", "uma", "na", "no", "em", "para", "pra", "registrar", "registra", "vacina", "medicamento", "remedio", "tomou", "tratei", "tratamento", "manejo", "dose", "doses", "bois", "gado"].includes(generic)) return product;
   if (knownProduct) return knownProduct;
 
   const fallback = cleanMedicineProduct(normalized);
-  return fallback && !["vacina", "tomou", "tratei", "tratamento", "manejo", "bois", "gado"].includes(fallback) ?fallback : undefined;
+  return fallback && !["a", "o", "um", "uma", "na", "no", "em", "para", "pra", "registrar", "registra", "vacina", "medicamento", "remedio", "tomou", "tratei", "tratamento", "manejo", "dose", "doses", "bois", "gado"].includes(fallback) ?fallback : undefined;
 }
 
 function stripStockTrailingContext(value: string) {

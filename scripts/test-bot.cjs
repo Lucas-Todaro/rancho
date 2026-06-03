@@ -64,13 +64,16 @@ const {
 const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
 
 const mockAnimals = [
-  { id: "animal-b-002", brinco: "B-002" },
+  { id: "animal-b-002", brinco: "B-002", nome: "Mimosa" },
   { id: "animal-1", brinco: "1" },
   { id: "animal-002", brinco: "002" },
   { id: "animal-2", brinco: "2" },
   { id: "animal-3", brinco: "3" },
   { id: "animal-15", brinco: "15" },
   { id: "animal-a12", brinco: "A12" },
+  { id: "animal-b001", brinco: "B001" },
+  { id: "animal-n-01", brinco: "N-01" },
+  { id: "animal-estrela", brinco: "ESTRELA", nome: "Estrela" },
   { id: "animal-malhada", brinco: "MALHADA" },
   { id: "animal-preta", brinco: "PRETA" }
 ];
@@ -87,6 +90,9 @@ const mockStock = [
   { id: "item-aftosa", nome: "Aftosa" },
   { id: "item-terramicina", nome: "Terramicina" },
   { id: "item-remedio", nome: "Remédio" },
+  { id: "item-vermifugo", nome: "Vermifugo" },
+  { id: "item-antibiotico", nome: "Antibiotico" },
+  { id: "item-carrapaticida", nome: "Carrapaticida" },
   { id: "item-suplemento", nome: "Suplemento" },
   { id: "item-leite-cru", nome: "Leite Cru" }
 ];
@@ -139,7 +145,7 @@ function clone(value) {
 function stockUnitFor(name) {
   const normalizedName = normalize(name);
   if (/leite/.test(normalizedName)) return "litro";
-  if (/aftosa|terramicina|vacina/.test(normalizedName)) return "dose";
+  if (/aftosa|terramicina|vacina|vermifugo|antibiotico|carrapaticida/.test(normalizedName)) return "dose";
   if (/feno/.test(normalizedName)) return "fardo";
   if (/remedio|suplemento/.test(normalizedName)) return "unidade";
   return "kg";
@@ -213,7 +219,7 @@ function createBotTestTables() {
     [BOT_TEST_TABLES.animais]: mockAnimals.map((animal, index) => ({
       ...animal,
       fazenda_id: BOT_TEST_FARM_ID,
-      nome: animal.brinco === "B-002" ? "Mimosa" : animal.brinco,
+      nome: animal.brinco === "B-002" ? "Mimosa" : animal.brinco === "ESTRELA" ? "Estrela" : animal.brinco,
       categoria: index % 2 === 0 ? "vaca" : "boi",
       sexo: index % 2 === 0 ? "femea" : "macho",
       fase: animal.brinco === "B-002" ? "gestante" : "lactacao",
@@ -550,7 +556,7 @@ function resolveParsed(parsed) {
     return refreshRanchoMessage(parsed, dados);
   }
 
-  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE"].includes(parsed.tipo) && dados.animal_codigo) {
+  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(parsed.tipo) && dados.animal_codigo) {
     const resolved = resolveAnimalIdentifier(dados.animal_codigo, mockAnimals);
     if (resolved.row && resolved.status !== "ambiguous") {
       dados.animal_codigo = resolved.row.brinco;
@@ -949,6 +955,10 @@ function financeParser(phrase, expected) {
   return { module: "financeiro", phrase, expected };
 }
 
+function eventParser(phrase, expected, extra = {}) {
+  return { module: "eventos", phrase, expected, ...extra };
+}
+
 const financeHumanParserTests = [
   financeParser("vendi leite por 900 reais", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite", data_referencia: "hoje" }),
   financeParser("venda de leite 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
@@ -1155,6 +1165,146 @@ const animalConsultationAndUpdateTests = [
   { phrase: "B-002 observacao: mancando da pata", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "mancando da pata" } },
   { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", exactTipo: true, animal: "B-002" } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } }
+];
+
+const eventHumanParserTests = [
+  eventParser("apliquei aftosa na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacina aftosa na vaca 15", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "15" }),
+  eventParser("B001 recebeu vacina aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B001" }),
+  eventParser("aplicar brucelose na novilha N-01", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "brucelose", animal: "N-01" }),
+  eventParser("vacinei mimosa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacinei a B-002 hoje", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", animal: "B-002", data_referencia: "hoje", missing: ["produto"] }),
+  eventParser("vacina da B-002 foi aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("a B-002 tomou aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("apliquei vacina contra aftosa na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacina brucelose na A12", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "brucelose", animal: "A12" }),
+  eventParser("B-002 vacinada com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("registrar vacina aftosa animal B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("apliquei vacina na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", animal: "ESTRELA", missing: ["produto"] }),
+  eventParser("vacinei o rebanho com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", missing: ["animal_codigo"] }),
+  eventParser("vacina clostridial na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "clostridial", animal: "B001" }),
+  eventParser("aplicar raiva na vaca 002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "raiva", animal: "002" }),
+  eventParser("a mimosa recebeu vacina de raiva", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "raiva", animal: "B-002" }),
+  eventParser("dose de aftosa na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("aftosa B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacina B-002 aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("apliquei aftoza na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacina aftoza B002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacinei mimosaa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("registrar vacina", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", missing: ["animal_codigo", "produto"] }),
+
+  eventParser("mediquei a mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("apliquei remedio na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "remedio", animal: "B-002" }),
+  eventParser("B001 tomou antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B001" }),
+  eventParser("tratamento da estrela com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "ESTRELA" }),
+  eventParser("dei medicamento para vaca 15", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "medicamento", animal: "15" }),
+  eventParser("apliquei terramicina na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "terramicina", animal: "B-002" }),
+  eventParser("dei vermifugo na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("remedio para B001 foi antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B001" }),
+  eventParser("B-002 recebeu medicamento", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "medicamento", animal: "B-002" }),
+  eventParser("medicar animal A12 com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "A12" }),
+  eventParser("tratamento com antibiotico na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "ESTRELA" }),
+  eventParser("dei dipirona na vaca B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "dipirona", animal: "B-002" }),
+  eventParser("apliquei anti-inflamatorio na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "anti-inflamatorio", animal: "B001" }),
+  eventParser("vermifugo B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("B-002 vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("tratamento B-002 carrapaticida", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "carrapaticida", animal: "B-002" }),
+  eventParser("passei carrapaticida no animal A12", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "carrapaticida", animal: "A12" }),
+  eventParser("apliquei pour-on na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "pour-on", animal: "B-002" }),
+  eventParser("dei suplemento na Mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "suplemento", animal: "B-002" }),
+  eventParser("registrar tratamento", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", missing: ["animal_codigo", "produto"] }),
+  eventParser("mediquei mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("vermifugo b002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("apliquei remedio na b002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "remedio", animal: "B-002" }),
+  eventParser("tratameto da estrela com antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "ESTRELA" }),
+
+  eventParser("B-002 ficou doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "B-002 ficou doente" }),
+  eventParser("a mimosa esta doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("vaca estrela esta mancando", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("B001 com febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("animal A12 com diarreia", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "A12", campo_alterado: "observacoes" }),
+  eventParser("a vaca B-002 esta sem comer", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("mimosa com mastite", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B-002 com carrapato", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("a novilha N-01 esta triste", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "N-01", campo_alterado: "observacoes" }),
+  eventParser("animal 15 esta fraco", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes" }),
+  eventParser("B001 esta tossindo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("vaca estrela com ferida na pata", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("registrar doenca na Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("observacao clinica B-002 febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("Mimosa precisa de veterinario", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B-002 teve queda de producao e esta doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("animal A12 com problema no casco", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "A12", campo_alterado: "observacoes" }),
+  eventParser("animal doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", missing: ["animal_codigo"] }),
+  eventParser("b002 fico doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("mimosa esta duente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("vaca mancandoo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", missing: ["animal_codigo"] }),
+
+  eventParser("mimosa pariu hoje", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "hoje" }),
+  eventParser("B-002 teve parto", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("vaca estrela pariu um bezerro", { tipo: "PARTO", exactTipo: true, animal: "ESTRELA" }),
+  eventParser("a Mimosa teve bezerro macho", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("B001 teve cria femea", { tipo: "PARTO", exactTipo: true, animal: "B001" }),
+  eventParser("nasceu bezerro da Mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("parto da vaca B-002", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("Mimosa pariu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem" }),
+  eventParser("B-002 teve parto dia 01/06/2026", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "2026-06-01" }),
+  eventParser("nasceu uma bezerra da estrela", { tipo: "PARTO", exactTipo: true, animal: "ESTRELA" }),
+  eventParser("a vaca 15 deu cria", { tipo: "PARTO", exactTipo: true, animal: "15" }),
+  eventParser("registrar nascimento de bezerro da B-002", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("parto complicado da B001", { tipo: "PARTO", exactTipo: true, animal: "B001" }),
+  eventParser("partu da mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("mimosa pariuu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem" }),
+  eventParser("parto", { tipo: "PARTO", exactTipo: true, missing: ["animal_codigo"] }),
+  eventParser("aborto da vaca B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+
+  eventParser("Mimosa entrou no cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B-002 esta no cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("registrar cio da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("vaca 15 em cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes" }),
+  eventParser("cio B001 hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("a novilha N-01 apresentou cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "N-01", campo_alterado: "observacoes" }),
+  eventParser("Mimosa esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("B-002 esta gestante", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("confirmar prenhez da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("diagnostico positivo de prenhez na B001", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("vaca 15 vazia", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "fase", novo_valor: "vazia" }),
+  eventParser("Mimosa nao esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "vazia" }),
+  eventParser("prenhez negativa na B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "vazia" }),
+  eventParser("inseminar Mimosa hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("Mimosa foi inseminada", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B-002 inseminada com semen do touro T-01", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("cobertura da estrela com touro T-01", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("B001 coberta pelo touro", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("inseminacao da vaca 15 ontem", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes", data_referencia: "ontem" }),
+  eventParser("registrar cobertura da Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("IA da B-002 com touro Holandes", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("cioo da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("inseminacao da b002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("prenhez da mimosaa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+
+  eventParser("historico da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("eventos da B-002", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("vacinas da B001", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B001", consulta: true }),
+  eventParser("medicamentos da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "ESTRELA", consulta: true }),
+  eventParser("tratamentos da vaca 15", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "15", consulta: true }),
+  eventParser("quando a Mimosa foi vacinada?", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("qual foi a ultima vacina da B-002?", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("historico clinico da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "ESTRELA", consulta: true }),
+  eventParser("partos da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("historico reprodutivo da B-002", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("eventos de hoje", { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" }),
+
+  eventParser("B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] }, { pending: () => pendingFrom("registrar vacina") }),
+  eventParser("Aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Aftosa", noMissing: true }, { pending: () => pendingFrom("registrar vacina", ["B-002"]) }),
+  eventParser("Vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Vermifugo", noMissing: true }, { pending: () => pendingFrom("registrar tratamento", ["B-002"]) }),
+  eventParser("febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes", noMissing: true }, { pending: () => pendingFrom("animal doente", ["B001"]) }),
+  eventParser("nao foi ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem", noMissing: true }, { pending: () => pendingFrom("Mimosa pariu hoje") }),
+  eventParser("B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", noMissing: true }, { pending: () => pendingFrom("registrar cio") }),
+
+  eventParser("Mimosa ontem", { tipo: "DESCONHECIDO", exactTipo: true }),
+  eventParser("B-002 5 ml", { tipo: "DESCONHECIDO", exactTipo: true }),
+  eventParser("geneologia clinica", { tipo: "DESCONHECIDO", exactTipo: true })
 ];
 
 const employeePointPayrollParserTests = [
@@ -1857,6 +2007,420 @@ const animalFrameworkCases = [
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
+    }
+  }
+];
+
+const eventFrameworkCases = [
+  {
+    name: "vacina completa pede confirmacao e nao salva antes",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "aftosa", evento_tipo: "vacina" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "vacina salva uma vez apos confirmacao em dry-run",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "aftosa", evento_tipo: "vacina" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", produto: "aftosa", evento_tipo: "vacina" },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "tratamento salva uma vez apos confirmacao em dry-run",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mediquei Mimosa com vermifugo", "ok"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "parto salva uma vez apos confirmacao em dry-run",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["Mimosa pariu hoje", "confirma"],
+    expected: {
+      finalIntent: "PARTO",
+      entities: { animal_codigo: "B-002", data_referencia: "hoje" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", evento_tipo: "PARTO" },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "doenca vira observacao clinica e salva so apos confirmacao",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 ficou doente", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "cio vira observacao reprodutiva e salva so apos confirmacao",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["Mimosa entrou no cio", "pode salvar"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "prenhez positiva altera fase somente apos confirmar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["confirmar prenhez da estrela", "isso mesmo"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { animal_codigo: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "inseminacao vira observacao e confirma antes de salvar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 inseminada com semen do touro T-01", "certo"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "vacina em etapas coleta animal e produto antes de confirmar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["registrar vacina", "B-002", "aftosa", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "aftosa", evento_tipo: "vacina" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", produto: "aftosa" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "tratamento em etapas coleta animal e produto antes de confirmar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["registrar tratamento", "Mimosa", "vermifugo", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", produto: "vermifugo" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "doenca em etapas coleta animal antes de confirmar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["animal doente", "B001", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B001", campo_alterado: "observacoes" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "parto em etapas coleta mae antes de confirmar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["registrar parto", "Mimosa", "sim"],
+    expected: {
+      finalIntent: "PARTO",
+      entities: { animal_codigo: "B-002" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "correcao de vacina antes de salvar troca produto",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vacinei B-002 com aftosa", "nao, foi brucelose", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "brucelose", evento_tipo: "vacina" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { produto: "brucelose" },
+      shouldNotSaveValues: { produto: "aftosa" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "correcao de animal antes de salvar troca animal",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "nao, foi na 15", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "15", produto: "aftosa" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "15", produto: "aftosa" },
+      shouldNotSaveValues: { animal_codigo: "B-002" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "correcao de data de parto antes de salvar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["Mimosa pariu hoje", "nao, foi ontem", "sim"],
+    expected: {
+      finalIntent: "PARTO",
+      entities: { animal_codigo: "B-002", data_referencia: "ontem" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "cancelamento de vacina limpa sessao e confirmacao antiga nao salva",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "cancelar", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "confirmacao negativa de vacina nao salva",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "nao"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "repetir resumo de vacina antes de confirmar nao duplica",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "repete", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "aftosa" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "confirmacao duplicada de vacina nao duplica salvamento",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["apliquei aftosa na B-002", "sim", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "consulta de historico por animal nao salva",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["historico da Mimosa"],
+    expected: {
+      finalIntent: "CONSULTA_ANIMAL",
+      entities: { animal_codigo: "B-002" },
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta de registros de hoje nao pede confirmacao nem salva",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["eventos de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "baixa de estoque de dose continua separada de evento e nao salva antes",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["usei 1 dose de aftosa na B-002"],
+    expected: {
+      finalIntent: "ESTOQUE_SAIDA",
+      entities: { item_nome: "Aftosa", quantidade: 1, unidade: "dose" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "telefone nao autorizado nao registra vacina",
+    module: "eventos",
+    phone: "5583000000000",
+    messages: ["apliquei aftosa na B-002", "sim"],
+    expected: {
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "vacina usa fazenda do telefone autorizado B",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    ranches: [{ id: BOT_TEST_FARM_ID_B, nome: "Fazenda B" }],
+    whatsappUsers: [
+      {
+        id: "wa-admin-b",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        usuario_id: "user-admin-b",
+        funcionario_id: null,
+        telefone_e164: BOT_TEST_ADMIN_PHONE_B,
+        nome_exibicao: "Dono B",
+        papel_bot: "admin",
+        ativo: true
+      }
+    ],
+    extraAnimals: [{ id: "animal-b-b-002", brinco: "B-002", fazenda_id: BOT_TEST_FARM_ID_B, nome: "Mimosa B" }],
+    messages: ["apliquei aftosa na B-002", "sim"],
+    expected: {
+      finalIntent: "VACINA_MEDICAMENTO",
+      entities: { animal_codigo: "B-002", produto: "aftosa" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", produto: "aftosa" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID_B
     }
   }
 ];
@@ -2604,6 +3168,7 @@ const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
   ...animalFrameworkCases,
+  ...eventFrameworkCases,
   ...inventoryFrameworkCases,
   ...financeFrameworkCases,
   ...employeePointPayrollFrameworkCases,
@@ -2806,6 +3371,23 @@ function createSupabaseForScenario(test = {}) {
   }
   if (test.whatsappUsers) {
     supabase.tables[BOT_TEST_TABLES.whatsappUsuarios] = clone(test.whatsappUsers);
+  }
+  if (test.extraAnimals) {
+    supabase.tables[BOT_TEST_TABLES.animais].push(...test.extraAnimals.map((animal, index) => ({
+      id: animal.id || `animal-extra-${index + 1}`,
+      fazenda_id: animal.fazenda_id || BOT_TEST_FARM_ID,
+      brinco: animal.brinco,
+      nome: animal.nome || animal.brinco,
+      categoria: animal.categoria || "vaca",
+      sexo: animal.sexo || "femea",
+      fase: animal.fase || "lactacao",
+      status: animal.status || "ativo",
+      raca: animal.raca || "Girolando",
+      lote_id: animal.lote_id || "lote-lactacao-1",
+      data_nascimento: animal.data_nascimento || null,
+      peso: animal.peso || null,
+      observacoes: animal.observacoes || ""
+    })));
   }
   if (test.financeTransactions) {
     supabase.tables[BOT_TEST_TABLES.transacoesFinanceiras].push(...test.financeTransactions.map((row, index) => ({
@@ -3363,6 +3945,7 @@ const allTests = [
   ...inventoryHumanParserTests,
   ...productionRobustnessTests,
   ...animalConsultationAndUpdateTests,
+  ...eventHumanParserTests,
   ...employeePointPayrollParserTests
 ];
 
@@ -3479,6 +4062,10 @@ function compactResultForReport(result) {
 }
 
 function writeBotTestReports(summary) {
+  const eventResults = summary.results.filter((result) => resultModule(result) === "eventos");
+  const eventFailed = eventResults.filter((result) => !result.ok);
+  const eventPassed = eventResults.length - eventFailed.length;
+  const eventSuccessRate = eventResults.length ? Number(((eventPassed / eventResults.length) * 100).toFixed(2)) : 0;
   const financialResults = summary.results.filter((result) => resultModule(result) === "financeiro");
   const financialFailed = financialResults.filter((result) => !result.ok);
   const financialPassed = financialResults.length - financialFailed.length;
@@ -3507,6 +4094,25 @@ function writeBotTestReports(summary) {
       conversations: summary.conversations,
       frameworkCases: summary.frameworkCases,
       failuresByModule: failureSummaryByModule(summary.failed),
+      eventos: {
+        total: eventResults.length,
+        passed: eventPassed,
+        failed: eventFailed.length,
+        successRate: eventSuccessRate,
+        coverage: [
+          "registro de vacinas, medicamentos e tratamentos",
+          "doencas e observacoes clinicas como atualizacao confirmada",
+          "parto, cio, prenhez, inseminacao e cobertura",
+          "consultas de historico por animal e registros de hoje",
+          "coleta por etapas, correcao, cancelamento, repeticao e confirmacao duplicada",
+          "dry-run sem WhatsApp real, sem Supabase real e com isolamento por fazenda"
+        ],
+        fragileCases: [
+          "consultas gerais de calendario/proximas vacinas ainda dependem de uma consulta dedicada no produto",
+          "estoque de vacina/medicamento permanece fluxo separado quando o usuario fala em baixar dose"
+        ],
+        failures: eventFailed.map((result) => resultName(result))
+      },
       financeiro: {
         total: financialResults.length,
         passed: financialPassed,
@@ -3559,6 +4165,17 @@ function writeBotTestReports(summary) {
     `- Parser/status: ${report.summary.parserAndStatus}`,
     `- Conversas reais simuladas: ${report.summary.conversations}`,
     `- Casos estruturados de framework: ${report.summary.frameworkCases}`,
+    "",
+    "## Eventos, Vacinas e Medicamentos",
+    "",
+    `- Total eventos: ${report.summary.eventos.total}`,
+    `- Aprovados eventos: ${report.summary.eventos.passed}`,
+    `- Falhos eventos: ${report.summary.eventos.failed}`,
+    `- Taxa eventos: ${report.summary.eventos.successRate}%`,
+    "- Cobertura: vacinas, medicamentos, tratamentos, doencas/observacoes clinicas, parto, cio, prenhez, inseminacao/cobertura, historico por animal, etapas, correcao, cancelamento, repeticao, confirmacao duplicada, permissao e fazenda_id.",
+    "- Correcoes feitas: produto corrigido antes de salvar substitui o antigo, erros comuns de digitacao sao normalizados, observacoes clinicas/reprodutivas entram em fluxo de confirmacao, e consultas/atualizacoes de animal usam catalogo do rancho.",
+    "- Casos frageis: consultas gerais de calendario/proximas vacinas ainda precisam de consulta dedicada; baixa de estoque por dose continua fluxo separado e nao movimenta estoque real em teste.",
+    "- Observacao: nenhum evento real, WhatsApp real ou baixa real de estoque e executado nesta bateria.",
     "",
     "## Financeiro",
     "",
