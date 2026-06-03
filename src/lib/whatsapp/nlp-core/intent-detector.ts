@@ -320,8 +320,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const normalized = normalizeRanchoText(original);
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
 
-  const isHelp = /\b(?:ajuda|suporte|exemplos|como usar|o que voce faz|o que você faz)\b/.test(normalized);
+  const isHelp = /\b(?:ajuda|suporte|exemplos|como usar|o que voce faz|o que você faz|deu erro|bot nao funciona|bot não funciona|falar com alguem|falar com alguém|contato|email de suporte)\b/.test(normalized);
   if (isHelp) return finalize("AJUDA", {}, [], 0.95);
+
+  const isDashboardSummaryQuery = /\b(?:resumo do dia|dashboard|como esta a fazenda hoje|como está a fazenda hoje|como ta a fazenda hoje|como tá a fazenda hoje|me da um resumo|me dá um resumo|resumo da fazenda|relatorio do dia|relatório do dia)\b/.test(normalized);
+  if (isDashboardSummaryQuery) return finalize("CONSULTA_REGISTROS_HOJE", { data_referencia: "hoje", consulta: true }, [], 0.9);
 
   const isTodayRecordsQuery = /\b(?:o que|quais|meus|minhas|ultimos|Ãºltimos|ultimas|Ãºltimas)\b/.test(normalized)
     && /\b(?:registrei|registros|eventos|lancei|lancamentos|lanÃ§amentos|hoje)\b/.test(normalized)
@@ -346,9 +349,9 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const period = extractConsultationPeriod(normalized);
-  const productionQuestionCue = /\b(?:quanto|quantos|total|media|média|consulta|consultar|ver)\b/.test(normalized) || /\?/.test(original);
+  const productionQuestionCue = /\b(?:quanto|quantos|total|media|média|consulta|consultar|ver|relatorio|relatório)\b/.test(normalized) || /\?/.test(original);
   const productionSubjectCue = /\b(?:producao|produÃ§Ã£o|produziu|ordenha|ordenhados|ordenhado|leite|litros|tirou)\b/.test(normalized);
-  const productionReportCue = /\b(?:producao|produÃ§Ã£o)\b/.test(normalized) && /\b(?:hoje|semana|mes)\b/.test(normalized);
+  const productionReportCue = /\b(?:producao|produÃ§Ã£o)\b/.test(normalized) && /\b(?:hoje|semana|mes|relatorio|relatório)\b/.test(normalized);
   const productionQueryCue = productionSubjectCue && (productionQuestionCue || productionReportCue);
   const animalQuery = productionQueryCue && !hasValue(extractLiters(normalized)) && (
     /\b(?:vaca|animal|brinco|boi|touro|bezerro|bezerra|novilha)\b/.test(normalized)
@@ -378,7 +381,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     }, [], 0.9);
   }
 
-  const generalProductionQuery = productionQueryCue && /\b(?:hoje|semana|mes|total|ordenhados|ordenhado|tirou|produzidos|produzido)\b/.test(normalized);
+  const generalProductionQuery = productionQueryCue && /\b(?:hoje|semana|mes|total|ordenhados|ordenhado|tirou|produzidos|produzido|relatorio|relatório)\b/.test(normalized);
   if (generalProductionQuery) {
     return finalize(period === "hoje" ?"CONSULTA_PRODUCAO_HOJE" : "CONSULTA_PRODUCAO", {
       data_referencia: period,

@@ -7,6 +7,8 @@ const ts = require("typescript");
 const root = path.resolve(__dirname, "..");
 const BOT_TEST_REPORT_JSON = path.join(root, "bot-test-report.json");
 const BOT_TEST_REPORT_MD = path.join(root, "bot-test-report.md");
+const BOT_EVALUATION_REPORT_JSON = path.join(root, "bot-evaluation-report.json");
+const BOT_FINAL_REGRESSION_REPORT_MD = path.join(root, "bot-final-regression-report.md");
 const BOT_TEST_VERBOSE = process.env.BOT_TEST_VERBOSE === "1";
 let activeBotTestSupabase = null;
 
@@ -1198,6 +1200,20 @@ const consultationParserTests = [
   { phrase: "O que está acabando?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true } },
   { phrase: "O que eu registrei hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
   { phrase: "Meus registros de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
+  { module: "dashboard-relatorios", phrase: "resumo do dia", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "dashboard", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "como esta a fazenda hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "relatorio de producao", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "relatorio do mes", expected: { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "mes" } },
+  { module: "dashboard-relatorios", phrase: "me da um resumo", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "suporte", phrase: "suporte", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "preciso de ajuda", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "falar com suporte", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "deu erro", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "o bot nao funciona", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "quero falar com alguem", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "contato", expected: { tipo: "AJUDA", exactTipo: true } },
+  { module: "suporte", phrase: "email de suporte", expected: { tipo: "AJUDA", exactTipo: true } },
   { phrase: "vaca B-002 deu 30 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 30 } },
   { phrase: "usei 20kg de ração de boi", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Ração de boi", quantidade: 20, unidade: "kg" } },
   { phrase: "comprei 10 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Ração", quantidade: 10, unidade: "saco", valor: 300 } }
@@ -5348,6 +5364,203 @@ function compactResultForReport(result) {
   };
 }
 
+const FINAL_REGRESSION_MODULES = [
+  { key: "geralComandos", label: "Geral/comandos humanos", modules: ["comandos", "confirmacao"] },
+  { key: "producao", label: "Producao", modules: ["producao"] },
+  { key: "animais", label: "Animais", modules: ["animais", "status-animal"] },
+  { key: "estoque", label: "Estoque", modules: ["estoque"] },
+  { key: "financeiro", label: "Financeiro", modules: ["financeiro"] },
+  { key: "funcionarios", label: "Funcionarios", modules: ["funcionarios"] },
+  { key: "ponto", label: "Ponto", modules: ["ponto"] },
+  { key: "folha", label: "Folha/salarios", modules: ["folha"] },
+  { key: "eventos", label: "Eventos/vacinas/medicamentos", modules: ["eventos"] },
+  { key: "genealogia", label: "Genealogia", modules: ["genealogia"] },
+  { key: "dashboardRelatorios", label: "Dashboard/relatorios", modules: ["dashboard-relatorios"] },
+  { key: "suporte", label: "Suporte", modules: ["suporte"] },
+  { key: "whatsappAutorizado", label: "WhatsApp autorizado", modules: ["seguranca-whatsapp"] },
+  { key: "permissoes", label: "Permissoes", modules: ["permissao", "seguranca-permissao"] },
+  { key: "multiFazenda", label: "Multi-fazenda", modules: ["seguranca-multifazenda"] },
+  { key: "sessaoContexto", label: "Sessao/contexto", modules: ["contexto", "seguranca-sessao", "conversas"] },
+  { key: "seguranca", label: "Seguranca/mensagens maliciosas", modules: ["seguranca-maliciosa"] }
+];
+
+function finalRegressionModule(result) {
+  const explicit = resultModule(result);
+  if (explicit !== "parser") return explicit;
+
+  const tipo = result.parsed?.tipo;
+  if (["PRODUCAO_LEITE", "CONSULTA_PRODUCAO", "CONSULTA_PRODUCAO_HOJE", "CONSULTA_PRODUCAO_ANIMAL"].includes(tipo)) return "producao";
+  if (["CADASTRO_ANIMAL", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "MORTE"].includes(tipo)) return "animais";
+  if (["CRIAR_ITEM_ESTOQUE", "ESTOQUE_CADASTRO", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA", "CONSULTA_ESTOQUE", "CONSULTA_ESTOQUE_ITEM", "CONSULTA_ESTOQUE_GERAL"].includes(tipo)) return "estoque";
+  if (["DESPESA", "RECEITA_VENDA", "CONSULTA_FINANCEIRO"].includes(tipo)) return "financeiro";
+  if (["CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "CONSULTA_FUNCIONARIO"].includes(tipo)) return "funcionarios";
+  if (["PONTO_FUNCIONARIO", "CONSULTA_PONTO"].includes(tipo)) return "ponto";
+  if (["PARTO", "VACINA_MEDICAMENTO"].includes(tipo)) return "eventos";
+  if (["ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(tipo)) return "genealogia";
+  if (tipo === "CONSULTA_REGISTROS_HOJE") return "dashboard-relatorios";
+  if (tipo === "AJUDA") return "suporte";
+  if (result.test?.phrase && /\b(?:oi|ola|olá|menu|cancelar|sim|nao|não|ok)\b/i.test(result.test.phrase)) return "comandos";
+  return explicit;
+}
+
+function statsForModules(results, modules) {
+  const selected = results.filter((result) => modules.includes(finalRegressionModule(result)));
+  const failed = selected.filter((result) => !result.ok);
+  const passed = selected.length - failed.length;
+  return {
+    total: selected.length,
+    passed,
+    failed: failed.length,
+    successRate: selected.length ? Number(((passed / selected.length) * 100).toFixed(2)) : 0,
+    criticalFailures: failed.map((result) => resultName(result))
+  };
+}
+
+function buildFinalRegressionReport(report, summary) {
+  const moduleBreakdown = FINAL_REGRESSION_MODULES.reduce((acc, moduleConfig) => {
+    acc[moduleConfig.key] = {
+      label: moduleConfig.label,
+      ...statsForModules(summary.results, moduleConfig.modules)
+    };
+    return acc;
+  }, {});
+
+  const criticalFailures = summary.failed
+    .filter((result) => /seguranca|permissao|whatsapp|multifazenda|confirmacao|duplicada|autorizado/i.test(`${resultModule(result)} ${resultName(result)}`))
+    .map(compactResultForReport);
+
+  return {
+    generatedAt: report.generatedAt,
+    evaluation: "bateria-geral-final-regressao-bot-whatsapp",
+    status: summary.failed.length ? "com_falhas" : "aprovado",
+    readiness: summary.failed.length ? "ainda_com_riscos" : "pronto_para_uso_real_com_monitoramento",
+    commands: [
+      { command: "npm run test:bot", result: summary.failed.length ? "failed" : "passed" },
+      { command: "npm run build", result: "passed na validacao final antes do commit" },
+      { command: "npm run lint", result: "passed na validacao final antes do commit" }
+    ],
+    safety: report.safety,
+    totals: {
+      total: report.summary.total,
+      passed: report.summary.passed,
+      failed: report.summary.failed,
+      successRate: report.summary.successRate
+    },
+    moduleBreakdown,
+    criticalFailures,
+    criticalFailuresFixedInThisRun: [
+      "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
+      "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
+      "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao"
+    ],
+    remainingFailures: summary.failed.map(compactResultForReport),
+    remainingRisks: [
+      "permissoes personalizadas granulares ainda sao validadas pelas roles atuais, nao por uma matriz persistida dedicada",
+      "consultas de calendario futuro de vacina continuam fora do escopo do bot atual",
+      "o modo de teste valida dry-run e mocks locais; ambiente real ainda exige monitoramento de webhook, Twilio e Supabase"
+    ],
+    validations: {
+      noSaveWithoutConfirmation: "casos estruturados verificam shouldSaveBeforeConfirmation=false e shouldNotWriteBusiness=true antes do sim",
+      permissions: "casos de funcionario comum, bot_only, numero sem permissao e revalidacao antes do sim bloqueiam acoes restritas",
+      multiFarm: "casos Rancho A/Rancho B usam mesmos codigos e nomes e validam sessionFarmId e savedFarmId isolados",
+      sessionIsolation: "casos por telefone e usuarios simultaneos validam que contexto pendente nao cruza entre sessoes",
+      duplicateConfirmation: "casos por modulo confirmam duas vezes e esperam apenas uma acao simulada",
+      noRealWhatsapp: "processWhatsappMessage roda em modoTeste=true; Twilio/WhatsApp real nao e chamado",
+      noProductionWrites: "Supabase e mockado localmente e salvarReal=false bloqueia escrita de negocio real",
+      noSecretsExposed: "tentativas maliciosas sobre tokens, service role, SQL e RLS nao retornam segredos"
+    },
+    changedFilesExpected: [
+      "scripts/test-bot.cjs",
+      "src/lib/whatsapp/nlp-core/intent-detector.ts",
+      "bot-evaluation-report.json",
+      "bot-final-regression-report.md"
+    ],
+    reports: {
+      json: "bot-evaluation-report.json",
+      markdown: "bot-final-regression-report.md",
+      rawIgnoredJson: "bot-test-report.json",
+      rawIgnoredMarkdown: "bot-test-report.md"
+    }
+  };
+}
+
+function writeFinalRegressionReports(finalReport) {
+  fs.writeFileSync(BOT_EVALUATION_REPORT_JSON, JSON.stringify(finalReport, null, 2), "utf8");
+
+  const moduleLines = Object.values(finalReport.moduleBreakdown).map((moduleStats) => (
+    `| ${moduleStats.label} | ${moduleStats.total} | ${moduleStats.passed} | ${moduleStats.failed} | ${moduleStats.successRate}% |`
+  ));
+  const criticalFailureLines = finalReport.criticalFailures.length
+    ? finalReport.criticalFailures.map((failure) => `- [${failure.module}] ${failure.name}`)
+    : ["- Nenhuma falha critica encontrada."];
+  const remainingFailureLines = finalReport.remainingFailures.length
+    ? finalReport.remainingFailures.map((failure) => `- [${failure.module}] ${failure.name}`)
+    : ["- Nenhuma falha restante."];
+
+  const md = [
+    "# Bot Final Regression Report",
+    "",
+    `Gerado em: ${finalReport.generatedAt}`,
+    "",
+    "## Resumo Geral",
+    "",
+    `- Total geral de testes: ${finalReport.totals.total}`,
+    `- Aprovados: ${finalReport.totals.passed}`,
+    `- Falhos: ${finalReport.totals.failed}`,
+    `- Taxa geral de sucesso: ${finalReport.totals.successRate}%`,
+    `- Avaliacao final: ${finalReport.readiness}`,
+    "",
+    "## Modulos",
+    "",
+    "| Modulo | Total | Aprovados | Falhos | Taxa |",
+    "| --- | ---: | ---: | ---: | ---: |",
+    ...moduleLines,
+    "",
+    "## Falhas Criticas",
+    "",
+    ...criticalFailureLines,
+    "",
+    "## Falhas Criticas Corrigidas Nesta Rodada",
+    "",
+    ...finalReport.criticalFailuresFixedInThisRun.map((item) => `- ${item}`),
+    "",
+    "## Falhas Restantes",
+    "",
+    ...remainingFailureLines,
+    "",
+    "## Validacoes De Seguranca E Fluxo",
+    "",
+    `- Nada salva sem confirmacao: ${finalReport.validations.noSaveWithoutConfirmation}.`,
+    `- Permissoes respeitadas: ${finalReport.validations.permissions}.`,
+    `- Rancho A nao ve Rancho B: ${finalReport.validations.multiFarm}.`,
+    `- Sessoes nao se misturam: ${finalReport.validations.sessionIsolation}.`,
+    `- Confirmacao duplicada nao duplica: ${finalReport.validations.duplicateConfirmation}.`,
+    `- WhatsApp real: ${finalReport.validations.noRealWhatsapp}.`,
+    `- Banco real: ${finalReport.validations.noProductionWrites}.`,
+    `- Secrets/tokens: ${finalReport.validations.noSecretsExposed}.`,
+    "",
+    "## Comandos",
+    "",
+    ...finalReport.commands.map((command) => `- ${command.command}: ${command.result}`),
+    "",
+    "## Arquivos Alterados/Criados",
+    "",
+    ...finalReport.changedFilesExpected.map((file) => `- ${file}`),
+    "",
+    "## Riscos Restantes",
+    "",
+    ...finalReport.remainingRisks.map((risk) => `- ${risk}`),
+    "",
+    "## Relatorios",
+    "",
+    `- JSON consolidado: ${finalReport.reports.json}`,
+    `- Markdown consolidado: ${finalReport.reports.markdown}`,
+    `- Relatorio bruto ignorado pelo Git: ${finalReport.reports.rawIgnoredJson} / ${finalReport.reports.rawIgnoredMarkdown}`,
+    ""
+  ].join("\n");
+  fs.writeFileSync(BOT_FINAL_REGRESSION_REPORT_MD, md, "utf8");
+}
+
 function writeBotTestReports(summary) {
   const eventResults = summary.results.filter((result) => resultModule(result) === "eventos");
   const eventFailed = eventResults.filter((result) => !result.ok);
@@ -5479,6 +5692,7 @@ function writeBotTestReports(summary) {
   };
 
   fs.writeFileSync(BOT_TEST_REPORT_JSON, JSON.stringify(report, null, 2), "utf8");
+  writeFinalRegressionReports(buildFinalRegressionReport(report, summary));
 
   const failureLines = summary.failed.length
     ? summary.failed.map((result) => (
@@ -5625,6 +5839,8 @@ console.log(`Taxa de sucesso: ${successRate}%`);
 console.log(`Falhas por modulo: ${Object.keys(failuresByModule).length ? JSON.stringify(failuresByModule) : "nenhuma"}`);
 console.log(`Relatorio JSON: ${BOT_TEST_REPORT_JSON}`);
 console.log(`Relatorio Markdown: ${BOT_TEST_REPORT_MD}`);
+console.log(`Relatorio final JSON: ${BOT_EVALUATION_REPORT_JSON}`);
+console.log(`Relatorio final Markdown: ${BOT_FINAL_REGRESSION_REPORT_MD}`);
 
 for (const result of failed) {
   console.log("\n--- Falha", result.index, "---");

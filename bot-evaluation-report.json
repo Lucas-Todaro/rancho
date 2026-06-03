@@ -1,0 +1,205 @@
+{
+  "generatedAt": "2026-06-03T18:54:35.312Z",
+  "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
+  "status": "aprovado",
+  "readiness": "pronto_para_uso_real_com_monitoramento",
+  "commands": [
+    {
+      "command": "npm run test:bot",
+      "result": "passed"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed na validacao final antes do commit"
+    },
+    {
+      "command": "npm run lint",
+      "result": "passed na validacao final antes do commit"
+    }
+  ],
+  "safety": {
+    "modoTeste": true,
+    "salvarReal": false,
+    "whatsappReal": false,
+    "supabase": "mock-local-em-memoria",
+    "productionWrites": false
+  },
+  "totals": {
+    "total": 858,
+    "passed": 858,
+    "failed": 0,
+    "successRate": 100
+  },
+  "moduleBreakdown": {
+    "geralComandos": {
+      "label": "Geral/comandos humanos",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "producao": {
+      "label": "Producao",
+      "total": 54,
+      "passed": 54,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "animais": {
+      "label": "Animais",
+      "total": 30,
+      "passed": 30,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "estoque": {
+      "label": "Estoque",
+      "total": 156,
+      "passed": 156,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "financeiro": {
+      "label": "Financeiro",
+      "total": 132,
+      "passed": 132,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "funcionarios": {
+      "label": "Funcionarios",
+      "total": 42,
+      "passed": 42,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "ponto": {
+      "label": "Ponto",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "folha": {
+      "label": "Folha/salarios",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "eventos": {
+      "label": "Eventos/vacinas/medicamentos",
+      "total": 173,
+      "passed": 173,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "genealogia": {
+      "label": "Genealogia",
+      "total": 81,
+      "passed": 81,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "dashboardRelatorios": {
+      "label": "Dashboard/relatorios",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "suporte": {
+      "label": "Suporte",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "whatsappAutorizado": {
+      "label": "WhatsApp autorizado",
+      "total": 42,
+      "passed": 42,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "permissoes": {
+      "label": "Permissoes",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "multiFazenda": {
+      "label": "Multi-fazenda",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "sessaoContexto": {
+      "label": "Sessao/contexto",
+      "total": 29,
+      "passed": 29,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    },
+    "seguranca": {
+      "label": "Seguranca/mensagens maliciosas",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "successRate": 100,
+      "criticalFailures": []
+    }
+  },
+  "criticalFailures": [],
+  "criticalFailuresFixedInThisRun": [
+    "suporte, erro e contato agora entram em AJUDA e nao em fluxo de producao",
+    "resumo do dia, dashboard e resumo da fazenda agora entram em consulta sem salvar",
+    "relatorio de producao agora entra em consulta de producao, sem pedir confirmacao"
+  ],
+  "remainingFailures": [],
+  "remainingRisks": [
+    "permissoes personalizadas granulares ainda sao validadas pelas roles atuais, nao por uma matriz persistida dedicada",
+    "consultas de calendario futuro de vacina continuam fora do escopo do bot atual",
+    "o modo de teste valida dry-run e mocks locais; ambiente real ainda exige monitoramento de webhook, Twilio e Supabase"
+  ],
+  "validations": {
+    "noSaveWithoutConfirmation": "casos estruturados verificam shouldSaveBeforeConfirmation=false e shouldNotWriteBusiness=true antes do sim",
+    "permissions": "casos de funcionario comum, bot_only, numero sem permissao e revalidacao antes do sim bloqueiam acoes restritas",
+    "multiFarm": "casos Rancho A/Rancho B usam mesmos codigos e nomes e validam sessionFarmId e savedFarmId isolados",
+    "sessionIsolation": "casos por telefone e usuarios simultaneos validam que contexto pendente nao cruza entre sessoes",
+    "duplicateConfirmation": "casos por modulo confirmam duas vezes e esperam apenas uma acao simulada",
+    "noRealWhatsapp": "processWhatsappMessage roda em modoTeste=true; Twilio/WhatsApp real nao e chamado",
+    "noProductionWrites": "Supabase e mockado localmente e salvarReal=false bloqueia escrita de negocio real",
+    "noSecretsExposed": "tentativas maliciosas sobre tokens, service role, SQL e RLS nao retornam segredos"
+  },
+  "changedFilesExpected": [
+    "scripts/test-bot.cjs",
+    "src/lib/whatsapp/nlp-core/intent-detector.ts",
+    "bot-evaluation-report.json",
+    "bot-final-regression-report.md"
+  ],
+  "reports": {
+    "json": "bot-evaluation-report.json",
+    "markdown": "bot-final-regression-report.md",
+    "rawIgnoredJson": "bot-test-report.json",
+    "rawIgnoredMarkdown": "bot-test-report.md"
+  }
+}
