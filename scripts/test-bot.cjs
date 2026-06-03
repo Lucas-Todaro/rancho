@@ -1827,8 +1827,18 @@ const botConversationTests = [
         expected: {
           intent: "PRODUCAO_LEITE",
           estadoAnterior: "aguardando_dado",
-          estadoNovo: "aguardando_confirmacao",
+          estadoNovo: "aguardando_dado",
           dados: { litros: 32, animal_codigo: "B-002" },
+          responseIncludes: "Deseja adicionar"
+        }
+      },
+      {
+        text: "2",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { litros: 32, animal_codigo: "B-002", estoque_leite_movimentar: false },
           responseIncludes: "correto"
         }
       },
@@ -1852,7 +1862,7 @@ const botConversationTests = [
     expectNoBusinessWrites: true,
     messages: [
       {
-        text: "vaca B-002 deu 18 litros",
+        text: "vaca B-002 deu 18 litros para venda",
         expected: {
           intent: "PRODUCAO_LEITE",
           estadoNovo: "aguardando_confirmacao",
@@ -2157,7 +2167,7 @@ const botConversationTests = [
     expectNoBusinessWrites: true,
     messages: [
       {
-        text: "B-002 deu 30 litros",
+        text: "B-002 deu 30 litros para venda",
         expected: {
           intent: "PRODUCAO_LEITE",
           estadoNovo: "aguardando_confirmacao",
@@ -2180,7 +2190,7 @@ const botConversationTests = [
     expectNoBusinessWrites: true,
     messages: [
       {
-        text: "B-002 deu 30 litros",
+        text: "B-002 deu 30 litros para venda",
         expected: {
           intent: "PRODUCAO_LEITE",
           estadoNovo: "aguardando_confirmacao",
@@ -2203,7 +2213,7 @@ const botConversationTests = [
     expectNoBusinessWrites: true,
     messages: [
       {
-        text: "B-002 deu 30 litros",
+        text: "B-002 deu 30 litros para venda",
         expected: {
           intent: "PRODUCAO_LEITE",
           estadoNovo: "aguardando_confirmacao",
@@ -2305,7 +2315,7 @@ const botConversationTests = [
     ]
   },
   {
-    name: "lote de producao resolve item unico de estoque de leite sem movimentar no dry-run",
+    name: "lote de producao no tanque resolve item unico e prepara estoque no dry-run",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,
     messages: [
@@ -2319,11 +2329,11 @@ const botConversationTests = [
             estoque_leite_status: "matched",
             estoque_leite_item_nome: "Leite Cru",
             estoque_leite_item_id: "item-leite-cru",
-            estoque_leite_movimentar: false
+            estoque_leite_movimentar: true
           },
-          responseIncludes: "entrada no estoque",
-          responseRawIncludes: ["ficará", "produção"],
-          responseRawNotIncludes: ["ficarÃ", "produÃ"]
+          responseIncludes: "estoque de Leite Cru",
+          responseRawIncludes: ["entrada"],
+          responseRawNotIncludes: ["ficar", "produÃ"]
         }
       },
       {
@@ -2332,7 +2342,7 @@ const botConversationTests = [
           intent: "LOTE_REGISTROS",
           estadoNovo: "livre",
           eventoConfirmado: true,
-          responseIncludes: "estoque_movimentar: nao",
+          responseIncludes: "estoque_movimentar: sim",
           responseRawIncludes: "Simulação",
           responseRawNotIncludes: ["SimulaÃ", "produÃ"]
         }
@@ -2340,7 +2350,7 @@ const botConversationTests = [
     ]
   },
   {
-    name: "lote de producao lista multiplos itens compativeis de leite sem movimentar",
+    name: "lote de producao prefere item mais compativel de leite e pergunta sem destino",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,
     extraStockItems: [
@@ -2351,13 +2361,13 @@ const botConversationTests = [
         text: "vaca 1 deu 14 litros e vaca 2 15",
         expected: {
           intent: "LOTE_REGISTROS",
-          estadoNovo: "aguardando_confirmacao",
+          estadoNovo: "aguardando_dado",
           dados: {
             total_litros: 29,
-            estoque_leite_status: "ambiguous",
+            estoque_leite_status: "matched",
             estoque_leite_movimentar: false
           },
-          responseIncludes: "mais de um item"
+          responseIncludes: "Deseja adicionar"
         }
       }
     ]
@@ -2389,7 +2399,7 @@ const positiveConfirmationFrameworkCases = ["s", "ss", "ok", "pode salvar", "sal
   name: `confirmacao positiva aceita: ${confirmation}`,
   module: "confirmacao",
   phone: BOT_TEST_ADMIN_PHONE,
-  messages: ["B-002 deu 32 litros", confirmation],
+  messages: ["B-002 deu 32 litros para venda", confirmation],
   expected: {
     finalIntent: "PRODUCAO_LEITE",
     entities: { animal_codigo: "B-002", litros: 32 },
@@ -2408,7 +2418,7 @@ const negativeConfirmationFrameworkCases = ["cancelar", "nao salvar", "esquece",
   name: `confirmacao negativa limpa: ${rejection}`,
   module: "confirmacao",
   phone: BOT_TEST_ADMIN_PHONE,
-  messages: ["B-002 deu 32 litros", rejection],
+  messages: ["B-002 deu 32 litros para venda", rejection],
   expected: {
     finalIntent: "PRODUCAO_LEITE",
     entities: { animal_codigo: "B-002", litros: 32 },
@@ -2455,7 +2465,7 @@ const animalFrameworkCases = [
     name: "nova operacao substitui producao pendente",
     module: "confirmacao",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["B-002 deu 30 litros", "comprei 3 sacos de milho por 120 reais"],
+    messages: ["B-002 deu 30 litros para venda", "comprei 3 sacos de milho por 120 reais"],
     expected: {
       finalIntent: "ESTOQUE_ENTRADA",
       entities: { item_nome: "Milho", quantidade: 3, unidade: "saco", valor: 120 },
@@ -4641,7 +4651,7 @@ const whatsappNormalizationSecurityCases = [
     module: "seguranca-whatsapp",
     phone,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       entities: { animal_codigo: "B-002", litros: 32 },
@@ -4659,7 +4669,7 @@ const whatsappNormalizationSecurityCases = [
     module: "seguranca-whatsapp",
     phone,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 20 litros", "sim"],
+    messages: ["B-002 deu 20 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       entities: { animal_codigo: "B-002", litros: 20 },
@@ -4702,7 +4712,7 @@ const whatsappNormalizationSecurityCases = [
 
 const blockedMessages = [
   "menu",
-  "B-002 deu 32 litros",
+  "B-002 deu 32 litros para venda",
   "vendi leite por 900",
   "comprei racao por 300",
   "listar funcionarios",
@@ -4728,7 +4738,7 @@ const authorizationSecurityCases = [
       allResponsesNotInclude: ["Fazenda Boa Vista", "Fazenda Santa Clara", "Bruno", "R$"]
     }
   })),
-  ...["menu", "B-002 deu 32 litros", "vendi leite por 900", "estoque baixo", "financeiro do mes", "registrar ponto", "apliquei aftosa na B-002"].map((message) => ({
+  ...["menu", "B-002 deu 32 litros para venda", "vendi leite por 900", "estoque baixo", "financeiro do mes", "registrar ponto", "apliquei aftosa na B-002"].map((message) => ({
     name: `numero inativo A bloqueia: ${message}`,
     module: "seguranca-whatsapp",
     phone: SECURITY_INACTIVE_A_PHONE,
@@ -4741,7 +4751,7 @@ const authorizationSecurityCases = [
       allResponsesNotInclude: ["Hoje foram", "Financeiro", "Bruno:"]
     }
   })),
-  ...["menu", "B-002 deu 20 litros", "financeiro do mes"].map((message) => ({
+  ...["menu", "B-002 deu 20 litros para venda", "financeiro do mes"].map((message) => ({
     name: `numero inativo B bloqueia: ${message}`,
     module: "seguranca-whatsapp",
     phone: SECURITY_INACTIVE_B_PHONE,
@@ -4771,7 +4781,7 @@ const authorizationSecurityCases = [
     phone: "5531999990098",
     ranches: [{ id: "rancho_suspenso", nome: "Rancho Suspenso", ativa: false }],
     whatsappUsers: [{ id: "sec-wa-suspenso", fazenda_id: "rancho_suspenso", usuario_id: null, funcionario_id: null, telefone_e164: "5531999990098", nome_exibicao: "Suspenso", papel_bot: "admin", ativo: true }],
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       responseIncludes: "nao esta ativo",
       savedAfterConfirmation: false,
@@ -4786,7 +4796,7 @@ const authorizationSecurityCases = [
       { id: "sec-wa-duplo-a", fazenda_id: BOT_TEST_FARM_ID, usuario_id: null, funcionario_id: null, telefone_e164: "5531999990100", nome_exibicao: "Duplo A", papel_bot: "admin", ativo: true },
       { id: "sec-wa-duplo-b", fazenda_id: BOT_TEST_FARM_ID_B, usuario_id: null, funcionario_id: null, telefone_e164: "5531999990100", nome_exibicao: "Duplo B", papel_bot: "admin", ativo: true }
     ]),
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       responseIncludes: "mais de um rancho",
       savedAfterConfirmation: false,
@@ -4837,7 +4847,7 @@ const rolePermissionSecurityCases = [
     module: "seguranca-permissao",
     phone: SECURITY_WORKER_A_PHONE,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       shouldAskConfirmation: true,
@@ -4958,7 +4968,7 @@ const multiFarmSecurityCases = [
     module: "seguranca-multifazenda",
     phone: SECURITY_OWNER_A_PHONE,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       shouldAskConfirmation: true,
@@ -4975,7 +4985,7 @@ const multiFarmSecurityCases = [
     module: "seguranca-multifazenda",
     phone: SECURITY_OWNER_B_PHONE,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 20 litros", "sim"],
+    messages: ["B-002 deu 20 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       shouldAskConfirmation: true,
@@ -5171,7 +5181,7 @@ const sessionSecurityCases = [
     module: "seguranca-sessao",
     phone: SECURITY_OWNER_A_PHONE,
     whatsappUsers: securityWhatsappUsers(),
-    messages: ["B-002 deu 32 litros", "cancelar", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "cancelar", "sim"],
     expected: {
       shouldAskConfirmation: true,
       shouldClearSession: true,
@@ -5308,10 +5318,101 @@ const structuredBotEvaluationCases = [
     }
   },
   {
+    name: "producao no tanque salva producao e entrada de leite em dry-run",
+    module: "producao-estoque-leite",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 deu 30 litros no tanque", "sim"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 30, estoque_leite_movimentar: true },
+      responseIncludes: "estoque_movimentar: sim",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { quantidade: 30 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "lote de producao no tanque salva entrada consolidada de leite",
+    module: "producao-estoque-leite",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vaca 1 deu 15 litros e vaca 2 também no tanque", "sim"],
+    expected: {
+      finalIntent: "LOTE_REGISTROS",
+      entities: { total_litros: 30, estoque_leite_movimentar: true },
+      responseIncludes: "entrada consolidada",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 3,
+      savedTables: [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { quantidade: 30 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "producao para venda nao adiciona leite ao estoque",
+    module: "producao-estoque-leite",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 produziu 25 litros para venda", "sim"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 25 },
+      allResponsesNotInclude: ["estoque_movimentar: sim"],
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.ordenhas],
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "producao sem destino pergunta se adiciona ao estoque",
+    module: "producao-estoque-leite",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 deu 30 litros", "1", "sim"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 30, estoque_leite_movimentar: true },
+      responseIncludes: "estoque_movimentar: sim",
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { quantidade: 30 },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "producao no tanque sem item de leite registra apenas producao",
+    module: "producao-estoque-leite",
+    phone: BOT_TEST_ADMIN_PHONE,
+    stockItems: mockStock.filter((item) => !/leite/i.test(item.nome)),
+    messages: ["B-002 deu 30 litros no tanque"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "B-002", litros: 30, estoque_leite_movimentar: false },
+      responseIncludes: "Não encontrei item de estoque compatível com leite",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["B-002 deu 32 litros"],
+    messages: ["B-002 deu 32 litros para venda"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       entities: { animal_codigo: "B-002", litros: 32 },
@@ -5325,7 +5426,7 @@ const structuredBotEvaluationCases = [
     name: "producao completa salva apenas apos sim em dry-run",
     module: "producao",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["B-002 deu 32 litros", "sim"],
+    messages: ["B-002 deu 32 litros para venda", "sim"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       entities: { animal_codigo: "B-002", litros: 32 },
@@ -5343,7 +5444,7 @@ const structuredBotEvaluationCases = [
     name: "producao em etapas acumula contexto sem salvar",
     module: "producao",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["registrar producao", "B-002", "32"],
+    messages: ["registrar producao", "B-002", "32", "2"],
     expected: {
       finalIntent: "PRODUCAO_LEITE",
       entities: { animal_codigo: "B-002", litros: 32 },
@@ -5729,7 +5830,7 @@ function simulatedSaveActionsForResult(result, phone) {
   const fazendaId = farmIdForPhone(phone);
 
   if (tipo === "PRODUCAO_LEITE") {
-    return [{
+    const actions = [{
       ...base,
       table: BOT_TEST_TABLES.ordenhas,
       payload: {
@@ -5740,6 +5841,56 @@ function simulatedSaveActionsForResult(result, phone) {
         origem: "whatsapp"
       }
     }];
+    const stock = dados.estoque_leite || {};
+    if (stock.estoque_movimentar && stock.item_id) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.estoqueMovimentacoes,
+        payload: {
+          fazenda_id: fazendaId,
+          item_id: stock.item_id,
+          item_nome: stock.item_leite_resolvido,
+          tipo: "entrada",
+          quantidade: Number(stock.total_litros || dados.litros || 0),
+          origem: "whatsapp"
+        }
+      });
+    }
+    return actions;
+  }
+
+  if (tipo === "LOTE_REGISTROS") {
+    const registros = Array.isArray(dados.registros) ? dados.registros : [];
+    const actions = registros.flatMap((registro) => {
+      if (registro.tipo !== "PRODUCAO_LEITE") return [];
+      return [{
+        ...base,
+        table: BOT_TEST_TABLES.ordenhas,
+        payload: {
+          fazenda_id: fazendaId,
+          animal_id: registro.dados?.animal_id || null,
+          animal_codigo: registro.dados?.animal_codigo,
+          litros: Number(registro.dados?.litros || 0),
+          origem: "whatsapp"
+        }
+      }];
+    });
+    const stock = dados.estoque_leite || {};
+    if (stock.estoque_movimentar && stock.item_id) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.estoqueMovimentacoes,
+        payload: {
+          fazenda_id: fazendaId,
+          item_id: stock.item_id,
+          item_nome: stock.item_leite_resolvido,
+          tipo: "entrada",
+          quantidade: Number(stock.total_litros || dados.total_litros || 0),
+          origem: "whatsapp"
+        }
+      });
+    }
+    return actions;
   }
 
   if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {

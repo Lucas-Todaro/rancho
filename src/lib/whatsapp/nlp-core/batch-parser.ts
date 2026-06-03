@@ -93,6 +93,13 @@ function hasExplicitStockMovementAction(segment: string) {
   return /\b(?:comprei|compramos|comprar|compra|paguei|adiciona|adicionar|adicionei|inclui|incluir|bota|botar|botei|coloca|colocar|coloquei|lanca|lancar|entrada|entrou|chegou|chegaram|chego|xegou|recebi|recebemos|baixa|baixar|dar baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|saiu|saida|consumi|consumiu|descartei)\b/.test(normalized);
 }
 
+function milkBatchDestination(text: string) {
+  const normalized = normalizeRanchoText(text);
+  if (/\b(?:tanque|resfriador|estoque)\b/.test(normalized)) return "tanque";
+  if (/\b(?:venda|vender|vendido|laticinio|laticínio|cliente)\b/.test(normalized)) return "venda";
+  return undefined;
+}
+
 export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
   const segments = splitBatchSegments(text);
   if (segments.length < 2) return null;
@@ -123,6 +130,7 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
   if (registros.length < 2) return null;
   const productionRecords = registros.filter((registro) => registro.tipo === "PRODUCAO_LEITE");
   const totalLitros = productionRecords.reduce((sum, registro) => sum + Number(registro.dados?.litros || 0), 0);
+  const destinoLeite = milkBatchDestination(text);
   const dados = {
     registros,
     total_registros: registros.length,
@@ -130,7 +138,9 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
     ...(productionRecords.length > 1 ?{
       total_litros: totalLitros,
       estoque_leite_detectado: true,
-      tanque: /\btanque\b/.test(normalizeRanchoText(text))
+      destino_leite: destinoLeite,
+      destino_leite_claro: Boolean(destinoLeite),
+      tanque: destinoLeite === "tanque"
     } : {})
   };
   return finalize("LOTE_REGISTROS", dados, [], 0.88);

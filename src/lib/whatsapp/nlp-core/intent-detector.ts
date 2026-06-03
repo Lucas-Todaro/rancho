@@ -193,6 +193,12 @@ function isReportPeriodTokenAsAnimalCode(code?: string | null) {
   return /^(?:HOJE|HJ|ONTEM|NTEM|ANTEONTEM|SEMANA|SEMANAL|MES|MEZ|MENSAL|JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)$/i.test(code);
 }
 
+function milkProductionDestination(normalized: string) {
+  if (/\b(?:tanque|resfriador|estoque)\b/.test(normalized)) return "tanque";
+  if (/\b(?:venda|vender|vendido|laticinio|laticínio|cliente)\b/.test(normalized)) return "venda";
+  return undefined;
+}
+
 function cleanStockSpecificItemCandidate(candidate?: string | null) {
   const cleaned = normalizeRanchoText(cleanAnswer(candidate || ""))
     .replace(/\b(?:no|na|em|do|da)\s+estoque\b/g, " ")
@@ -1140,6 +1146,26 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
   }
 
+  const productionLitersBeforeFinance = extractLiters(normalized) ?? extractLooseProductionLiters(normalized);
+  const productionBeforeFinance = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção|tirei|deu|fez)\b/.test(normalized)
+    && Number(productionLitersBeforeFinance || 0) > 0
+    && Boolean(extractAnimalCode(normalized, "PRODUCAO_LEITE"))
+    && !/^(?:recebi|recebemos|ganhei|receita|vendi|vendii|venda)\b/.test(normalized)
+    && !/\b(?:baixa|cria|parto)\b/.test(normalized);
+  if (productionBeforeFinance) {
+    const destino = milkProductionDestination(normalized);
+    const dados = {
+      animal_codigo: extractAnimalCode(normalized, "PRODUCAO_LEITE"),
+      litros: extractLiters(normalized) ?? extractLooseProductionLiters(normalized),
+      turno: extractTurno(normalized),
+      data_referencia: extractDateReference(normalized) || "hoje",
+      destino_leite: destino,
+      destino_leite_claro: Boolean(destino),
+      tanque: destino === "tanque"
+    };
+    return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados));
+  }
+
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
   const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized)
     && !clinicalObservationCue.test(normalized)
@@ -1234,11 +1260,15 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isProduction = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção|tirei|deu|fez)\b/.test(normalized)
     && !/\b(?:baixa|cria|parto)\b/.test(normalized);
   if (isProduction) {
+    const destino = milkProductionDestination(normalized);
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PRODUCAO_LEITE"),
       litros: extractLiters(normalized) ?? extractLooseProductionLiters(normalized),
       turno: extractTurno(normalized),
-      data_referencia: extractDateReference(normalized) || "hoje"
+      data_referencia: extractDateReference(normalized) || "hoje",
+      destino_leite: destino,
+      destino_leite_claro: Boolean(destino),
+      tanque: destino === "tanque"
     };
     return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados));
   }
