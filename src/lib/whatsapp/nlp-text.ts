@@ -13,6 +13,7 @@ export function normalizeRanchoText(value: string) {
     .replace(/\b(?:slario|salaro)\b/g, "salario")
     .replace(/\baftoza\b/g, "aftosa")
     .replace(/\bmimosaa\b/g, "mimosa")
+    .replace(/\bm\s+e\b/g, "mae")
     .replace(/\btratameto\b/g, "tratamento")
     .replace(/\bduente\b/g, "doente")
     .replace(/\bfico\b/g, "ficou")
@@ -30,6 +31,8 @@ export function normalizeRanchoText(value: string) {
     .replace(/\be\s*(?=(?:a\s+)?(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco)|b-\d|\d)/g, "e ")
     .replace(/[!?;()[\]{}]/g, " ")
     .replace(/\s+/g, " ")
+    .replace(/\btem m e\b/g, "tem mae")
+    .replace(/\bm e\b/g, "mae")
     .trim();
 }
 

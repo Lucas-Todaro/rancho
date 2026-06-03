@@ -64,16 +64,20 @@ const {
 const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
 
 const mockAnimals = [
-  { id: "animal-b-002", brinco: "B-002", nome: "Mimosa" },
+  { id: "animal-b-001", brinco: "B-001", nome: "Mimosa", sexo: "femea", categoria: "vaca", fase: "lactacao" },
+  { id: "animal-b-002", brinco: "B-002", nome: "Estrela", sexo: "femea", categoria: "vaca", fase: "gestante", mae_id: "animal-b-001", pai_id: "animal-t-001" },
+  { id: "animal-b-003", brinco: "B-003", nome: "Princesa", sexo: "femea", categoria: "novilha", fase: "lactacao", mae_id: "animal-b-002", pai_id: "animal-t-002" },
+  { id: "animal-t-001", brinco: "T-001", nome: "Touro Rei", sexo: "macho", categoria: "touro", fase: "nao_aplicavel" },
+  { id: "animal-t-002", brinco: "T-002", nome: "Touro Forte", sexo: "macho", categoria: "touro", fase: "nao_aplicavel" },
+  { id: "animal-a12", brinco: "A12", nome: "Bezerro A12", sexo: "macho", categoria: "bezerro", fase: "crescimento" },
+  { id: "animal-vaca-15", brinco: "VACA-15", nome: "Lua", sexo: "femea", categoria: "vaca", fase: "lactacao" },
+  { id: "animal-n-033", brinco: "N-033", nome: "Novilha N-033", sexo: "femea", categoria: "novilha", fase: "crescimento" },
   { id: "animal-1", brinco: "1" },
   { id: "animal-002", brinco: "002" },
   { id: "animal-2", brinco: "2" },
   { id: "animal-3", brinco: "3" },
   { id: "animal-15", brinco: "15" },
-  { id: "animal-a12", brinco: "A12" },
-  { id: "animal-b001", brinco: "B001" },
   { id: "animal-n-01", brinco: "N-01" },
-  { id: "animal-estrela", brinco: "ESTRELA", nome: "Estrela" },
   { id: "animal-malhada", brinco: "MALHADA" },
   { id: "animal-preta", brinco: "PRETA" }
 ];
@@ -156,7 +160,8 @@ function createBotTestTables() {
 
   return {
     [BOT_TEST_TABLES.fazendas]: [
-      { id: BOT_TEST_FARM_ID, ativa: true, nome: "Fazenda de teste" }
+      { id: BOT_TEST_FARM_ID, ativa: true, nome: "Fazenda de teste" },
+      { id: BOT_TEST_FARM_ID_B, ativa: true, nome: "Fazenda de teste B" }
     ],
     [BOT_TEST_TABLES.whatsappUsuarios]: [
       {
@@ -178,6 +183,16 @@ function createBotTestTables() {
         nome_exibicao: "Joao",
         papel_bot: "funcionario",
         ativo: true
+      },
+      {
+        id: "wa-admin-b",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        usuario_id: "user-admin-b",
+        funcionario_id: null,
+        telefone_e164: BOT_TEST_ADMIN_PHONE_B,
+        nome_exibicao: "Dono B",
+        papel_bot: "admin",
+        ativo: true
       }
     ],
     [BOT_TEST_TABLES.whatsappSessoes]: [],
@@ -197,6 +212,14 @@ function createBotTestTables() {
         nome: "Usuario comum",
         telefone: "5583777777777",
         papel: "funcionario",
+        ativo: true
+      },
+      {
+        id: "user-admin-b",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        nome: "Dono B",
+        telefone: BOT_TEST_ADMIN_PHONE_B.slice(2),
+        papel: "dono",
         ativo: true
       }
     ],
@@ -219,17 +242,57 @@ function createBotTestTables() {
     [BOT_TEST_TABLES.animais]: mockAnimals.map((animal, index) => ({
       ...animal,
       fazenda_id: BOT_TEST_FARM_ID,
-      nome: animal.brinco === "B-002" ? "Mimosa" : animal.brinco === "ESTRELA" ? "Estrela" : animal.brinco,
-      categoria: index % 2 === 0 ? "vaca" : "boi",
-      sexo: index % 2 === 0 ? "femea" : "macho",
-      fase: animal.brinco === "B-002" ? "gestante" : "lactacao",
+      nome: animal.nome || animal.brinco,
+      categoria: animal.categoria || (index % 2 === 0 ? "vaca" : "boi"),
+      sexo: animal.sexo || (index % 2 === 0 ? "femea" : "macho"),
+      fase: animal.fase || (animal.brinco === "B-002" ? "gestante" : "lactacao"),
       status: "ativo",
       raca: "Girolando",
       lote_id: "lote-lactacao-1",
       data_nascimento: animal.brinco === "B-002" ? "2021-05-10" : null,
       peso: animal.brinco === "B-002" ? 450 : null,
-      observacoes: ""
-    })),
+      observacoes: "",
+      mae_id: animal.mae_id || null,
+      pai_id: animal.pai_id || null,
+      genealogia_observacoes: animal.genealogia_observacoes || null
+    })).concat([
+      {
+        id: "animal-b2-b-001",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        brinco: "B-001",
+        nome: "Mimosa",
+        categoria: "vaca",
+        sexo: "femea",
+        fase: "lactacao",
+        status: "ativo",
+        raca: "Girolando",
+        lote_id: null,
+        data_nascimento: null,
+        peso: null,
+        observacoes: "",
+        mae_id: null,
+        pai_id: null,
+        genealogia_observacoes: null
+      },
+      {
+        id: "animal-b2-t-001",
+        fazenda_id: BOT_TEST_FARM_ID_B,
+        brinco: "T-001",
+        nome: "Touro Rei",
+        categoria: "touro",
+        sexo: "macho",
+        fase: "nao_aplicavel",
+        status: "ativo",
+        raca: "Girolando",
+        lote_id: null,
+        data_nascimento: null,
+        peso: null,
+        observacoes: "",
+        mae_id: null,
+        pai_id: null,
+        genealogia_observacoes: null
+      }
+    ]),
     [BOT_TEST_TABLES.estoqueItens]: mockStock.map((item, index) => ({
       ...item,
       fazenda_id: BOT_TEST_FARM_ID,
@@ -556,11 +619,26 @@ function resolveParsed(parsed) {
     return refreshRanchoMessage(parsed, dados);
   }
 
-  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(parsed.tipo) && dados.animal_codigo) {
+  if (["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(parsed.tipo) && dados.animal_codigo) {
     const resolved = resolveAnimalIdentifier(dados.animal_codigo, mockAnimals);
     if (resolved.row && resolved.status !== "ambiguous") {
       dados.animal_codigo = resolved.row.brinco;
       dados.animal_id = resolved.row.id;
+    }
+  }
+
+  if (parsed.tipo === "ATUALIZACAO_GENEALOGIA") {
+    for (const field of ["mae", "pai"]) {
+      const valueKey = `${field}_nome`;
+      const idKey = `${field}_id`;
+      if (!dados[valueKey]) continue;
+      const resolved = resolveAnimalIdentifier(dados[valueKey], mockAnimals);
+      if (resolved.row && resolved.status !== "ambiguous") {
+        dados[idKey] = resolved.row.id;
+        dados[valueKey] = resolved.row.nome && resolved.row.nome !== resolved.row.brinco
+          ? `${resolved.row.nome} (${resolved.row.brinco})`
+          : resolved.row.brinco;
+      }
     }
   }
 
@@ -627,7 +705,10 @@ function missingContains(parsed, field) {
     data_nascimento: /nascimento|data/.test(text),
     campo_alterado: /dado|atualizar/.test(text),
     novo_valor: /valor|cadastro/.test(text),
-    horario: /horario|horario|7:30|17:00/.test(text)
+    horario: /horario|horario|7:30|17:00/.test(text),
+    mae_nome: /mae|mãe/.test(text),
+    pai_nome: /pai/.test(text),
+    genealogia_campo: /mae|mãe|pai|genealogia/.test(text)
   };
   return Boolean(checks[field]);
 }
@@ -647,6 +728,7 @@ function assertExpected(test, parsed) {
   if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
+  if (expected.animalId && dados.animal_id !== expected.animalId) failures.push(`animal_id esperado ${expected.animalId}, recebido ${dados.animal_id}`);
   if (expected.categoria && normalize(dados.categoria) !== normalize(expected.categoria)) failures.push(`categoria esperada ${expected.categoria}, recebida ${dados.categoria}`);
   if (expected.nome && normalize(dados.nome) !== normalize(expected.nome)) failures.push(`nome esperado ${expected.nome}, recebido ${dados.nome}`);
   if (expected.sexo && normalize(dados.sexo) !== normalize(expected.sexo)) failures.push(`sexo esperado ${expected.sexo}, recebido ${dados.sexo}`);
@@ -678,6 +760,14 @@ function assertExpected(test, parsed) {
   if (expected.cpf && String(dados.cpf || "").replace(/\D/g, "") !== String(expected.cpf).replace(/\D/g, "")) failures.push(`cpf esperado ${expected.cpf}, recebido ${dados.cpf}`);
   if (expected.tipo_acesso && normalize(dados.tipo_acesso) !== normalize(expected.tipo_acesso)) failures.push(`tipo_acesso esperado ${expected.tipo_acesso}, recebido ${dados.tipo_acesso}`);
   if (expected.consulta_campo && normalize(dados.consulta_campo) !== normalize(expected.consulta_campo)) failures.push(`consulta_campo esperado ${expected.consulta_campo}, recebido ${dados.consulta_campo}`);
+  if (expected.consulta_genealogia && normalize(dados.consulta_genealogia) !== normalize(expected.consulta_genealogia)) failures.push(`consulta_genealogia esperado ${expected.consulta_genealogia}, recebido ${dados.consulta_genealogia}`);
+  if (expected.genealogia_campo && normalize(dados.genealogia_campo) !== normalize(expected.genealogia_campo)) failures.push(`genealogia_campo esperado ${expected.genealogia_campo}, recebido ${dados.genealogia_campo}`);
+  if (expected.mae_nome && !normalize(dados.mae_nome).includes(normalize(expected.mae_nome))) failures.push(`mae_nome esperado ${expected.mae_nome}, recebido ${dados.mae_nome}`);
+  if (expected.pai_nome && !normalize(dados.pai_nome).includes(normalize(expected.pai_nome))) failures.push(`pai_nome esperado ${expected.pai_nome}, recebido ${dados.pai_nome}`);
+  if (expected.maeId && dados.mae_id !== expected.maeId) failures.push(`mae_id esperado ${expected.maeId}, recebido ${dados.mae_id}`);
+  if (expected.paiId && dados.pai_id !== expected.paiId) failures.push(`pai_id esperado ${expected.paiId}, recebido ${dados.pai_id}`);
+  if ("remover_mae" in expected && Boolean(dados.remover_mae) !== Boolean(expected.remover_mae)) failures.push(`remover_mae esperado ${expected.remover_mae}, recebido ${dados.remover_mae}`);
+  if ("remover_pai" in expected && Boolean(dados.remover_pai) !== Boolean(expected.remover_pai)) failures.push(`remover_pai esperado ${expected.remover_pai}, recebido ${dados.remover_pai}`);
   if ("agora" in expected && Boolean(dados.agora) !== Boolean(expected.agora)) failures.push(`agora esperado ${expected.agora}, recebido ${dados.agora}`);
   if (expected.ponto_tipo && dados.ponto_tipo !== expected.ponto_tipo) failures.push(`ponto_tipo esperado ${expected.ponto_tipo}, recebido ${dados.ponto_tipo}`);
   if (expected.horario && dados.horario !== expected.horario) failures.push(`horário esperado ${expected.horario}, recebido ${dados.horario}`);
@@ -732,7 +822,10 @@ function assertExpected(test, parsed) {
 function adminActionDenied(test, parsed) {
   const actor = mockUsers.find((user) => user.nome === test.actor);
   if (!actor || actor.admin) return null;
-  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO"].includes(parsed.tipo)) {
+  if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA"].includes(parsed.tipo)) {
+    if (parsed.tipo === "ATUALIZACAO_GENEALOGIA") {
+      return "VocÃª nÃ£o tem permissÃ£o para alterar genealogia pelo bot. PeÃ§a para um administrador fazer essa alteraÃ§Ã£o.";
+    }
     return parsed.tipo === "CRIAR_ITEM_ESTOQUE"
       ? "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item."
       : "Você não tem permissão para cadastrar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
@@ -1170,141 +1263,209 @@ const animalConsultationAndUpdateTests = [
 const eventHumanParserTests = [
   eventParser("apliquei aftosa na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("vacina aftosa na vaca 15", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "15" }),
-  eventParser("B001 recebeu vacina aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B001" }),
+  eventParser("B001 recebeu vacina aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-001" }),
   eventParser("aplicar brucelose na novilha N-01", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "brucelose", animal: "N-01" }),
-  eventParser("vacinei mimosa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacinei mimosa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-001" }),
   eventParser("vacinei a B-002 hoje", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", animal: "B-002", data_referencia: "hoje", missing: ["produto"] }),
   eventParser("vacina da B-002 foi aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("a B-002 tomou aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
-  eventParser("apliquei vacina contra aftosa na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("apliquei vacina contra aftosa na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-001" }),
   eventParser("vacina brucelose na A12", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "brucelose", animal: "A12" }),
   eventParser("B-002 vacinada com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("registrar vacina aftosa animal B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
-  eventParser("apliquei vacina na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", animal: "ESTRELA", missing: ["produto"] }),
+  eventParser("apliquei vacina na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", animal: "B-002", missing: ["produto"] }),
   eventParser("vacinei o rebanho com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", missing: ["animal_codigo"] }),
-  eventParser("vacina clostridial na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "clostridial", animal: "B001" }),
+  eventParser("vacina clostridial na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "clostridial", animal: "B-001" }),
   eventParser("aplicar raiva na vaca 002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "raiva", animal: "002" }),
-  eventParser("a mimosa recebeu vacina de raiva", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "raiva", animal: "B-002" }),
+  eventParser("a mimosa recebeu vacina de raiva", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "raiva", animal: "B-001" }),
   eventParser("dose de aftosa na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("aftosa B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("vacina B-002 aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("apliquei aftoza na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
   eventParser("vacina aftoza B002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
-  eventParser("vacinei mimosaa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-002" }),
+  eventParser("vacinei mimosaa com aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", produto: "aftosa", animal: "B-001" }),
   eventParser("registrar vacina", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "vacina", missing: ["animal_codigo", "produto"] }),
 
-  eventParser("mediquei a mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("mediquei a mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-001" }),
   eventParser("apliquei remedio na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "remedio", animal: "B-002" }),
-  eventParser("B001 tomou antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B001" }),
-  eventParser("tratamento da estrela com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "ESTRELA" }),
+  eventParser("B001 tomou antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B-001" }),
+  eventParser("tratamento da estrela com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
   eventParser("dei medicamento para vaca 15", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "medicamento", animal: "15" }),
   eventParser("apliquei terramicina na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "terramicina", animal: "B-002" }),
-  eventParser("dei vermifugo na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
-  eventParser("remedio para B001 foi antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B001" }),
+  eventParser("dei vermifugo na mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-001" }),
+  eventParser("remedio para B001 foi antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B-001" }),
   eventParser("B-002 recebeu medicamento", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "medicamento", animal: "B-002" }),
   eventParser("medicar animal A12 com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "A12" }),
-  eventParser("tratamento com antibiotico na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "ESTRELA" }),
+  eventParser("tratamento com antibiotico na vaca estrela", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B-002" }),
   eventParser("dei dipirona na vaca B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "dipirona", animal: "B-002" }),
-  eventParser("apliquei anti-inflamatorio na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "anti-inflamatorio", animal: "B001" }),
+  eventParser("apliquei anti-inflamatorio na B001", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "anti-inflamatorio", animal: "B-001" }),
   eventParser("vermifugo B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
   eventParser("B-002 vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
   eventParser("tratamento B-002 carrapaticida", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "carrapaticida", animal: "B-002" }),
   eventParser("passei carrapaticida no animal A12", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "carrapaticida", animal: "A12" }),
   eventParser("apliquei pour-on na B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "pour-on", animal: "B-002" }),
-  eventParser("dei suplemento na Mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "suplemento", animal: "B-002" }),
+  eventParser("dei suplemento na Mimosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "suplemento", animal: "B-001" }),
   eventParser("registrar tratamento", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", missing: ["animal_codigo", "produto"] }),
-  eventParser("mediquei mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
+  eventParser("mediquei mimosa com vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-001" }),
   eventParser("vermifugo b002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "vermifugo", animal: "B-002" }),
   eventParser("apliquei remedio na b002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "remedio", animal: "B-002" }),
-  eventParser("tratameto da estrela com antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "ESTRELA" }),
+  eventParser("tratameto da estrela com antibiotico", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, evento_tipo: "tratamento", produto: "antibiotico", animal: "B-002" }),
 
   eventParser("B-002 ficou doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "B-002 ficou doente" }),
-  eventParser("a mimosa esta doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("vaca estrela esta mancando", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
-  eventParser("B001 com febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("a mimosa esta doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
+  eventParser("vaca estrela esta mancando", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B001 com febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("animal A12 com diarreia", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "A12", campo_alterado: "observacoes" }),
   eventParser("a vaca B-002 esta sem comer", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("mimosa com mastite", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("mimosa com mastite", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("B-002 com carrapato", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
   eventParser("a novilha N-01 esta triste", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "N-01", campo_alterado: "observacoes" }),
   eventParser("animal 15 esta fraco", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes" }),
-  eventParser("B001 esta tossindo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
-  eventParser("vaca estrela com ferida na pata", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
-  eventParser("registrar doenca na Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B001 esta tossindo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
+  eventParser("vaca estrela com ferida na pata", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("registrar doenca na Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("observacao clinica B-002 febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("Mimosa precisa de veterinario", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("Mimosa precisa de veterinario", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("B-002 teve queda de producao e esta doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
   eventParser("animal A12 com problema no casco", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "A12", campo_alterado: "observacoes" }),
   eventParser("animal doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", missing: ["animal_codigo"] }),
   eventParser("b002 fico doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("mimosa esta duente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("mimosa esta duente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("vaca mancandoo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", missing: ["animal_codigo"] }),
 
-  eventParser("mimosa pariu hoje", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "hoje" }),
+  eventParser("mimosa pariu hoje", { tipo: "PARTO", exactTipo: true, animal: "B-001", data_referencia: "hoje" }),
   eventParser("B-002 teve parto", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
-  eventParser("vaca estrela pariu um bezerro", { tipo: "PARTO", exactTipo: true, animal: "ESTRELA" }),
-  eventParser("a Mimosa teve bezerro macho", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
-  eventParser("B001 teve cria femea", { tipo: "PARTO", exactTipo: true, animal: "B001" }),
-  eventParser("nasceu bezerro da Mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("vaca estrela pariu um bezerro", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
+  eventParser("a Mimosa teve bezerro macho", { tipo: "PARTO", exactTipo: true, animal: "B-001" }),
+  eventParser("B001 teve cria femea", { tipo: "PARTO", exactTipo: true, animal: "B-001" }),
+  eventParser("nasceu bezerro da Mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-001" }),
   eventParser("parto da vaca B-002", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
-  eventParser("Mimosa pariu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem" }),
+  eventParser("Mimosa pariu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-001", data_referencia: "ontem" }),
   eventParser("B-002 teve parto dia 01/06/2026", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "2026-06-01" }),
-  eventParser("nasceu uma bezerra da estrela", { tipo: "PARTO", exactTipo: true, animal: "ESTRELA" }),
+  eventParser("nasceu uma bezerra da estrela", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
   eventParser("a vaca 15 deu cria", { tipo: "PARTO", exactTipo: true, animal: "15" }),
   eventParser("registrar nascimento de bezerro da B-002", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
-  eventParser("parto complicado da B001", { tipo: "PARTO", exactTipo: true, animal: "B001" }),
-  eventParser("partu da mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
-  eventParser("mimosa pariuu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem" }),
+  eventParser("parto complicado da B001", { tipo: "PARTO", exactTipo: true, animal: "B-001" }),
+  eventParser("partu da mimosa", { tipo: "PARTO", exactTipo: true, animal: "B-001" }),
+  eventParser("mimosa pariuu ontem", { tipo: "PARTO", exactTipo: true, animal: "B-001", data_referencia: "ontem" }),
   eventParser("parto", { tipo: "PARTO", exactTipo: true, missing: ["animal_codigo"] }),
   eventParser("aborto da vaca B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
 
-  eventParser("Mimosa entrou no cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("Mimosa entrou no cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("B-002 esta no cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("registrar cio da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("registrar cio da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
   eventParser("vaca 15 em cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes" }),
-  eventParser("cio B001 hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("cio B001 hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("a novilha N-01 apresentou cio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "N-01", campo_alterado: "observacoes" }),
-  eventParser("Mimosa esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("Mimosa esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "fase", novo_valor: "gestante" }),
   eventParser("B-002 esta gestante", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
-  eventParser("confirmar prenhez da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" }),
-  eventParser("diagnostico positivo de prenhez na B001", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("confirmar prenhez da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("diagnostico positivo de prenhez na B001", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "fase", novo_valor: "gestante" }),
   eventParser("vaca 15 vazia", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "fase", novo_valor: "vazia" }),
-  eventParser("Mimosa nao esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "vazia" }),
+  eventParser("Mimosa nao esta prenha", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "fase", novo_valor: "vazia" }),
   eventParser("prenhez negativa na B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "vazia" }),
-  eventParser("inseminar Mimosa hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("Mimosa foi inseminada", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("inseminar Mimosa hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
+  eventParser("Mimosa foi inseminada", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("B-002 inseminada com semen do touro T-01", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("cobertura da estrela com touro T-01", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
-  eventParser("B001 coberta pelo touro", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes" }),
+  eventParser("cobertura da estrela com touro T-01", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("B001 coberta pelo touro", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("inseminacao da vaca 15 ontem", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes", data_referencia: "ontem" }),
-  eventParser("registrar cobertura da Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
+  eventParser("registrar cobertura da Mimosa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("IA da B-002 com touro Holandes", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("cioo da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "ESTRELA", campo_alterado: "observacoes" }),
+  eventParser("cioo da estrela", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
   eventParser("inseminacao da b002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
-  eventParser("prenhez da mimosaa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "fase", novo_valor: "gestante" }),
+  eventParser("prenhez da mimosaa", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "fase", novo_valor: "gestante" }),
 
-  eventParser("historico da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("historico da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-001", consulta: true }),
   eventParser("eventos da B-002", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
-  eventParser("vacinas da B001", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B001", consulta: true }),
-  eventParser("medicamentos da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "ESTRELA", consulta: true }),
+  eventParser("vacinas da B001", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-001", consulta: true }),
+  eventParser("medicamentos da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
   eventParser("tratamentos da vaca 15", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "15", consulta: true }),
-  eventParser("quando a Mimosa foi vacinada?", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("quando a Mimosa foi vacinada?", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-001", consulta: true }),
   eventParser("qual foi a ultima vacina da B-002?", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
-  eventParser("historico clinico da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "ESTRELA", consulta: true }),
-  eventParser("partos da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("historico clinico da estrela", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
+  eventParser("partos da Mimosa", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-001", consulta: true }),
   eventParser("historico reprodutivo da B-002", { tipo: "CONSULTA_ANIMAL", exactTipo: true, animal: "B-002", consulta: true }),
   eventParser("eventos de hoje", { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" }),
 
   eventParser("B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] }, { pending: () => pendingFrom("registrar vacina") }),
   eventParser("Aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Aftosa", noMissing: true }, { pending: () => pendingFrom("registrar vacina", ["B-002"]) }),
   eventParser("Vermifugo", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Vermifugo", noMissing: true }, { pending: () => pendingFrom("registrar tratamento", ["B-002"]) }),
-  eventParser("febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B001", campo_alterado: "observacoes", noMissing: true }, { pending: () => pendingFrom("animal doente", ["B001"]) }),
-  eventParser("nao foi ontem", { tipo: "PARTO", exactTipo: true, animal: "B-002", data_referencia: "ontem", noMissing: true }, { pending: () => pendingFrom("Mimosa pariu hoje") }),
+  eventParser("febre", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", noMissing: true }, { pending: () => pendingFrom("animal doente", ["B001"]) }),
+  eventParser("nao foi ontem", { tipo: "PARTO", exactTipo: true, animal: "B-001", data_referencia: "ontem", noMissing: true }, { pending: () => pendingFrom("Mimosa pariu hoje") }),
   eventParser("B-002", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", noMissing: true }, { pending: () => pendingFrom("registrar cio") }),
 
   eventParser("Mimosa ontem", { tipo: "DESCONHECIDO", exactTipo: true }),
   eventParser("B-002 5 ml", { tipo: "DESCONHECIDO", exactTipo: true }),
   eventParser("geneologia clinica", { tipo: "DESCONHECIDO", exactTipo: true })
+];
+
+const genealogyParserTests = [
+  { module: "genealogia", phrase: "ver genealogia da Mimosa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-001", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "genealogia da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "arvore genealogica da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "árvore genealógica da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "linhagem da vaca Estrela", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "linhagem do animal A12", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "A12", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "historico familiar da Mimosa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-001", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "familia da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "ver arvore da Estrela", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "mostrar árvore da vaca Lua", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "VACA-15", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "quem sao os pais da Estrela?", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "quem é a mãe da B-002?", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "mae", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "quem e o pai da B-002?", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "pai", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "quais os filhos da Mimosa?", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-001", consulta_genealogia: "descendentes", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "descendentes da Mimosa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-001", consulta_genealogia: "descendentes", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "filhos da Estrela", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "descendentes", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "avós da Princesa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-003", consulta_genealogia: "avos", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "avo materna da Princesa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-003", consulta_genealogia: "avos", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "avô paterno da Princesa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-003", consulta_genealogia: "avos", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "genelogia da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "geneologia da estrela", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "arvori genealogica da Princesa", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-003", consulta_genealogia: "arvore", consulta: true, noMissing: true } },
+
+  { module: "genealogia", phrase: "mãe da B-002 é Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "a mãe da Estrela é Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "define Mimosa como mãe da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "coloca Mimosa como mãe da Estrela", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "B-002 é filha da Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "Estrela é filha de Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "a vaca Estrela tem mãe Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "mãe do animal A12 é Estrela", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", mae_nome: "Estrela", maeId: "animal-b-002", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "coloca a Estrela como mãe do A12", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", mae_nome: "Estrela", maeId: "animal-b-002", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "registrar mãe da Lua como Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "VACA-15", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "a novilha N-033 é filha da Estrela", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "N-033", mae_nome: "Estrela", maeId: "animal-b-002", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "mãe de VACA-15 é Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "VACA-15", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+
+  { module: "genealogia", phrase: "pai da B-002 é Touro Rei", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "define Touro Rei como pai da Estrela", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "coloca T-001 como pai da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "B-002 é filha do Touro Rei", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "Touro Rei é pai da Estrela", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "pai do A12 é T-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", pai_nome: "Touro Forte", paiId: "animal-t-002", genealogia_campo: "pai", noMissing: true } },
+
+  { module: "genealogia", phrase: "mãe da A12 é Estrela e pai é Touro Rei", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", mae_nome: "Estrela", maeId: "animal-b-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "ambos", noMissing: true } },
+  { module: "genealogia", phrase: "A12 tem mãe Estrela e pai Touro Forte", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", mae_nome: "Estrela", maeId: "animal-b-002", pai_nome: "Touro Forte", paiId: "animal-t-002", genealogia_campo: "ambos", noMissing: true } },
+  { module: "genealogia", phrase: "A12 é filho da Estrela e do Touro Rei", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", mae_nome: "Estrela", maeId: "animal-b-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "ambos", noMissing: true } },
+  { module: "genealogia", phrase: "Novilha N-033 é filha de Estrela com Touro Forte", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "N-033", mae_nome: "Estrela", maeId: "animal-b-002", pai_nome: "Touro Forte", paiId: "animal-t-002", genealogia_campo: "ambos", noMissing: true } },
+
+  { module: "genealogia", phrase: "remove mãe da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", remover_mae: true, genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "tirar pai da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", remover_pai: true, genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "limpa genealogia da A12", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", remover_mae: true, remover_pai: true, genealogia_campo: "ambos", noMissing: true } },
+  { module: "genealogia", phrase: "pai da B-002 não informado", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", remover_pai: true, genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "mãe da B-002 não informada", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", remover_mae: true, genealogia_campo: "mae", noMissing: true } },
+
+  { module: "genealogia", phrase: "definir genealogia da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", missing: ["genealogia_campo"] } },
+  { module: "genealogia", phrase: "definir mãe da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", genealogia_campo: "mae", missing: ["mae_nome"] } },
+  { module: "genealogia", phrase: "definir pai da B-002", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", genealogia_campo: "pai", missing: ["pai_nome"] } },
+  { module: "genealogia", phrase: "mae", pending: () => pendingFrom("definir genealogia da B-002"), expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", genealogia_campo: "mae", missing: ["mae_nome"] } },
+  { module: "genealogia", phrase: "Mimosa", pending: () => pendingFrom("definir mãe da B-002"), expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", noMissing: true } },
+  { module: "genealogia", phrase: "Touro Rei", pending: () => pendingFrom("definir pai da B-002"), expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", noMissing: true } },
+  { module: "genealogia", phrase: "os dois", pending: () => pendingFrom("definir genealogia da A12"), expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "A12", genealogia_campo: "ambos", missing: ["mae_nome", "pai_nome"] } },
+  { module: "genealogia", phrase: "genelogia da B-002", expected: { tipo: "CONSULTA_GENEALOGIA", animal: "B-002", consulta: true, noMissing: true } },
+  { module: "genealogia", phrase: "mai da B-002 é Mimosa", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", mae_nome: "Mimosa", maeId: "animal-b-001", genealogia_campo: "mae", noMissing: true } },
+  { module: "genealogia", phrase: "paii da B-002 é Touro Rei", expected: { tipo: "ATUALIZACAO_GENEALOGIA", animal: "B-002", pai_nome: "Touro Rei", paiId: "animal-t-001", genealogia_campo: "pai", noMissing: true } },
+  { module: "genealogia", phrase: "funcionario Joao é filho da Maria", expected: { tipo: "DESCONHECIDO", exactTipo: true } }
 ];
 
 const employeePointPayrollParserTests = [
@@ -2052,13 +2213,13 @@ const eventFrameworkCases = [
     messages: ["mediquei Mimosa com vermifugo", "ok"],
     expected: {
       finalIntent: "VACINA_MEDICAMENTO",
-      entities: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      entities: { animal_codigo: "B-001", produto: "vermifugo", evento_tipo: "tratamento" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.eventosAnimal],
-      shouldSaveValues: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      shouldSaveValues: { animal_codigo: "B-001", produto: "vermifugo", evento_tipo: "tratamento" },
       shouldNotDuplicate: true,
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
@@ -2071,13 +2232,13 @@ const eventFrameworkCases = [
     messages: ["Mimosa pariu hoje", "confirma"],
     expected: {
       finalIntent: "PARTO",
-      entities: { animal_codigo: "B-002", data_referencia: "hoje" },
+      entities: { animal_codigo: "B-001", data_referencia: "hoje" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.eventosAnimal],
-      shouldSaveValues: { animal_codigo: "B-002", evento_tipo: "PARTO" },
+      shouldSaveValues: { animal_codigo: "B-001", evento_tipo: "PARTO" },
       shouldNotDuplicate: true,
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
@@ -2108,7 +2269,7 @@ const eventFrameworkCases = [
     messages: ["Mimosa entrou no cio", "pode salvar"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-001", campo_alterado: "observacoes" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
@@ -2125,13 +2286,13 @@ const eventFrameworkCases = [
     messages: ["confirmar prenhez da estrela", "isso mesmo"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" },
+      entities: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { animal_codigo: "ESTRELA", campo_alterado: "fase", novo_valor: "gestante" },
+      shouldSaveValues: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante" },
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -2179,14 +2340,14 @@ const eventFrameworkCases = [
     messages: ["registrar tratamento", "Mimosa", "vermifugo", "sim"],
     expected: {
       finalIntent: "VACINA_MEDICAMENTO",
-      entities: { animal_codigo: "B-002", produto: "vermifugo", evento_tipo: "tratamento" },
+      entities: { animal_codigo: "B-001", produto: "vermifugo", evento_tipo: "tratamento" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.eventosAnimal],
-      shouldSaveValues: { animal_codigo: "B-002", produto: "vermifugo" },
+      shouldSaveValues: { animal_codigo: "B-001", produto: "vermifugo" },
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -2198,7 +2359,7 @@ const eventFrameworkCases = [
     messages: ["animal doente", "B001", "sim"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B001", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-001", campo_alterado: "observacoes" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
@@ -2216,7 +2377,7 @@ const eventFrameworkCases = [
     messages: ["registrar parto", "Mimosa", "sim"],
     expected: {
       finalIntent: "PARTO",
-      entities: { animal_codigo: "B-002" },
+      entities: { animal_codigo: "B-001" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
@@ -2272,7 +2433,7 @@ const eventFrameworkCases = [
     messages: ["Mimosa pariu hoje", "nao, foi ontem", "sim"],
     expected: {
       finalIntent: "PARTO",
-      entities: { animal_codigo: "B-002", data_referencia: "ontem" },
+      entities: { animal_codigo: "B-001", data_referencia: "ontem" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
@@ -2349,7 +2510,7 @@ const eventFrameworkCases = [
     messages: ["historico da Mimosa"],
     expected: {
       finalIntent: "CONSULTA_ANIMAL",
-      entities: { animal_codigo: "B-002" },
+      entities: { animal_codigo: "B-001" },
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -3164,6 +3325,314 @@ const employeePointPayrollFrameworkCases = [
   }
 ];
 
+const genealogyFrameworkCases = [
+  {
+    name: "consulta genealogia responde sem confirmacao",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["genealogia da B-002"],
+    expected: {
+      finalIntent: "CONSULTA_GENEALOGIA",
+      entities: { animal_codigo: "B-002", consulta_genealogia: "arvore" },
+      responseIncludes: "Mãe",
+      responseNotIncludes: "Está correto",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta filhos lista descendentes sem salvar",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["filhos da Estrela"],
+    expected: {
+      finalIntent: "CONSULTA_GENEALOGIA",
+      entities: { animal_codigo: "B-002", consulta_genealogia: "descendentes" },
+      responseIncludes: "Princesa",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "consulta avos de princesa usa pai e mae",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["avós da Princesa"],
+    expected: {
+      finalIntent: "CONSULTA_GENEALOGIA",
+      entities: { animal_codigo: "B-003", consulta_genealogia: "avos" },
+      responseIncludes: "Maternos",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "define mae pede confirmacao e nao salva antes",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "A12", mae_id: "animal-b-002" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "define mae salva apenas apos confirmacao em dry-run",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "A12", mae_id: "animal-b-002" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { mae_id: "animal-b-002" },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "define pai salva apenas apos confirmacao em dry-run",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["pai do A12 é T-002", "ok"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "A12", pai_id: "animal-t-002" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { pai_id: "animal-t-002" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "define pai e mae na mesma mensagem",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["A12 tem mãe Estrela e pai Touro Forte", "pode salvar"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "A12", mae_id: "animal-b-002", pai_id: "animal-t-002" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { mae_id: "animal-b-002", pai_id: "animal-t-002" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "remove mae com confirmacao",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["remove mãe da B-002", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "B-002", remover_mae: true },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { mae_id: null },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "correcao antes de salvar troca mae",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Mimosa", "não, foi Estrela", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "A12", mae_id: "animal-b-002" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { mae_id: "animal-b-002" },
+      shouldNotSaveValues: { mae_id: "animal-b-001" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "negacao sem correcao cancela e nao salva",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela", "não"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cancelamento limpa genealogia pendente",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela", "cancelar"],
+    expected: {
+      shouldClearSession: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "repetir mostra confirmacao pendente sem salvar",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela", "repetir"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "Está correto",
+      shouldAskConfirmation: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "confirmacao duplicada nao duplica acao",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe do animal A12 é Estrela", "sim", "sim"],
+    expected: {
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      detectStuck: false
+    }
+  },
+  {
+    name: "fluxo em etapas coleta mae",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["definir mãe da B-002", "Mimosa", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "B-002", mae_id: "animal-b-001" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao altera genealogia",
+    module: "genealogia",
+    phone: BOT_TEST_WORKER_PHONE,
+    messages: ["mãe do animal A12 é Estrela"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "não tem permissão",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "animal nao pode ser mae dele mesmo",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe da B-002 é B-002"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "não pode ser pai ou mãe dele mesmo",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "bloqueia ciclo com descendente como mae",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["mãe da B-002 é Princesa"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "descendente",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "pai inexistente pede dado sem salvar",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["pai da A12 é Touro Fantasma"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "Não encontrei",
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "nome duplicado pede esclarecimento",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE,
+    extraAnimals: [
+      { id: "animal-dup-1", brinco: "D-001", nome: "Duplicada" },
+      { id: "animal-dup-2", brinco: "D-002", nome: "Duplicada" }
+    ],
+    messages: ["mãe da A12 é Duplicada"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      responseIncludes: "mais de uma opção",
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "rancho b consulta arvore isolada",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    messages: ["genealogia da B-001"],
+    expected: {
+      finalIntent: "CONSULTA_GENEALOGIA",
+      entities: { animal_codigo: "B-001" },
+      responseIncludes: "Não informado",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "rancho b update usa fazenda correta",
+    module: "genealogia",
+    phone: BOT_TEST_ADMIN_PHONE_B,
+    messages: ["pai da B-001 é T-001", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_GENEALOGIA",
+      entities: { animal_codigo: "B-001", pai_id: "animal-b2-t-001" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      ranchId: BOT_TEST_FARM_ID_B,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
@@ -3172,6 +3641,7 @@ const structuredBotEvaluationCases = [
   ...inventoryFrameworkCases,
   ...financeFrameworkCases,
   ...employeePointPayrollFrameworkCases,
+  ...genealogyFrameworkCases,
   {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
@@ -3386,7 +3856,10 @@ function createSupabaseForScenario(test = {}) {
       lote_id: animal.lote_id || "lote-lactacao-1",
       data_nascimento: animal.data_nascimento || null,
       peso: animal.peso || null,
-      observacoes: animal.observacoes || ""
+      observacoes: animal.observacoes || "",
+      mae_id: animal.mae_id || null,
+      pai_id: animal.pai_id || null,
+      genealogia_observacoes: animal.genealogia_observacoes || null
     })));
   }
   if (test.financeTransactions) {
@@ -3681,6 +4154,24 @@ function simulatedSaveActionsForResult(result, phone) {
     }];
   }
 
+  if (tipo === "ATUALIZACAO_GENEALOGIA") {
+    return [{
+      ...base,
+      type: "update",
+      table: BOT_TEST_TABLES.animais,
+      payload: {
+        fazenda_id: fazendaId,
+        animal_id: dados.animal_id || null,
+        animal_codigo: dados.animal_codigo,
+        mae_id: dados.remover_mae ? null : dados.mae_id || null,
+        pai_id: dados.remover_pai ? null : dados.pai_id || null,
+        mae_nome: dados.remover_mae ? null : dados.mae_nome || null,
+        pai_nome: dados.remover_pai ? null : dados.pai_nome || null,
+        origem: "whatsapp"
+      }
+    }];
+  }
+
   return [];
 }
 
@@ -3762,6 +4253,14 @@ function evaluateStructuredCase(test, trace) {
   for (const [field, value] of Object.entries(expected.entities || {})) {
     const received = finalData[field];
     if (!sameValue(received, value)) failures.push(`entidade ${field} esperada ${value}, recebida ${received}`);
+  }
+
+  if (expected.responseIncludes && !normalize(finalResult.respostaTexto).includes(normalize(expected.responseIncludes))) {
+    failures.push(`resposta final deveria conter "${expected.responseIncludes}", recebeu "${finalResult.respostaTexto}"`);
+  }
+
+  if (expected.responseNotIncludes && normalize(finalResult.respostaTexto).includes(normalize(expected.responseNotIncludes))) {
+    failures.push(`resposta final nao deveria conter "${expected.responseNotIncludes}", recebeu "${finalResult.respostaTexto}"`);
   }
 
   if (expected.shouldAskConfirmation && !hasAskedConfirmation(trace.steps)) {
@@ -3946,6 +4445,7 @@ const allTests = [
   ...productionRobustnessTests,
   ...animalConsultationAndUpdateTests,
   ...eventHumanParserTests,
+  ...genealogyParserTests,
   ...employeePointPayrollParserTests
 ];
 
@@ -4075,6 +4575,10 @@ function writeBotTestReports(summary) {
   const employeePayrollFailed = employeePayrollResults.filter((result) => !result.ok);
   const employeePayrollPassed = employeePayrollResults.length - employeePayrollFailed.length;
   const employeePayrollSuccessRate = employeePayrollResults.length ? Number(((employeePayrollPassed / employeePayrollResults.length) * 100).toFixed(2)) : 0;
+  const genealogyResults = summary.results.filter((result) => resultModule(result) === "genealogia");
+  const genealogyFailed = genealogyResults.filter((result) => !result.ok);
+  const genealogyPassed = genealogyResults.length - genealogyFailed.length;
+  const genealogySuccessRate = genealogyResults.length ? Number(((genealogyPassed / genealogyResults.length) * 100).toFixed(2)) : 0;
   const report = {
     generatedAt: new Date().toISOString(),
     command: "npm run test:bot",
@@ -4135,6 +4639,21 @@ function writeBotTestReports(summary) {
           "dry-run sem WhatsApp real e sem escrita real de negocio"
         ],
         failures: employeePayrollFailed.map((result) => resultName(result))
+      },
+      genealogia: {
+        total: genealogyResults.length,
+        passed: genealogyPassed,
+        failed: genealogyFailed.length,
+        successRate: genealogySuccessRate,
+        coverage: [
+          "consulta de genealogia, pai, mae, filhos, descendentes e avos",
+          "definir mae, definir pai, definir ambos e remover relacoes",
+          "confirmacao obrigatoria antes de salvar alteracao genealogica",
+          "correcao, cancelamento, repeticao e confirmacao duplicada",
+          "bloqueio de ciclo e de animal como pai/mae dele mesmo",
+          "nomes duplicados, codigos alfanumericos, permissao e isolamento por fazenda"
+        ],
+        failures: genealogyFailed.map((result) => resultName(result))
       }
     },
     failed: summary.failed.map(compactResultForReport),
@@ -4196,6 +4715,15 @@ function writeBotTestReports(summary) {
     "- Cobertura: cadastro com e sem WhatsApp, bot_only com pergunta de telefone, atualizacao salarial/cargo/CPF/WhatsApp, desligamento, exclusao logica, registro de ponto, ponto em etapas, consulta de ponto, consulta salarial, pagamento de salario como despesa e permissoes.",
     "- Correcoes/fragilidades observadas: a bateria protege contra cadastro virando consulta/financeiro, CPF virando telefone, ponto sem horario sendo confirmado cedo demais e funcionario comum executando acao administrativa.",
     "- Observacao: as acoes salvas no relatorio sao simuladas; o dry-run nao promete gravacao real.",
+    "",
+    "## Genealogia",
+    "",
+    `- Total genealogia: ${report.summary.genealogia.total}`,
+    `- Aprovados genealogia: ${report.summary.genealogia.passed}`,
+    `- Falhos genealogia: ${report.summary.genealogia.failed}`,
+    `- Taxa genealogia: ${report.summary.genealogia.successRate}%`,
+    "- Cobertura: consulta de arvore, pai/mae, filhos, descendentes, avos, definicao/remocao de pai e mae, correcao, cancelamento, repeticao, confirmacao duplicada, permissao, ciclos, auto-parentesco, nomes duplicados, codigos alfanumericos e isolamento por fazenda.",
+    "- Observacao: alteracoes genealogicas seguem entender, coletar campos, resumir, pedir confirmacao e simular salvamento apenas apos confirmacao; nenhuma genealogia real e alterada em test:bot.",
     "",
     "## Seguranca",
     "",

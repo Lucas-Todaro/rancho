@@ -40,6 +40,18 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     if (field === "novo_valor" && tipo === "ATUALIZAR_FUNCIONARIO") {
       return "Qual novo valor deve ficar no cadastro do funcionário?";
     }
+    if (field === "mae_nome" && tipo === "ATUALIZACAO_GENEALOGIA" && dados.mae_referencia_nao_encontrada) {
+      if (Array.isArray(dados.mae_opcoes) && dados.mae_opcoes.length) {
+        return `Encontrei mais de uma opção para mãe (${dados.mae_referencia_nao_encontrada}). Qual é o brinco correto? ${dados.mae_opcoes.slice(0, 5).join(", ")}`;
+      }
+      return `Não encontrei "${dados.mae_referencia_nao_encontrada}" no rebanho. Quem é a mãe?`;
+    }
+    if (field === "pai_nome" && tipo === "ATUALIZACAO_GENEALOGIA" && dados.pai_referencia_nao_encontrada) {
+      if (Array.isArray(dados.pai_opcoes) && dados.pai_opcoes.length) {
+        return `Encontrei mais de uma opção para pai (${dados.pai_referencia_nao_encontrada}). Qual é o brinco correto? ${dados.pai_opcoes.slice(0, 5).join(", ")}`;
+      }
+      return `Não encontrei "${dados.pai_referencia_nao_encontrada}" no rebanho. Quem é o pai?`;
+    }
     return questionByField[field];
   }).filter(Boolean);
 }
@@ -108,6 +120,24 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CONSULTA_PRODUCAO") return "consultar produção de leite";
   if (tipo === "CONSULTA_PRODUCAO_HOJE") return "consultar produção de leite de hoje";
   if (tipo === "CONSULTA_PRODUCAO_ANIMAL") return `consultar produção${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}`;
+  if (tipo === "ATUALIZACAO_GENEALOGIA") {
+    const removals = [
+      dados.remover_mae ? "remover mãe" : "",
+      dados.remover_pai ? "remover pai" : ""
+    ].filter(Boolean);
+    const changes = [
+      dados.mae_nome ?`mãe ${dados.mae_nome}` : "",
+      dados.pai_nome ?`pai ${dados.pai_nome}` : "",
+      ...removals
+    ].filter(Boolean);
+    return `atualizar genealogia do animal ${dados.animal_codigo || "informado"}${changes.length ?`: ${changes.join(", ")}` : ""}`;
+  }
+
+  if (tipo === "CONSULTA_GENEALOGIA") {
+    const label = dados.consulta_genealogia || "genealogia";
+    return `consultar ${label}${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}`;
+  }
+
   if (tipo === "ATUALIZACAO_ANIMAL") {
     const value = hasValue(dados.novo_valor) ?` para ${dados.novo_valor}` : "";
     return `atualizar ${dados.campo_alterado || "dados"} do animal ${dados.animal_codigo || "informado"}${value}`;
@@ -157,7 +187,7 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   const missing: string[] = [];
   const stockCreateIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo);
   const stockMovementIntent = ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo);
-  if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
+  if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
   if (tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || Number(dados.litros) <= 0)) missing.push("litros");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.animal_codigo) missing.push("animal_codigo");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");
@@ -192,6 +222,13 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "ATUALIZACAO_ANIMAL") {
     if (!dados.campo_alterado) missing.push("campo_alterado");
     if (!hasValue(dados.novo_valor)) missing.push("novo_valor");
+  }
+  if (tipo === "ATUALIZACAO_GENEALOGIA") {
+    const wantsMae = dados.genealogia_campo === "mae" || dados.genealogia_campo === "ambos" || dados.mae_nome || dados.remover_mae;
+    const wantsPai = dados.genealogia_campo === "pai" || dados.genealogia_campo === "ambos" || dados.pai_nome || dados.remover_pai;
+    if (!wantsMae && !wantsPai) missing.push("genealogia_campo");
+    if (wantsMae && !dados.remover_mae && !dados.mae_nome) missing.push("mae_nome");
+    if (wantsPai && !dados.remover_pai && !dados.pai_nome) missing.push("pai_nome");
   }
   return missing;
 }

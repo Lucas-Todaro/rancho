@@ -147,6 +147,174 @@ function employeeUpdateData(original: string, normalized: string) {
   return { funcionario_nome };
 }
 
+function cleanGenealogyReference(value?: string | null) {
+  return cleanAnswer(value || "")
+    .replace(/[.:;!?]+$/g, "")
+    .replace(/^(?:(?:e|eh|como|da|do|de|a|o|os|as|animal|vaca|novilha|bezerro|bezerra)\s+)+/i, "")
+    .replace(/\b(?:e|eh|como|mae|pai|filha|filho|do|da|de|com|tem|animal|vaca|novilha)\b\s*$/i, "")
+    .trim();
+}
+
+function compactAnimalReference(value?: string | null) {
+  return cleanGenealogyReference(value)
+    .replace(/\b(?:hoje|ontem|agora)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitParents(value: string) {
+  const normalized = value.replace(/\s+e\s+(?:do|da|de)?\s+/i, " | ").replace(/\s+com\s+/i, " | ");
+  const [first, second] = normalized.split("|").map((part) => compactAnimalReference(part));
+  return { first, second };
+}
+
+function relationFieldFromParent(parent?: string | null) {
+  const normalized = normalizeRanchoText(parent || "");
+  if (/\b(?:touro|pai)\b/.test(normalized) || /^t[-\s]?\d+/i.test(String(parent || ""))) return "pai";
+  return "mae";
+}
+
+function extractGenealogyAnimalFromQuery(original: string, normalized: string) {
+  const relationTarget = normalized.match(/\b(?:pais|mae|pai|filhos|descendentes|avos|avo|materna|materno|paterno|paterna)\s+(?:da|do|de|dos|das)\s+(.+)$/i)?.[1];
+  if (relationTarget) return compactAnimalReference(relationTarget);
+
+  const code = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
+  if (code && !["mae", "pai", "pais", "avo", "avos"].includes(normalizeRanchoText(code))) return code;
+
+  return compactAnimalReference(
+    normalized.match(/\b(?:genealogia|geneologia|genelogia|arvore|arvori|linhagem|linhage|familia|pais|mae|pai|filhos|descendentes|avos|avo|materna|materno|paterno|paterna)\s+(?:da|do|de|dos|das)?\s*(.+)$/i)?.[1]
+    || normalized.match(/\b(?:da|do|de)\s+(?:vaca|animal|touro|novilha)?\s*([a-z0-9-]+(?:\s+[a-z0-9-]+){0,3})/i)?.[1]
+  );
+}
+
+function genealogyQueryData(original: string, normalized: string) {
+  const consulta_genealogia = /\b(?:filhos|descendente|descendentes)\b/.test(normalized) ? "descendentes"
+    : /\b(?:avos|avo|materna|materno|paterno|paterna)\b/.test(normalized) ? "avos"
+      : /\bmae\b/.test(normalized) && !/\b(?:pai|pais|filhos|descendentes)\b/.test(normalized) ? "mae"
+        : /\bpai\b/.test(normalized) && !/\b(?:mae|pais|filhos|descendentes)\b/.test(normalized) ? "pai"
+          : "arvore";
+  return {
+    animal_codigo: extractGenealogyAnimalFromQuery(original, normalized),
+    consulta_genealogia,
+    consulta: true
+  };
+}
+
+function genealogyUpdateData(original: string, normalized: string) {
+  const data: Record<string, unknown> = {};
+  const actionVerb = /\b(?:define|definir|coloca|colocar|registrar|registra|remove|remover|tirar|tira|limpa|limpar|apaga|apagar|corrigir|corrige|alterar|altera)\b/.test(normalized);
+
+  const removeAll = /\b(?:remove|remover|tirar|tira|limpa|limpar|apaga|apagar)\b/.test(normalized)
+    && /\b(?:genealogia|filiacao|pai e mae)\b/.test(normalized);
+  const removeMother = removeAll || (/\b(?:remove|remover|tirar|tira|limpa|limpar|apaga|apagar)\b/.test(normalized) && /\bmae\b/.test(normalized)) || /\bmae\b.*\b(?:nao informada|sem mae)\b/.test(normalized);
+  const removeFather = removeAll || (/\b(?:remove|remover|tirar|tira|limpa|limpar|apaga|apagar)\b/.test(normalized) && /\bpai\b/.test(normalized)) || /\bpai\b.*\b(?:nao informado|sem pai)\b/.test(normalized);
+  if (removeMother || removeFather) {
+    data.animal_codigo = extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL")
+      || compactAnimalReference(normalized.match(/\b(?:da|do|de)\s+(.+)$/i)?.[1]);
+    data.remover_mae = removeMother || undefined;
+    data.remover_pai = removeFather || undefined;
+    data.genealogia_campo = removeMother && removeFather ? "ambos" : removeMother ? "mae" : "pai";
+    return data;
+  }
+
+  let match = normalized.match(/\b(?:mae|mai|maee)\s+(?:da|do|de)\s+(.+?)\s+(?:e|eh|=)\s+(.+?)(?:\s+e\s+pai\s+(?:e|eh|=)\s+(.+))?$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    data.mae_nome = compactAnimalReference(match[2]);
+    if (match[3]) data.pai_nome = compactAnimalReference(match[3]);
+    data.genealogia_campo = data.pai_nome ? "ambos" : "mae";
+    return data;
+  }
+
+  match = normalized.match(/\b(?:pai|paii)\s+(?:da|do|de)\s+(.+?)\s+(?:e|eh|=)\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    data.pai_nome = compactAnimalReference(match[2]);
+    data.genealogia_campo = "pai";
+    return data;
+  }
+
+  match = normalized.match(/\b(?:define|definir|coloca|colocar|registrar|registra)\s+(.+?)\s+como\s+(mae|pai)\s+(?:da|do|de)\s+(.+)$/i);
+  if (match) {
+    const field = match[2] === "pai" ? "pai" : "mae";
+    data[field + "_nome"] = compactAnimalReference(match[1]);
+    data.animal_codigo = compactAnimalReference(match[3]);
+    data.genealogia_campo = field;
+    return data;
+  }
+
+  match = normalized.match(/\b(?:registrar|registra|corrigir|corrige|alterar|altera)\s+(mae|pai)\s+(?:da|do|de)\s+(.+?)\s+como\s+(.+)$/i);
+  if (match) {
+    const field = match[1] === "pai" ? "pai" : "mae";
+    data.animal_codigo = compactAnimalReference(match[2]);
+    data[field + "_nome"] = compactAnimalReference(match[3]);
+    data.genealogia_campo = field;
+    return data;
+  }
+
+  match = normalized.match(/\b(.+?)\s+(?:e|eh)\s+pai\s+(?:da|do|de)\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[2]);
+    data.pai_nome = compactAnimalReference(match[1]);
+    data.genealogia_campo = "pai";
+    return data;
+  }
+
+  match = normalized.match(/\b(?:definir|define|registrar|registra|alterar|altera|corrigir|corrige)\s+(mae|pai|genealogia|filiacao)\s+(?:da|do|de)\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[2]);
+    data.genealogia_campo = match[1] === "pai" ? "pai" : match[1] === "mae" ? "mae" : undefined;
+    return data;
+  }
+
+  match = normalized.match(/\b(.+?)\s+tem\s+mae\s+(.+?)\s+e\s+pai\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    data.mae_nome = compactAnimalReference(match[2]);
+    data.pai_nome = compactAnimalReference(match[3]);
+    data.genealogia_campo = "ambos";
+    return data;
+  }
+
+  match = normalized.match(/\b(.+?)\s+tem\s+mae\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    data.mae_nome = compactAnimalReference(match[2]);
+    data.genealogia_campo = "mae";
+    return data;
+  }
+
+  match = normalized.match(/\b(.+?)\s+tem\s+pai\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    data.pai_nome = compactAnimalReference(match[2]);
+    data.genealogia_campo = "pai";
+    return data;
+  }
+
+  match = normalized.match(/\b(.+?)\s+(?:e|eh)?\s*(?:filha|filho)\s+(?:da|do|de)\s+(.+)$/i);
+  if (match) {
+    data.animal_codigo = compactAnimalReference(match[1]);
+    const parents = splitParents(match[2]);
+    const firstField = relationFieldFromParent(parents.first);
+    data[firstField + "_nome"] = parents.first;
+    if (parents.second) {
+      const secondField = relationFieldFromParent(parents.second);
+      data[secondField + "_nome"] = parents.second;
+    }
+    data.genealogia_campo = data.mae_nome && data.pai_nome ? "ambos" : data.pai_nome ? "pai" : "mae";
+    return data;
+  }
+
+  if (actionVerb && /\b(?:mae|pai|genealogia|filiacao)\b/.test(normalized)) {
+    data.animal_codigo = extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL")
+      || compactAnimalReference(normalized.match(/\b(?:da|do|de)\s+(.+)$/i)?.[1]);
+    data.genealogia_campo = /\bmae\b/.test(normalized) ? "mae" : /\bpai\b/.test(normalized) ? "pai" : undefined;
+  }
+
+  return data;
+}
+
 export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const original = cleanAnswer(text);
   const normalized = normalizeRanchoText(original);
@@ -221,6 +389,36 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const isProductionQuery = /\b(?:quanto|total|media|média|consulta|consultar|ver)\b/.test(normalized) && /\b(?:produziu|producao|produção|leite|ordenha)\b/.test(normalized);
   if (isProductionQuery) return finalize("CONSULTA_PRODUCAO", { data_referencia: extractDateReference(normalized) || "hoje" }, [], 0.9);
+
+  const genealogyVocabulary = /\b(?:genealogia|geneologia|genelogia|arvore|arvori|genealogica|linhagem|linhage|familia|familiar|pais|mae|mai|maee|pai|paii|filhos|filhas|filho|filha|descendente|descendentes|avos|avo|filiacao)\b/.test(normalized);
+  const genealogyBlockedSubject = /\b(?:funcionario|funcionarios|colaborador|colaboradora)\b/.test(normalized)
+    || /\b(?:clinico|clinica)\b/.test(normalized);
+  const genealogyMutationCue = /\b(?:define|definir|coloca|colocar|registrar|registra|remove|remover|tirar|tira|limpa|limpar|apaga|apagar|corrigir|corrige|alterar|altera|filha|filho|mae|pai|mai|paii)\b/.test(normalized)
+    && (
+      /\b(?:e|eh|=|como|nao informado|nao informada|sem pai|sem mae)\b/.test(normalized)
+      || /\b(?:filha|filho)\b/.test(normalized)
+      || /\btem\s+(?:mae|pai)\b/.test(normalized)
+      || /\b(?:define|definir|remove|remover|tirar|tira|limpa|limpar|apaga|apagar)\b/.test(normalized)
+    );
+  if (genealogyVocabulary && !genealogyBlockedSubject && genealogyMutationCue && !/\?\s*$/.test(original.trim())) {
+    const dados = genealogyUpdateData(original, normalized);
+    if (Object.keys(dados).length) {
+      return finalize("ATUALIZACAO_GENEALOGIA", dados, buildMissing("ATUALIZACAO_GENEALOGIA", dados), 0.88);
+    }
+  }
+
+  const genealogyQueryCue = genealogyVocabulary && (
+    /\b(?:ver|mostrar|mostra|consulta|consultar|quem|quais|qual|historico|arvore|arvori|linhagem|familia|filhos|descendentes|avos|avo|materna|materno|paterno|paterna|genealogia|geneologia|genelogia|genealogica)\b/.test(normalized)
+    || /\?/.test(original)
+  );
+  if (genealogyQueryCue && !genealogyBlockedSubject) {
+    const dados = genealogyQueryData(original, normalized);
+    return finalize("CONSULTA_GENEALOGIA", dados, buildMissing("CONSULTA_GENEALOGIA", dados), 0.88);
+  }
+
+  if (/\b(?:funcionario|funcionarios|colaborador|colaboradora)\b/.test(normalized) && /\b(?:filho|filha)\b/.test(normalized)) {
+    return finalize("DESCONHECIDO", {}, [], 0.25);
+  }
 
   const explicitFinanceValue = hasValue(extractMoneyValue(normalized));
   const isFinanceQuery = !explicitFinanceValue && ((

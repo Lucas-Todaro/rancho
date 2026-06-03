@@ -97,9 +97,16 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
       dados.lote_opcoes = undefined;
     }
     if (expectedField === "data_nascimento") dados.data_nascimento = extractAnimalBirthDate(original);
+    if (expectedField === "mae_nome" && original) dados.mae_nome = normalizeAnimalCandidate(original) || original;
+    if (expectedField === "pai_nome" && original) dados.pai_nome = normalizeAnimalCandidate(original) || original;
+    if (expectedField === "genealogia_campo" && original) {
+      if (/\b(?:os dois|ambos|pai e mae|pai e mÃ£e|mae e pai|mÃ£e e pai)\b/.test(normalized)) dados.genealogia_campo = "ambos";
+      else if (/\b(?:mae|mÃ£e)\b/.test(normalized)) dados.genealogia_campo = "mae";
+      else if (/\bpai\b/.test(normalized)) dados.genealogia_campo = "pai";
+    }
   }
 
-  const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(current.tipo);
+  const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(current.tipo);
   const animalCode = animalIntent && expectedField && expectedField !== "animal_codigo"
     ?undefined
     : animalIntent ?extractAnimalCode(normalized, current.tipo) : undefined;
@@ -176,6 +183,23 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (!dados.raca) dados.raca = extractAnimalBreed(original);
     if (!dados.lote_nome && !dados.lote_id) dados.lote_nome = extractAnimalLotName(original);
     if (!dados.data_nascimento) dados.data_nascimento = extractAnimalBirthDate(original);
+  }
+
+  if (current.tipo === "ATUALIZACAO_GENEALOGIA") {
+    if (isCorrection) {
+      const cleaned = original.replace(/^(?:nao|nÃ£o|n|errado|incorreto|corrigir|corrige|na verdade|foi|era)\b\s*,?\s*/i, "").trim();
+      if (cleaned) {
+        if (/\b(?:mae|mÃ£e)\b/.test(normalized) || dados.genealogia_campo === "mae") {
+          dados.mae_nome = normalizeAnimalCandidate(cleaned) || cleaned;
+          dados.mae_id = undefined;
+        } else if (/\bpai\b/.test(normalized) || dados.genealogia_campo === "pai") {
+          dados.pai_nome = normalizeAnimalCandidate(cleaned) || cleaned;
+          dados.pai_id = undefined;
+        }
+      }
+    }
+    if (expectedField === "mae_nome" && original) dados.mae_nome = normalizeAnimalCandidate(original) || original;
+    if (expectedField === "pai_nome" && original) dados.pai_nome = normalizeAnimalCandidate(original) || original;
   }
 
   let nextTipo = current.tipo;

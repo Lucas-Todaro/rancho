@@ -105,6 +105,7 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_FUNCIONARIO",
   "CONSULTA_PONTO",
   "CONSULTA_ANIMAL",
+  "CONSULTA_GENEALOGIA",
   "CONSULTA_REGISTROS_HOJE",
   "AJUDA"
 ]);
@@ -112,13 +113,18 @@ const ANIMAL_RECORD_INTENTS = new Set<ParsedRanchoMessage["tipo"]>(["PRODUCAO_LE
 const ANIMAL_LOOKUP_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   ...Array.from(ANIMAL_RECORD_INTENTS),
   "ATUALIZACAO_ANIMAL",
-  "CONSULTA_ANIMAL"
+  "CONSULTA_ANIMAL",
+  "ATUALIZACAO_GENEALOGIA",
+  "CONSULTA_GENEALOGIA"
 ]);
 const EMPLOYEE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CRIAR_FUNCIONARIO",
   "ATUALIZAR_FUNCIONARIO",
   "DESLIGAR_FUNCIONARIO",
   "EXCLUIR_FUNCIONARIO"
+]);
+const GENEALOGY_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "ATUALIZACAO_GENEALOGIA"
 ]);
 
 function nowIso() {
@@ -416,6 +422,8 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CADASTRO_ANIMAL: "cadastro de animal",
     ATUALIZACAO_ANIMAL: "atualização de animal",
     CONSULTA_ANIMAL: "consulta de animal",
+    ATUALIZACAO_GENEALOGIA: "atualização de genealogia",
+    CONSULTA_GENEALOGIA: "consulta de genealogia",
     CONSULTA_PRODUCAO: "consulta de produção",
     CONSULTA_PRODUCAO_HOJE: "consulta de produção",
     CONSULTA_PRODUCAO_ANIMAL: "consulta de produção por animal",
@@ -687,7 +695,7 @@ function bestMatch<T extends AnyRecord>(rows: T[], term: string, labels: (row: T
 async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) {
   const { data, error } = await supabase
     .from(TABLES.animais)
-    .select("id,brinco,nome,categoria,sexo,fase,status,raca,lote_id,data_nascimento,peso,observacoes")
+    .select("id,brinco,nome,categoria,sexo,fase,status,raca,lote_id,data_nascimento,peso,observacoes,mae_id,pai_id,genealogia_observacoes")
     .eq("fazenda_id", owner.fazenda_id)
     .limit(1000);
 
@@ -701,6 +709,69 @@ async function findAnimal(supabase: SupabaseAdmin, owner: WhatsAppOwner, code: s
     ambiguousRows: resolved.status === "ambiguous" ?resolved.rows : undefined,
     resolutionStatus: resolved.status
   };
+}
+
+async function listAnimals(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.animais)
+    .select("id,brinco,nome,categoria,sexo,fase,status,raca,lote_id,data_nascimento,peso,observacoes,mae_id,pai_id,genealogia_observacoes")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(2000);
+
+  if (error) throw new Error(error.message);
+  return ((data || []) as AnyRecord[]).filter((row) => row.status !== "excluido");
+}
+
+function animalLabel(animal?: AnyRecord | null) {
+  if (!animal) return "Não informado";
+  const brinco = String(animal.brinco || "").trim();
+  const nome = String(animal.nome || "").trim();
+  if (brinco && nome && normalizeRanchoText(brinco) !== normalizeRanchoText(nome)) return `${nome} (${brinco})`;
+  return brinco || nome || String(animal.id || "Animal");
+}
+
+function animalOptionsText(rows?: AnyRecord[]) {
+  const options = (rows || []).slice(0, 5).map((row) => `- ${animalLabel(row)}`).join("\n");
+  return options || "- Nenhuma opção segura encontrada";
+}
+
+function collectDescendantIds(animalId: string, animals: AnyRecord[]) {
+  const descendants = new Set<string>();
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const animal of animals) {
+      const id = String(animal.id || "");
+      if (!id || descendants.has(id)) continue;
+      const mother = String(animal.mae_id || "");
+      const father = String(animal.pai_id || "");
+      if (mother === animalId || father === animalId || descendants.has(mother) || descendants.has(father)) {
+        descendants.add(id);
+        changed = true;
+      }
+    }
+  }
+
+  return descendants;
+}
+
+function relationBlockMessage(parsed: ParsedRanchoMessage) {
+  return String(parsed.dados?.genealogia_bloqueio || "").trim() || null;
+}
+
+function addGenealogyBlock(dados: AnyRecord, message: string) {
+  dados.genealogia_bloqueio = message;
+  dados.genealogia_estoque_movimentado = false;
+}
+
+function genealogyPayloadFromData(dados: AnyRecord) {
+  const payload: AnyRecord = {};
+  if (dados.remover_mae) payload.mae_id = null;
+  else if (dados.mae_id) payload.mae_id = dados.mae_id;
+  if (dados.remover_pai) payload.pai_id = null;
+  else if (dados.pai_id) payload.pai_id = dados.pai_id;
+  return payload;
 }
 
 async function findLot(supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) {
@@ -946,6 +1017,52 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
   }
 
+  if (parsed.tipo === "ATUALIZACAO_GENEALOGIA" && dados.animal_id) {
+    const resolveParent = async (field: "mae" | "pai") => {
+      const valueKey = `${field}_nome`;
+      const idKey = `${field}_id`;
+      const notFoundKey = `${field}_referencia_nao_encontrada`;
+      const optionsKey = `${field}_opcoes`;
+      if (!dados[valueKey] || dados[idKey]) return;
+
+      const found = await findAnimal(supabase, owner, String(dados[valueKey]));
+      if (found && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
+        dados[idKey] = found.row.id;
+        dados[valueKey] = animalLabel(found.row);
+        dados[`${field}_resolvido`] = found.row;
+        dados[notFoundKey] = undefined;
+        dados[optionsKey] = undefined;
+        changed = true;
+        return;
+      }
+
+      dados[notFoundKey] = dados[valueKey];
+      dados[optionsKey] = found?.ambiguousRows?.map((row) => animalLabel(row)) || [];
+      dados[valueKey] = undefined;
+      dados[idKey] = undefined;
+      changed = true;
+    };
+
+    await resolveParent("mae");
+    await resolveParent("pai");
+
+    const animalId = String(dados.animal_id || "");
+    const motherId = dados.remover_mae ?null : dados.mae_id ?String(dados.mae_id) : null;
+    const fatherId = dados.remover_pai ?null : dados.pai_id ?String(dados.pai_id) : null;
+
+    if ((motherId && motherId === animalId) || (fatherId && fatherId === animalId)) {
+      addGenealogyBlock(dados, "O animal não pode ser pai ou mãe dele mesmo. Nada foi salvo.");
+      changed = true;
+    } else if (motherId || fatherId) {
+      const animals = await listAnimals(supabase, owner);
+      const descendants = collectDescendantIds(animalId, animals);
+      if ((motherId && descendants.has(motherId)) || (fatherId && descendants.has(fatherId))) {
+        addGenealogyBlock(dados, "Não é possível escolher um descendente como pai ou mãe. Nada foi salvo.");
+        changed = true;
+      }
+    }
+  }
+
   if (parsed.tipo === "CADASTRO_ANIMAL" && dados.lote_nome && !dados.lote_id) {
     const found = await findLot(supabase, owner, String(dados.lote_nome));
     if (found && (found.exact || found.score >= 0.86)) {
@@ -1181,6 +1298,70 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 
       return realSaveResult(`Pronto, registro salvo com sucesso.\nAnimal ${animal.brinco} marcado como morto.`, [TABLES.eventosAnimal, TABLES.animais]);
     }
+  }
+
+  if (pending.tipo === "ATUALIZACAO_GENEALOGIA") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração." };
+    }
+
+    const found = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
+    if (!found?.row) {
+      return {
+        response: `Não encontrei o animal "${dados.animal_codigo || ""}" no rebanho. Me envie o brinco cadastrado.`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
+      };
+    }
+
+    if (found.ambiguousRows?.length) {
+      return {
+        response: `Encontrei mais de um animal parecido. Me envie o brinco correto:\n${animalOptionsText(found.ambiguousRows)}`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { animal_codigo: undefined }) } }
+      };
+    }
+
+    const animal = found.row;
+    const payload = genealogyPayloadFromData(dados);
+    if (!Object.keys(payload).length) {
+      return {
+        response: "Não reconheci qual relação genealógica deve ser atualizada. Envie mãe, pai ou cancelar.",
+        nextSession: { etapa: "aguardando_dado", dados: { pending } }
+      };
+    }
+
+    const nextMother = payload.mae_id === undefined ?String(animal.mae_id || "") : payload.mae_id ?String(payload.mae_id) : "";
+    const nextFather = payload.pai_id === undefined ?String(animal.pai_id || "") : payload.pai_id ?String(payload.pai_id) : "";
+    if ((nextMother && nextMother === animal.id) || (nextFather && nextFather === animal.id)) {
+      return { response: "O animal não pode ser pai ou mãe dele mesmo. Nada foi salvo." };
+    }
+
+    if (nextMother || nextFather) {
+      const animals = await listAnimals(supabase, owner);
+      const descendants = collectDescendantIds(String(animal.id), animals);
+      if ((nextMother && descendants.has(nextMother)) || (nextFather && descendants.has(nextFather))) {
+        return { response: "Não é possível escolher um descendente como pai ou mãe. Nada foi salvo." };
+      }
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.animais)
+      .update(payload)
+      .eq("id", animal.id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    await logAudit(supabase, owner, TABLES.animais, "update", data || { ...animal, ...payload });
+
+    const updated = { ...animal, ...payload };
+    const animals = await listAnimals(supabase, owner);
+    const byId = new Map(animals.map((row) => [String(row.id), row]));
+    return realSaveResult([
+      "Pronto, genealogia atualizada com sucesso.",
+      `Animal: ${animalLabel(updated)}.`,
+      `Mãe: ${updated.mae_id ?animalLabel(byId.get(String(updated.mae_id))) : "Não informado"}.`,
+      `Pai: ${updated.pai_id ?animalLabel(byId.get(String(updated.pai_id))) : "Não informado"}.`
+    ].join("\n"), [TABLES.animais]);
   }
 
   if (pending.tipo === "ATUALIZACAO_ANIMAL") {
@@ -1802,6 +1983,63 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     return details.join("\n");
   }
 
+  if (parsed.tipo === "CONSULTA_GENEALOGIA") {
+    const animalReference = String(parsed.dados.animal_codigo || "").trim();
+    const found = animalReference ?await findAnimal(supabase, owner, animalReference) : undefined;
+    if (!found?.row) return `Não encontrei o animal "${animalReference || "informado"}" no cadastro.`;
+    if (found.ambiguousRows?.length) {
+      return `Encontrei mais de um animal parecido. Tente pelo brinco cadastrado:\n${animalOptionsText(found.ambiguousRows)}`;
+    }
+
+    const animal = found.row;
+    const animals = await listAnimals(supabase, owner);
+    const byId = new Map(animals.map((row) => [String(row.id), row]));
+    const mother = animal.mae_id ?byId.get(String(animal.mae_id)) : null;
+    const father = animal.pai_id ?byId.get(String(animal.pai_id)) : null;
+    const maternalGrandmother = mother?.mae_id ?byId.get(String(mother.mae_id)) : null;
+    const maternalGrandfather = mother?.pai_id ?byId.get(String(mother.pai_id)) : null;
+    const paternalGrandmother = father?.mae_id ?byId.get(String(father.mae_id)) : null;
+    const paternalGrandfather = father?.pai_id ?byId.get(String(father.pai_id)) : null;
+    const directChildren = animals.filter((row) => String(row.mae_id || "") === String(animal.id) || String(row.pai_id || "") === String(animal.id));
+    const descendantIds = collectDescendantIds(String(animal.id), animals);
+    const descendants = Array.from(descendantIds).map((id) => byId.get(id)).filter(Boolean) as AnyRecord[];
+    const query = String(parsed.dados.consulta_genealogia || "arvore");
+
+    parsed.dados.consulta_executada = "genealogia";
+    parsed.dados.resultado = {
+      animal_id: animal.id,
+      animal: animalLabel(animal),
+      mae: mother ?animalLabel(mother) : null,
+      pai: father ?animalLabel(father) : null,
+      filhos: directChildren.map(animalLabel),
+      descendentes: descendants.map(animalLabel)
+    };
+
+    if (query === "mae") return `${animalLabel(animal)}\nMãe: ${mother ?animalLabel(mother) : "Não informado"}.`;
+    if (query === "pai") return `${animalLabel(animal)}\nPai: ${father ?animalLabel(father) : "Não informado"}.`;
+    if (query === "descendentes") {
+      const childrenText = directChildren.length ?directChildren.map(animalLabel).join(", ") : "Nenhum filho informado";
+      const descendantsText = descendants.length > directChildren.length ?`\nDescendentes: ${descendants.map(animalLabel).join(", ")}.` : "";
+      return `Filhos de ${animalLabel(animal)}: ${childrenText}.${descendantsText}`;
+    }
+    if (query === "avos") {
+      return [
+        `Avós de ${animalLabel(animal)}:`,
+        `Maternos: ${maternalGrandmother ?animalLabel(maternalGrandmother) : "Não informado"} / ${maternalGrandfather ?animalLabel(maternalGrandfather) : "Não informado"}.`,
+        `Paternos: ${paternalGrandmother ?animalLabel(paternalGrandmother) : "Não informado"} / ${paternalGrandfather ?animalLabel(paternalGrandfather) : "Não informado"}.`
+      ].join("\n");
+    }
+
+    return [
+      `Genealogia de ${animalLabel(animal)}`,
+      `Mãe: ${mother ?animalLabel(mother) : "Não informado"}.`,
+      `Pai: ${father ?animalLabel(father) : "Não informado"}.`,
+      `Avós maternos: ${maternalGrandmother ?animalLabel(maternalGrandmother) : "Não informado"} / ${maternalGrandfather ?animalLabel(maternalGrandfather) : "Não informado"}.`,
+      `Avós paternos: ${paternalGrandmother ?animalLabel(paternalGrandmother) : "Não informado"} / ${paternalGrandfather ?animalLabel(paternalGrandfather) : "Não informado"}.`,
+      `Filhos: ${directChildren.length ?directChildren.map(animalLabel).join(", ") : "Nenhum filho informado"}.`
+    ].join("\n");
+  }
+
   if (parsed.tipo === "CONSULTA_PRODUCAO" || parsed.tipo === "CONSULTA_PRODUCAO_HOJE") {
     const period = String(parsed.dados.periodo || parsed.dados.data_referencia || "hoje");
     const range = periodRange(period);
@@ -2028,6 +2266,11 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return animalBlock;
   }
+  const genealogyBlock = relationBlockMessage(parsed);
+  if (genealogyBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return genealogyBlock;
+  }
 
   if (parsed.tipo === "CRIAR_ITEM_ESTOQUE" && !isBotAdmin(owner)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -2037,6 +2280,11 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (EMPLOYEE_ADMIN_INTENTS.has(parsed.tipo) && !isBotAdmin(owner)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
+  }
+
+  if (GENEALOGY_ADMIN_INTENTS.has(parsed.tipo) && !isBotAdmin(owner)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
   }
 
   if (parsed.perguntas_faltantes.length) {
@@ -2112,6 +2360,15 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return animalBlock;
   }
+  const genealogyBlock = relationBlockMessage(next);
+  if (genealogyBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return genealogyBlock;
+  }
+  if (GENEALOGY_ADMIN_INTENTS.has(next.tipo) && !isBotAdmin(owner)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+  }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
     return missingText(next);
@@ -2166,7 +2423,12 @@ async function handleConfirmation(
       const correctionText = /^(?:nao|n|errado|incorreto|corrigir|corrige|na verdade|foi|era|animal errado)\b/.test(correction)
         ?correction
         : `foi ${correction}`;
-      const next = mergeRanchoMessageData(pending, correctionText);
+      const next = await enrichWithCatalog(supabase, owner, mergeRanchoMessageData(pending, correctionText));
+      const genealogyBlock = relationBlockMessage(next);
+      if (genealogyBlock) {
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        return genealogyBlock;
+      }
       if (next.perguntas_faltantes.length) {
         await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
         return missingText(next);
@@ -2190,6 +2452,17 @@ async function handleConfirmation(
     if (EMPLOYEE_ADMIN_INTENTS.has(replacement.tipo) && !isBotAdmin(owner)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return "Você não tem permissão para cadastrar ou alterar funcionários pelo bot. Peça para um administrador fazer esse cadastro.";
+    }
+
+    if (GENEALOGY_ADMIN_INTENTS.has(replacement.tipo) && !isBotAdmin(owner)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
+    }
+
+    const genealogyBlock = relationBlockMessage(replacement);
+    if (genealogyBlock) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return genealogyBlock;
     }
 
     if (replacement.perguntas_faltantes.length) {
