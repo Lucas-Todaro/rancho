@@ -73,9 +73,9 @@ export const animalPhaseMap: Record<string, string | undefined> = {
   inaplicavel: "nao_aplicavel"
 };
 export const animalCodePattern = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
-export const stockUnitWords = "(?:sacos?|kg|quilos?|gramas?|g|litros?|l|caixas?|doses?|fardos?|unidades?)";
+export const stockUnitWords = "(?:sacos?|sakos?|sc|kg|quilos?|gramas?|g|litros?|litos?|l|ml|mililitros?|caixas?|cx|doses?|fardos?|galoes?|galo|galao|frascos?|rolos?|un|und|unids?|unidades?)";
 export const stockUnitAfterQuantityPattern = new RegExp(`\\b(${decimalNumberPattern})\\s*(${stockUnitWords})\\b`, "i");
-export const stockItemHintPattern = /\b(?:racao|ração|milho|feno|sal|mineral|aftosa|remedio|remédio|medicamento|insumo|silagem|suplemento)\b/;
+export const stockItemHintPattern = /\b(?:racao|ração|milho|feno|sal|mineral|aftosa|vacina|remedio|remédio|medicamento|antibiotico|insumo|silagem|suplemento|diesel|oleo|veneno|carrapaticida|arame|poste|postes|brinco|brincos|identificacao|seringa|seringas|luva|luvas|ureia|concentrado|nucleo)\b/;
 export const forbiddenAnimalCodes = new Set([
   "vaca",
   "vacas",

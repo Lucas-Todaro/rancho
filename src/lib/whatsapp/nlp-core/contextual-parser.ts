@@ -109,8 +109,11 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     && !expectedField
     && /^(?:foi|era|valor|r\$|\d)/.test(normalized);
   if (value !== undefined && ["DESPESA", "RECEITA_VENDA"].includes(current.tipo) && (!hasValue(dados.valor) || expectedField === "valor" || isFinancialValueCorrection)) dados.valor = value;
-  if (quantity !== undefined && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo) && (!hasValue(dados.quantidade) || expectedField === "quantidade")) dados.quantidade = quantity;
-  if (itemName && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo) && (!dados.item_nome || expectedField === "item_nome")) dados.item_nome = itemName;
+  const stockIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE", "ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(current.tipo);
+  const normalizedItemName = normalizeRanchoText(itemName || "");
+  const correctionItemLooksUseful = Boolean(itemName && /[a-z]/.test(normalizedItemName) && !/^(?:na verdade|verdade|foi|foram|era|quantidade|valor)$/.test(normalizedItemName));
+  if (quantity !== undefined && stockIntent && (!hasValue(dados.quantidade) || expectedField === "quantidade" || isCorrection)) dados.quantidade = quantity;
+  if (itemName && stockIntent && (!dados.item_nome || expectedField === "item_nome" || (isCorrection && correctionItemLooksUseful))) dados.item_nome = itemName;
   if (employeeName && current.tipo === "PONTO_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeName;
   if (employeeCreationName && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeCreationName;
   if (phone && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.telefone || expectedField === "telefone")) dados.telefone = phone;

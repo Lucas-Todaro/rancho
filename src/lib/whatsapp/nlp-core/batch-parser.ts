@@ -88,6 +88,11 @@ function parseBatchSegmentWithContext(segment: string, previous: ParsedRanchoMes
   return null;
 }
 
+function hasExplicitStockMovementAction(segment: string) {
+  const normalized = normalizeRanchoText(segment);
+  return /\b(?:comprei|compramos|comprar|compra|paguei|adiciona|adicionar|adicionei|inclui|incluir|bota|botar|botei|coloca|colocar|coloquei|lanca|lancar|entrada|entrou|chegou|chegaram|chego|xegou|recebi|recebemos|baixa|baixar|dar baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|saiu|saida|consumi|consumiu|descartei)\b/.test(normalized);
+}
+
 export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
   const segments = splitBatchSegments(text);
   if (segments.length < 2) return null;
@@ -99,7 +104,12 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
     const parsed = parseSingleRanchoMessage(segment);
     const contextual: ParsedRanchoMessage | null = previous ?parseBatchSegmentWithContext(segment, previous) : null;
     const directIsReadyAction = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length && batchableIntents.has(parsed.tipo);
-    const next: ParsedRanchoMessage | null = directIsReadyAction ?parsed : contextual;
+    const shouldPreferStockContext: boolean = Boolean(contextual
+      && previous
+      && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(previous.tipo)
+      && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(parsed.tipo)
+      && !hasExplicitStockMovementAction(segment));
+    const next: ParsedRanchoMessage | null = shouldPreferStockContext ?contextual : directIsReadyAction ?parsed : contextual;
     if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
     registros.push(next);
     previous = next;

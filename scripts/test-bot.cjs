@@ -603,6 +603,7 @@ function missingContains(parsed, field) {
     litros: /litro/.test(text),
     quantidade: /quantidade/.test(text),
     unidade: /unidade/.test(text),
+    produto: /medicamento|vacina|manejo|produto/.test(text),
     valor: /valor|custou/.test(text),
     telefone: /whatsapp|ddd/.test(text),
     item_nome: /item|estoque/.test(text),
@@ -929,6 +930,71 @@ const decimalRegressionTests = [
   { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
   { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
+];
+
+const inventoryHumanParserTests = [
+  { phrase: "chegou 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "entrou 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "adicionar 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "registrar entrada de 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "chegaram 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "chegou racao 10 sacos", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "racao entrou 10 sacos", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "entrada racao 10 sacos", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "botar 10 sacos de racao no estoque", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "colocar 10 sacos de racao no estoque", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "recebi 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "chegou 1 saco de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 1, unidade: "saco", resumoIncludes: "1 saco" } },
+  { phrase: "chegou 10,5 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10.5, unidade: "saco" } },
+  { phrase: "chegou dez sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "chegou 20 kg de sal mineral", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Sal mineral", quantidade: 20, unidade: "kg" } },
+  { phrase: "entrou 5 sacos de sal mineral", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Sal mineral", quantidade: 5, unidade: "saco" } },
+  { phrase: "chegou 2 litros de carrapaticida", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "carrapaticida", quantidade: 2, unidade: "L" } },
+  { phrase: "entrou 100 doses de vacina", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "vacina", quantidade: 100, unidade: "dose" } },
+  { phrase: "comprei 50 seringas", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "seringas", quantidade: 50, missing: ["unidade", "valor"] } },
+  { phrase: "chegou 200 kg de milho", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Milho", quantidade: 200, unidade: "kg" } },
+  { phrase: "entrou 30 sacos de milho", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Milho", quantidade: 30, unidade: "saco" } },
+  { phrase: "chegou 12 fardos de feno", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Feno", quantidade: 12, unidade: "fardo" } },
+  { phrase: "comprei 8 rolos de arame", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arame", quantidade: 8, unidade: "rolo", missing: ["valor"] } },
+  { phrase: "chegou 4 postes", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "postes", quantidade: 4, missing: ["unidade"] } },
+  { phrase: "entrou 6 sacos de ureia", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "ureia", quantidade: 6, unidade: "saco" } },
+  { phrase: "comprei 15 litros de diesel", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "diesel", quantidade: 15, unidade: "L", missing: ["valor"] } },
+  { phrase: "chegou 10 caixas de medicamento", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "medicamento", quantidade: 10, unidade: "caixa" } },
+  { phrase: "chegou 5 frascos de antibiotico", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "antibiotico", quantidade: 5, unidade: "frasco" } },
+  { phrase: "chegou 20 brincos de identificacao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "identificacao", quantidade: 20, missing: ["unidade"] } },
+  { phrase: "chegou 10 sacos de racao hoje", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco", data_referencia: "hoje" } },
+  { phrase: "ontem chegou 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco", data_referencia: "ontem" } },
+  { phrase: "chegou 10 sacos de racao 2026-06-01", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco", data_referencia: "2026-06-01" } },
+  { phrase: "entrada de racao 10 sacos 01/06/2026", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco", data_referencia: "2026-06-01" } },
+  { phrase: "sal mineral 20kg ontem", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Sal mineral", quantidade: 20, unidade: "kg", data_referencia: "ontem" } },
+  { phrase: "chegou 10 saco de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "chego 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "xegou 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "entrou 10 sako de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "racao 10 sc entrada", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", quantidade: 10, unidade: "saco" } },
+  { phrase: "sal minaral 20kg", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Sal mineral", itemId: "item-sal-mineral", itemFound: true, quantidade: 20, unidade: "kg" } },
+  { phrase: "usei 2 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 2, unidade: "saco" } },
+  { phrase: "saiu 2 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 2, unidade: "saco" } },
+  { phrase: "baixar 2 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 2, unidade: "saco" } },
+  { phrase: "dar baixa em 2 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 2, unidade: "saco" } },
+  { phrase: "retirei 2 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 2, unidade: "saco" } },
+  { phrase: "gastei 5 litros de diesel no trator", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "diesel", quantidade: 5, unidade: "L" } },
+  { phrase: "usei 4 postes no piquete 2", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "postes", quantidade: 4, missing: ["unidade"] } },
+  { phrase: "descartei 1 frasco vencido", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, quantidade: 1, unidade: "frasco", missing: ["item_nome"] } },
+  { phrase: "chegou racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Racao", missing: ["quantidade"] } },
+  { phrase: "chegou 10 sacos", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, quantidade: 10, unidade: "saco", missing: ["item_nome"] } },
+  { phrase: "usei racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", missing: ["quantidade"] } },
+  { phrase: "baixa 2 sacos", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, quantidade: 2, unidade: "saco", missing: ["item_nome"] } },
+  { phrase: "quanto tem de racao?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Racao", consulta: true } },
+  { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { phrase: "o que esta acabando?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
+  { phrase: "chegou 10 sacos de item X-999", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "item X-999", quantidade: 10, unidade: "saco", itemUnresolved: true, itemFound: false } },
+  { phrase: "apliquei vacina na B-002", expected: { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] } },
+  { phrase: "chegou vacina 100 doses", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "vacina", quantidade: 100, unidade: "dose" } },
+  { phrase: "paguei 1000 na racao", expected: { tipo: "DESPESA", exactTipo: true, valor: 1000, descricao: "racao" } },
+  { phrase: "B-002 deu 32 litros", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 32 } },
+  { phrase: "oi", expected: { tipo: "DESCONHECIDO", exactTipo: true } },
+  { phrase: "menu", expected: { tipo: "DESCONHECIDO", exactTipo: true } }
 ];
 
 const productionRobustnessTests = [
@@ -1631,10 +1697,201 @@ const animalFrameworkCases = [
   }
 ];
 
+const inventoryFrameworkCases = [
+  {
+    name: "entrada de estoque completa pede confirmacao e nao salva antes",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "entrada de estoque salva uma vez apos confirmacao em dry-run",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "baixa de estoque salva uma vez apos confirmacao em dry-run",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["usei 2 sacos de racao", "ok"],
+    expected: {
+      finalIntent: "ESTOQUE_SAIDA",
+      entities: { item_nome: "Racao", quantidade: 2, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "consulta de estoque nao abre confirmacao nem salva",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["quanto tem de racao?"],
+    expected: {
+      finalIntent: "CONSULTA_ESTOQUE_ITEM",
+      entities: { item_nome: "Racao" },
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "entrada incompleta coleta item antes de confirmar",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos", "racao"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "baixa incompleta coleta quantidade antes de confirmar",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["usei racao", "2 sacos"],
+    expected: {
+      finalIntent: "ESTOQUE_SAIDA",
+      entities: { item_nome: "Racao", quantidade: 2, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "correcao de quantidade antes de confirmar salva valor corrigido",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "na verdade foram 12", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 12, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { quantidade: 12 },
+      shouldNotSaveValues: { quantidade: 10 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "correcao de item antes de confirmar salva item corrigido",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "era sal mineral", "ok"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Sal mineral", quantidade: 10, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { item_nome: "Sal mineral" },
+      shouldNotSaveValues: { item_nome: "Racao" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "cancelamento de estoque limpa sessao e confirmacao antiga nao salva",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "cancela", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "confirmacao duplicada de estoque nao duplica salvamento",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "sim", "sim"],
+    expected: {
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "nova operacao de estoque substitui pendente sem salvar a antiga",
+    module: "estoque",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["chegou 10 sacos de racao", "chegou 5 sacos de sal mineral", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Sal mineral", quantidade: 5, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { item_nome: "Sal mineral", quantidade: 5 },
+      shouldNotSaveValues: { item_nome: "Racao", quantidade: 10 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "telefone nao autorizado nao executa estoque sensivel",
+    module: "permissao",
+    phone: "5583000000000",
+    messages: ["chegou 10 sacos de racao"],
+    expected: {
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
   ...animalFrameworkCases,
+  ...inventoryFrameworkCases,
   {
     name: "producao completa pede confirmacao e nao salva antes",
     module: "producao",
@@ -2268,6 +2525,7 @@ const allTests = [
   ...regressionTests,
   ...consultationParserTests,
   ...decimalRegressionTests,
+  ...inventoryHumanParserTests,
   ...productionRobustnessTests,
   ...animalConsultationAndUpdateTests
 ];

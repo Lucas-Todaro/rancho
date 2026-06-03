@@ -368,28 +368,73 @@ export function extractProduct(original: string, normalized: string) {
   return fallback && !["vacina", "tomou", "tratei", "tratamento", "manejo", "bois", "gado"].includes(fallback) ?fallback : undefined;
 }
 
+function stripStockTrailingContext(value: string) {
+  return cleanAnswer(value)
+    .replace(/\b(?:hoje|hj|ontem|anteontem|amanha|agora)\b.*$/gi, " ")
+    .replace(/\b(?:semana passada|semana que vem|essa semana|esta semana|nesta semana|mes passado|este mes|neste mes)\b.*$/gi, " ")
+    .replace(/\b(?:dia|em|no dia)?\s*\d{1,2}\s+de\s+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+(?:19|20)\d{2})?\b.*$/gi, " ")
+    .replace(/\b(?:19|20)\d{2}[/-]\d{1,2}[/-]\d{1,2}\b.*$/g, " ")
+    .replace(/\b\d{1,2}[/-]\d{1,2}(?:[/-](?:19|20)?\d{2})?\b.*$/g, " ")
+    .replace(/\s+(?:no|na|em|para|pra|pro|pros|pras|ao|aos)\s+(?:lote|piquete|trator|cocho|curral|cerca|alimentacao|bois|vacas|gado|animais)\b.*$/gi, " ")
+    .replace(/^(?:vencido|vencida|molhado|molhada|estragado|estragada|perdido|perdida)\b.*$/gi, " ")
+    .replace(/\s+(?:vencido|vencida|molhado|molhada|estragado|estragada|perdido|perdida)\b.*$/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const standaloneStockNumberPattern = new RegExp(`(^|[^\\w-])${decimalNumberPattern}(?=$|[^\\w-])`, "gi");
+
+function cleanStockItemCandidate(value?: string | null) {
+  const cleaned = stripStockTrailingContext(value || "")
+    .replace(/\bpor\b.*$/gi, " ")
+    .replace(new RegExp(`r\\$\\s*${decimalNumberPattern}`, "gi"), " ")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\b`, "gi"), " ")
+    .replace(new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)\\b`, "gi"), " ")
+    .replace(standaloneStockNumberPattern, "$1 ")
+    .replace(/\bbrincos?\s+de\s+/gi, " ")
+    .replace(/\b(?:zero|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|mil)\b/gi, " ")
+    .replace(new RegExp(`\\b${stockUnitWords}\\b`, "gi"), " ")
+    .replace(/\b(?:no|na|do|da)\s+estoque\b/gi, " ")
+    .replace(/\b(?:chegaram|chego|xegou|recebi|inclui|incluir|incluido|usado|forneci|descartei|perdeu|perdi|estragou|sumiu|menos)\b/gi, " ")
+    .replace(/\b(?:pros?|pras?|para os|para as|aos?|às?)\s+(?:bois|vacas|bezerros|gado|animais)\b/gi, " ")
+    .replace(/\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|item|registrar|consulta|consultar|ver|quanto|saldo|tem|baixo|minimo|critico|me|mostre|mostrar|quero|comprei|compramos|comprar|compra|paguei|adiciona|adicionar|adicionei|inclui|incluir|incluido|bota|botar|botei|coloca|colocar|coloquei|lanca|lança|lancar|lançar|entrada|entrou|chegou|chegaram|chego|xegou|recebi|recebemos|estoque|baixa|baixar|retira|retirar|retirei|retire|tira|tirar|usei|usar|usado|foi usado|forneci|gastei|saiu|saida|saída|dei|deu|perdeu|perdi|estragou|sumiu|descartei|menos)\b/gi, " ")
+    .replace(/\b(?:foi|foram|era)\b/gi, " ")
+    .replace(/^(?:de|do|da|com|no|na|o|a|um|uma|pra|para)\s+/gi, " ")
+    .replace(/\s+(?:de|do|da|com|no|na|o|a|um|uma|pra|para)$/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned || undefined;
+}
+
 export function extractStockItem(original: string) {
   const called = original.match(/\b(?:chamado|chamada|nomeado|nomeada)\s+(.+?)(?:\s+no estoque|\s+na estoque|\s+para estoque|$)/i)?.[1];
-  if (called) return cleanAnswer(called);
+  if (called) return cleanStockItemCandidate(called);
 
   const stockQueryItem = original.match(/\b(?:me\s+mostre\s+o\s+estoque\s+de|mostre\s+o\s+estoque\s+de|mostrar\s+estoque\s+de|ver\s+estoque\s+de|estoque\s+de|quanto\s+tem\s+de)\s+(.+)$/i)?.[1];
-  if (stockQueryItem) return cleanAnswer(stockQueryItem);
+  if (stockQueryItem) return cleanStockItemCandidate(stockQueryItem);
 
   const quantityItem = original.match(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\s+(?:de|do|da)?\\s+(.+?)(?:\\s+(?:no|na|do|da)\\s+estoque\\b|\\s+(?:ao|aos|para|pra|pro|pros|pras|por)\\b|$)`, "i"))?.[1];
-  if (quantityItem) return cleanAnswer(quantityItem);
+  if (quantityItem && /^\s*item\s+[a-z0-9-]+\s*$/i.test(quantityItem)) return cleanAnswer(quantityItem);
+  const cleanedQuantityItem = cleanStockItemCandidate(quantityItem);
+  if (cleanedQuantityItem) return cleanedQuantityItem;
 
   const purchaseQuantityItem = original.match(/\b(?:comprei|compramos|comprar|compra)\s+\d+(?:[,.]\d+)?\s*(?:de|do|da)?\s+(.+?)(?:\s+por|\s+de\s+r\$?|\s+r\$|\s+\d+(?:[,.]\d+)?\s*(?:reais|real)\b|$)/i)?.[1];
-  if (purchaseQuantityItem) return cleanAnswer(purchaseQuantityItem);
+  if (purchaseQuantityItem) return cleanStockItemCandidate(purchaseQuantityItem);
 
-  const cleaned = cleanAnswer(original)
+  const cleaned = stripStockTrailingContext(original)
     .replace(/\bpor\b.*$/gi, " ")
     .replace(new RegExp(`\\b${decimalNumberPattern}\\s*${stockUnitWords}\\b`, "gi"), " ")
     .replace(new RegExp(`r\\$\\s*${decimalNumberPattern}`, "gi"), " ")
     .replace(new RegExp(`\\b${decimalNumberPattern}\\s*(?:reais|real)\\b`, "gi"), " ")
     .replace(new RegExp(`\\b(?:por)\\s+${decimalNumberPattern}(?:\\s*(?:reais|real))?\\b`, "gi"), " ")
+    .replace(standaloneStockNumberPattern, "$1 ")
+    .replace(/\bbrincos?\s+de\s+/gi, " ")
     .replace(/\b(?:no|na|do|da)\s+estoque\b/gi, " ")
+    .replace(/\b(?:chegaram|chego|xegou|recebi|inclui|incluir|incluido|usado|forneci|descartei|perdeu|perdi|estragou|sumiu|menos)\b/gi, " ")
     .replace(/\b(?:pros?|pras?|para os|para as|aos?|às?)\s+(?:bois|vacas|bezerros|gado|animais)\b/gi, " ")
     .replace(/\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|item|registrar|consultar|consulta|ver|quanto|saldo|tem|baixo|minimo|mínimo|critico|crítico|me|mostre|mostrar|comprei|compramos|comprar|compra|paguei|adiciona|adicionar|adicionei|bota|botar|botei|coloca|colocar|coloquei|lanca|lança|lancar|lançar|entrada|entrou|chegou|recebemos|estoque|baixa|baixar|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|saiu|dei|deu|sacos|saco|kg|quilo|quilos|grama|gramas|litro|litros|unidade|unidades|caixa|caixas|dose|doses|fardo|fardos)\b/gi, " ")
+    .replace(/\b(?:foi|foram|era)\b/gi, " ")
     .replace(/^(?:de|do|da|com|no|na|o|a|um|uma|pra|para)\s+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -399,14 +444,18 @@ export function extractStockItem(original: string) {
 export function extractStockUnit(text: string) {
   const quantityUnit = normalizeRanchoText(text).match(stockUnitAfterQuantityPattern)?.[2];
   if (quantityUnit) return extractStockUnit(quantityUnit);
-  if (/\bsacos?\b/.test(text)) return "saco";
-  if (/\bkg\b|\bquilos?\b/.test(text)) return "kg";
-  if (/\bgramas?\b|\bg\b/.test(text)) return "g";
-  if (/\blitros?\b|\bl\b/.test(text)) return "L";
-  if (/\bcaixas?\b/.test(text)) return "caixa";
-  if (/\bdoses?\b/.test(text)) return "dose";
-  if (/\bfardos?\b/.test(text)) return "fardo";
-  if (/\bunidades?\b/.test(text)) return "unidade";
+  const normalized = normalizeRanchoText(text);
+  if (/\bsacos?\b|\bsakos?\b|\bsc\b/.test(normalized)) return "saco";
+  if (/\bkg\b|\bquilos?\b/.test(normalized)) return "kg";
+  if (/\bgramas?\b|\bg\b/.test(normalized)) return "g";
+  if (/\blitros?\b|\blitos?\b|\bl\b/.test(normalized)) return "L";
+  if (/\bcaixas?\b|\bcx\b/.test(normalized)) return "caixa";
+  if (/\bdoses?\b/.test(normalized)) return "dose";
+  if (/\bfardos?\b/.test(normalized)) return "fardo";
+  if (/\bgaloes?\b|\bgalao\b/.test(normalized)) return "galao";
+  if (/\bfrascos?\b/.test(normalized)) return "frasco";
+  if (/\brolos?\b/.test(normalized)) return "rolo";
+  if (/\bunidades?\b|\bunids?\b|\bund\b|\bun\b/.test(normalized)) return "unidade";
   return undefined;
 }
 

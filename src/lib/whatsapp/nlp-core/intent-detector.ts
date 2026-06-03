@@ -196,8 +196,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const hasPurchaseQuantity = isPurchase && hasValue(stockQuantity) && Boolean(stockItemName);
   const hasStockVocabulary = stockItemHintPattern.test(normalized) || /\bestoque\b/.test(normalized);
   const hasStockItemHint = Boolean(stockItemName) && hasStockVocabulary;
+  const stockBlockedByAnimalCreation = !physicalQuantity
+    && /\b(?:cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lança|lancar|lançar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
+    && new RegExp(`\\b${animalWords}\\b`).test(normalized);
 
-  const hasStockActionForQuery = /\b(?:comprei|compramos|comprar|compra|chegou|entrou|usei|tira|tirar|retirei|baixa|baixar|bota|botar|botei|coloca|colocar|coloquei|adiciona|adicionar|adicionei|lanca|lancar|cria|criar|cadastra|cadastrar|cadastre|novo|nova)\b/.test(normalized);
+  const hasStockActionForQuery = /\b(?:comprei|compramos|comprar|compra|chegou|chegaram|chego|xegou|entrou|entrada|recebi|recebemos|usei|tira|tirar|retirei|baixa|baixar|bota|botar|botei|coloca|colocar|coloquei|adiciona|adicionar|adicionei|inclui|incluir|lanca|lancar|cria|criar|cadastra|cadastrar|cadastre|novo|nova)\b/.test(normalized);
   const generalStockQuery = !hasStockActionForQuery && (
     (/\b(?:como|resumo|estoque|baixo|baixos|acabando|minimo)\b/.test(normalized)
       && /\b(?:estoque|abaixo|baixo|acabando|minimo)\b/.test(normalized))
@@ -217,6 +220,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const hasStockCreate = /\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|registrar)\b/.test(normalized)
+    && !/\b(?:entrada|entrou|chegou|chegaram|chego|xegou|saida|baixa|baixar)\b/.test(normalized)
     && /\b(?:item|estoque|racao|ração|medicamento|remedio|remédio|insumo)\b/.test(normalized);
   if (hasStockCreate) {
     const dados = {
@@ -264,29 +268,39 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);
-  const isStockOut = physicalQuantity && stockOutVerb;
+  const stockOutWithoutQuantity = !physicalQuantity && stockOutVerb && hasStockItemHint && !explicitMoney && (!hasValue(stockQuantity) || !/\bgastei\b/.test(normalized));
+  const isStockOut = (physicalQuantity && stockOutVerb) || stockOutWithoutQuantity;
   if (isStockOut) {
     const dados = {
       item_nome: stockItemName,
       quantidade: stockQuantity,
       unidade: extractStockUnit(normalized),
-      destino: extractStockDestination(original)
+      destino: extractStockDestination(original),
+      data_referencia: extractDateReference(normalized) || "hoje"
     };
     return finalize("ESTOQUE_SAIDA", dados, buildMissing("ESTOQUE_SAIDA", dados));
   }
 
   const stockInVerb = /\b(?:comprei|compramos|comprar|compra|adiciona|adicionar|adicionei|bota|botar|botei|coloca|colocar|coloquei|lanca|lança|lancar|lançar|entrada|entrou|chegou|recebemos|repor|reposicao|reposição)\b/.test(normalized);
+  const stockInVerbVariant = /\b(?:chegaram|chego|xegou|recebi|inclui|incluir)\b/.test(normalized);
+  const effectiveStockInVerb = stockInVerb || stockInVerbVariant;
+  const receiveLooksFinancial = /\brecebi\b/.test(normalized) && !physicalQuantity && hasValue(stockQuantity);
+  const implicitStockIn = physicalQuantity && hasStockItemHint && !stockOutVerb && !explicitMoney;
   const paidPhysicalStock = physicalQuantity && /\bpaguei\b/.test(normalized);
-  const isStockIn = ((physicalQuantity || hasStockItemHint) && stockInVerb)
+  const isStockIn = !stockBlockedByAnimalCreation && !receiveLooksFinancial && (
+    ((physicalQuantity || hasStockItemHint) && effectiveStockInVerb)
+    || implicitStockIn
     || paidPhysicalStock
-    || (isPurchase && (hasStockItemHint || hasPurchaseQuantity));
+    || (isPurchase && (hasStockItemHint || hasPurchaseQuantity))
+  );
   if (isStockIn) {
     const dados = {
       item_nome: stockItemName,
       quantidade: stockQuantity,
       unidade: extractStockUnit(normalized),
       valor: explicitMoney ?extractMoneyValue(normalized) : undefined,
-      compra: isPurchase || undefined
+      compra: isPurchase || undefined,
+      data_referencia: extractDateReference(normalized) || "hoje"
     };
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
   }

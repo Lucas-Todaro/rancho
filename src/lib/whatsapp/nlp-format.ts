@@ -26,7 +26,14 @@ export function formatStockUnit(quantity: unknown, unit: string | null | undefin
     mililitro: "mililitro",
     mililitros: "mililitro",
     caixa: "caixa",
-    caixas: "caixa"
+    caixas: "caixa",
+    cx: "caixa",
+    galao: "galao",
+    galoes: "galao",
+    frasco: "frasco",
+    frascos: "frasco",
+    rolo: "rolo",
+    rolos: "rolo"
   };
   const pluralByUnit: Record<string, string> = {
     saco: "sacos",
@@ -37,7 +44,10 @@ export function formatStockUnit(quantity: unknown, unit: string | null | undefin
     caixa: "caixas",
     quilo: "quilos",
     grama: "gramas",
-    mililitro: "mililitros"
+    mililitro: "mililitros",
+    galao: "galoes",
+    frasco: "frascos",
+    rolo: "rolos"
   };
   const singular = singularByUnit[normalized] || normalized || "";
   return plural ? (pluralByUnit[singular] || singular) : singular;
