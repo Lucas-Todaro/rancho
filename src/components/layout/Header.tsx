@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { canAccessPlatformAdmin } from "@/lib/platform-admin";
 import { canViewPath } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-
+//po
 const globalDestinations = [
   { href: "/dashboard", label: "Dashboard", helper: "Visão geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
   { href: "/lotes", label: "Lotes", helper: "Grupos e manejo do rebanho", keywords: ["lote", "piquete", "manejo", "grupo"] },
