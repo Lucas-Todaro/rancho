@@ -1,5 +1,55 @@
 import type { AnyRecord } from "@/lib/types";
 
+export type ParserRiskFlag =
+  | "single_clear_intent"
+  | "multiple_intents_detected"
+  | "compound_message"
+  | "ambiguous_verb"
+  | "ambiguous_reference"
+  | "missing_required_entity"
+  | "missing_quantity"
+  | "missing_unit"
+  | "missing_money_value"
+  | "unknown_animal"
+  | "unknown_stock_item"
+  | "unknown_employee"
+  | "correction_message"
+  | "sensitive_action"
+  | "destructive_action"
+  | "conflicting_intents"
+  | "needs_confirmation"
+  | "needs_clarification"
+  | "safe_for_local_execution"
+  | "use_gemini_fallback";
+
+export type ParserDecision =
+  | "local_execution"
+  | "gemini_fallback"
+  | "ask_confirmation"
+  | "ask_clarification"
+  | "blocked";
+
+export type DetectedRanchoEntities = {
+  animals: string[];
+  stockItems: string[];
+  employees: string[];
+  quantities: number[];
+  units: string[];
+  dates: string[];
+  moneyValues: number[];
+};
+
+export type ParsedAction = {
+  type: RanchoIntent;
+  operation?: string;
+  entity?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  date?: string | null;
+  notes?: string | null;
+  rawText?: string;
+};
+
 export type RanchoIntent =
   | "PRODUCAO_LEITE"
   | "PARTO"
@@ -45,4 +95,10 @@ export type ParsedRanchoMessage = {
   dados: AnyRecord;
   resumo: string;
   perguntas_faltantes: string[];
+  flags?: ParserRiskFlag[];
+  reason?: string;
+  debugReason?: string;
+  detectedEntities?: DetectedRanchoEntities;
+  actions?: ParsedAction[];
+  decision?: ParserDecision;
 };

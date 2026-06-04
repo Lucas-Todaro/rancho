@@ -38,7 +38,11 @@ require.extensions[".ts"] = function loadTs(module, filename) {
   module._compile(output.outputText, filename);
 };
 
-const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
+const {
+  parseRanchoMessage,
+  parserDecisionForParsed,
+  shouldUseGeminiFallback
+} = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithGeminiFallback } = require("../src/services/whatsapp/gemini-fallback.ts");
 
 const originalFetch = global.fetch;
@@ -233,6 +237,7 @@ for (const message of simpleMessages) {
     const calls = mockFetchQueue([new Error("Gemini não deveria ser chamado")]);
     const localParsed = parseRanchoMessage(message);
     assert(localParsed.confianca >= 0.6, `Parser local deveria ficar acima de 0.6 para: ${message}. Recebido: ${localParsed.confianca}`);
+    assertEqual(shouldUseGeminiFallback(localParsed, 0.6), false, `${message}: flags não deveriam acionar Gemini`);
 
     const result = await parseWithGeminiFallback({
       text: message,
@@ -242,6 +247,86 @@ for (const message of simpleMessages) {
 
     assertEqual(result.kind, "local", `${message}: resultado deveria continuar local`);
     assertGeminiNotCalled(calls, message);
+  });
+}
+
+const compoundLocalMessages = [
+  "me dá o relatório de hoje, mas antes sobe aí 30kg de ração",
+  "registra 12 litros da Estrela e depois me fala quanto ela produziu na semana",
+  "coloca 200 reais de despesa com ração e vê como ficou o financeiro do mês",
+  "dá baixa em 1 saco de sal e cria uma tarefa pra comprar mais amanhã"
+];
+
+for (const message of compoundLocalMessages) {
+  test(`parser local marca composta e chama Gemini: ${message}`, async () => {
+    const localParsed = parseRanchoMessage(message);
+    assert(localParsed.flags?.includes("compound_message"), `${message}: deveria ter flag compound_message`);
+    assert(localParsed.flags?.includes("multiple_intents_detected"), `${message}: deveria ter flag multiple_intents_detected`);
+    assertEqual(shouldUseGeminiFallback(localParsed, 0.6), true, `${message}: flags críticas deveriam acionar Gemini`);
+
+    const { calls, result } = await runFallback(message, interpretation({
+      requiresConfirmation: false,
+      actions: [
+        action({
+          type: "CONSULTA_REGISTROS_HOJE",
+          operation: "report",
+          date: "hoje",
+          rawText: message
+        })
+      ]
+    }), { localParsed });
+
+    assertGeminiCalled(calls, message);
+    assert(["parsed", "consultations"].includes(result.kind), `${message}: Gemini mockado deveria produzir resultado validado`);
+  });
+}
+
+const parserRiskCases = [
+  {
+    message: "sobe 30 de ração",
+    flags: ["ambiguous_verb", "use_gemini_fallback"],
+    decision: "gemini_fallback"
+  },
+  {
+    message: "tira 2 do estoque",
+    flags: ["ambiguous_verb", "missing_required_entity", "use_gemini_fallback"],
+    decision: "gemini_fallback"
+  },
+  {
+    message: "paguei João",
+    flags: ["missing_money_value", "needs_clarification"],
+    decision: "ask_clarification"
+  },
+  {
+    message: "lança leite da Estrela",
+    flags: ["use_gemini_fallback"],
+    decision: "gemini_fallback"
+  },
+  {
+    message: "errei, não era 15 litros, era 18",
+    flags: ["correction_message", "use_gemini_fallback"],
+    decision: "gemini_fallback"
+  },
+  {
+    message: "apaga tudo",
+    flags: ["destructive_action", "sensitive_action", "use_gemini_fallback"],
+    decision: "gemini_fallback"
+  },
+  {
+    message: "zera o estoque",
+    flags: ["destructive_action", "sensitive_action", "use_gemini_fallback"],
+    decision: "gemini_fallback"
+  }
+];
+
+for (const item of parserRiskCases) {
+  test(`parser explica risco: ${item.message}`, async () => {
+    const parsed = parseRanchoMessage(item.message);
+    for (const flag of item.flags) {
+      assert(parsed.flags?.includes(flag), `${item.message}: deveria ter flag ${flag}. Recebido: ${(parsed.flags || []).join(", ")}`);
+    }
+    assertEqual(parserDecisionForParsed(parsed, 0.6), item.decision, `${item.message}: decisão esperada`);
+    assert(parsed.reason && parsed.reason.length > 0, `${item.message}: deveria ter reason/debugReason`);
   });
 }
 

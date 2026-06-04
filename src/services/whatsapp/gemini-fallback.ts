@@ -1,7 +1,7 @@
 import type { AnyRecord } from "@/lib/types";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
-import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
+import { parserDecisionForParsed, shouldUseGeminiFallback, type ParsedRanchoMessage, type RanchoIntent } from "@/lib/whatsapp/nlp";
 import {
   GEMINI_ACTION_TYPES,
   geminiFallbackConfidence,
@@ -408,6 +408,22 @@ function safeClarification(interpretation?: GeminiInterpretation) {
   return GEMINI_CLARIFICATION_TEXT;
 }
 
+function safeMessagePreview(text: string) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function logLocalParserDecision(text: string, parsed: ParsedRanchoMessage, threshold: number) {
+  console.log("[BOT PARSER DECISION]", {
+    message: safeMessagePreview(text),
+    intent: parsed.tipo,
+    confidence: parsed.confianca,
+    flags: parsed.flags || [],
+    missingFields: parsed.perguntas_faltantes || [],
+    decision: parserDecisionForParsed(parsed, threshold),
+    reason: parsed.reason || parsed.debugReason || ""
+  });
+}
+
 function convertInterpretation(interpretation: GeminiInterpretation, threshold: number): GeminiFallbackParseResult {
   if (interpretation.confidence < threshold) {
     return {
@@ -492,7 +508,9 @@ export async function parseWithGeminiFallback(input: {
   owner: WhatsAppOwner;
 }): Promise<GeminiFallbackParseResult> {
   const threshold = geminiFallbackConfidence();
-  if (input.localParsed.confianca >= threshold) {
+  logLocalParserDecision(input.text, input.localParsed, threshold);
+
+  if (!shouldUseGeminiFallback(input.localParsed, threshold)) {
     return {
       kind: "local",
       parsed: input.localParsed,

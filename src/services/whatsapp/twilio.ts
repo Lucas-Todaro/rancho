@@ -3549,6 +3549,13 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     parser: "nlp_geral"
   });
 
+  const criticalLocalFallback = parsed.dados?.origem_parser !== "gemini"
+    && (parsed.flags || []).some((flag) => ["use_gemini_fallback", "compound_message", "multiple_intents_detected", "conflicting_intents", "correction_message"].includes(flag));
+  if (criticalLocalFallback && CONSULT_INTENTS.has(parsed.tipo)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não consegui entender essa mensagem com segurança. Pode mandar uma ação por vez ou reformular com mais detalhes?";
+  }
+
   if (CONSULT_INTENTS.has(parsed.tipo)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return handleConsultation(supabase, owner, parsed);
@@ -3609,6 +3616,18 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return confirmationText(parsed);
   }
 
+  if ((parsed.flags || []).includes("needs_confirmation")) {
+    botLog("pending_confirmation", owner, {
+      currentIntent: parsed.tipo,
+      status: "aguardando_confirmacao",
+      missingFields: parsed.perguntas_faltantes,
+      nextStep: "confirmar",
+      parser: "nlp_geral"
+    });
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
+    return confirmationText(parsed);
+  }
+
   if (parsed.confianca >= 0.85) {
     botLog("pending_confirmation", owner, {
       currentIntent: parsed.tipo,
@@ -3621,6 +3640,10 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   }
 
   if (parsed.confianca >= 0.55) {
+    if (!parsed.perguntas_faltantes.length) {
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
+      return confirmationText(parsed);
+    }
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
     return missingText(parsed);
   }

@@ -7,4 +7,5 @@ export { BOT_EXAMPLES } from "@/lib/whatsapp/nlp-core/constants";
 export { normalizeAnimalCode } from "@/lib/whatsapp/nlp-core/extractors";
 export { refreshRanchoMessage } from "@/lib/whatsapp/nlp-core/result";
 export { parseRanchoMessage } from "@/lib/whatsapp/nlp-core/parser";
+export { evaluateRanchoParseConfidence, parserDecisionForParsed, shouldUseGeminiFallback } from "@/lib/whatsapp/nlp-core/confidence-evaluator";
 export { mergeRanchoMessageData } from "@/lib/whatsapp/nlp-core/contextual-parser";
