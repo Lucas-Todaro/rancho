@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-04T02:27:44.287Z
+Gerado em: 2026-06-04T03:52:17.955Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1020
-- Aprovados: 1020
+- Total geral de testes: 1027
+- Aprovados: 1027
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -17,8 +17,8 @@ Gerado em: 2026-06-04T02:27:44.287Z
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
 | Producao | 58 | 58 | 0 | 100% |
 | Animais | 30 | 30 | 0 | 100% |
-| Estoque | 184 | 184 | 0 | 100% |
-| Financeiro | 160 | 160 | 0 | 100% |
+| Estoque | 190 | 190 | 0 | 100% |
+| Financeiro | 161 | 161 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
 | Ponto | 19 | 19 | 0 | 100% |
 | Folha/salarios | 8 | 8 | 0 | 100% |

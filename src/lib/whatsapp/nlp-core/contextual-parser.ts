@@ -150,6 +150,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const correctionItemLooksUseful = Boolean(itemName && /[a-z]/.test(normalizedItemName) && !/^(?:na verdade|verdade|foi|foram|era|quantidade|valor)$/.test(normalizedItemName));
   if (quantity !== undefined && stockIntent && (!hasValue(dados.quantidade) || expectedField === "quantidade" || isCorrection)) dados.quantidade = quantity;
   if (itemName && stockIntent && (!dados.item_nome || expectedField === "item_nome" || (isCorrection && correctionItemLooksUseful))) dados.item_nome = itemName;
+  if (value !== undefined && current.tipo === "ESTOQUE_SAIDA" && dados.venda && (!hasValue(dados.valor) || expectedField === "valor" || isCorrection)) dados.valor = value;
   if (employeeName && current.tipo === "PONTO_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome")) dados.funcionario_nome = employeeName;
   if (employeeCreationName && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.funcionario_nome || expectedField === "funcionario_nome" || isCorrection)) dados.funcionario_nome = employeeCreationName;
   if (employeeSalary !== undefined && current.tipo === "CRIAR_FUNCIONARIO" && (!hasValue(dados.salario_base) || expectedField === "salario_base" || isCorrection)) dados.salario_base = employeeSalary;

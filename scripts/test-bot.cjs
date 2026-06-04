@@ -855,7 +855,9 @@ function resolveParsed(parsed) {
     dados.item_estoque_encontrado = Boolean(resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86);
     dados.motivo_processamento = parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra
       ? dados.item_estoque_encontrado ? "item_encontrado: estoque+financeiro" : "item_nao_encontrado: fluxo_criar_item_ou_financeiro"
-      : dados.item_estoque_encontrado ? "item_encontrado" : "item_nao_encontrado";
+      : parsed.tipo === "ESTOQUE_SAIDA" && dados.venda
+        ? dados.item_estoque_encontrado ? "item_encontrado: estoque+receita" : "item_nao_encontrado: financeiro_apenas"
+        : dados.item_estoque_encontrado ? "item_encontrado" : "item_nao_encontrado";
 
     if (resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86) {
       dados.item_nome = resolved.row.nome;
@@ -926,6 +928,7 @@ function assertExpected(test, parsed) {
   }
 
   if (expected.compra && !dados.compra) failures.push("esperava compra=true");
+  if (expected.venda && !dados.venda) failures.push("esperava venda=true");
   if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
@@ -957,6 +960,7 @@ function assertExpected(test, parsed) {
   if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
   if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
   if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
+  if (expected.itemAny && !expected.itemAny.map(normalize).includes(normalize(dados.item_nome))) failures.push(`item esperado um de ${expected.itemAny.join(", ")}, recebido ${dados.item_nome}`);
   if (expected.normalizedItem && normalize(dados.item_normalizado) !== normalize(expected.normalizedItem)) failures.push(`item normalizado esperado ${expected.normalizedItem}, recebido ${dados.item_normalizado}`);
   if (expected.itemId && dados.item_id !== expected.itemId) failures.push(`item_id esperado ${expected.itemId}, recebido ${dados.item_id}`);
   if (expected.catalogSource && normalize(dados.origem_catalogo) !== normalize(expected.catalogSource)) failures.push(`origem_catalogo esperado ${expected.catalogSource}, recebido ${dados.origem_catalogo}`);
@@ -1133,6 +1137,13 @@ const extraTests = [
   { phrase: "comprei 10 sacos de racbao por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei 10 sacos de ração de boi por R$ 300", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração de boi", valor: 300 } },
   { phrase: "comprei ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", missing: ["quantidade", "valor"] } },
+  { phrase: "vendi 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", missing: ["valor"] } },
+  { phrase: "vendi 30kg de ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", valor: 300, motivoIncludes: "estoque+receita" } },
+  { phrase: "vendi ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], valor: 300, missing: ["quantidade"] } },
+  { phrase: "vendi bezerro por 15 mil", expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 15000, descricao: "bezerro" } },
+  { phrase: "comprei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", missing: ["valor"] } },
+  { phrase: "usei 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg" } },
+  { phrase: "adicionei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg" } },
   { phrase: "cria um item chamado ração no estoque", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração", missing: ["unidade"] } },
   { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE" } },
   { phrase: "recebi 900 do leite", expected: { tipo: "RECEITA_VENDA", valor: 900, descricao: "leite" } },

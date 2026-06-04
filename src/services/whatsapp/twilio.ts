@@ -359,6 +359,12 @@ function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
 }
 
 function stockDecisionReason(parsed: ParsedRanchoMessage, found?: StockLookupResult, owner?: WhatsAppOwner) {
+  if (parsed.tipo === "ESTOQUE_SAIDA" && parsed.dados?.venda && found?.row && !found.ambiguousRows?.length && found.score >= 0.86) {
+    return "item_encontrado: estoque+receita";
+  }
+  if (parsed.tipo === "ESTOQUE_SAIDA" && parsed.dados?.venda && !found?.row) {
+    return "item_nao_encontrado: financeiro_apenas";
+  }
   if (parsed.tipo === "ESTOQUE_ENTRADA" && parsed.dados?.compra && found?.row && !found.ambiguousRows?.length && found.score >= 0.86) {
     return "item_encontrado: estoque+financeiro";
   }
@@ -1526,6 +1532,23 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       };
       return refreshRanchoMessage({ ...parsed, tipo: "DESPESA", dados: financeData }, financeData);
     }
+
+    if (parsed.tipo === "ESTOQUE_SAIDA" && dados.venda && !found.row) {
+      const financeData = {
+        valor: dados.valor,
+        descricao: dados.item_nome,
+        data_referencia: dados.data_referencia,
+        quantidade: dados.quantidade,
+        unidade: dados.unidade,
+        item_extraido: originalItemName,
+        item_normalizado: stockResolution.item_normalizado,
+        item_resolvido: null,
+        item_estoque_encontrado: false,
+        item_id: null,
+        motivo_processamento: decision
+      };
+      return refreshRanchoMessage({ ...parsed, tipo: "RECEITA_VENDA", dados: financeData }, financeData);
+    }
   }
 
   return changed ?refreshRanchoMessage(parsed, dados) : parsed;
@@ -2040,6 +2063,32 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       responsavel_usuario_id: owner.usuario_id || null,
       origem: "whatsapp"
     });
+
+    if (pending.tipo === "ESTOQUE_SAIDA" && dados.venda && dados.valor) {
+      botLog("stock_sale_decision", owner, {
+        currentIntent: pending.tipo,
+        status: "salvar_estoque_receita",
+        stockResolution: stockResolutionDebug(dados.item_nome, found),
+        decision: "item_encontrado: estoque+receita"
+      });
+
+      await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+        fazenda_id: owner.fazenda_id,
+        tipo: "entrada",
+        data_transacao: dateOnlyFromReference(dados.data_referencia),
+        valor: Number(dados.valor),
+        categoria: found.row.nome,
+        descricao: `Venda de ${found.row.nome} registrada via WhatsApp`,
+        metodo_pagamento: "whatsapp",
+        origem: "whatsapp",
+        created_by: owner.usuario_id || null
+      });
+
+      return realSaveResult(
+        `Pronto, registros salvos com sucesso.\nSaída: ${formatStockAmount(quantity, found.row.unidade_medida)} de ${found.row.nome}.\nReceita: ${formatMoney(dados.valor)}.`,
+        [TABLES.estoqueMovimentacoes, TABLES.transacoesFinanceiras]
+      );
+    }
 
     if (pending.tipo === "ESTOQUE_ENTRADA" && dados.compra && dados.valor) {
       botLog("stock_purchase_decision", owner, {

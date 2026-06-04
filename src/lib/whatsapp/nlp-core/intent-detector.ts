@@ -1056,6 +1056,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const physicalQuantity = hasPhysicalQuantity(original) || hasLooseStockQuantity(original);
   const explicitMoney = hasExplicitMoney(original);
   const isPurchase = isPurchaseText(original);
+  const isSale = /\b(?:vendi|vendii|vendeu|vendemos|vender|venda)\b/.test(normalized);
   const stockItemName = extractStockItem(original);
   const hasPurchaseQuantity = isPurchase && hasValue(stockQuantity) && Boolean(stockItemName);
   const hasStockVocabulary = stockItemHintPattern.test(normalized) || /\bestoque\b/.test(normalized);
@@ -1145,6 +1146,18 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);
   const medicineAnimalCue = (vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized)) && Boolean(extractAnimalCode(normalized, "VACINA_MEDICAMENTO"));
+  const isStockSale = isSale && !medicineAnimalCue && hasStockItemHint;
+  if (isStockSale) {
+    const dados = {
+      item_nome: stockItemName,
+      quantidade: stockQuantity,
+      unidade: extractStockUnit(normalized),
+      valor: explicitMoney ?extractMoneyValue(normalized) : undefined,
+      venda: true,
+      data_referencia: extractDateReference(normalized) || "hoje"
+    };
+    return finalize("ESTOQUE_SAIDA", dados, buildMissing("ESTOQUE_SAIDA", dados), 0.88);
+  }
   const stockOutWithoutQuantity = !physicalQuantity && stockOutVerb && hasStockItemHint && !medicineAnimalCue && !explicitMoney && (!hasValue(stockQuantity) || !/\bgastei\b/.test(normalized));
   const isStockOut = (physicalQuantity && stockOutVerb) || stockOutWithoutQuantity;
   if (isStockOut) {
@@ -1162,7 +1175,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const stockInVerbVariant = /\b(?:chegaram|chego|xegou|recebi|inclui|incluir)\b/.test(normalized);
   const effectiveStockInVerb = stockInVerb || stockInVerbVariant;
   const receiveLooksFinancial = /\brecebi\b/.test(normalized) && !physicalQuantity && hasValue(stockQuantity);
-  const implicitStockIn = physicalQuantity && hasStockItemHint && !stockOutVerb && !explicitMoney;
+  const implicitStockIn = physicalQuantity && hasStockItemHint && !stockOutVerb && !isSale && !explicitMoney;
   const paidPhysicalStock = physicalQuantity && /\bpaguei\b/.test(normalized);
   const isStockIn = !stockBlockedByAnimalCreation && !receiveLooksFinancial && (
     ((physicalQuantity || hasStockItemHint) && effectiveStockInVerb)
