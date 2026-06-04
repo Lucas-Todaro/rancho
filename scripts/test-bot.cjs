@@ -950,6 +950,7 @@ function assertExpected(test, parsed) {
   if (expected.consulta_registros && normalize(dados.consulta_registros) !== normalize(expected.consulta_registros)) failures.push(`consulta_registros esperada ${expected.consulta_registros}, recebida ${dados.consulta_registros}`);
   if (expected.consulta_producao && normalize(dados.consulta_producao) !== normalize(expected.consulta_producao)) failures.push(`consulta_producao esperada ${expected.consulta_producao}, recebida ${dados.consulta_producao}`);
   if (expected.relatorio_modo && normalize(dados.relatorio_modo) !== normalize(expected.relatorio_modo)) failures.push(`relatorio_modo esperado ${expected.relatorio_modo}, recebido ${dados.relatorio_modo}`);
+  if (expected.relatorio_tipo && normalize(dados.relatorio_tipo) !== normalize(expected.relatorio_tipo)) failures.push(`relatorio_tipo esperado ${expected.relatorio_tipo}, recebido ${dados.relatorio_tipo}`);
   if (expected.financeiro_modo && normalize(dados.financeiro_modo) !== normalize(expected.financeiro_modo)) failures.push(`financeiro_modo esperado ${expected.financeiro_modo}, recebido ${dados.financeiro_modo}`);
   if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
   if (expected.filtro_texto && normalize(dados.filtro_texto) !== normalize(expected.filtro_texto)) failures.push(`filtro_texto esperado ${expected.filtro_texto}, recebido ${dados.filtro_texto}`);
@@ -1259,6 +1260,12 @@ const consultationParserTests = [
   { module: "dashboard-relatorios", phrase: "relatorio de producao", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "dashboard-relatorios", phrase: "relatorio do mes", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
   { module: "dashboard-relatorios", phrase: "me da um resumo", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "me da um geral de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "dashboard-relatorios", phrase: "me fala tudo que aconteceu hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio", relatorio_modo: "detalhado" } },
+  { module: "dashboard-relatorios", phrase: "quais foram as movimentacoes de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio", relatorio_modo: "detalhado" } },
+  { module: "dashboard-relatorios", phrase: "quais foram as movimentacoes de estoque hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio", relatorio_modo: "detalhado", relatorio_tipo: "estoque" } },
+  { module: "dashboard-relatorios", phrase: "relatorio de estoque", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_tipo: "estoque" } },
+  { module: "dashboard-relatorios", phrase: "o rancho foi bem esse mes?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio", relatorio_modo: "analise" } },
   { module: "suporte", phrase: "suporte", expected: { tipo: "AJUDA", exactTipo: true } },
   { module: "suporte", phrase: "preciso de ajuda", expected: { tipo: "AJUDA", exactTipo: true } },
   { module: "suporte", phrase: "falar com suporte", expected: { tipo: "AJUDA", exactTipo: true } },
@@ -1688,7 +1695,10 @@ const eventHumanParserTests = [
   { module: "eventos-relatorios", phrase: "resumo do mes", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio da semana", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "semana", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio dos ultimos 7 dias", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "ultimos_7", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio dos ultimos 30 dias", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "ultimos_30", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio da semana passada", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "semana_passada", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio do mes passado", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes_passado", consulta_registros: "relatorio" } },
+  { module: "eventos-relatorios", phrase: "relatorio deste ano", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "ano", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio de junho", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "esta indo bem?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_modo: "analise" } },
   { module: "eventos-relatorios", phrase: "resumo rapido", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, consulta_registros: "relatorio", relatorio_modo: "rapido" } },
@@ -3132,6 +3142,53 @@ const eventFrameworkCases = [
     }
   },
   {
+    name: "geral de hoje usa relatorio operacional completo",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["me da um geral de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
+      responseIncludes: "Resumo:",
+      responseRawIncludes: ["Financeiro:", "Produção:", "Estoque:", "Eventos:"],
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "movimentacoes de estoque hoje focam estoque",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["quais foram as movimentacoes de estoque hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje", relatorio_tipo: "estoque" },
+      responseIncludes: "Relatório de estoque",
+      responseRawIncludes: "1 movimentação",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "tudo que aconteceu hoje vira relatorio detalhado",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["me fala tudo que aconteceu hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", relatorio_modo: "detalhado" },
+      responseIncludes: "Eventos hoje no rebanho",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "qual vaca produziu mais usa ranking de ordenhas",
     module: "producao",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -3141,6 +3198,20 @@ const eventFrameworkCases = [
       finalIntent: "CONSULTA_PRODUCAO",
       entities: { consulta_producao: "maior_produtor" },
       responseIncludes: "B-002",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "relatorio de producao da semana foca producao",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["relatorio de producao da semana"],
+    expected: {
+      finalIntent: "CONSULTA_PRODUCAO",
+      responseIncludes: "litros",
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -3959,6 +4030,21 @@ const financeFrameworkCases = [
       entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" },
       responseIncludes: "Saídas de hoje",
       responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "rancho foi bem esse mes gera analise operacional",
+    module: "eventos-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["o rancho foi bem esse mes?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", relatorio_modo: "analise", data_referencia: "mes" },
+      responseIncludes: "Análise",
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true

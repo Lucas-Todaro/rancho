@@ -6,6 +6,7 @@ import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInact
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import { parseWithGeminiFallback } from "@/services/whatsapp/gemini-fallback";
+import { buildRanchReport, type OperationalReportKind, type OperationalReportMode } from "@/services/whatsapp/operational-report";
 import {
   BOT_EXAMPLES,
   formatStockUnit,
@@ -228,20 +229,41 @@ function currentWeekRange() {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+function previousWeekRange() {
+  const current = currentWeekRange();
+  const end = new Date(current.start);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 7);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function currentYearRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const end = new Date(now.getFullYear() + 1, 0, 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 function periodRange(period?: string) {
+  if (period === "ultimos_30") return lastDaysRange(30);
   if (period === "ultimos_7") return lastDaysRange(7);
+  if (period === "semana_passada") return previousWeekRange();
   if (period === "mes_passado") return previousMonthRange();
   if (period === "semana") return currentWeekRange();
   if (period === "mes") return currentMonthRange();
+  if (period === "ano") return currentYearRange();
   if (/^\d{4}-\d{2}$/.test(String(period || ""))) return monthRange(String(period));
   return dayRange(period);
 }
 
 function periodLabel(period?: string) {
+  if (period === "ultimos_30") return "nos últimos 30 dias";
   if (period === "ultimos_7") return "nos últimos 7 dias";
+  if (period === "semana_passada") return "na semana passada";
   if (period === "mes_passado") return "no mês passado";
   if (period === "semana") return "esta semana";
   if (period === "mes") return "este mês";
+  if (period === "ano") return "este ano";
   if (/^\d{4}-\d{2}$/.test(String(period || ""))) return `o mês ${String(period)}`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(period || ""))) return `o dia ${String(period)}`;
   if (period === "anteontem") return "anteontem";
@@ -2999,76 +3021,19 @@ async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: Wh
   const mode = String(parsed.dados.relatorio_modo || "resumo");
   const kind = String(parsed.dados.consulta_registros || "whatsapp");
   const requestedType = parsed.dados.evento_tipo ?String(parsed.dados.evento_tipo) : undefined;
-  const animals = await listAnimals(supabase, owner);
-  const animalsById = animalMap(animals);
+  const reportKind = (kind === "alertas" ? "alertas" : kind === "eventos" ? "eventos" : parsed.dados.relatorio_tipo || "geral") as OperationalReportKind;
+  const report = await buildRanchReport({
+    supabase,
+    owner,
+    period,
+    kind: reportKind,
+    mode: mode as OperationalReportMode,
+    eventType: requestedType
+  });
 
-  if (kind === "eventos") {
-    const events = await queryEventRows(supabase, owner, period, requestedType);
-    parsed.dados.consulta_executada = "eventos_rebanho";
-    parsed.dados.resultado = { periodo: period, registros: events.length, evento_tipo: requestedType || null };
-    return buildEventListText(events, animalsById, period, requestedType);
-  }
-
-  const production = await productionReportData(supabase, owner, period, animalsById);
-  const eventRows = await queryEventRows(supabase, owner, period);
-  const stock = await stockReportData(supabase, owner);
-  const stockMovements = await stockMovementReportData(supabase, owner, period);
-  const financeRows = isBotAdmin(owner) ? await queryFinanceRows(supabase, owner, period) : [];
-  const finance = isBotAdmin(owner) ? financeTotals(financeRows) : null;
-  const point = isBotAdmin(owner) ? await pointReportData(supabase, owner, period) : null;
-  const whatsapp = await whatsappRegistrationReportData(supabase, owner, period);
-  const eventCounts = eventSummaryCounts(eventRows);
-
-  parsed.dados.consulta_executada = kind === "alertas" ? "alertas" : "relatorio_geral";
-  parsed.dados.resultado = {
-    periodo: period,
-    modo: mode,
-    producao_litros: production.total,
-    eventos: eventRows.length,
-    estoque_movimentacoes: stockMovements.rows.length,
-    estoque_baixo: stock.low.length,
-    estoque_zerado: stock.zero.length,
-    financeiro_resultado: finance?.resultado ?? null,
-    ponto_registros: point?.rows.length ?? null,
-    whatsapp_registros: whatsapp.registros
-  };
-
-  const alerts = [
-    ...stock.low.map((row) => `${row.nome} abaixo do mínimo`),
-    ...stock.zero.map((row) => `${row.nome} zerado`),
-    ...eventRows.filter((row) => eventTypeMatches(row, "clinico")).slice(0, 3).map((row) => `${animalShortLabel(animalsById.get(String(row.animal_id || "")))} com ocorrência clínica`),
-    !production.count ? "produção ainda não registrada" : "",
-    finance && finance.resultado < 0 ? "resultado financeiro negativo" : ""
-  ].filter(Boolean);
-
-  if (kind === "alertas") {
-    return alerts.length ?`Alertas ${periodLabel(period)}:\n${alerts.slice(0, 6).map((line, index) => `${index + 1}. ${line}`).join("\n")}` :"Não encontrei alertas críticos agora.";
-  }
-
-  if (!production.count && !eventRows.length && !financeRows.length && !stockMovements.rows.length && !stock.low.length && !stock.zero.length && !point?.rows.length && !whatsapp.registros) {
-    return period === "mes"
-      ?"Ainda não há dados suficientes neste mês para gerar um relatório completo."
-      :"Hoje ainda não encontrei registros suficientes para gerar um relatório completo.";
-  }
-
-  const lines = [
-    `${mode === "rapido" ?"Resumo rápido" : "Relatório"} de ${periodLabel(period)}:`,
-    "",
-    `Produção: ${formatNumber(production.total)} litros em ${production.count} registro(s).${production.topAnimal ?` Maior: ${production.topAnimal} com ${formatNumber(production.topLiters)} L.` : ""}`,
-    finance ?`Financeiro: entradas ${formatMoney(finance.entrada)}, saídas ${formatMoney(finance.saida)}, resultado ${formatMoney(finance.resultado)}.` :"Financeiro: você não tem permissão para visualizar esses dados.",
-    `Estoque: ${stockMovements.rows.length} movimentação(ões) no período; ${stock.low.length} item(ns) abaixo do mínimo${stock.low.length ?` - ${stock.low.slice(0, 3).map((row) => row.nome).join(", ")}` : ""}.`,
-    `Rebanho: ${eventRows.length} evento(s). Vacinas: ${eventCounts.vacina}, clínicos: ${eventCounts.clinico}, partos: ${eventCounts.parto}, reprodutivos: ${eventCounts.reprodutivo}.`,
-    point ?`Ponto: ${point.funcionarios} funcionário(s) com ${point.entradas} entrada(s) registrada(s).` :"Ponto: você não tem permissão para visualizar esses dados.",
-    `WhatsApp: ${whatsapp.registros} registro(s) via WhatsApp.`,
-    "",
-    reportAnalysis(production, finance, stock, eventRows)
-  ];
-
-  if (mode === "detalhado" && eventRows.length) {
-    lines.splice(lines.length - 1, 0, "", buildEventListText(eventRows.slice(0, 5), animalsById, period));
-  }
-
-  return lines.join("\n");
+  parsed.dados.consulta_executada = report.executedAs;
+  parsed.dados.resultado = report.data;
+  return report.text;
 }
 
 function nonEmptyId(value?: string | null) {

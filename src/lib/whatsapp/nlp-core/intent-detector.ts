@@ -140,8 +140,11 @@ function financeQueryData(normalized: string) {
 }
 
 function reportQueryPeriod(normalized: string) {
+  if (/\b(?:ultimos|ultimas)\s+30\s+dias\b/.test(normalized)) return "ultimos_30";
   if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
+  if (/\b(?:semana passada|ultima semana)\b/.test(normalized)) return "semana_passada";
   if (/\bmes\s+passado\b/.test(normalized)) return "mes_passado";
+  if (/\b(?:este ano|esse ano|deste ano|desse ano|ano atual)\b/.test(normalized)) return "ano";
   const reference = extractDateReference(normalized);
   if (reference) return reference;
   const namedMonth = financeNamedMonthPeriod(normalized);
@@ -161,13 +164,22 @@ function reportEventType(normalized: string) {
   return undefined;
 }
 
+function reportArea(normalized: string) {
+  if (/\b(?:financeiro|caixa|saldo|receitas?|despesas?|transacoes?|vendas?|compras?)\b/.test(normalized)) return "financeiro";
+  if (/\b(?:producao|leite|ordenha|ordenhado|ordenhados|litros?)\b/.test(normalized)) return "producao";
+  if (/\b(?:estoque|racao|insumos?|medicamentos?|vacinas?|saldo de estoque|movimentacoes? de estoque)\b/.test(normalized)) return "estoque";
+  if (/\b(?:funcionarios?|equipe|ponto|folha)\b/.test(normalized)) return "funcionarios";
+  return undefined;
+}
+
 function reportQueryData(normalized: string) {
+  const area = reportArea(normalized);
   const consulta_registros = /\b(?:alerta|alertas|atencao|atenção|preoculpante|preocupante|critico|crítico|problema|problemas|resolver|pendencia|pendência)\b/.test(normalized)
     ? "alertas"
     : /\b(?:eventos?|acontecimentos?|ocorrencias?|historico|vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized)
       ? "eventos"
       : "relatorio";
-  const relatorio_modo = /\b(?:detalhado|detalhes|completo|tudo)\b/.test(normalized)
+  const relatorio_modo = /\b(?:detalhado|detalhes|completo|tudo|movimentacoes?)\b/.test(normalized)
     ? "detalhado"
     : /\b(?:rapido|rapidao|resumao|principal|principais|preciso saber)\b/.test(normalized)
       ? "rapido"
@@ -180,12 +192,13 @@ function reportQueryData(normalized: string) {
     consulta: true,
     consulta_registros,
     relatorio_modo,
+    relatorio_tipo: area,
     evento_tipo: reportEventType(normalized)
   };
 }
 
 function isAmbiguousReportQuery(normalized: string) {
-  return /^(?:relatorio|relatirio|resumo|resumao|eventos|acontecimentos|historico|alertas|problemas|dados)$/.test(normalized);
+  return /^(?:relatorio|relatirio|resumo|resumao|geral|eventos|acontecimentos|historico|alertas|problemas|dados)$/.test(normalized);
 }
 
 function isReportPeriodTokenAsAnimalCode(code?: string | null) {
@@ -703,10 +716,16 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CONSULTA_REGISTROS_HOJE", { consulta: true, precisa_periodo: true, consulta_registros: "relatorio" }, [], 0.75);
   }
 
+  const directOperationalReport = /\b(?:me\s+da\s+(?:um\s+)?geral|geral\s+(?:de|do|da)|me\s+fala\s+tudo|tudo\s+que\s+aconteceu|movimentacoes?\s+(?:de\s+)?hoje|movimentacoes?\s+do\s+dia|movimentacoes?\s+de\s+estoque)\b/.test(normalized)
+    || (/\b(?:rancho|fazenda)\b/.test(normalized) && /\b(?:foi|bem|mal|indo|geral|resumo|relatorio)\b/.test(normalized));
+  if (directOperationalReport) return finalize("CONSULTA_REGISTROS_HOJE", reportQueryData(normalized), [], 0.9);
+
   const reportAnimalCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
   const reportAnimalSpecific = Boolean(reportAnimalCode && !financeNamedMonthPeriod(normalized) && !isReportPeriodTokenAsAnimalCode(reportAnimalCode));
   const eventQueryCue = /\b(?:quais|qual|teve|foram|foi|mostra|mostrar|ver|historico|ultimos|ultimas|registrados?|registradas?|ocorreram|aconteceu|acontecimentos?|ocorrencias?|rebanho|do mes|da semana|de hoje|de ontem)\b/.test(normalized);
-  const reportCue = /\b(?:relatorio|relatirio|resumo|resumao|mez|panorama|visao geral|fechamento|balanco|status do dia|status do mes|como foi|como esta indo|esta indo|ta indo|principais|alertas?|atencao|preocupante|preoculpante|critico|problemas?|eventos?|ocorrencias?|acontecimentos?)\b/.test(normalized);
+  const reportCue = /\b(?:relatorio|relatirio|resumo|resumao|geral|mez|panorama|visao geral|fechamento|balanco|status do dia|status do mes|como foi|como esta indo|esta indo|ta indo|principais|alertas?|atencao|preocupante|preoculpante|critico|problemas?|eventos?|ocorrencias?|aconteceu|acontecimentos?)\b/.test(normalized)
+    || /\btudo\s+que\s+aconteceu\b/.test(normalized)
+    || (/\b(?:rancho|fazenda)\b/.test(normalized) && /\b(?:foi|bem|mal|indo|geral|resumo|relatorio)\b/.test(normalized));
   const eventTypeCue = /\b(?:vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized);
   const earlyReportQuery = (
     (reportCue || (eventTypeCue && eventQueryCue))

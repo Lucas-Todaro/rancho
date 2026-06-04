@@ -138,6 +138,10 @@ export function extractDateReference(text: string) {
   if (/\bontem+\b/.test(normalized)) return "ontem";
   if (/\bamanha\b/.test(normalized)) return "amanha";
   if (/\b(?:hoje|hj|agora)\b/.test(normalized)) return "hoje";
+  if (/\b(?:ultimos|ultimas)\s+30\s+dias\b/.test(normalized)) return "ultimos_30";
+  if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
+  if (/\b(?:semana passada|ultima semana)\b/.test(normalized)) return "semana_passada";
+  if (/\b(?:este ano|esse ano|deste ano|desse ano|ano atual)\b/.test(normalized)) return "ano";
   if (/\bsemana\b|\bsemanal\b|\bessa semana\b|\bnesta semana\b/.test(normalized)) return "semana";
   if (/\bmes\b|\bmensal\b|\bdo mes\b/.test(normalized)) return "mes";
   return undefined;
