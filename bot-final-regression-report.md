@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-04T14:06:09.316Z
+Gerado em: 2026-06-04T14:48:15.819Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1032
-- Aprovados: 1032
+- Total geral de testes: 1054
+- Aprovados: 1054
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -16,7 +16,7 @@ Gerado em: 2026-06-04T14:06:09.316Z
 | --- | ---: | ---: | ---: | ---: |
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
 | Producao | 58 | 58 | 0 | 100% |
-| Animais | 30 | 30 | 0 | 100% |
+| Animais | 36 | 36 | 0 | 100% |
 | Estoque | 190 | 190 | 0 | 100% |
 | Financeiro | 161 | 161 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
@@ -51,6 +51,26 @@ Gerado em: 2026-06-04T14:06:09.316Z
   - nao confundir consulta com entrada, baixa ou criacao
   - permissoes e isolamento por fazenda_id
 
+## Cadastro De Animal
+
+- Testes adicionados nesta rodada: 22
+- Fluxos estruturados cobertos: 16
+- Aprovados: 16
+- Falhos: 0
+- Coberturas:
+  - frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela
+  - extracao de nome, categoria, sexo inferido, brinco/codigo, peso e raca
+  - nome opcional: pergunta somente brinco/codigo quando categoria ja existe
+  - confirmacao obrigatoria antes de qualquer salvamento
+  - respostas curtas em fluxo guiado preservam codigos como N-935
+  - correcoes antes de salvar para nome, categoria, brinco/codigo e peso
+  - cancelamento limpa sessao sem salvar
+  - confirmacao duplicada nao duplica cadastro
+  - erros de digitacao comuns como vca, boii, bezero e cadatra
+  - consulta de rebanho nao vira cadastro
+  - brinco/codigo duplicado bloqueia antes de salvar
+  - permissoes de admin e isolamento por fazenda_id
+
 ## Falhas Criticas
 
 - Nenhuma falha critica encontrada.
@@ -82,8 +102,8 @@ Gerado em: 2026-06-04T14:06:09.316Z
 ## Comandos
 
 - npm run test:bot: passed
-- npm run build: passed na validacao final antes do commit
-- npm run lint: passed na validacao final antes do commit
+- npm run build: passed na validacao final
+- npm run lint: passed na validacao final
 
 ## Arquivos Alterados/Criados
 

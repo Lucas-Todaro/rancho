@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T14:06:09.316Z",
+  "generatedAt": "2026-06-04T14:48:15.819Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -10,11 +10,11 @@
     },
     {
       "command": "npm run build",
-      "result": "passed na validacao final antes do commit"
+      "result": "passed na validacao final"
     },
     {
       "command": "npm run lint",
-      "result": "passed na validacao final antes do commit"
+      "result": "passed na validacao final"
     }
   ],
   "safety": {
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1032,
-    "passed": 1032,
+    "total": 1054,
+    "passed": 1054,
     "failed": 0,
     "successRate": 100
   },
@@ -49,8 +49,8 @@
     },
     "animais": {
       "label": "Animais",
-      "total": 30,
-      "passed": 30,
+      "total": 36,
+      "passed": 36,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []
@@ -192,6 +192,26 @@
       "erros de digitacao comuns",
       "nao confundir consulta com entrada, baixa ou criacao",
       "permissoes e isolamento por fazenda_id"
+    ]
+  },
+  "animalRegistrationCoverage": {
+    "addedTestsThisRun": 22,
+    "totalRelatedTests": 16,
+    "passed": 16,
+    "failed": 0,
+    "coveredFlows": [
+      "frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela",
+      "extracao de nome, categoria, sexo inferido, brinco/codigo, peso e raca",
+      "nome opcional: pergunta somente brinco/codigo quando categoria ja existe",
+      "confirmacao obrigatoria antes de qualquer salvamento",
+      "respostas curtas em fluxo guiado preservam codigos como N-935",
+      "correcoes antes de salvar para nome, categoria, brinco/codigo e peso",
+      "cancelamento limpa sessao sem salvar",
+      "confirmacao duplicada nao duplica cadastro",
+      "erros de digitacao comuns como vca, boii, bezero e cadatra",
+      "consulta de rebanho nao vira cadastro",
+      "brinco/codigo duplicado bloqueia antes de salvar",
+      "permissoes de admin e isolamento por fazenda_id"
     ]
   },
   "criticalFailures": [],

@@ -38,30 +38,41 @@ export const questionByField: Record<string, string> = {
   data_nascimento: "Quer informar o nascimento?Envie a data (DD/MM/AAAA ou AAAA-MM-DD) ou 2 para pular."
 };
 
-export const animalWords = "(?:vacas?|animais|animal|gado|bois?|touros?|bezerros?|bezerras?|novilhas?|brinco)";
+export const animalWords = "(?:vacas?|vca|animais|animal|animau|gado|bois?|boii|touros?|bezerros?|bezero|bezerras?|novilhas?|novila|matriz|matrizes|reprodutor(?:es)?|femeas?|machos?|maxos?|brinco)";
 export const animalOptionalFields = ["sexo", "fase", "raca", "lote_animal", "data_nascimento"];
-export const animalCategories = new Set(["vaca", "vacas", "boi", "bois", "bezerro", "bezerros", "bezerra", "bezerras", "novilha", "novilhas", "touro", "touros", "animal", "animais"]);
+export const animalCategories = new Set(["vaca", "vacas", "vca", "boi", "bois", "boii", "bezerro", "bezerros", "bezero", "bezerra", "bezerras", "novilha", "novilhas", "novila", "touro", "touros", "matriz", "matrizes", "reprodutor", "reprodutores", "animal", "animais", "animau"]);
 export const animalCategoryMap: Record<string, string | undefined> = {
   vaca: "vaca",
   vacas: "vaca",
+  vca: "vaca",
   boi: "boi",
   bois: "boi",
+  boii: "boi",
   bezerro: "bezerro",
   bezerros: "bezerro",
+  bezero: "bezerro",
   bezerra: "bezerro",
   bezerras: "bezerro",
   novilha: "novilha",
   novilhas: "novilha",
+  novila: "novilha",
   touro: "touro",
-  touros: "touro"
+  touros: "touro",
+  matriz: "vaca",
+  matrizes: "vaca",
+  reprodutor: "touro",
+  reprodutores: "touro"
 };
 export const animalSexMap: Record<string, string | undefined> = {
   femea: "femea",
   femeas: "femea",
+  feme: "femea",
   f: "femea",
   feminino: "femea",
   macho: "macho",
   machos: "macho",
+  maxo: "macho",
+  maxos: "macho",
   m: "macho",
   masculino: "macho"
 };

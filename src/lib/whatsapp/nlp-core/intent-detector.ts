@@ -15,6 +15,7 @@ import {
   extractAnimalRegistrationCode,
   extractAnimalRegistrationName,
   extractAnimalSex,
+  extractAnimalWeight,
   extractConsultationPeriod,
   extractDateReference,
   extractEmployeeCreationName,
@@ -1105,9 +1106,10 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     || clinicalObservationCue.test(normalized)
     || reproductiveObservationCue.test(normalized);
   const isQuestion = /\?/.test(original);
-  const animalCreationCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
+  const animalCreationCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|cadatra|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
-  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
+  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized)
+    && !(/\bcria\b/.test(normalized) && animalCreationCue && !/\b(?:deu cria|criou|pariu|parto|nasceu|teve)\b/.test(normalized));
   const earlyHasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produÃ§Ã£o)\b/.test(normalized);
   const earlyMedicineCue = vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized);
   const clearAnimalRegistrationDetails = Boolean(extractAnimalRegistrationCode(normalized))
@@ -1118,6 +1120,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       nome: extractAnimalRegistrationName(original),
       categoria: extractAnimalCategory(normalized),
       sexo: extractAnimalSex(normalized),
+      peso: extractAnimalWeight(original),
       fase: extractAnimalPhase(normalized),
       raca: extractAnimalBreed(original),
       lote_nome: extractAnimalLotName(original),
@@ -1307,7 +1310,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const hasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção)\b/.test(normalized);
   const isAnimalCreation = !hasProductionCue
-    && /\b(?:cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lança|lancar|lançar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
+    && /\b(?:cadastrar|cadastre|cadastro|cadatra|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lança|lancar|lançar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
   if (isAnimalCreation) {
     const dados = {
@@ -1315,6 +1318,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       nome: extractAnimalRegistrationName(original),
       categoria: extractAnimalCategory(normalized),
       sexo: extractAnimalSex(normalized),
+      peso: extractAnimalWeight(original),
       fase: extractAnimalPhase(normalized),
       raca: extractAnimalBreed(original),
       lote_nome: extractAnimalLotName(original),

@@ -10,7 +10,10 @@ import {
   extractAnimalCode,
   extractAnimalLotName,
   extractAnimalPhase,
+  extractAnimalRegistrationCode,
+  extractAnimalRegistrationName,
   extractAnimalSex,
+  extractAnimalWeight,
   extractDateReference,
   extractEmployeeCreationName,
   extractEmployeeAccessMode,
@@ -62,7 +65,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     const contextualValue = extractMoneyValue(normalized);
     const contextualQuantity = extractStockQuantity(original);
     const contextualPhone = extractWhatsappPhone(original);
-    const contextualAnimal = expectedField === "animal_codigo" ?normalizeAnimalCandidate(original) || extractAnimalCode(normalized, current.tipo) : undefined;
+    const contextualAnimal = expectedField === "animal_codigo" ?extractAnimalRegistrationCode(original) || normalizeAnimalCandidate(original) || extractAnimalRegistrationCode(normalized) || extractAnimalCode(normalized, current.tipo) : undefined;
 
     if (expectedField === "animal_codigo" && contextualAnimal) dados.animal_codigo = contextualAnimal;
     if (expectedField === "litros" && contextualNumber) dados.litros = contextualNumber;
@@ -110,7 +113,9 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const animalIntent = ["PRODUCAO_LEITE", "PARTO", "VACINA_MEDICAMENTO", "MORTE", "CADASTRO_ANIMAL", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(current.tipo);
   const animalCode = animalIntent && expectedField && expectedField !== "animal_codigo"
     ?undefined
-    : animalIntent ?extractAnimalCode(normalized, current.tipo) : undefined;
+    : current.tipo === "CADASTRO_ANIMAL"
+      ?extractAnimalRegistrationCode(original) || extractAnimalRegistrationCode(normalized)
+      : animalIntent ?extractAnimalCode(normalized, current.tipo) : undefined;
   const liters = extractLiters(normalized);
   const value = extractMoneyValue(normalized);
   const quantity = extractStockQuantity(original);
@@ -183,12 +188,26 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (medicineProduct && current.tipo === "VACINA_MEDICAMENTO" && expectedField !== "animal_codigo" && (!dados.produto || expectedField === "produto" || isCorrection)) dados.produto = medicineProduct;
   if (!dados.descricao && ["DESPESA", "RECEITA_VENDA", "ORDEM_SERVICO"].includes(current.tipo)) dados.descricao = removeValueAndCommonWords(original) || original;
   if (current.tipo === "CADASTRO_ANIMAL") {
-    if (!dados.categoria) dados.categoria = extractAnimalCategory(normalized);
-    if (!dados.sexo) dados.sexo = extractAnimalSex(normalized);
-    if (!dados.fase) dados.fase = extractAnimalPhase(normalized);
-    if (!dados.raca) dados.raca = extractAnimalBreed(original);
-    if (!dados.lote_nome && !dados.lote_id) dados.lote_nome = extractAnimalLotName(original);
-    if (!dados.data_nascimento) dados.data_nascimento = extractAnimalBirthDate(original);
+    const registrationCode = extractAnimalRegistrationCode(original) || extractAnimalRegistrationCode(normalized);
+    const registrationName = extractAnimalRegistrationName(original);
+    const animalCategory = extractAnimalCategory(normalized);
+    const animalSex = extractAnimalSex(normalized);
+    const animalWeight = extractAnimalWeight(original);
+    const correctionText = original.replace(/^(?:nao|nÃ£o|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b\s*,?\s*/i, "").trim();
+    const nameCorrection = correctionText.replace(/^(?:o\s+|a\s+)?nome\s+(?:e|eh|Ã©|era|foi|para|pra)?\s*/i, "").trim();
+
+    if (registrationCode && (!dados.animal_codigo || expectedField === "animal_codigo" || isCorrection)) dados.animal_codigo = registrationCode;
+    if (animalCategory && (!dados.categoria || expectedField === "categoria_animal" || isCorrection)) dados.categoria = animalCategory;
+    if (animalSex && (!dados.sexo || expectedField === "sexo" || isCorrection || animalCategory)) dados.sexo = animalSex;
+    if (registrationName && (!dados.nome || expectedField === "nome")) dados.nome = registrationName;
+    if (isCorrection && nameCorrection && nameCorrection !== correctionText && !animalCategory && !registrationCode && animalWeight === undefined) {
+      dados.nome = extractAnimalRegistrationName(nameCorrection) || nameCorrection;
+    }
+    if (animalWeight !== undefined && (!hasValue(dados.peso) || expectedField === "peso" || isCorrection)) dados.peso = animalWeight;
+    if (!dados.fase || isCorrection) dados.fase = extractAnimalPhase(normalized) || dados.fase;
+    if (!dados.raca || isCorrection) dados.raca = extractAnimalBreed(original) || dados.raca;
+    if ((!dados.lote_nome && !dados.lote_id) || isCorrection) dados.lote_nome = extractAnimalLotName(original) || dados.lote_nome;
+    if (!dados.data_nascimento || isCorrection) dados.data_nascimento = extractAnimalBirthDate(original) || dados.data_nascimento;
   }
 
   if (current.tipo === "ATUALIZACAO_GENEALOGIA") {

@@ -141,6 +141,9 @@ const FINANCE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const LOT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CRIAR_LOTE"
 ]);
+const ANIMAL_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "CADASTRO_ANIMAL"
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -316,6 +319,9 @@ function permissionDeniedMessage(owner: WhatsAppOwner, parsed?: ParsedRanchoMess
   }
   if (LOT_ADMIN_INTENTS.has(parsed.tipo)) {
     return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
+  }
+  if (ANIMAL_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para cadastrar animais.";
   }
   return null;
 }
@@ -1874,6 +1880,11 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   }
 
   if (pending.tipo === "CADASTRO_ANIMAL") {
+    const duplicate = await findAnimal(supabase, owner, String(dados.animal_codigo || ""));
+    if (duplicate?.row && duplicate.exact) {
+      return { response: `Já existe um animal com o brinco/código ${duplicate.row.brinco || dados.animal_codigo} neste rancho. Nada foi salvo.` };
+    }
+
     await insertRealRecord(supabase, owner, TABLES.animais, {
       fazenda_id: owner.fazenda_id,
       brinco: dados.animal_codigo,
@@ -1882,6 +1893,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       sexo: dados.sexo || "nao_informado",
       fase: dados.fase || "nao_aplicavel",
       raca: dados.raca || null,
+      peso: dados.peso !== undefined && dados.peso !== null && dados.peso !== "" ?Number(dados.peso) : null,
       lote_id: dados.lote_id || null,
       data_nascimento: dados.data_nascimento || null,
       status: "ativo",
@@ -1894,6 +1906,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       dados.sexo ?`Sexo: ${dados.sexo}.` : "",
       dados.fase ?`Fase: ${dados.fase}.` : "",
       dados.raca ?`Raça: ${dados.raca}.` : "",
+      dados.peso ?`Peso: ${dados.peso} kg.` : "",
       dados.lote_nome ?`Lote: ${dados.lote_nome}.` : "",
       dados.data_nascimento ?`Nascimento: ${dados.data_nascimento}.` : ""
     ].filter(Boolean).join("\n");
@@ -2562,6 +2575,17 @@ async function lotCreationPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwne
   }
   if (found?.row && found.score >= 0.9) {
     return `Encontrei um lote parecido: ${found.row.nome}. Se quiser criar outro lote, envie o nome completo do lote novo.`;
+  }
+  return null;
+}
+
+async function animalCreationPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  if (parsed.tipo !== "CADASTRO_ANIMAL" || parsed.perguntas_faltantes.length) return null;
+  const code = String(parsed.dados?.animal_codigo || "").trim();
+  if (!code) return null;
+  const found = await findAnimal(supabase, owner, code);
+  if (found?.row && found.exact) {
+    return `Já existe um animal com o brinco/código ${found.row.brinco || code} neste rancho. Nada foi salvo.`;
   }
   return null;
 }
@@ -3613,6 +3637,11 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return lotPreflight;
   }
+  const animalPreflight = await animalCreationPreflight(supabase, owner, parsed);
+  if (animalPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return animalPreflight;
+  }
 
   if (parsed.perguntas_faltantes.length) {
     botLog("missing_data", owner, {
@@ -3806,7 +3835,10 @@ function buildCioCorrection(pending: ParsedRanchoMessage) {
 function buildCorrectedPending(pending: ParsedRanchoMessage, text: string, act: ConversationAct) {
   const command = act.normalizedText;
   const operationCorrection = stockUsageCorrection(command, pending);
-  let next = operationCorrection ?pending : mergeRanchoMessageData(pending, correctionTextForMerge(text, command));
+  const mergeText = pending.tipo === "CADASTRO_ANIMAL" && !pending.dados?.animal_codigo
+    ?text
+    : correctionTextForMerge(text, command);
+  let next = operationCorrection ?pending : mergeRanchoMessageData(pending, mergeText);
   const dados = { ...(next.dados || {}) };
   let tipo = next.tipo;
   let prefix: string | null = null;
@@ -3884,6 +3916,11 @@ async function saveCorrectedPending(
   if (lotPreflight) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return { response: lotPreflight, parsed: next };
+  }
+  const animalPreflight = await animalCreationPreflight(supabase, owner, next);
+  if (animalPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: animalPreflight, parsed: next };
   }
 
   if (next.perguntas_faltantes.length) {
@@ -4065,6 +4102,11 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return lotPreflight;
   }
+  const animalPreflight = await animalCreationPreflight(supabase, owner, next);
+  if (animalPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return animalPreflight;
+  }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
     return missingText(next);
@@ -4174,6 +4216,11 @@ async function handleConfirmation(
     if (lotPreflight) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return lotPreflight;
+    }
+    const animalPreflight = await animalCreationPreflight(supabase, owner, replacement);
+    if (animalPreflight) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return animalPreflight;
     }
 
     if (replacement.perguntas_faltantes.length) {

@@ -1,9 +1,9 @@
 import type { AnyRecord } from "@/lib/types";
 import { hasValue } from "@/lib/whatsapp/nlp-text";
 import { formatBotNumber, formatStockQuantity, moneyText } from "@/lib/whatsapp/nlp-format";
-import { BOT_EXAMPLES, animalOptionalFields, questionByField } from "./constants";
+import { BOT_EXAMPLES, questionByField } from "./constants";
 import type { ParsedRanchoMessage, RanchoIntent } from "./types";
-import { hasAnimalOptionalValue, hasSkippedAnimalOptionalField, isValidBotPhone } from "./extractors";
+import { isValidBotPhone } from "./extractors";
 
 function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord) {
   return fields.map((field) => {
@@ -119,6 +119,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
     const details = [
       dados.sexo ?`sexo ${dados.sexo}` : "",
       dados.fase ?`fase ${dados.fase}` : "",
+      dados.peso ?`peso ${dados.peso} kg` : "",
       dados.raca ?`raça ${dados.raca}` : "",
       dados.lote_nome ?`lote ${dados.lote_nome}` : "",
       dados.data_nascimento ?`nascimento ${dados.data_nascimento}` : ""
@@ -235,13 +236,6 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CADASTRO_ANIMAL") {
     if (!dados.animal_codigo) missing.push("animal_codigo");
     if (!dados.categoria) missing.push("categoria_animal");
-    if (missing.length) return missing;
-
-    animalOptionalFields.forEach((field) => {
-      if (!hasAnimalOptionalValue(dados, field) && !hasSkippedAnimalOptionalField(dados, field)) {
-        missing.push(field);
-      }
-    });
   }
   if (tipo === "ATUALIZACAO_ANIMAL") {
     if (!dados.campo_alterado) missing.push("campo_alterado");
