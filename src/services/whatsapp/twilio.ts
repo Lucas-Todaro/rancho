@@ -5,6 +5,7 @@ import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
+import { parseWithGeminiFallback } from "@/services/whatsapp/gemini-fallback";
 import {
   BOT_EXAMPLES,
   formatStockUnit,
@@ -433,6 +434,13 @@ function milkStockAfterSaveText(parsed: ParsedRanchoMessage) {
   return "\nNão encontrei item de estoque compatível com leite. Registrei apenas a produção.";
 }
 
+function postConfirmationConsultationNote(parsed: ParsedRanchoMessage) {
+  const consultations = parsed.dados?.gemini_consultas_apos_confirmacao;
+  const total = Array.isArray(consultations) ?consultations.length : 0;
+  if (!total) return "";
+  return `\nDepois de confirmar, também vou responder ${total === 1 ?"a consulta pedida" : "as consultas pedidas"}.`;
+}
+
 function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "LOTE_REGISTROS") {
     const registros = Array.isArray(parsed.dados?.registros) ?parsed.dados.registros as ParsedRanchoMessage[] : [];
@@ -443,19 +451,19 @@ function confirmationText(parsed: ParsedRanchoMessage) {
     const extra = registros.length > 6 ?`\n...e mais ${registros.length - 6} registro(s).` : "";
     const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
     if (stock?.status_resolucao === "matched" && stock.estoque_movimentar) {
-      return `Entendi ${registros.length} registros de produção, totalizando ${formatNumber(Number(stock.total_litros || parsed.dados?.total_litros || 0), " L")}, e entrada de ${formatNumber(Number(stock.total_litros || parsed.dados?.total_litros || 0), " L")} no estoque de ${stock.item_leite_resolvido}.\n${lines}${extra}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+      return `Entendi ${registros.length} registros de produção, totalizando ${formatNumber(Number(stock.total_litros || parsed.dados?.total_litros || 0), " L")}, e entrada de ${formatNumber(Number(stock.total_litros || parsed.dados?.total_litros || 0), " L")} no estoque de ${stock.item_leite_resolvido}.\n${lines}${extra}${postConfirmationConsultationNote(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
     }
-    return `Entendi ${registros.length} registros:\n${lines}${extra}${milkStockStatusText(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+    return `Entendi ${registros.length} registros:\n${lines}${extra}${milkStockStatusText(parsed)}${postConfirmationConsultationNote(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
   }
 
   if (parsed.tipo === "PRODUCAO_LEITE") {
     const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
     if (stock?.status_resolucao === "matched" && stock.estoque_movimentar) {
-      return `Entendi: registrar produção de leite do animal ${parsed.dados?.animal_codigo || "informado"} com ${formatNumber(Number(parsed.dados?.litros || 0), " L")} e adicionar ${formatNumber(Number(stock.total_litros || parsed.dados?.litros || 0), " L")} ao estoque de ${stock.item_leite_resolvido}.\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+      return `Entendi: registrar produção de leite do animal ${parsed.dados?.animal_codigo || "informado"} com ${formatNumber(Number(parsed.dados?.litros || 0), " L")} e adicionar ${formatNumber(Number(stock.total_litros || parsed.dados?.litros || 0), " L")} ao estoque de ${stock.item_leite_resolvido}.${postConfirmationConsultationNote(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
     }
   }
 
-  return `Entendi que você quer ${parsed.resumo}.${milkStockStatusText(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
+  return `Entendi que você quer ${parsed.resumo}.${milkStockStatusText(parsed)}${postConfirmationConsultationNote(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
 }
 
 function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
@@ -3487,6 +3495,51 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
 
   return unknownText();
 }
+
+function isStoredParsedMessage(value: unknown): value is ParsedRanchoMessage {
+  const parsed = value as ParsedRanchoMessage | undefined;
+  return Boolean(
+    parsed
+    && typeof parsed.tipo === "string"
+    && typeof parsed.confianca === "number"
+    && parsed.dados
+    && typeof parsed.dados === "object"
+    && Array.isArray(parsed.perguntas_faltantes)
+  );
+}
+
+function postConfirmationConsultationsFromPending(pending: ParsedRanchoMessage) {
+  const consultations = pending.dados?.gemini_consultas_apos_confirmacao;
+  if (!Array.isArray(consultations)) return [];
+  return consultations.filter((consultation) => (
+    isStoredParsedMessage(consultation) && CONSULT_INTENTS.has(consultation.tipo)
+  ));
+}
+
+async function handleGeminiConsultationBatch(supabase: SupabaseAdmin, owner: WhatsAppOwner, consultations: ParsedRanchoMessage[]) {
+  const responses: string[] = [];
+  for (const consultation of consultations) {
+    const enriched = await enrichWithCatalog(supabase, owner, consultation);
+    responses.push(await handleConsultation(supabase, owner, enriched));
+  }
+  return responses.filter(Boolean).join("\n\n");
+}
+
+async function handlePostConfirmationConsultations(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage) {
+  const consultations = postConfirmationConsultationsFromPending(pending);
+  if (!consultations.length) return "";
+
+  try {
+    return await handleGeminiConsultationBatch(supabase, owner, consultations);
+  } catch (error) {
+    console.error("[Gemini fallback]", {
+      event: "post_confirmation_consultation_error",
+      message: error instanceof Error ?error.message : "Erro ao executar consulta depois da confirmação"
+    });
+    return "Registro salvo, mas não consegui gerar a consulta depois. Peça a consulta novamente.";
+  }
+}
+
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
   const parsed = await enrichWithCatalog(supabase, owner, parsedMessage || parseRanchoMessage(text));
   botLog("nlp_general", owner, {
@@ -3542,6 +3595,18 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (milkStockNeedsDecision(parsed)) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed, acao_pendente: "producao_leite_estoque_opcional" } });
     return milkStockDecisionQuestion(parsed);
+  }
+
+  if (parsed.dados?.gemini_requires_confirmation) {
+    botLog("pending_confirmation", owner, {
+      currentIntent: parsed.tipo,
+      status: "aguardando_confirmacao",
+      missingFields: parsed.perguntas_faltantes,
+      nextStep: "confirmar",
+      parser: "gemini"
+    });
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
+    return confirmationText(parsed);
   }
 
   if (parsed.confianca >= 0.85) {
@@ -3679,6 +3744,8 @@ async function handleConfirmation(
     });
     const result = await saveConfirmedRecord(supabase, owner, pending);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
+    const postConfirmationText = result.savedReal ?await handlePostConfirmationConsultations(supabase, owner, pending) : "";
+    const resultResponse = postConfirmationText ?`${result.response}\n\n${postConfirmationText}` : result.response;
 
     if (options.modoTesteSalvarReal && result.savedReal) {
       console.log("[BOT TEST REAL SAVE]", {
@@ -3689,10 +3756,10 @@ async function handleConfirmation(
         whatsapp_usuario_id: owner.whatsapp_usuario_id,
         funcionario_id: owner.funcionario_id
       });
-      return `Registro salvo no sistema com sucesso.\n${result.response}`;
+      return `Registro salvo no sistema com sucesso.\n${resultResponse}`;
     }
 
-    return result.response;
+    return resultResponse;
   }
 
   if (isRejectCommand(command)) {
@@ -3911,8 +3978,31 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (previousSession.etapa === "aguardando_dado") {
       response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
     } else {
-      parsed = await enrichWithCatalog(supabase, owner, parseRanchoMessage(input.mensagem));
-      response = await handleFreeText(supabase, owner, input.mensagem, parsed);
+      const localParsed = parseRanchoMessage(input.mensagem);
+      const fallback = await parseWithGeminiFallback({
+        text: input.mensagem,
+        localParsed,
+        owner
+      });
+
+      if (fallback.kind === "clarify") {
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        response = fallback.message;
+      } else if (fallback.kind === "consultations") {
+        parsed = fallback.consultations[0];
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        response = await handleGeminiConsultationBatch(supabase, owner, fallback.consultations);
+      } else if (fallback.kind === "compound") {
+        const immediateText = fallback.immediateConsultations.length
+          ?await handleGeminiConsultationBatch(supabase, owner, fallback.immediateConsultations)
+          : "";
+        parsed = await enrichWithCatalog(supabase, owner, fallback.pending);
+        const actionText = await handleFreeText(supabase, owner, input.mensagem, parsed);
+        response = [immediateText, actionText].filter(Boolean).join("\n\n");
+      } else {
+        parsed = await enrichWithCatalog(supabase, owner, fallback.parsed);
+        response = await handleFreeText(supabase, owner, input.mensagem, parsed);
+      }
     }
 
     nextSession = await getSession(supabase, owner);
