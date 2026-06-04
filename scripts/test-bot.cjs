@@ -168,6 +168,15 @@ function stockUnitFor(name) {
   return "kg";
 }
 
+function localDateOnly(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function securityWhatsappUsers(overrides = []) {
   return [
     { id: "sec-wa-owner-a", fazenda_id: BOT_TEST_FARM_ID, usuario_id: "sec-user-owner-a", funcionario_id: null, telefone_e164: SECURITY_OWNER_A_PHONE, nome_exibicao: "Dono A", papel_bot: "admin", ativo: true },
@@ -939,6 +948,7 @@ function assertExpected(test, parsed) {
   if ("novo_valor" in expected && normalize(dados.novo_valor) !== normalize(expected.novo_valor)) failures.push(`novo_valor esperado ${expected.novo_valor}, recebido ${dados.novo_valor}`);
   if ("consulta" in expected && Boolean(dados.consulta) !== Boolean(expected.consulta)) failures.push(`consulta esperada ${expected.consulta}, recebida ${dados.consulta}`);
   if (expected.consulta_registros && normalize(dados.consulta_registros) !== normalize(expected.consulta_registros)) failures.push(`consulta_registros esperada ${expected.consulta_registros}, recebida ${dados.consulta_registros}`);
+  if (expected.consulta_producao && normalize(dados.consulta_producao) !== normalize(expected.consulta_producao)) failures.push(`consulta_producao esperada ${expected.consulta_producao}, recebida ${dados.consulta_producao}`);
   if (expected.relatorio_modo && normalize(dados.relatorio_modo) !== normalize(expected.relatorio_modo)) failures.push(`relatorio_modo esperado ${expected.relatorio_modo}, recebido ${dados.relatorio_modo}`);
   if (expected.financeiro_modo && normalize(dados.financeiro_modo) !== normalize(expected.financeiro_modo)) failures.push(`financeiro_modo esperado ${expected.financeiro_modo}, recebido ${dados.financeiro_modo}`);
   if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
@@ -1210,6 +1220,8 @@ const consultationParserTests = [
   { phrase: "A vaca B-002 deu quantos litros?", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animal: "B-002" } },
   { phrase: "Quanto a B-002 produziu hoje?", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animal: "B-002" } },
   { phrase: "Producao da vaca 2 hoje", expected: { tipo: "CONSULTA_PRODUCAO_ANIMAL", exactTipo: true, animalAny: ["2", "002"] } },
+  { phrase: "Qual vaca produziu mais?", expected: { tipo: "CONSULTA_PRODUCAO", exactTipo: true, consulta: true, consulta_producao: "maior_produtor" } },
+  { phrase: "Qual vaca produziu menos?", expected: { tipo: "CONSULTA_PRODUCAO", exactTipo: true, consulta: true, consulta_producao: "menor_produtor" } },
   { phrase: "Como está o estoque de ração de boi?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Ração de boi", itemId: "item-racao-boi", itemFound: true } },
   { phrase: "Quanto tem de ração de boi?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Ração de boi", itemId: "item-racao-boi", itemFound: true } },
   { phrase: "Tem quanto de leite cru?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "Leite Cru", itemId: "item-leite-cru", itemFound: true } },
@@ -1238,7 +1250,10 @@ const consultationParserTests = [
   { module: "estoque-consultas", phrase: "baixa 3 sacos de racao", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "Racao", quantidade: 3, unidade: "saco" } },
   { phrase: "O que eu registrei hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
   { phrase: "Meus registros de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
-  { module: "dashboard-relatorios", phrase: "resumo do dia", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
+  { module: "dashboard-relatorios", phrase: "resumo do dia", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "dashboard-relatorios", phrase: "como foi o rancho hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "dashboard-relatorios", phrase: "me manda o fechamento de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
+  { module: "dashboard-relatorios", phrase: "o que aconteceu hoje?", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
   { module: "dashboard-relatorios", phrase: "dashboard", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "dashboard-relatorios", phrase: "como esta a fazenda hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje" } },
   { module: "dashboard-relatorios", phrase: "relatorio de producao", expected: { tipo: "CONSULTA_PRODUCAO_HOJE", exactTipo: true, data_referencia: "hoje" } },
@@ -1410,6 +1425,7 @@ const financeHumanParserTests = [
   financeParser("quais entradas de hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "detalhado" }),
   financeParser("quanto entrou hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "entrada", financeiro_modo: "resumo" }),
   financeParser("quanto saiu hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" }),
+  financeParser("quanto gastei hoje?", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" }),
   financeParser("resultado do dia", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_modo: "resumo" }),
   financeParser("transacoes do mes", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "mes", financeiro_modo: "detalhado" }),
   financeParser("financeiro de hoje", { tipo: "CONSULTA_FINANCEIRO", exactTipo: true, data_referencia: "hoje", financeiro_modo: "resumo" }),
@@ -3068,6 +3084,69 @@ const eventFrameworkCases = [
     }
   },
   {
+    name: "resumo do dia traz fechamento curto de gestao",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    whatsappMessages: [
+      { telefone_e164: BOT_TEST_ADMIN_PHONE, body: "B-002 deu 30 litros" }
+    ],
+    messages: ["resumo do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
+      responseIncludes: "WhatsApp: 1 registro",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "fechamento de hoje inclui movimentacoes de estoque",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["me manda o fechamento de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
+      responseIncludes: "1 movimentação",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "como foi o rancho hoje abre resumo de gestao",
+    module: "dashboard-relatorios",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["como foi o rancho hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
+      responseIncludes: "65 litros",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "qual vaca produziu mais usa ranking de ordenhas",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    messages: ["qual vaca produziu mais?"],
+    expected: {
+      finalIntent: "CONSULTA_PRODUCAO",
+      entities: { consulta_producao: "maior_produtor" },
+      responseIncludes: "B-002",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "relatorio do mes usa periodo mensal e nao salva",
     module: "eventos-relatorios",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -3880,6 +3959,41 @@ const financeFrameworkCases = [
       entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" },
       responseIncludes: "Saídas de hoje",
       responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "admin consulta quanto gastei hoje sem salvar",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    financeTransactions: [
+      { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" },
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quanto gastei hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" },
+      responseIncludes: "Saídas de hoje",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "funcionario comum nao consulta quanto gastei hoje",
+    module: "financeiro",
+    phone: BOT_TEST_WORKER_PHONE,
+    financeTransactions: [
+      { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+    ],
+    messages: ["quanto gastei hoje?"],
+    expected: {
+      finalIntent: "CONSULTA_FINANCEIRO",
+      responseIncludes: "não tem permissão",
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -5638,9 +5752,9 @@ function createSupabaseForScenario(test = {}) {
     })));
   }
   if (test.reportFixture) {
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    for (const table of [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.transacoesFinanceiras, BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.registrosPonto, BOT_TEST_TABLES.estoqueItens]) {
+    const today = localDateOnly();
+    const yesterday = localDateOnly(-1);
+    for (const table of [BOT_TEST_TABLES.ordenhas, BOT_TEST_TABLES.transacoesFinanceiras, BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.registrosPonto, BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.estoqueMovimentacoes]) {
       supabase.tables[table] = supabase.tables[table].filter((row) => ![BOT_TEST_FARM_ID, BOT_TEST_FARM_ID_B].includes(row.fazenda_id));
     }
     supabase.tables[BOT_TEST_TABLES.ordenhas].push(
@@ -5662,6 +5776,10 @@ function createSupabaseForScenario(test = {}) {
       { id: "report-stock-a-sal", fazenda_id: BOT_TEST_FARM_ID, nome: "Sal mineral", descricao: "Sal mineral", categoria: "insumo", quantidade_atual: 25, quantidade_minima: 5, unidade_medida: "kg", ativo: true },
       { id: "report-stock-a-aftosa", fazenda_id: BOT_TEST_FARM_ID, nome: "Aftosa", descricao: "Aftosa", categoria: "medicamento", quantidade_atual: 2, quantidade_minima: 5, unidade_medida: "dose", ativo: true },
       { id: "report-stock-b-racao", fazenda_id: BOT_TEST_FARM_ID_B, nome: "Racao", descricao: "Racao", categoria: "racao", quantidade_atual: 0, quantidade_minima: 10, unidade_medida: "saco", ativo: true }
+    );
+    supabase.tables[BOT_TEST_TABLES.estoqueMovimentacoes].push(
+      { id: "report-stock-move-a-1", fazenda_id: BOT_TEST_FARM_ID, item_id: "report-stock-a-racao", tipo: "saida", quantidade: 2, created_at: `${today}T12:00:00.000Z` },
+      { id: "report-stock-move-b-1", fazenda_id: BOT_TEST_FARM_ID_B, item_id: "report-stock-b-racao", tipo: "entrada", quantidade: 1, created_at: `${today}T12:00:00.000Z` }
     );
     supabase.tables[BOT_TEST_TABLES.eventosAnimal].push(
       { id: "report-event-a-1", fazenda_id: BOT_TEST_FARM_ID, animal_id: "animal-b-002", tipo: "vacina", medicamento: "Aftosa", descricao: "Vacina Aftosa aplicada", data_evento: `${today}T09:00:00.000Z` },
@@ -5710,8 +5828,8 @@ function createSupabaseForScenario(test = {}) {
       categoria: row.categoria || null,
       metodo_pagamento: row.metodo_pagamento || null,
       origem: row.origem || null,
-      data_transacao: row.data_transacao || new Date().toISOString().slice(0, 10),
-      created_at: row.created_at || `${row.data_transacao || new Date().toISOString().slice(0, 10)}T12:00:00.000Z`
+      data_transacao: row.data_transacao || localDateOnly(),
+      created_at: row.created_at || `${row.data_transacao || localDateOnly()}T12:00:00.000Z`
     })));
   }
   if (test.employees) {

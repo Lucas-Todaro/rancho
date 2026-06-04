@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-03T23:26:58.981Z
+Gerado em: 2026-06-04T00:11:59.935Z
 
 ## Resumo Geral
 
-- Total geral de testes: 986
-- Aprovados: 986
+- Total geral de testes: 998
+- Aprovados: 998
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -15,17 +15,17 @@ Gerado em: 2026-06-03T23:26:58.981Z
 | Modulo | Total | Aprovados | Falhos | Taxa |
 | --- | ---: | ---: | ---: | ---: |
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
-| Producao | 54 | 54 | 0 | 100% |
+| Producao | 57 | 57 | 0 | 100% |
 | Animais | 30 | 30 | 0 | 100% |
 | Estoque | 184 | 184 | 0 | 100% |
-| Financeiro | 157 | 157 | 0 | 100% |
+| Financeiro | 160 | 160 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
 | Ponto | 19 | 19 | 0 | 100% |
 | Folha/salarios | 8 | 8 | 0 | 100% |
 | Eventos/vacinas/medicamentos | 173 | 173 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
 | Rebanho/lotes | 26 | 26 | 0 | 100% |
-| Dashboard/relatorios | 11 | 11 | 0 | 100% |
+| Dashboard/relatorios | 17 | 17 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
 | Permissoes | 12 | 12 | 0 | 100% |
