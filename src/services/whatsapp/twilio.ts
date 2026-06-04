@@ -2011,6 +2011,25 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       created_by: owner.usuario_id || null
     });
 
+    if (dados.compra && dados.valor) {
+      await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+        fazenda_id: owner.fazenda_id,
+        tipo: "saida",
+        data_transacao: dateOnlyFromReference(dados.data_referencia),
+        valor: Number(dados.valor),
+        categoria: dados.item_nome,
+        descricao: `Compra de ${dados.item_nome} registrada via WhatsApp`,
+        metodo_pagamento: "whatsapp",
+        origem: "whatsapp",
+        created_by: owner.usuario_id || null
+      });
+
+      return realSaveResult(
+        `Pronto, item cadastrado no estoque e despesa registrada.\n${dados.item_nome}: ${formatStockAmount(dados.quantidade, dados.unidade)}.\nDespesa: ${formatMoney(dados.valor)}.`,
+        [TABLES.estoqueItens, TABLES.transacoesFinanceiras]
+      );
+    }
+
     return realSaveResult(`Pronto, item cadastrado no estoque.\n${dados.item_nome}: ${formatStockAmount(dados.quantidade, dados.unidade)}.`, [TABLES.estoqueItens]);
   }
 
@@ -4039,7 +4058,10 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       const createData = {
         item_nome: pending.dados.item_nome,
         unidade: pending.dados.unidade,
-        quantidade: 0
+        quantidade: pending.dados.quantidade,
+        compra: pending.dados.compra,
+        valor: pending.dados.valor,
+        data_referencia: pending.dados.data_referencia
       };
       const next = refreshRanchoMessage({ ...pending, tipo: "CRIAR_ITEM_ESTOQUE", dados: createData }, createData);
       await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ?"aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });

@@ -78,7 +78,10 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "RECEITA_VENDA") return `registrar entrada financeira${dados.valor ?` de ${moneyText(dados.valor)}` : ""}${dados.descricao ?` (${dados.descricao})` : ""}`;
 
-  if (["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) return `criar novo item de estoque${dados.item_nome ?` chamado ${dados.item_nome}` : ""}${dados.unidade ?`, unidade ${dados.unidade}` : ""}${hasValue(dados.quantidade) ?`, quantidade inicial ${formatBotNumber(dados.quantidade)}` : ""}`;
+  if (["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) {
+    const financeText = dados.compra && hasValue(dados.valor) ?` e registrar despesa de ${moneyText(dados.valor)}` : "";
+    return `criar novo item de estoque${dados.item_nome ?` chamado ${dados.item_nome}` : ""}${dados.unidade ?`, unidade ${dados.unidade}` : ""}${hasValue(dados.quantidade) ?`, quantidade inicial ${formatBotNumber(dados.quantidade)}` : ""}${financeText}`;
+  }
 
   if (tipo === "ESTOQUE_ENTRADA" && dados.compra && hasValue(dados.valor)) {
     return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque e registrar despesa de ${moneyText(dados.valor)}${dados.item_nome ?` com ${dados.item_nome}` : ""}`;
@@ -221,7 +224,6 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (stockCreateIntent && !hasValue(dados.quantidade)) missing.push("quantidade");
   if (stockMovementIntent && !hasValue(dados.quantidade)) missing.push("quantidade");
   if (stockMovementIntent && !dados.unidade) missing.push("unidade");
-  if (tipo === "ESTOQUE_ENTRADA" && dados.compra && !hasValue(dados.valor)) missing.push("valor");
   if (tipo === "ESTOQUE_SAIDA" && dados.venda && !hasValue(dados.valor)) missing.push("valor");
   if (tipo === "CRIAR_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "CRIAR_FUNCIONARIO" && (dados.telefone_obrigatorio || dados.tipo_acesso === "bot_only") && !isValidBotPhone(dados.telefone)) missing.push("telefone");

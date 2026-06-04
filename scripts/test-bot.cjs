@@ -1138,7 +1138,7 @@ const mandatoryTests = [
   { phrase: "tira 20kg de ração de boi do estoque", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
   { phrase: "dei 2 fardos de feno pros bois", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 2, unidade: "fardo", item: "Feno", destino: "bois" } },
   { phrase: "me mostre o estoque de ração de boi", expected: { tipo: "CONSULTA_ESTOQUE", item: "Ração de boi" } },
-  { phrase: "comprei 10 sacos de ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", missing: ["valor"] } },
+  { phrase: "comprei 10 sacos de ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", noMissing: true } },
   { phrase: "comprei 10 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei ração de boi por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração de boi", valor: 300, missing: ["quantidade"] } },
   { phrase: "criar estoque de ração de bezerro", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", missing: ["unidade"] } },
@@ -1195,18 +1195,18 @@ const extraTests = [
   { phrase: "consulta estoque de terramicina", expected: { tipo: "CONSULTA_ESTOQUE", item: "Terramicina" } },
   { phrase: "tem aftosa no estoque", expected: { tipo: "CONSULTA_ESTOQUE", item: "Aftosa" } },
   { phrase: "comprei milho por 100 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", valor: 100, missing: ["quantidade"] } },
-  { phrase: "comprei 2 sacos de milho", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 2, unidade: "saco", item: "Milho", missing: ["valor"] } },
+  { phrase: "comprei 2 sacos de milho", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 2, unidade: "saco", item: "Milho", noMissing: true } },
   { phrase: "compra de 5 fardos de feno por 250", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 5, unidade: "fardo", item: "Feno", valor: 250 } },
   { phrase: "comprei 1 dose de aftosa por 50 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 1, unidade: "dose", item: "Aftosa", valor: 50 } },
-  { phrase: "comprei suplemento", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Suplemento", missing: ["quantidade", "valor"] } },
+  { phrase: "comprei suplemento", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Suplemento", missing: ["quantidade"] } },
   { phrase: "comprei 10 sacos de racbao por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei 10 sacos de ração de boi por R$ 300", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração de boi", valor: 300 } },
-  { phrase: "comprei ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", missing: ["quantidade", "valor"] } },
+  { phrase: "comprei ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", missing: ["quantidade"] } },
   { phrase: "vendi 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", missing: ["valor"] } },
   { phrase: "vendi 30kg de ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", valor: 300, motivoIncludes: "estoque+receita" } },
   { phrase: "vendi ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], valor: 300, missing: ["quantidade"] } },
   { phrase: "vendi bezerro por 15 mil", expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 15000, descricao: "bezerro" } },
-  { phrase: "comprei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", missing: ["valor"] } },
+  { phrase: "comprei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", noMissing: true } },
   { phrase: "usei 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg" } },
   { phrase: "adicionei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg" } },
   { phrase: "cria um item chamado ração no estoque", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração", missing: ["unidade"] } },
@@ -1393,7 +1393,7 @@ const decimalRegressionTests = [
   { phrase: "recebi 1 mil do leite", expected: { tipo: "RECEITA_VENDA", valor: 1000, descricao: "leite" } },
   { phrase: "20 mil litros de leite", expected: { tipo: "PRODUCAO_LEITE", litros: 20000, missing: ["animal_codigo"] } },
   { phrase: "50.5", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 50.5, noMissing: true } },
-  { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", valor: 300.5, noMissing: true } },
+  { phrase: "300,50", pending: () => pendingFrom("comprei 2 sacos de milho"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2, unidade: "saco", noMissing: true } },
   { phrase: "2,5 sacos", pending: () => pendingFrom("comprei milho por 300 reais"), expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Milho", quantidade: 2.5, unidade: "saco", valor: 300, noMissing: true } }
 ];
 
@@ -1545,14 +1545,14 @@ const inventoryHumanParserTests = [
   { phrase: "entrou 5 sacos de sal mineral", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Sal mineral", quantidade: 5, unidade: "saco" } },
   { phrase: "chegou 2 litros de carrapaticida", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "carrapaticida", quantidade: 2, unidade: "L" } },
   { phrase: "entrou 100 doses de vacina", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "vacina", quantidade: 100, unidade: "dose" } },
-  { phrase: "comprei 50 seringas", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "seringas", quantidade: 50, missing: ["unidade", "valor"] } },
+  { phrase: "comprei 50 seringas", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "seringas", quantidade: 50, missing: ["unidade"] } },
   { phrase: "chegou 200 kg de milho", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Milho", quantidade: 200, unidade: "kg" } },
   { phrase: "entrou 30 sacos de milho", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Milho", quantidade: 30, unidade: "saco" } },
   { phrase: "chegou 12 fardos de feno", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "Feno", quantidade: 12, unidade: "fardo" } },
-  { phrase: "comprei 8 rolos de arame", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arame", quantidade: 8, unidade: "rolo", missing: ["valor"] } },
+  { phrase: "comprei 8 rolos de arame", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arame", quantidade: 8, unidade: "rolo", noMissing: true } },
   { phrase: "chegou 4 postes", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "postes", quantidade: 4, missing: ["unidade"] } },
   { phrase: "entrou 6 sacos de ureia", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "ureia", quantidade: 6, unidade: "saco" } },
-  { phrase: "comprei 15 litros de diesel", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "diesel", quantidade: 15, unidade: "L", missing: ["valor"] } },
+  { phrase: "comprei 15 litros de diesel", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "diesel", quantidade: 15, unidade: "L", noMissing: true } },
   { phrase: "chegou 10 caixas de medicamento", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "medicamento", quantidade: 10, unidade: "caixa" } },
   { phrase: "chegou 5 frascos de antibiotico", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "antibiotico", quantidade: 5, unidade: "frasco" } },
   { phrase: "chegou 20 brincos de identificacao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "identificacao", quantidade: 20, missing: ["unidade"] } },
@@ -1583,6 +1583,24 @@ const inventoryHumanParserTests = [
   { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
   { phrase: "o que esta acabando?", expected: { tipo: "CONSULTA_ESTOQUE_GERAL", exactTipo: true, consulta: true } },
   { phrase: "chegou 10 sacos de item X-999", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "item X-999", quantidade: 10, unidade: "saco", itemUnresolved: true, itemFound: false } },
+  { phrase: "comprei 70kg de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, motivoIncludes: "item_nao_encontrado", noMissing: true } },
+  { phrase: "comprei arroz 70kg", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "compra de 70kg de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "entrada de 70kg de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "chegou 70kg de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "coloca 70kg de arroz no estoque", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "comprei 70kg de arroz por 200 reais", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", valor: 200, itemUnresolved: true, itemFound: false, motivoIncludes: "item_nao_encontrado", noMissing: true } },
+  { phrase: "comprei 70 kilos de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "comprei 70k de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "comprei arroz 70k", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "gastei 200 com 70kg de arroz", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "arroz", quantidade: 70, unidade: "kg", valor: 200, itemUnresolved: true, itemFound: false, noMissing: true } },
+  { phrase: "paguei 300 em 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Racao", quantidade: 10, unidade: "saco", valor: 300, itemFound: true, noMissing: true } },
+  { phrase: "gastei 70kg de arroz", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "arroz", quantidade: 70, unidade: "kg" } },
+  { phrase: "paguei energia 400", expected: { tipo: "DESPESA", exactTipo: true, valor: 400, descricao: "energia" } },
+  { phrase: "paguei salario do Joao 1500", expected: { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "salario" } },
+  { phrase: "quanto tenho de arroz?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "arroz", consulta: true, itemUnresolved: true, itemFound: false } },
+  { phrase: "tem arroz no estoque?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "arroz", consulta: true, itemUnresolved: true, itemFound: false } },
+  { phrase: "comprei 5 doses de aftoza", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Aftosa", quantidade: 5, unidade: "dose", itemFound: true, noMissing: true } },
   { phrase: "apliquei vacina na B-002", expected: { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] } },
   { phrase: "chegou vacina 100 doses", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, item: "vacina", quantidade: 100, unidade: "dose" } },
   { phrase: "paguei 1000 na racao", expected: { tipo: "DESPESA", exactTipo: true, valor: 1000, descricao: "racao" } },
@@ -3994,6 +4012,85 @@ const inventoryFrameworkCases = [
       savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
       shouldNotDuplicate: true,
       shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "compra fisica sem valor salva apenas entrada de estoque no dry-run",
+    module: "estoque-compras",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["comprei 10 sacos de racao", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "compra fisica com valor simula estoque e despesa no dry-run",
+    module: "estoque-compras",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["comprei 10 sacos de racao por 300 reais", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      entities: { item_nome: "Racao", quantidade: 10, unidade: "saco", valor: 300 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { quantidade: 10, valor: 300 },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "compra de item inexistente nao salva antes de escolher criar",
+    module: "estoque-compras",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: [
+      { text: "comprei 70kg de arroz", salvarReal: true },
+      { text: "sim", salvarReal: true }
+    ],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      responseIncludes: "Não encontrei",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "compra de item inexistente cria item com quantidade e registra despesa",
+    module: "estoque-compras",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: [
+      { text: "comprei 70kg de arroz por 200 reais", salvarReal: true },
+      { text: "sim", salvarReal: true },
+      { text: "1", salvarReal: true },
+      { text: "sim", salvarReal: true }
+    ],
+    expected: {
+      finalIntent: "CRIAR_ITEM_ESTOQUE",
+      responseIncludes: "Registro salvo no sistema com sucesso",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { nome: "arroz", quantidade_atual: 70, valor: 200 },
+      shouldNotDuplicate: true,
+      shouldNotWriteBusiness: false,
       ranchId: BOT_TEST_FARM_ID
     }
   },
@@ -6723,7 +6820,7 @@ function simulatedSaveActionsForResult(result, phone) {
   }
 
   if (tipo === "CRIAR_ITEM_ESTOQUE" || tipo === "ESTOQUE_CADASTRO") {
-    return [{
+    const actions = [{
       ...base,
       table: BOT_TEST_TABLES.estoqueItens,
       payload: {
@@ -6733,6 +6830,22 @@ function simulatedSaveActionsForResult(result, phone) {
         unidade_medida: dados.unidade || "unidade"
       }
     }];
+
+    if (dados.compra && dados.valor) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.transacoesFinanceiras,
+        payload: {
+          fazenda_id: fazendaId,
+          tipo: "saida",
+          valor: Number(dados.valor),
+          descricao: dados.item_nome || null,
+          origem: "whatsapp"
+        }
+      });
+    }
+
+    return actions;
   }
 
   if (tipo === "CRIAR_LOTE") {
@@ -6748,7 +6861,9 @@ function simulatedSaveActionsForResult(result, phone) {
   }
 
   if (tipo === "ESTOQUE_ENTRADA" || tipo === "ESTOQUE_SAIDA") {
-    return [{
+    if (!dados.item_id && dados.item_estoque_encontrado === false) return [];
+
+    const actions = [{
       ...base,
       table: BOT_TEST_TABLES.estoqueMovimentacoes,
       payload: {
@@ -6759,6 +6874,36 @@ function simulatedSaveActionsForResult(result, phone) {
         quantidade: Number(dados.quantidade || 0)
       }
     }];
+
+    if (dados.compra && dados.valor) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.transacoesFinanceiras,
+        payload: {
+          fazenda_id: fazendaId,
+          tipo: "saida",
+          valor: Number(dados.valor),
+          descricao: dados.item_nome || null,
+          origem: "whatsapp"
+        }
+      });
+    }
+
+    if (dados.venda && dados.valor) {
+      actions.push({
+        ...base,
+        table: BOT_TEST_TABLES.transacoesFinanceiras,
+        payload: {
+          fazenda_id: fazendaId,
+          tipo: "entrada",
+          valor: Number(dados.valor),
+          descricao: dados.item_nome || null,
+          origem: "whatsapp"
+        }
+      });
+    }
+
+    return actions;
   }
 
   if (tipo === "PONTO_FUNCIONARIO") {

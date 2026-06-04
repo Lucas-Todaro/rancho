@@ -236,9 +236,10 @@ function makeAnimalCases() {
       `${cat} ${name} ${weight}kg novo cadastro`,
       `${cycle(verbs, index)} ${cat} ${name} brinco H${index} peso ${weight}kg`
     ];
+    const expectedCategory = cat === "bezerra" ? "bezerro" : cat;
     return makeCase(`cadastro-animal-${String(index + 1).padStart(3, "0")}`, "cadastro_animal", cycle(variants, index), {
       tipo: "CADASTRO_ANIMAL",
-      dados: { categoria: cat },
+      dados: { categoria: expectedCategory },
       naoDevePerguntar: ["categoria"],
       naoUsarIaFallback: true
     });
@@ -285,7 +286,7 @@ function makeStockCases() {
         ...(purchase ? { compra: true } : {}),
         ...(withValue && (sale || purchase) ? { valor: value } : {})
       },
-      camposFaltantes: sale && !withValue ? ["valor"] : purchase && !withValue ? ["valor"] : [],
+      camposFaltantes: sale && !withValue ? ["valor"] : [],
       naoTipo: sale ? ["ESTOQUE_ENTRADA"] : [],
       naoUsarIaFallback: true,
       critica: sale
@@ -371,7 +372,7 @@ function makeSessionCases() {
   const pairs = [
     ["vaca B-002 deu leite", "32", "PRODUCAO_LEITE", { litros: 32 }],
     ["vendi 30kg de ração", "300 reais", "ESTOQUE_SAIDA", { valor: 300, venda: true }],
-    ["comprei 2 sacos de milho", "300,50", "ESTOQUE_ENTRADA", { valor: 300.5, compra: true }],
+    ["comprei 2 sacos de milho", "sim", "ESTOQUE_ENTRADA", { compra: true }],
     ["criar estoque de ração de bezerro", "kg", "CRIAR_ITEM_ESTOQUE", { unidade: "kg" }]
   ];
   return Array.from({ length: 100 }, (_, index) => {

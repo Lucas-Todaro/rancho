@@ -161,7 +161,8 @@ export function extractAnimalFromProductionQuery(text: string) {
 
 export function cleanStockQueryItem(original: string, normalized: string) {
   const direct = original.match(/\b(?:estoque\s+de|quanto\s+tem\s+de|tem\s+quanto\s+de|ainda\s+tem|como\s+(?:esta|estÃ¡|ta|tÃ¡)\s+o\s+estoque\s+de)\s+(.+)$/i)?.[1];
-  const fallback = direct || extractStockItem(original);
+  const directTenho = original.match(/\bquanto\s+(?:eu\s+)?tenho\s+de\s+(.+)$/i)?.[1];
+  const fallback = direct || directTenho || extractStockItem(original);
   const cleaned = cleanAnswer(fallback || normalized)
     .replace(/\b(?:ainda|tem|quanto|estoque|como|esta|estÃ¡|ta|tÃ¡)\b/gi, " ")
     .replace(/^\s*(?:de|do|da|o|a)\s+/i, " ")
@@ -513,7 +514,7 @@ export function extractStockUnit(text: string) {
   if (quantityUnit) return extractStockUnit(quantityUnit);
   const normalized = normalizeRanchoText(text);
   if (/\bsacos?\b|\bsakos?\b|\bsc\b/.test(normalized)) return "saco";
-  if (/\bkg\b|\bquilos?\b/.test(normalized)) return "kg";
+  if (/\bkg\b|\bkilos?\b|\bk\b|\bquilos?\b/.test(normalized)) return "kg";
   if (/\bgramas?\b|\bg\b/.test(normalized)) return "g";
   if (/\blitros?\b|\blitos?\b|\bl\b/.test(normalized)) return "L";
   if (/\bcaixas?\b|\bcx\b/.test(normalized)) return "caixa";
@@ -531,7 +532,7 @@ export function hasPhysicalQuantity(text: string) {
 }
 
 export function hasLooseStockQuantity(text: string) {
-  return new RegExp(`\\b${decimalNumberPattern}\\s*(?:saco|sacos|kg|quilo|quilos|grama|gramas|g|litro|litros|l|caixa|caixas|dose|doses|fardo|fardos|unidade|unidades)\\b`).test(normalizeRanchoText(text));
+  return new RegExp(`\\b${decimalNumberPattern}\\s*(?:saco|sacos|kg|kilo|kilos|k|quilo|quilos|grama|gramas|g|litro|litros|l|caixa|caixas|dose|doses|fardo|fardos|unidade|unidades)\\b`).test(normalizeRanchoText(text));
 }
 
 export function hasExplicitMoney(text: string) {

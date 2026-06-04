@@ -777,6 +777,10 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     || /\b(?:o que esta acabando|tem algo baixo|itens abaixo|abaixo do minimo)\b/.test(normalized)
   );
   const earlyStockItemMention = /\b(?:racao|milho|feno|sal|mineral|aftosa|remedio|medicamento|terramicina|leite|suplemento)\b/.test(normalized);
+  if (/\bquanto\s+(?:eu\s+)?tenho\s+de\b/.test(normalized) && !earlyStockActionForQuery) {
+    const itemNome = cleanStockQueryItem(original, normalized);
+    if (itemNome) return finalize("CONSULTA_ESTOQUE_ITEM", { item_nome: itemNome, consulta: true }, [], 0.88);
+  }
   if (earlyGeneralStockQuery && (!cleanStockQueryItem(original, normalized) || !earlyStockItemMention)) {
     return finalize("CONSULTA_ESTOQUE_GERAL", { consulta: true }, [], 0.88);
   }
@@ -1179,6 +1183,24 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     };
     return finalize("ESTOQUE_SAIDA", dados, buildMissing("ESTOQUE_SAIDA", dados), 0.88);
   }
+  const paidPhysicalPurchaseValue = normalized.match(/\b(?:paguei|gastei|gasto|despesa)\s+(?:r\$\s*)?(\d+(?:[,.]\d+)?)(?![\d,.])(?!\s*(?:kg|kilos?|k\b|quilos?|sacos?|caixas?|doses?|fardos?|unidades?|litros?))/)?.[1];
+  const paidPhysicalValue = paidPhysicalPurchaseValue ?firstNumber(paidPhysicalPurchaseValue) : undefined;
+  const paidPhysicalPurchase = physicalQuantity
+    && hasValue(paidPhysicalValue)
+    && !isSale
+    && /\b(?:paguei|gastei|gasto|despesa)\b/.test(normalized)
+    && Boolean(stockItemName);
+  if (paidPhysicalPurchase) {
+    const dados = {
+      item_nome: stockItemName,
+      quantidade: stockQuantity,
+      unidade: extractStockUnit(normalized),
+      valor: paidPhysicalValue,
+      compra: true,
+      data_referencia: extractDateReference(normalized) || "hoje"
+    };
+    return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados), 0.88);
+  }
   const stockOutWithoutQuantity = !physicalQuantity && stockOutVerb && hasStockItemHint && !medicineAnimalCue && !explicitMoney && (!hasValue(stockQuantity) || !/\bgastei\b/.test(normalized));
   const isStockOut = (physicalQuantity && stockOutVerb) || stockOutWithoutQuantity;
   if (isStockOut) {
@@ -1210,7 +1232,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       quantidade: stockQuantity,
       unidade: extractStockUnit(normalized),
       valor: explicitMoney ?extractMoneyValue(normalized) : undefined,
-      compra: isPurchase || undefined,
+      compra: (isPurchase || paidPhysicalStock) || undefined,
       data_referencia: extractDateReference(normalized) || "hoje"
     };
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
