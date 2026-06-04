@@ -581,20 +581,31 @@ async function saveWhatsAppMessage(
     ?input.messageSid || `in-${crypto.randomUUID()}`
     : `out-${input.messageSid || crypto.randomUUID()}-${Date.now()}`;
 
-  const { error } = await supabase.from(TABLES.whatsappMensagens).insert({
-    fazenda_id: input.owner?.fazenda_id || null,
-    telefone_e164: input.owner?.telefone_e164 || input.phone,
-    wa_message_id: waMessageId,
-    direcao: input.direction,
-    tipo: "text",
-    payload: {
-      body: input.body,
-      ...(input.raw || {})
-    },
-    processada_em: nowIso()
-  });
+  try {
+    const { error } = await supabase.from(TABLES.whatsappMensagens).insert({
+      fazenda_id: input.owner?.fazenda_id || null,
+      telefone_e164: input.owner?.telefone_e164 || input.phone,
+      wa_message_id: waMessageId,
+      direcao: input.direction,
+      tipo: "text",
+      payload: {
+        body: input.body,
+        ...(input.raw || {})
+      },
+      processada_em: nowIso()
+    });
 
-  if (error) console.error("[Twilio webhook] Falha ao salvar mensagem", error.message);
+    if (error) {
+      console.error("[Twilio webhook] Falha ao salvar mensagem", {
+        code: (error as AnyRecord).code || null,
+        message: error.message
+      });
+    }
+  } catch (error) {
+    console.error("[Twilio webhook] Falha inesperada ao salvar mensagem", {
+      message: error instanceof Error ? error.message : "erro desconhecido"
+    });
+  }
 }
 
 async function getSession(supabase: SupabaseAdmin, owner: WhatsAppOwner): Promise<BotSession> {
@@ -1911,8 +1922,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       fazenda_id: owner.fazenda_id,
       nome: lotName,
       descricao: null,
-      ativo: true,
-      created_by: owner.usuario_id || null
+      ativo: true
     });
 
     return realSaveResult(`Pronto, lote ${lotName} criado com sucesso.`, [TABLES.lotes]);
@@ -3034,7 +3044,7 @@ async function whatsappRegistrationReportData(supabase: SupabaseAdmin, owner: Wh
   const range = periodRange(period);
   const { data, error } = await supabase
     .from(TABLES.whatsappMensagens)
-    .select("payload,body,telefone_e164,direcao,created_at,processada_em")
+    .select("payload,telefone_e164,direcao,created_at,processada_em")
     .eq("fazenda_id", owner.fazenda_id)
     .eq("direcao", "entrada")
     .gte("processada_em", range.start)
@@ -3134,7 +3144,7 @@ function registrationLineFromWhatsappMessage(row: AnyRecord, index: number) {
 async function queryTodayWhatsappMessageRegistrations(supabase: SupabaseAdmin, owner: WhatsAppOwner, range: { start: string; end: string }) {
   const { data, error } = await supabase
     .from(TABLES.whatsappMensagens)
-    .select("payload,body,telefone_e164,direcao,created_at,processada_em")
+    .select("payload,telefone_e164,direcao,created_at,processada_em")
     .eq("fazenda_id", owner.fazenda_id)
     .eq("direcao", "entrada")
     .gte("processada_em", range.start)

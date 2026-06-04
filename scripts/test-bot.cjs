@@ -138,6 +138,17 @@ const BOT_TEST_BUSINESS_TABLES = new Set([
   BOT_TEST_TABLES.registrosPonto
 ]);
 
+const BOT_TEST_FORBIDDEN_SELECT_COLUMNS = {
+  [BOT_TEST_TABLES.estoqueMovimentacoes]: new Set(["unidade"]),
+  [BOT_TEST_TABLES.whatsappMensagens]: new Set(["body"])
+};
+
+const BOT_TEST_FORBIDDEN_WRITE_COLUMNS = {
+  [BOT_TEST_TABLES.lotes]: new Set(["created_by"]),
+  [BOT_TEST_TABLES.estoqueMovimentacoes]: new Set(["unidade"]),
+  [BOT_TEST_TABLES.whatsappMensagens]: new Set(["body"])
+};
+
 const BOT_TEST_FARM_ID = "mock-fazenda-1";
 const BOT_TEST_FARM_ID_B = "mock-fazenda-2";
 const BOT_TEST_ADMIN_PHONE = "5583999999999";
@@ -157,6 +168,40 @@ const SECURITY_UNAUTHORIZED_PHONE = "5531777770000";
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function selectedColumnNames(columns) {
+  const text = String(columns || "").trim();
+  if (!text || text === "*") return [];
+  return text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const token = part.split(/\s+/)[0].replace(/^["']|["']$/g, "");
+      const aliasParts = token.split(":");
+      return aliasParts[aliasParts.length - 1].replace(/\(.*/, "").trim();
+    })
+    .filter(Boolean);
+}
+
+function firstForbiddenSelectColumn(tableName, columns) {
+  const forbidden = BOT_TEST_FORBIDDEN_SELECT_COLUMNS[tableName];
+  if (!forbidden) return null;
+  return selectedColumnNames(columns).find((column) => forbidden.has(column)) || null;
+}
+
+function firstForbiddenWriteColumn(tableName, row) {
+  const forbidden = BOT_TEST_FORBIDDEN_WRITE_COLUMNS[tableName];
+  if (!forbidden || !row || typeof row !== "object") return null;
+  return Object.keys(row).find((column) => forbidden.has(column)) || null;
+}
+
+function schemaColumnError(tableName, column) {
+  return {
+    code: "42703",
+    message: `column ${tableName}.${column} does not exist`
+  };
 }
 
 function stockUnitFor(name) {
@@ -560,7 +605,9 @@ class BotTestQueryBuilder {
     this.forcedError = null;
   }
 
-  select() {
+  select(columns = "*") {
+    const forbiddenColumn = firstForbiddenSelectColumn(this.tableName, columns);
+    if (forbiddenColumn) this.forcedError = schemaColumnError(this.tableName, forbiddenColumn);
     return this;
   }
 
@@ -610,12 +657,16 @@ class BotTestQueryBuilder {
   insert(payload) {
     this.operation = "insert";
     this.payload = Array.isArray(payload) ? payload : [payload];
+    const invalidRow = this.payload.find((row) => firstForbiddenWriteColumn(this.tableName, row));
+    if (invalidRow) this.forcedError = schemaColumnError(this.tableName, firstForbiddenWriteColumn(this.tableName, invalidRow));
     return this;
   }
 
   upsert(payload, options = {}) {
     this.operation = "upsert";
     this.payload = Array.isArray(payload) ? payload : [payload];
+    const invalidRow = this.payload.find((row) => firstForbiddenWriteColumn(this.tableName, row));
+    if (invalidRow) this.forcedError = schemaColumnError(this.tableName, firstForbiddenWriteColumn(this.tableName, invalidRow));
     this.conflictColumns = String(options.onConflict || "id")
       .split(",")
       .map((field) => field.trim())
@@ -626,6 +677,8 @@ class BotTestQueryBuilder {
   update(payload) {
     this.operation = "update";
     this.payload = payload || {};
+    const forbiddenColumn = firstForbiddenWriteColumn(this.tableName, this.payload);
+    if (forbiddenColumn) this.forcedError = schemaColumnError(this.tableName, forbiddenColumn);
     return this;
   }
 
@@ -741,7 +794,10 @@ class BotTestQueryBuilder {
   }
 
   execute(singleMode) {
-    if (this.forcedError) return { data: null, error: this.forcedError };
+    if (this.forcedError) {
+      this.db.recordSchemaError(this.tableName, this.operation, this.forcedError.message);
+      return { data: null, error: this.forcedError };
+    }
     let rows;
     if (this.operation === "insert") rows = this.executeInsert();
     else if (this.operation === "upsert") rows = this.executeUpsert();
@@ -771,6 +827,7 @@ class BotTestSupabase {
   reset() {
     this.tables = createBotTestTables();
     this.writes = [];
+    this.schemaErrors = [];
   }
 
   from(tableName) {
@@ -786,6 +843,10 @@ class BotTestSupabase {
       rows: clone(rows),
       business: BOT_TEST_BUSINESS_TABLES.has(tableName)
     });
+  }
+
+  recordSchemaError(tableName, action, message) {
+    this.schemaErrors.push({ tableName, action, message });
   }
 
   businessWrites() {
@@ -5672,6 +5733,90 @@ const permissionMultiFarmWhatsappSecurityCases = [
   ...maliciousSecurityCases
 ];
 
+const schemaCompatibilityCases = [
+  {
+    name: "schema: criacao real de lote nao envia created_by",
+    module: "schema-whatsapp",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["criar lote Schema Bezerras", { text: "sim", salvarReal: true }],
+    expected: {
+      finalIntent: "CRIAR_LOTE",
+      responseIncludes: "Registro salvo no sistema com sucesso",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.lotes],
+      shouldSaveValues: { nome: "Schema Bezerras" },
+      shouldNotSaveValues: { created_by: "user-admin" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "schema: movimentacao real de estoque nao envia unidade",
+    module: "schema-whatsapp",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["adicionar 10kg de racao de boi no estoque", { text: "sim", salvarReal: true }],
+    expected: {
+      finalIntent: "ESTOQUE_ENTRADA",
+      responseIncludes: "Registro salvo no sistema com sucesso",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+      shouldSaveValues: { quantidade: 10 },
+      shouldNotSaveValues: { unidade: "kg" },
+      shouldNotWriteBusiness: false
+    }
+  },
+  {
+    name: "schema: logger real de whatsapp nao grava body top-level",
+    module: "schema-whatsapp",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: [{ text: "novo evento", modoTeste: false }],
+    expected: {
+      responseNotIncludes: "Erro interno",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "schema: meus registros nao seleciona whatsapp_mensagens.body",
+    module: "schema-whatsapp",
+    phone: BOT_TEST_WORKER_PHONE,
+    whatsappMessages: [
+      { telefone_e164: BOT_TEST_WORKER_PHONE, body: "B-002 deu 30 litros" }
+    ],
+    messages: ["meus registros de hoje"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "Producao: B-002, 30 litros",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "schema: resumo nao seleciona estoque_movimentacoes.unidade",
+    module: "schema-whatsapp",
+    phone: BOT_TEST_ADMIN_PHONE,
+    reportFixture: true,
+    whatsappMessages: [
+      { telefone_e164: BOT_TEST_ADMIN_PHONE, body: "B-002 deu 30 litros" }
+    ],
+    messages: ["resumo do dia"],
+    expected: {
+      finalIntent: "CONSULTA_REGISTROS_HOJE",
+      responseIncludes: "WhatsApp: 1 registro",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  }
+];
+
 const structuredBotEvaluationCases = [
   ...positiveConfirmationFrameworkCases,
   ...negativeConfirmationFrameworkCases,
@@ -5683,6 +5828,7 @@ const structuredBotEvaluationCases = [
   ...employeePointPayrollFrameworkCases,
   ...genealogyFrameworkCases,
   ...permissionMultiFarmWhatsappSecurityCases,
+  ...schemaCompatibilityCases,
   {
     name: "consulta registros hoje sem usuario_id nao quebra uuid vazio",
     module: "dashboard-relatorios",
@@ -6674,6 +6820,10 @@ function evaluateStructuredCase(test, trace) {
     failures.push(`dry-run gerou escrita de negocio: ${trace.businessWrites.map((write) => `${write.tableName}:${write.action}`).join(", ")}`);
   }
 
+  if (expected.allowSchemaErrors !== true && trace.schemaErrors?.length) {
+    failures.push(`consulta/payload com coluna inexistente: ${trace.schemaErrors.map((error) => `${error.tableName}:${error.action}:${error.message}`).join("; ")}`);
+  }
+
   if (expected.detectStuck !== false) failures.push(...detectStuckFlow(trace.steps));
 
   return failures;
@@ -6689,13 +6839,15 @@ async function runStructuredEvaluationCase(test, index) {
     for (let messageIndex = 0; messageIndex < test.messages.length; messageIndex += 1) {
       const message = test.messages[messageIndex];
       const text = typeof message === "string" ? message : message.text;
+      const modoTeste = typeof message === "object" && "modoTeste" in message ? Boolean(message.modoTeste) : true;
+      const salvarReal = typeof message === "object" && "salvarReal" in message ? Boolean(message.salvarReal) : false;
       const beforeBusinessWrites = supabase.businessWrites().length;
       const result = await processWhatsappMessage({
         telefone: test.phone || BOT_TEST_ADMIN_PHONE,
         mensagem: text,
         provider: "simulador",
-        modoTeste: true,
-        salvarReal: false,
+        modoTeste,
+        salvarReal,
         messageSid: `bot-eval-${index + 1}-${messageIndex + 1}`
       });
       const businessWritesDelta = supabase.businessWrites().slice(beforeBusinessWrites);
@@ -6718,6 +6870,7 @@ async function runStructuredEvaluationCase(test, index) {
       steps,
       businessWrites: supabase.businessWrites(),
       simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions),
+      schemaErrors: clone(supabase.schemaErrors),
       sessions: clone(supabase.tables[BOT_TEST_TABLES.whatsappSessoes])
     };
     failures.push(...evaluateStructuredCase(test, trace));
@@ -6730,6 +6883,7 @@ async function runStructuredEvaluationCase(test, index) {
       steps,
       businessWrites: trace.businessWrites,
       simulatedSaveActions: trace.simulatedSaveActions,
+      schemaErrors: trace.schemaErrors,
       ok: failures.length === 0,
       failures
     };
@@ -6743,6 +6897,7 @@ async function runStructuredEvaluationCase(test, index) {
       steps,
       businessWrites: supabase.businessWrites(),
       simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions),
+      schemaErrors: clone(supabase.schemaErrors),
       ok: false,
       failures
     };

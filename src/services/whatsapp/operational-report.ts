@@ -344,7 +344,7 @@ async function queryStockMovements(supabase: SupabaseAdmin, owner: WhatsAppOwner
   const range = operationalReportPeriodRange(period);
   const { data, error } = await supabase
     .from(TABLES.estoqueMovimentacoes)
-    .select("id,item_id,tipo,quantidade,unidade,unidade_medida,created_at")
+    .select("id,item_id,tipo,quantidade,created_at")
     .eq("fazenda_id", owner.fazenda_id)
     .gte("created_at", range.start)
     .lt("created_at", range.end)
@@ -411,7 +411,7 @@ async function queryWhatsappRegistrations(supabase: SupabaseAdmin, owner: WhatsA
   const range = operationalReportPeriodRange(period);
   const { data, error } = await supabase
     .from(TABLES.whatsappMensagens)
-    .select("payload,body,telefone_e164,direcao,created_at,processada_em")
+    .select("payload,telefone_e164,direcao,created_at,processada_em")
     .eq("fazenda_id", owner.fazenda_id)
     .eq("direcao", "entrada")
     .gte("processada_em", range.start)
