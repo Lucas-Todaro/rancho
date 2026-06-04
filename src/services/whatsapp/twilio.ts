@@ -5,6 +5,7 @@ import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
+import { detectConversationAct, logConversationAct, type ConversationAct } from "@/services/whatsapp/conversation-act";
 import { parseWithGeminiFallback } from "@/services/whatsapp/gemini-fallback";
 import { buildRanchReport, type OperationalReportKind, type OperationalReportMode } from "@/services/whatsapp/operational-report";
 import {
@@ -3617,6 +3618,321 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   return unknownText();
 }
 
+type ConversationActHandlingResult = {
+  handled: boolean;
+  response?: string;
+  parsed?: ParsedRanchoMessage;
+  suppressPreviousPending?: boolean;
+};
+
+function uniqueParserFlags(values: Array<string | undefined | null>) {
+  return Array.from(new Set(values.filter(Boolean))) as ParsedRanchoMessage["flags"];
+}
+
+function withConversationFlags(parsed: ParsedRanchoMessage, flags: string[]) {
+  return {
+    ...parsed,
+    flags: uniqueParserFlags([...(parsed.flags || []), ...flags])
+  };
+}
+
+function parseCorrectionNumber(value: string) {
+  const normalized = String(value || "").replace(/\./g, "").replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) ?number : undefined;
+}
+
+function numberMatchesFromText(command: string) {
+  return Array.from(command.matchAll(/\b\d+(?:[.,]\d+)?\b/g))
+    .map((match) => ({ value: parseCorrectionNumber(match[0]), index: match.index || 0 }))
+    .filter((match): match is { value: number; index: number } => Number.isFinite(match.value));
+}
+
+function extractCorrectionNumber(command: string) {
+  const numbers = numberMatchesFromText(command);
+  if (!numbers.length) return null;
+  const pair = command.match(/\bnao\s+(?:era|foi)\s+(\d+(?:[.,]\d+)?)\b.*\b(?:era|foi|foram?)\s+(\d+(?:[.,]\d+)?)\b/);
+  if (pair) {
+    return {
+      oldValue: parseCorrectionNumber(pair[1]),
+      newValue: parseCorrectionNumber(pair[2])
+    };
+  }
+  return {
+    oldValue: null,
+    newValue: numbers[numbers.length - 1].value
+  };
+}
+
+function extractCorrectionUnit(command: string) {
+  const match = command.match(/\b(kg|quilo|quilos|saco|sacos|litro|litros|l|dose|doses|unidade|unidades|caixa|caixas|fardo|fardos)\b/);
+  if (!match) return undefined;
+  const unit = match[1];
+  if (unit === "quilo" || unit === "quilos") return "kg";
+  if (unit === "sacos") return "saco";
+  if (unit === "litros" || unit === "l") return "litro";
+  if (unit === "doses") return "dose";
+  if (unit === "unidades") return "unidade";
+  if (unit === "caixas") return "caixa";
+  if (unit === "fardos") return "fardo";
+  return unit;
+}
+
+function cleanAnimalCorrectionName(value: string | undefined) {
+  const cleaned = String(value || "")
+    .replace(/\b(?:a|o|as|os|na|no|da|do|era|foi|litro|litros|kg|saco|sacos|parto|cio|compra|uso|saida|baixa)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || /^(?:de|para|por)$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function extractAnimalSwap(command: string) {
+  if (/\b(?:litro|litros|kg|quilo|quilos|saco|sacos|reais|real|valor|quantidade)\b/.test(command)) return null;
+  const match = command.match(/\bnao\s+(?:era|foi)\s+(?:a|o|na|no)?\s*(.+?)\s+(?:era|foi)\s+(?:a|o|na|no)?\s*(.+)$/);
+  const oldValue = cleanAnimalCorrectionName(match?.[1]);
+  const newValue = cleanAnimalCorrectionName(match?.[2]);
+  if (!newValue) return null;
+  return { oldValue, newValue };
+}
+
+function resetAnimalResolution(dados: AnyRecord) {
+  dados.animal_id = undefined;
+  dados.animal_resolvido = undefined;
+  dados.animal_status = undefined;
+  dados.animal_opcoes = undefined;
+  dados.animal_referencia_nao_encontrada = undefined;
+}
+
+function stockUsageCorrection(command: string, pending: ParsedRanchoMessage) {
+  return pending.tipo === "ESTOQUE_ENTRADA"
+    && Boolean(pending.dados?.compra)
+    && /\bnao\s+foi\s+compra\b/.test(command)
+    && /\b(?:uso|usei|saida|baixa|retirada)\b/.test(command);
+}
+
+function partoWasNegated(command: string, act: ConversationAct, pending?: ParsedRanchoMessage | null) {
+  return (act.negatedIntent === "PARTO" || /\bparto\b/.test(command)) && (!pending || pending.tipo === "PARTO");
+}
+
+function hasCioReplacement(command: string) {
+  return /\bcio\b/.test(command);
+}
+
+function animalDisplayName(parsed?: ParsedRanchoMessage | null) {
+  const resolved = parsed?.dados?.animal_resolvido as AnyRecord | undefined;
+  return String(resolved?.nome || resolved?.brinco || parsed?.dados?.animal_codigo || "animal anterior");
+}
+
+function correctionTextForMerge(text: string, command: string) {
+  const cleaned = command
+    .replace(/^(?:nao|n|errado|incorreto|corrigir|corrige|quero corrigir|refazer|refaz|na verdade|verdade|animal errado)\b\s*,?\s*/g, "")
+    .trim();
+  if (!cleaned || cleaned === command) return text;
+  if (/^(?:foi|era|foram?|na verdade|troca|trocar|ajusta|ajustar)\b/.test(cleaned)) return cleaned;
+  return `foi ${cleaned}`;
+}
+
+function buildCioCorrection(pending: ParsedRanchoMessage) {
+  const dados = {
+    animal_codigo: pending.dados?.animal_codigo,
+    animal_id: pending.dados?.animal_id,
+    campo_alterado: "observacoes",
+    novo_valor: "cio",
+    data_referencia: pending.dados?.data_referencia || "hoje"
+  };
+  return refreshRanchoMessage({ ...pending, tipo: "ATUALIZACAO_ANIMAL", dados }, dados);
+}
+
+function buildCorrectedPending(pending: ParsedRanchoMessage, text: string, act: ConversationAct) {
+  const command = act.normalizedText;
+  const operationCorrection = stockUsageCorrection(command, pending);
+  let next = operationCorrection ?pending : mergeRanchoMessageData(pending, correctionTextForMerge(text, command));
+  const dados = { ...(next.dados || {}) };
+  let tipo = next.tipo;
+  let prefix: string | null = null;
+
+  if (operationCorrection) {
+    tipo = "ESTOQUE_SAIDA";
+    dados.compra = false;
+    dados.valor = undefined;
+    prefix = "Entendi. Voce quer alterar a movimentacao anterior de compra para uso/saida de estoque?";
+  }
+
+  const numberCorrection = extractCorrectionNumber(command);
+  if (numberCorrection?.newValue !== undefined) {
+    if (tipo === "PRODUCAO_LEITE") {
+      const oldValue = numberCorrection.oldValue ?? pending.dados?.litros;
+      dados.litros = numberCorrection.newValue;
+      prefix = `Entendi. Quer corrigir a producao de ${formatNumber(oldValue, "L")} para ${formatNumber(numberCorrection.newValue, "L")}?`;
+    } else if (tipo === "ESTOQUE_ENTRADA" || tipo === "ESTOQUE_SAIDA") {
+      dados.quantidade = numberCorrection.newValue;
+      const unit = extractCorrectionUnit(command);
+      if (unit) dados.unidade = unit;
+      prefix = `Entendi. Quer corrigir a quantidade para ${formatStockAmount(numberCorrection.newValue, dados.unidade)}?`;
+    } else if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {
+      const oldValue = numberCorrection.oldValue ?? pending.dados?.valor;
+      dados.valor = numberCorrection.newValue;
+      prefix = `Entendi. Quer corrigir o valor de ${formatMoney(oldValue)} para ${formatMoney(numberCorrection.newValue)}?`;
+    }
+  }
+
+  const animalSwap = extractAnimalSwap(command);
+  if (animalSwap && ANIMAL_LOOKUP_INTENTS.has(tipo)) {
+    dados.animal_codigo = animalSwap.newValue;
+    resetAnimalResolution(dados);
+    const oldAnimal = animalSwap.oldValue || animalDisplayName(pending);
+    prefix = `Entendi. Voce quer trocar o animal do ultimo lancamento de ${oldAnimal} para ${animalSwap.newValue}?`;
+  }
+
+  next = refreshRanchoMessage({ ...next, tipo, dados }, dados);
+  return {
+    parsed: withConversationFlags(next, [
+      "correction_message",
+      "pending_action_response",
+      "references_previous_context",
+      "requires_confirmation",
+      "possible_duplicate_risk",
+      "safe_to_apply_correction"
+    ]),
+    prefix
+  };
+}
+
+async function saveCorrectedPending(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  parsed: ParsedRanchoMessage,
+  prefix?: string | null
+) {
+  const next = await enrichWithCatalog(supabase, owner, parsed);
+  const animalBlock = animalBlockFromParsed(next);
+  if (animalBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: animalBlock, parsed: next };
+  }
+  const genealogyBlock = relationBlockMessage(next);
+  if (genealogyBlock) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: genealogyBlock, parsed: next };
+  }
+  const denied = permissionDeniedMessage(owner, next);
+  if (denied) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: denied, parsed: next };
+  }
+  const lotPreflight = await lotCreationPreflight(supabase, owner, next);
+  if (lotPreflight) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: lotPreflight, parsed: next };
+  }
+
+  if (next.perguntas_faltantes.length) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
+    return { response: [prefix, missingText(next)].filter(Boolean).join("\n"), parsed: next };
+  }
+
+  if (milkStockNeedsDecision(next)) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next, acao_pendente: "producao_leite_estoque_opcional" } });
+    return { response: [prefix, milkStockDecisionQuestion(next)].filter(Boolean).join("\n"), parsed: next };
+  }
+
+  await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+  const intro = prefix ?`Agora entendi. ${prefix}` : "Agora entendi:";
+  return { response: [intro, confirmationText(next)].filter(Boolean).join("\n"), parsed: next };
+}
+
+async function handleConversationActMessage(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  session: BotSession,
+  text: string,
+  act: ConversationAct
+): Promise<ConversationActHandlingResult> {
+  const pending = pendingFromSession(session);
+  const command = act.normalizedText;
+
+  if (act.messageType === "new_action" || act.messageType === "clarification") {
+    return { handled: false };
+  }
+
+  if (act.messageType === "confirmation" && !pending) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      response: "Nao consegui entender uma confirmacao pendente. Envie um novo registro."
+    };
+  }
+
+  if (act.messageType === "confirmation") return { handled: false };
+
+  if (act.messageType === "cancellation") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      parsed: pending,
+      response: pending
+        ? "Cancelado. Nao registrei essa acao. Nada foi salvo."
+        : "Cancelado. O que voce quer cancelar ou corrigir?"
+    };
+  }
+
+  if (!pending) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: session.dados || {} });
+    if (partoWasNegated(command, act, null)) {
+      return {
+        handled: true,
+        suppressPreviousPending: true,
+        response: "Beleza, nao vou registrar como parto. Me diga o que aconteceu com o animal para eu lancar corretamente."
+      };
+    }
+    return {
+      handled: true,
+      response: act.messageType === "correction"
+        ? "O que voce quer corrigir? Me diga o animal/item e o valor correto."
+        : "Beleza. O que voce quer cancelar ou corrigir?"
+    };
+  }
+
+  if (partoWasNegated(command, act, pending)) {
+    if (hasCioReplacement(command) && pending.dados?.animal_codigo) {
+      const correction = buildCioCorrection(pending);
+      const result = await saveCorrectedPending(
+        supabase,
+        owner,
+        withConversationFlags(correction, ["negation_message", "correction_message", "do_not_treat_as_new_action"]),
+        "Entendi, nao e parto. Quer registrar como cio/observacao reprodutiva?"
+      );
+      return { handled: true, parsed: result.parsed, response: result.response, suppressPreviousPending: true };
+    }
+
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      parsed: undefined,
+      suppressPreviousPending: true,
+      response: "Entendi, nao e parto. Como voce quer registrar essa informacao? Pode ser cio, observacao de saude, manejo ou outro evento."
+    };
+  }
+
+  if (act.messageType === "negation" && /^(?:nao|n|nao e isso|errado|incorreto|negativo)$/.test(command)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      parsed: pending,
+      response: "Cancelado. Nao registrei essa acao. Nada foi salvo."
+    };
+  }
+
+  if (act.messageType === "correction" || act.messageType === "negation") {
+    const corrected = buildCorrectedPending(pending, text, act);
+    const result = await saveCorrectedPending(supabase, owner, corrected.parsed, corrected.prefix);
+    return { handled: true, parsed: result.parsed, response: result.response };
+  }
+
+  return { handled: false };
+}
+
 async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, text: string) {
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) return handleFreeText(supabase, owner, text);
@@ -3840,8 +4156,9 @@ function buildProcessResult(input: {
   nextSession?: BotSession | null;
   eventConfirmed?: boolean;
   error?: string | null;
+  suppressPreviousPending?: boolean;
 }): ProcessWhatsappMessageResult {
-  const detected = pendingFromSession(input.nextSession) || input.parsed || pendingFromSession(input.previousSession);
+  const detected = pendingFromSession(input.nextSession) || input.parsed || (input.suppressPreviousPending ?undefined : pendingFromSession(input.previousSession));
   return {
     respostaTexto: input.response,
     intencaoDetectada: detected?.tipo || null,
@@ -3872,6 +4189,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
   let parsed: ParsedRanchoMessage | undefined;
   let response = "";
   let eventConfirmed = false;
+  let suppressPreviousPending = false;
 
   try {
     const resolvedOwner = await resolveWhatsAppOwner(supabase, input.telefone);
@@ -3917,13 +4235,22 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
 
     const command = normalizeRanchoText(input.mensagem);
     previousSession = await getSession(supabase, owner);
+    const conversationAct = detectConversationAct({
+      text: input.mensagem,
+      command,
+      session: previousSession,
+      pending: pendingFromSession(previousSession)
+    });
+    logConversationAct(input.mensagem, conversationAct);
 
     if (isMenuCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = helpText();
-    } else if (isCancelCommand(command)) {
-      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      response = "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
+    } else if (conversationAct.messageType === "cancellation") {
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      parsed = handled.parsed;
+      suppressPreviousPending = Boolean(handled.suppressPreviousPending);
+      response = handled.response || "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
     } else if (isStockPaginationCommand(command) && previousSession.dados?.estoque_paginacao) {
       response = await handleStockPagination(supabase, owner, previousSession);
     } else if (isStockPaginationCommand(command) && previousSession.dados?.financeiro_paginacao) {
@@ -3959,37 +4286,59 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
-      eventConfirmed = isConfirmCommand(command);
-      response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command, {
-        modoTesteSalvarReal: salvarRealNoTeste
-      });
-    } else if (previousSession.etapa === "aguardando_dado") {
-      response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
-    } else {
-      const localParsed = parseRanchoMessage(input.mensagem);
-      const fallback = await parseWithGeminiFallback({
-        text: input.mensagem,
-        localParsed,
-        owner
-      });
-
-      if (fallback.kind === "clarify") {
-        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-        response = fallback.message;
-      } else if (fallback.kind === "consultations") {
-        parsed = fallback.consultations[0];
-        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-        response = await handleGeminiConsultationBatch(supabase, owner, fallback.consultations);
-      } else if (fallback.kind === "compound") {
-        const immediateText = fallback.immediateConsultations.length
-          ?await handleGeminiConsultationBatch(supabase, owner, fallback.immediateConsultations)
-          : "";
-        parsed = await enrichWithCatalog(supabase, owner, fallback.pending);
-        const actionText = await handleFreeText(supabase, owner, input.mensagem, parsed);
-        response = [immediateText, actionText].filter(Boolean).join("\n\n");
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      if (handled.handled) {
+        parsed = handled.parsed;
+        suppressPreviousPending = Boolean(handled.suppressPreviousPending);
+        eventConfirmed = false;
+        response = handled.response || "";
       } else {
-        parsed = await enrichWithCatalog(supabase, owner, fallback.parsed);
-        response = await handleFreeText(supabase, owner, input.mensagem, parsed);
+        eventConfirmed = isConfirmCommand(command);
+        response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command, {
+          modoTesteSalvarReal: salvarRealNoTeste
+        });
+      }
+    } else if (previousSession.etapa === "aguardando_dado") {
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      if (handled.handled) {
+        parsed = handled.parsed;
+        suppressPreviousPending = Boolean(handled.suppressPreviousPending);
+        response = handled.response || "";
+      } else {
+        response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
+      }
+    } else {
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      if (handled.handled) {
+        parsed = handled.parsed;
+        suppressPreviousPending = Boolean(handled.suppressPreviousPending);
+        response = handled.response || "";
+      } else {
+        const localParsed = parseRanchoMessage(input.mensagem);
+        const fallback = await parseWithGeminiFallback({
+          text: input.mensagem,
+          localParsed,
+          owner
+        });
+
+        if (fallback.kind === "clarify") {
+          await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+          response = fallback.message;
+        } else if (fallback.kind === "consultations") {
+          parsed = fallback.consultations[0];
+          await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+          response = await handleGeminiConsultationBatch(supabase, owner, fallback.consultations);
+        } else if (fallback.kind === "compound") {
+          const immediateText = fallback.immediateConsultations.length
+            ?await handleGeminiConsultationBatch(supabase, owner, fallback.immediateConsultations)
+            : "";
+          parsed = await enrichWithCatalog(supabase, owner, fallback.pending);
+          const actionText = await handleFreeText(supabase, owner, input.mensagem, parsed);
+          response = [immediateText, actionText].filter(Boolean).join("\n\n");
+        } else {
+          parsed = await enrichWithCatalog(supabase, owner, fallback.parsed);
+          response = await handleFreeText(supabase, owner, input.mensagem, parsed);
+        }
       }
     }
 
@@ -4015,7 +4364,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       parsed,
       previousSession,
       nextSession,
-      eventConfirmed
+      eventConfirmed,
+      suppressPreviousPending
     });
   } catch (error) {
     const message = error instanceof Error ?error.message : "Erro interno no Rancho.";

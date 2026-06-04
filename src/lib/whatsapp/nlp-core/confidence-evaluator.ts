@@ -34,13 +34,17 @@ const FALLBACK_FLAGS = new Set<ParserRiskFlag>([
   "multiple_intents_detected",
   "compound_message",
   "conflicting_intents",
-  "correction_message"
+  "correction_message",
+  "negation_message"
 ]);
 
 const AMBIGUOUS_VERB_PATTERN = /\b(?:sobe|subir|baixa|baixar|lanca|lança|coloca|colocar|tira|tirar|bota|botar|arruma|arrumar|muda|mudar)\b/;
 const COMPOUND_CONNECTOR_PATTERN = /\b(?:tambem|também|mas antes|depois|ai|aí|em seguida|alem disso|além disso|e depois|e ve|e vê|e me|e cria|e criar|e compra|e comprar|,)\b/;
 const AMBIGUOUS_REFERENCE_PATTERN = /\b(?:isso|aquele|aquela|essa|esse|ele|ela|mesmo|mesma)\b/;
 const CORRECTION_PATTERN = /\b(?:errei|corrige|corrigir|na verdade|nao era|não era|errado|troca|trocar|ajusta|ajustar)\b/;
+const NEGATION_PATTERN = /\bnao\s+(?:e|foi|era|quis|salva|salvar|registrar)\b|\b(?:entendeu errado|ta errado|esta errado|negativo|incorreto)\b/;
+const CANCELLATION_PATTERN = /\b(?:cancela|cancelar|desfaz|desfazer|esquece|nao salva|nao salvar|nao registrar)\b/;
+const CONFIRMATION_PATTERN = /^(?:sim|s|ss|ok|okay|blz|beleza|isso|isso mesmo|correto|confirmo|confirma|confirmar|pode|pode sim|pode salvar|pode registrar|salvar|salva|registrar|registra|1)$/;
 const DESTRUCTIVE_PATTERN = /\b(?:apaga tudo|apagar tudo|zera|zerar|excluir tudo|delete tudo|remove tudo|limpa tudo|limpar tudo|muda todos|alterar todos)\b/;
 const SENSITIVE_PATTERN = /\b(?:excluir|desligar|apagar|zerar|morte|morreu|alterar|atualizar|muda|mudar|genealogia)\b/;
 const GENERIC_COMMAND_PATTERN = /\b(?:faz ai|faz aí|faz qualquer coisa|resolve|arruma isso|mexe ai|mexe aí)\b/;
@@ -197,6 +201,9 @@ function confidenceReason(flags: Set<ParserRiskFlag>, missing: string[], origina
   if (flags.has("multiple_intents_detected")) parts.push("multiple intents");
   if (flags.has("ambiguous_verb")) parts.push("ambiguous verb");
   if (flags.has("correction_message")) parts.push("correction message");
+  if (flags.has("negation_message")) parts.push("negation message");
+  if (flags.has("cancellation_message")) parts.push("cancellation message");
+  if (flags.has("confirmation_response")) parts.push("confirmation response");
   if (flags.has("destructive_action")) parts.push("destructive action");
   if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
   return parts.join("; ");
@@ -234,6 +241,9 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   const hasMultipleActionCues = actionCueCount(normalized) > 1;
   const isCompound = parsed.tipo === "LOTE_REGISTROS" || (hasCompoundConnector && (hasMultipleActionCues || cues.size > 1));
   const isCorrection = CORRECTION_PATTERN.test(normalized);
+  const isNegation = NEGATION_PATTERN.test(normalized);
+  const isCancellation = CANCELLATION_PATTERN.test(normalized);
+  const isConfirmationResponse = CONFIRMATION_PATTERN.test(normalized);
   const isDestructive = DESTRUCTIVE_PATTERN.test(normalized);
   const isSensitive = isDestructive || SENSITIVE_PATTERN.test(normalized) || ["EXCLUIR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "MORTE", "ATUALIZACAO_GENEALOGIA", "ATUALIZACAO_ANIMAL"].includes(parsed.tipo);
   const isAmbiguousVerb = AMBIGUOUS_VERB_PATTERN.test(normalized);
@@ -248,6 +258,12 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   addFlag(flags, "ambiguous_verb", isAmbiguousVerb);
   addFlag(flags, "ambiguous_reference", AMBIGUOUS_REFERENCE_PATTERN.test(normalized));
   addFlag(flags, "correction_message", isCorrection);
+  addFlag(flags, "negation_message", isNegation);
+  addFlag(flags, "cancellation_message", isCancellation);
+  addFlag(flags, "confirmation_response", isConfirmationResponse);
+  addFlag(flags, "references_previous_context", isCorrection || isNegation || isCancellation || isConfirmationResponse);
+  addFlag(flags, "possible_duplicate_risk", isCorrection || isNegation);
+  addFlag(flags, "do_not_treat_as_new_action", isNegation && parsed.tipo !== "DESCONHECIDO");
   addFlag(flags, "sensitive_action", isSensitive);
   addFlag(flags, "destructive_action", isDestructive);
   addFlag(flags, "unknown_animal", Boolean(parsed.dados?.animal_referencia_nao_encontrada));
@@ -262,6 +278,8 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   if (isGenericCommand) confidence = Math.min(confidence, 0.35);
   if (isDestructive) confidence = Math.min(confidence, 0.35);
   if (isCorrection) confidence = Math.min(confidence, 0.5);
+  if (isNegation) confidence = Math.min(confidence, parsed.tipo === "DESCONHECIDO" ?0.42 : 0.35);
+  if (isCancellation || isConfirmationResponse) confidence = Math.min(confidence, 0.35);
   if (isCompound || hasConflictingIntents) confidence = Math.min(confidence, 0.55);
   if (milkWithoutQuantity || stockWithoutItem) confidence = Math.min(confidence, 0.56);
   if (isAmbiguousVerb && (missing.length || !detectedEntities.units.length || !detectedEntities.stockItems.length && /\b(?:estoque|racao|ração|sal)\b/.test(normalized))) {
@@ -286,16 +304,21 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
     || flags.has("unknown_animal")
     || flags.has("unknown_stock_item")
     || flags.has("unknown_employee")
+    || isNegation
+    || isCancellation
+    || isConfirmationResponse
     || isGenericCommand;
   const needsConfirmation = !CONSULT_INTENTS.has(parsed.tipo) && parsed.tipo !== "DESCONHECIDO" || flags.has("sensitive_action");
   const safeForLocal = !hasCriticalFlags
     && !needsClarification
+    && !flags.has("do_not_treat_as_new_action")
     && !flags.has("destructive_action")
     && (CONSULT_INTENTS.has(parsed.tipo) || confidence >= 0.75)
     && parsed.tipo !== "DESCONHECIDO";
 
   addFlag(flags, "needs_clarification", needsClarification);
   addFlag(flags, "needs_confirmation", needsConfirmation);
+  addFlag(flags, "requires_confirmation", isCorrection || needsConfirmation);
   addFlag(flags, "single_clear_intent", !hasCriticalFlags && cues.size <= 1 && parsed.tipo !== "DESCONHECIDO");
   addFlag(flags, "safe_for_local_execution", safeForLocal);
 

@@ -1917,6 +1917,222 @@ const botConversationTests = [
     ]
   },
   {
+    name: "negacao de parto sem contexto nao vira evento",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "não é parto",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "nao vou registrar como parto"
+        }
+      },
+      {
+        text: "não foi parto",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "nao vou registrar como parto"
+        }
+      },
+      {
+        text: "não era parto, era cio",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "nao vou registrar como parto"
+        }
+      }
+    ]
+  },
+  {
+    name: "mensagens contextuais sem contexto pedem esclarecimento",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "corrige isso",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "O que voce quer corrigir"
+        }
+      },
+      {
+        text: "cancela",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "O que voce quer cancelar ou corrigir"
+        }
+      },
+      {
+        text: "não",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "O que voce quer cancelar ou corrigir"
+        }
+      },
+      {
+        text: "sim",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "confirmacao pendente"
+        }
+      },
+      {
+        text: "entendeu errado",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "O que voce quer corrigir"
+        }
+      },
+      {
+        text: "não quis dizer isso",
+        expected: {
+          intent: null,
+          estadoNovo: "livre",
+          responseIncludes: "O que voce quer corrigir"
+        }
+      }
+    ]
+  },
+  {
+    name: "fluxo completo nega parto pendente sem registrar",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    messages: [
+      {
+        text: "a Estrela pariu hoje",
+        expected: {
+          intent: "PARTO",
+          estadoNovo: "aguardando_confirmacao",
+          responseIncludes: "correto"
+        }
+      },
+      {
+        text: "não é parto",
+        expected: {
+          intent: null,
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "livre",
+          eventoConfirmado: false,
+          responseIncludes: "nao e parto"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao de parto para cio vira observacao pendente",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    initialSession: () => ({
+      etapa: "aguardando_confirmacao",
+      dados: { pending: parseResolved("Mimosa pariu hoje") }
+    }),
+    messages: [
+      {
+        text: "não era parto, era cio",
+        expected: {
+          intent: "ATUALIZACAO_ANIMAL",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-001", campo_alterado: "observacoes", novo_valor: "cio" },
+          responseIncludes: "cio"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao de litros usa contexto pendente e nao duplica",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    initialSession: () => ({
+      etapa: "aguardando_confirmacao",
+      dados: { pending: parseResolved("B-002 deu 15 litros para venda") }
+    }),
+    messages: [
+      {
+        text: "errei, não era 15 litros, era 18",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-002", litros: 18 },
+          responseIncludes: "15L para 18L"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao de animal troca pendencia por animal resolvido",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    initialSession: () => ({
+      etapa: "aguardando_confirmacao",
+      dados: { pending: parseResolved("Estrela deu 15 litros para venda") }
+    }),
+    messages: [
+      {
+        text: "não era a Estrela, era a Mimosa",
+        expected: {
+          intent: "PRODUCAO_LEITE",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { animal_codigo: "B-001", litros: 15 },
+          responseIncludes: "trocar o animal"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao de compra para uso troca entrada por baixa",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    initialSession: () => ({
+      etapa: "aguardando_confirmacao",
+      dados: { pending: parseResolved("comprei 10 sacos de racao por 300 reais") }
+    }),
+    messages: [
+      {
+        text: "não foi compra, foi uso",
+        expected: {
+          intent: "ESTOQUE_SAIDA",
+          estadoAnterior: "aguardando_confirmacao",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
+          responseIncludes: "uso/saida"
+        }
+      }
+    ]
+  },
+  {
+    name: "correcao de quantidade em dado faltante atualiza estoque pendente",
+    phone: BOT_TEST_ADMIN_PHONE,
+    expectNoBusinessWrites: true,
+    initialSession: () => ({
+      etapa: "aguardando_dado",
+      dados: { pending: parseResolved("usei racao") }
+    }),
+    messages: [
+      {
+        text: "na verdade foram 20kg",
+        expected: {
+          intent: "ESTOQUE_SAIDA",
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "aguardando_confirmacao",
+          dados: { item_nome: "Racao", quantidade: 20, unidade: "kg" },
+          responseIncludes: "20 kg"
+        }
+      }
+    ]
+  },
+  {
     name: "cancelamento limpa a sessao sem salvar",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,

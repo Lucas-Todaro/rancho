@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-04T00:11:59.935Z
+Gerado em: 2026-06-04T02:27:44.287Z
 
 ## Resumo Geral
 
-- Total geral de testes: 998
-- Aprovados: 998
+- Total geral de testes: 1020
+- Aprovados: 1020
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -15,7 +15,7 @@ Gerado em: 2026-06-04T00:11:59.935Z
 | Modulo | Total | Aprovados | Falhos | Taxa |
 | --- | ---: | ---: | ---: | ---: |
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
-| Producao | 57 | 57 | 0 | 100% |
+| Producao | 58 | 58 | 0 | 100% |
 | Animais | 30 | 30 | 0 | 100% |
 | Estoque | 184 | 184 | 0 | 100% |
 | Financeiro | 160 | 160 | 0 | 100% |
@@ -25,12 +25,12 @@ Gerado em: 2026-06-04T00:11:59.935Z
 | Eventos/vacinas/medicamentos | 173 | 173 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
 | Rebanho/lotes | 26 | 26 | 0 | 100% |
-| Dashboard/relatorios | 17 | 17 | 0 | 100% |
+| Dashboard/relatorios | 26 | 26 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
 | Permissoes | 12 | 12 | 0 | 100% |
 | Multi-fazenda | 11 | 11 | 0 | 100% |
-| Sessao/contexto | 29 | 29 | 0 | 100% |
+| Sessao/contexto | 37 | 37 | 0 | 100% |
 | Seguranca/mensagens maliciosas | 13 | 13 | 0 | 100% |
 
 ## Estoque - Consultas
