@@ -1105,9 +1105,27 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     || clinicalObservationCue.test(normalized)
     || reproductiveObservationCue.test(normalized);
   const isQuestion = /\?/.test(original);
-  const animalCreationCue = /\b(?:cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
+  const animalCreationCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
-  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria)\b/.test(normalized);
+  const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
+  const earlyHasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produÃ§Ã£o)\b/.test(normalized);
+  const earlyMedicineCue = vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized);
+  const clearAnimalRegistrationDetails = Boolean(extractAnimalRegistrationCode(normalized))
+    || /\b(?:peso|pesou|brinco|codigo|cod|numero|nÃºmero|nome|chamado|chamada|raca|raÃ§a|lote|nascimento|nasceu)\b/.test(normalized);
+  if (!earlyHasProductionCue && !animalEventCue && !earlyMedicineCue && animalCreationCue && (!hasStockItemHint || clearAnimalRegistrationDetails)) {
+    const dados = {
+      animal_codigo: extractAnimalRegistrationCode(normalized),
+      nome: extractAnimalRegistrationName(original),
+      categoria: extractAnimalCategory(normalized),
+      sexo: extractAnimalSex(normalized),
+      fase: extractAnimalPhase(normalized),
+      raca: extractAnimalBreed(original),
+      lote_nome: extractAnimalLotName(original),
+      data_nascimento: extractAnimalBirthDate(original),
+      data_referencia: extractDateReference(normalized)
+    };
+    return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados));
+  }
   const isAnimalConsultation = Boolean(animalQueryCode)
     && !animalCreationCue
     && !animalEventCue
