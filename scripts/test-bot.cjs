@@ -124,6 +124,7 @@ const BOT_TEST_TABLES = {
   estoqueMovimentacoes: "estoque_movimentacoes",
   transacoesFinanceiras: "transacoes_financeiras",
   funcionarios: "funcionarios",
+  folhaPagamento: "folha_pagamento",
   registrosPonto: "registros_ponto",
   whatsappUsuarios: "whatsapp_usuarios",
   whatsappSessoes: "whatsapp_sessoes",
@@ -140,6 +141,7 @@ const BOT_TEST_BUSINESS_TABLES = new Set([
   BOT_TEST_TABLES.estoqueMovimentacoes,
   BOT_TEST_TABLES.transacoesFinanceiras,
   BOT_TEST_TABLES.funcionarios,
+  BOT_TEST_TABLES.folhaPagamento,
   BOT_TEST_TABLES.registrosPonto
 ]);
 
@@ -591,6 +593,7 @@ function createBotTestTables() {
     [BOT_TEST_TABLES.eventosAnimal]: [],
     [BOT_TEST_TABLES.estoqueMovimentacoes]: [],
     [BOT_TEST_TABLES.registrosPonto]: [],
+    [BOT_TEST_TABLES.folhaPagamento]: [],
     [BOT_TEST_TABLES.notificacoes]: [],
     [BOT_TEST_TABLES.auditoriaLogs]: []
   };
@@ -977,7 +980,12 @@ function missingContains(parsed, field) {
     horario: /horario|horario|7:30|17:00/.test(text),
     mae_nome: /mae|mãe/.test(text),
     pai_nome: /pai/.test(text),
-    genealogia_campo: /mae|mãe|pai|genealogia/.test(text)
+    genealogia_campo: /mae|mãe|pai|genealogia/.test(text),
+    whatsapp: /whatsapp|ddd/.test(text),
+    funcao: /funcao|cargo/.test(text),
+    data: /admissao|data/.test(text),
+    data_admissao: /admissao|data/.test(text),
+    funcionario: /funcionario|funcion/.test(text)
   };
   return Boolean(checks[field]);
 }
@@ -1150,7 +1158,7 @@ const mandatoryTests = [
   { phrase: "comprei 10 sacos de ração por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 300 } },
   { phrase: "comprei ração de boi por 300 reais", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração de boi", valor: 300, missing: ["quantidade"] } },
   { phrase: "criar estoque de ração de bezerro", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", missing: ["unidade"] } },
-  { phrase: "cadastrar funcionário João 83996732761", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "João", telefone: "5583996732761", noMissing: true } },
+  { phrase: "cadastrar funcionário João 83996732761", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "João", telefone: "5583996732761", missing: ["funcao", "data"] } },
   { phrase: "paguei 120 no remédio", expected: { tipo: "DESPESA", valor: 120, descricao: "remédio" } }
 ];
 
@@ -1235,11 +1243,11 @@ const extraTests = [
   { phrase: "Maria saiu as 17h", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "maria", ponto_tipo: "saida", horario: "17:00" } },
   { phrase: "registrar ponto do João", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "João", ponto_tipo: "entrada" } },
   { phrase: "Maria entrou 8 horas", expected: { tipo: "PONTO_FUNCIONARIO", funcionario_nome: "maria", ponto_tipo: "entrada", horario: "08:00" } },
-  { phrase: "cadastrar funcionário Pedro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", noMissing: true } },
-  { phrase: "cria funcionário Maria 83911112222", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", telefone: "5583911112222", noMissing: true } },
-  { phrase: "adicionar funcionário Ana WhatsApp +55 (83) 98888-7777", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5583988887777", noMissing: true } },
-  { phrase: "cadastrar vaqueiro José 83922223333", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "José", telefone: "5583922223333", noMissing: true } },
-  { phrase: "83996732761", pending: () => pendingFrom("cadastrar funcionário João"), expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "João", telefone: "5583996732761", noMissing: true } },
+  { phrase: "cadastrar funcionário Pedro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", missing: ["whatsapp", "funcao", "data"] } },
+  { phrase: "cria funcionário Maria 83911112222", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", telefone: "5583911112222", missing: ["funcao", "data"] } },
+  { phrase: "adicionar funcionário Ana WhatsApp +55 (83) 98888-7777", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5583988887777", missing: ["funcao", "data"] } },
+  { phrase: "cadastrar vaqueiro José 83922223333", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "José", telefone: "5583922223333", missing: ["data"] } },
+  { phrase: "83996732761", pending: () => pendingFrom("cadastrar funcionário João"), expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "João", telefone: "5583996732761", missing: ["funcao", "data"] } },
   { phrase: "kg", pending: () => pendingFrom("criar estoque de ração de bezerro"), expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", unidade: "kg", missing: ["quantidade"] } },
   { phrase: "0", pending: () => pendingFrom("criar estoque de ração de bezerro", ["kg"]), expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", unidade: "kg", quantidade: 0, noMissing: true } },
   { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } },
@@ -1300,7 +1308,7 @@ const regressionTests = [
   { phrase: "tira 1 dose de aftosa do estoque", expected: { tipo: "ESTOQUE_SAIDA", item: "Aftosa", quantidade: 1, unidade: "dose", resumoIncludes: "1 dose" } },
   { phrase: "criar estoque de ração de bezerro", actor: "Dono", expected: { tipo: "CRIAR_ITEM_ESTOQUE", item: "ração de bezerro", missing: ["unidade"] } },
   { phrase: "criar estoque de ração de bezerro", actor: "João", expected: { responseIncludes: "não tem permissão" } },
-  { phrase: "cadastrar funcionário Pedro 83999999999", actor: "Dono", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", telefone: "5583999999999", noMissing: true } },
+  { phrase: "cadastrar funcionário Pedro 83999999999", actor: "Dono", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", telefone: "5583999999999", missing: ["funcao", "data"] } },
   { phrase: "cadastrar funcionário Pedro 83999999999", actor: "João", expected: { responseIncludes: "não tem permissão" } }
 ];
 
@@ -1444,7 +1452,7 @@ const financeHumanParserTests = [
   financeParser("receita de leite 2500", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 2500, descricao: "leite" }),
   financeParser("receita 1200 leite", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1200, descricao: "leite" }),
   financeParser("entrada leite 1300", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 1300, descricao: "leite" }),
-  financeParser("paguei salario do Joao 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "salario" }),
+  financeParser("paguei salario do Joao 1500", { tipo: "PAGAMENTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "Joao", valor: 1500, pagamento_tipo: "salario" }),
   financeParser("gastei 360 com vacina", { tipo: "DESPESA", exactTipo: true, valor: 360, descricao: "vacina" }),
   financeParser("saida 250 veterinario", { tipo: "DESPESA", exactTipo: true, valor: 250, descricao: "veterinario" }),
   financeParser("paguei energia 400", { tipo: "DESPESA", exactTipo: true, valor: 400, descricao: "energia" }),
@@ -1463,7 +1471,7 @@ const financeHumanParserTests = [
   financeParser("gasto racao 300", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
   financeParser("despesa racao 300", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
   financeParser("paguei 300 na racao", { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao" }),
-  financeParser("pagamento funcionario Joao 1500", { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "funcionario" }),
+  financeParser("pagamento funcionario Joao 1500", { tipo: "PAGAMENTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "Joao", valor: 1500, pagamento_tipo: "salario" }),
   financeParser("diaria do vaqueiro 120", { tipo: "DESPESA", exactTipo: true, valor: 120, descricao: "vaqueiro" }),
   financeParser("folha de pagamento 3200", { tipo: "DESPESA", exactTipo: true, valor: 3200, descricao: "folha" }),
   financeParser("recebi 300", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300 }),
@@ -1485,10 +1493,10 @@ const financeHumanParserTests = [
   financeParser("paguei uma conta", { tipo: "DESPESA", exactTipo: true, missing: ["valor"] }),
   financeParser("saida 300", { tipo: "DESPESA", exactTipo: true, valor: 300, missing: ["descricao"] }),
   financeParser("vendi leite", { tipo: "RECEITA_VENDA", exactTipo: true, descricao: "leite", missing: ["valor"] }),
-  financeParser("paguei salario", { tipo: "DESPESA", exactTipo: true, descricao: "salario", missing: ["valor"] }),
+  financeParser("paguei salario", { tipo: "PAGAMENTO_FUNCIONARIO", exactTipo: true, pagamento_tipo: "salario", missing: ["funcionario", "valor"] }),
   { module: "financeiro", phrase: "900", pending: () => pendingFrom("vendi leite"), expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite", noMissing: true } },
   { module: "financeiro", phrase: "300", pending: () => pendingFrom("paguei energia"), expected: { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "energia", noMissing: true } },
-  { module: "financeiro", phrase: "1.500,50", pending: () => pendingFrom("paguei salario do Joao"), expected: { tipo: "DESPESA", exactTipo: true, valor: 1500.5, descricao: "salario", noMissing: true } },
+  { module: "financeiro", phrase: "1.500,50", pending: () => pendingFrom("paguei salario do Joao"), expected: { tipo: "PAGAMENTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "Joao", valor: 1500.5, noMissing: true } },
   { module: "financeiro", phrase: "racao", pending: () => pendingFrom("saida 300"), expected: { tipo: "DESPESA", exactTipo: true, valor: 300, descricao: "racao", noMissing: true } },
   financeParser("vendii leite por 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
   financeParser("vendi leiti por 900", { tipo: "RECEITA_VENDA", exactTipo: true, valor: 900, descricao: "leite" }),
@@ -1611,7 +1619,7 @@ const inventoryHumanParserTests = [
   { phrase: "paguei 300 em 10 sacos de racao", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Racao", quantidade: 10, unidade: "saco", valor: 300, itemFound: true, noMissing: true } },
   { phrase: "gastei 70kg de arroz", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, item: "arroz", quantidade: 70, unidade: "kg" } },
   { phrase: "paguei energia 400", expected: { tipo: "DESPESA", exactTipo: true, valor: 400, descricao: "energia" } },
-  { phrase: "paguei salario do Joao 1500", expected: { tipo: "DESPESA", exactTipo: true, valor: 1500, descricao: "salario" } },
+  { phrase: "paguei salario do Joao 1500", expected: { tipo: "PAGAMENTO_FUNCIONARIO", exactTipo: true, funcionario_nome: "Joao", valor: 1500, pagamento_tipo: "salario" } },
   { phrase: "quanto tenho de arroz?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "arroz", consulta: true, itemUnresolved: true, itemFound: false } },
   { phrase: "tem arroz no estoque?", expected: { tipo: "CONSULTA_ESTOQUE_ITEM", exactTipo: true, item: "arroz", consulta: true, itemUnresolved: true, itemFound: false } },
   { phrase: "comprei 5 doses de aftoza", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, item: "Aftosa", quantidade: 5, unidade: "dose", itemFound: true, noMissing: true } },
@@ -1909,16 +1917,16 @@ const genealogyParserTests = [
 ];
 
 const employeePointPayrollParserTests = [
-  { module: "funcionarios", phrase: "cadastra funcionario Bruno", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
-  { module: "funcionarios", phrase: "cadastra Bruno salario 1500", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", salario_base: 1500, noMissing: true } },
-  { module: "funcionarios", phrase: "cadastra funcionario Ana WhatsApp 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", noMissing: true } },
+  { module: "funcionarios", phrase: "cadastra funcionario Bruno", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", missing: ["whatsapp", "funcao", "data"] } },
+  { module: "funcionarios", phrase: "cadastra Bruno salario 1500", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", salario_base: 1500, missing: ["whatsapp", "funcao", "data"] } },
+  { module: "funcionarios", phrase: "cadastra funcionario Ana WhatsApp 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", missing: ["funcao", "data"] } },
   { module: "funcionarios", phrase: "cadastra Bruno so no WhatsApp", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", tipo_acesso: "bot_only", missing: ["telefone"] } },
-  { module: "funcionarios", phrase: "Bruno trabalha como vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", noMissing: true } },
-  { module: "funcionarios", phrase: "adicionar colaboradora Ana telefone 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", noMissing: true } },
-  { module: "funcionarios", phrase: "criar funcionario Pedro cpf 12345678901 salario 2200 cargo vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", cpf: "12345678901", salario_base: 2200, noMissing: true } },
-  { module: "funcionarios", phrase: "novo funcionario Carlos", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Carlos", noMissing: true } },
-  { module: "funcionarios", phrase: "contratei Maria", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", noMissing: true } },
-  { module: "funcionarios", phrase: "cadastrar funcionario Rafael salario 1900", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Rafael", salario_base: 1900, noMissing: true } },
+  { module: "funcionarios", phrase: "Bruno trabalha como vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Bruno", missing: ["whatsapp", "data"] } },
+  { module: "funcionarios", phrase: "adicionar colaboradora Ana telefone 31999999999", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Ana", telefone: "5531999999999", missing: ["funcao", "data"] } },
+  { module: "funcionarios", phrase: "criar funcionario Pedro cpf 12345678901 salario 2200 cargo vaqueiro", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Pedro", cpf: "12345678901", salario_base: 2200, missing: ["whatsapp", "funcao", "data"] } },
+  { module: "funcionarios", phrase: "novo funcionario Carlos", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Carlos", missing: ["whatsapp", "funcao", "data"] } },
+  { module: "funcionarios", phrase: "contratei Maria", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Maria", missing: ["whatsapp", "funcao", "data"] } },
+  { module: "funcionarios", phrase: "cadastrar funcionario Rafael salario 1900", expected: { tipo: "CRIAR_FUNCIONARIO", funcionario_nome: "Rafael", salario_base: 1900, missing: ["whatsapp", "funcao", "data"] } },
   { module: "funcionarios", phrase: "muda salario do Bruno para 1800", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Bruno", campo_alterado: "salario_base", novo_valor: 1800, noMissing: true } },
   { module: "funcionarios", phrase: "Bruno agora ganha 2000", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Bruno", campo_alterado: "salario_base", novo_valor: 2000, noMissing: true } },
   { module: "funcionarios", phrase: "altera cargo da Ana para gerente", expected: { tipo: "ATUALIZAR_FUNCIONARIO", funcionario_nome: "Ana", campo_alterado: "funcao", novo_valor: "gerente", noMissing: true } },
@@ -1945,11 +1953,11 @@ const employeePointPayrollParserTests = [
   { module: "ponto", phrase: "ponto do mes", expected: { tipo: "CONSULTA_PONTO", consulta: true, noMissing: true } },
   { module: "ponto", phrase: "quem bateu ponto hoje", expected: { tipo: "CONSULTA_PONTO", consulta: true, noMissing: true } },
   { module: "ponto", phrase: "horas do Joao hoje", expected: { tipo: "CONSULTA_PONTO", funcionario_nome: "Joao", consulta: true, noMissing: true } },
-  { module: "folha", phrase: "folha do mes", expected: { tipo: "CONSULTA_FINANCEIRO", noMissing: true } },
-  { module: "folha", phrase: "paguei salario do Joao 1500", expected: { tipo: "DESPESA", valor: 1500, descricao: "salario do Joao", noMissing: true } },
-  { module: "folha", phrase: "pagamento funcionario Bruno 800", expected: { tipo: "DESPESA", valor: 800, descricao: "funcionario Bruno", noMissing: true } },
-  { module: "folha", phrase: "paguei diaria da Ana 120", expected: { tipo: "DESPESA", valor: 120, descricao: "diaria da Ana", noMissing: true } },
-  { module: "folha", phrase: "salario pago Joao 1800", expected: { tipo: "DESPESA", valor: 1800, descricao: "salario pago Joao", noMissing: true } }
+  { module: "folha", phrase: "folha do mes", expected: { tipo: "CONSULTA_FOLHA", noMissing: true } },
+  { module: "folha", phrase: "paguei salario do Joao 1500", expected: { tipo: "PAGAMENTO_FUNCIONARIO", funcionario_nome: "Joao", valor: 1500, pagamento_tipo: "salario", noMissing: true } },
+  { module: "folha", phrase: "pagamento funcionario Bruno 800", expected: { tipo: "PAGAMENTO_FUNCIONARIO", funcionario_nome: "Bruno", valor: 800, pagamento_tipo: "salario", noMissing: true } },
+  { module: "folha", phrase: "paguei diaria da Ana 120", expected: { tipo: "PAGAMENTO_FUNCIONARIO", funcionario_nome: "Ana", valor: 120, pagamento_tipo: "diaria", noMissing: true } },
+  { module: "folha", phrase: "salario pago Joao 1800", expected: { tipo: "PAGAMENTO_FUNCIONARIO", funcionario_nome: "Joao", valor: 1800, pagamento_tipo: "salario", noMissing: true } }
 ];
 
 const botConversationTests = [
@@ -4974,19 +4982,20 @@ const financeFrameworkCases = [
 
 const employeePointPayrollFrameworkCases = [
   {
-    name: "admin cadastra funcionario sem whatsapp e nao cria usuario whatsapp",
+    name: "admin cadastra funcionario pergunta dados obrigatorios antes de salvar",
     module: "funcionarios",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastra funcionario Bruno", "sim"],
+    messages: ["cadastra funcionario Bruno", "31977776666", "vaqueiro", "2", "sim"],
     expected: {
       finalIntent: "CRIAR_FUNCIONARIO",
-      entities: { funcionario_nome: "Bruno" },
+      entities: { funcionario_nome: "Bruno", telefone: "5531977776666", funcao: "vaqueiro" },
+      shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
-      simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.funcionarios],
-      shouldSaveValues: { nome: "Bruno" },
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.funcionarios, BOT_TEST_TABLES.whatsappUsuarios],
+      shouldSaveValues: { nome: "Bruno", contato_whatsapp: "5531977776666" },
       shouldNotWriteBusiness: true
     }
   },
@@ -4994,10 +5003,11 @@ const employeePointPayrollFrameworkCases = [
     name: "admin cadastra funcionario com whatsapp e simula acesso bot",
     module: "funcionarios",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastra funcionario Ana WhatsApp 31999999999", "sim"],
+    messages: ["cadastra funcionario Ana WhatsApp 31999999999", "ordenhadora", "2", "sim"],
     expected: {
       finalIntent: "CRIAR_FUNCIONARIO",
-      entities: { funcionario_nome: "Ana", telefone: "5531999999999" },
+      entities: { funcionario_nome: "Ana", telefone: "5531999999999", funcao: "ordenhadora" },
+      shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
@@ -5010,10 +5020,10 @@ const employeePointPayrollFrameworkCases = [
     name: "cadastro bot only pergunta whatsapp antes de confirmar",
     module: "funcionarios",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastra Bruno so no WhatsApp", "31999999999", "sim"],
+    messages: ["cadastra Bruno so no WhatsApp", "31999999999", "vaqueiro", "2", "sim"],
     expected: {
       finalIntent: "CRIAR_FUNCIONARIO",
-      entities: { funcionario_nome: "Bruno", telefone: "5531999999999", tipo_acesso: "bot_only" },
+      entities: { funcionario_nome: "Bruno", telefone: "5531999999999", tipo_acesso: "bot_only", funcao: "vaqueiro" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
@@ -5181,18 +5191,18 @@ const employeePointPayrollFrameworkCases = [
     }
   },
   {
-    name: "pagamento de salario vira despesa apos confirmacao",
+    name: "pagamento de salario salva folha e despesa apos confirmacao",
     module: "folha",
     phone: BOT_TEST_ADMIN_PHONE,
     messages: ["paguei salario do Joao 1500", "sim"],
     expected: {
-      finalIntent: "DESPESA",
-      entities: { valor: 1500 },
+      finalIntent: "PAGAMENTO_FUNCIONARIO",
+      entities: { funcionario_nome: "Joao", valor: 1500, pagamento_tipo: "salario" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
-      simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.folhaPagamento, BOT_TEST_TABLES.transacoesFinanceiras],
       shouldSaveValues: { tipo: "saida", valor: 1500 },
       shouldNotWriteBusiness: true
     }
@@ -5203,7 +5213,7 @@ const employeePointPayrollFrameworkCases = [
     phone: BOT_TEST_WORKER_PHONE,
     messages: ["folha do mes"],
     expected: {
-      finalIntent: "CONSULTA_FINANCEIRO",
+      finalIntent: "CONSULTA_FOLHA",
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
     }
@@ -7193,6 +7203,33 @@ function simulatedSaveActionsForResult(result, phone) {
       });
     }
     return actions;
+  }
+
+  if (tipo === "PAGAMENTO_FUNCIONARIO") {
+    return [
+      {
+        ...base,
+        table: BOT_TEST_TABLES.folhaPagamento,
+        payload: {
+          fazenda_id: fazendaId,
+          funcionario_nome: dados.funcionario_nome,
+          total_liquido: Number(dados.valor || 0),
+          status: "paga",
+          pagamento_tipo: dados.pagamento_tipo || "salario"
+        }
+      },
+      {
+        ...base,
+        table: BOT_TEST_TABLES.transacoesFinanceiras,
+        payload: {
+          fazenda_id: fazendaId,
+          tipo: "saida",
+          valor: Number(dados.valor || 0),
+          descricao: dados.funcionario_nome || null,
+          origem: "folha_pagamento"
+        }
+      }
+    ];
   }
 
   if (tipo === "ATUALIZAR_FUNCIONARIO") {

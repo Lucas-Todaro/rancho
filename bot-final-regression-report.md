@@ -1,6 +1,6 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-05T16:36:46.464Z
+Gerado em: 2026-06-05T17:10:42.415Z
 
 ## Resumo Geral
 
@@ -18,7 +18,7 @@ Gerado em: 2026-06-05T16:36:46.464Z
 | Producao | 63 | 63 | 0 | 100% |
 | Animais | 36 | 36 | 0 | 100% |
 | Estoque | 206 | 206 | 0 | 100% |
-| Financeiro | 168 | 168 | 0 | 100% |
+| Financeiro | 167 | 167 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
 | Ponto | 19 | 19 | 0 | 100% |
 | Folha/salarios | 8 | 8 | 0 | 100% |

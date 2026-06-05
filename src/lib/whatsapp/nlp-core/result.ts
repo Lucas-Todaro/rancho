@@ -40,6 +40,9 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     if (field === "telefone" && tipo === "CRIAR_FUNCIONARIO" && dados.funcionario_nome) {
       return `Qual é o WhatsApp do funcionário ${dados.funcionario_nome}?Envie com DDD.`;
     }
+    if (field === "valor" && tipo === "PAGAMENTO_FUNCIONARIO" && dados.funcionario_nome) {
+      return `Qual foi o valor pago ao ${dados.funcionario_nome}?`;
+    }
     if (field === "campo_alterado" && tipo === "ATUALIZAR_FUNCIONARIO") {
       return "Qual dado do funcionário deseja alterar?Exemplos: salário, cargo, WhatsApp ou CPF.";
     }
@@ -117,6 +120,12 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
     return `cadastrar funcionário${dados.funcionario_nome ?` ${dados.funcionario_nome}` : ""}${detalhes.length ?` (${detalhes.join(", ")})` : ""}`;
   }
 
+  if (tipo === "PAGAMENTO_FUNCIONARIO") {
+    const type = String(dados.pagamento_tipo || "salario");
+    const period = dados.periodo_pagamento === "mes_anterior" ? "mês anterior" : dados.periodo_pagamento === "hoje" ? "hoje" : "mês atual";
+    return `registrar pagamento de ${type} para ${dados.funcionario_nome || "funcionário"}${hasValue(dados.valor) ?` no valor de ${moneyText(dados.valor)}` : ""} referente ao ${period} e lançar saída financeira`;
+  }
+
   if (tipo === "ATUALIZAR_FUNCIONARIO") {
     const valor = hasValue(dados.novo_valor) ?` para ${dados.campo_alterado === "salario_base" ?moneyText(dados.novo_valor) : dados.novo_valor}` : "";
     return `alterar ${dados.campo_alterado || "dados"} do funcionário ${dados.funcionario_nome || "informado"}${valor}`;
@@ -186,6 +195,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CONSULTA_ESTOQUE_ITEM") return dados.item_nome ?`consultar estoque de ${dados.item_nome}` : "consultar item do estoque";
   if (tipo === "CONSULTA_ESTOQUE_GERAL") return "consultar resumo do estoque";
   if (tipo === "CONSULTA_FUNCIONARIO") return dados.funcionario_nome ?`consultar funcionário ${dados.funcionario_nome}` : "consultar funcionários";
+  if (tipo === "CONSULTA_FOLHA") return dados.funcionario_nome ?`consultar folha de ${dados.funcionario_nome}` : "consultar folha de pagamento";
   if (tipo === "CONSULTA_PONTO") return dados.funcionario_nome ?`consultar ponto de ${dados.funcionario_nome}` : "consultar ponto";
   if (tipo === "ORDEM_SERVICO") return `registrar ordem de serviço: ${dados.descricao || "serviço informado"}`;
   if (tipo === "CONSULTA_REGISTROS_HOJE") return "consultar registros de hoje";
@@ -236,11 +246,15 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (stockMovementIntent && !dados.unidade) missing.push("unidade");
   if (tipo === "ESTOQUE_SAIDA" && dados.venda && !hasValue(dados.valor)) missing.push("valor");
   if (tipo === "CRIAR_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
-  if (tipo === "CRIAR_FUNCIONARIO" && (dados.telefone_obrigatorio || dados.tipo_acesso === "bot_only") && !isValidBotPhone(dados.telefone)) missing.push("telefone");
+  if (tipo === "CRIAR_FUNCIONARIO" && !isValidBotPhone(dados.telefone)) missing.push("telefone");
+  if (tipo === "CRIAR_FUNCIONARIO" && !dados.funcao) missing.push("funcao");
+  if (tipo === "CRIAR_FUNCIONARIO" && !dados.data_admissao) missing.push("data_admissao");
   if (tipo === "ATUALIZAR_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "ATUALIZAR_FUNCIONARIO" && !dados.campo_alterado) missing.push("campo_alterado");
   if (tipo === "ATUALIZAR_FUNCIONARIO" && !hasValue(dados.novo_valor)) missing.push("novo_valor");
   if (["DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO"].includes(tipo) && !dados.funcionario_nome) missing.push("funcionario_nome");
+  if (tipo === "PAGAMENTO_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
+  if (tipo === "PAGAMENTO_FUNCIONARIO" && (!hasValue(dados.valor) || Number(dados.valor) <= 0)) missing.push("valor");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.ponto_tipo) missing.push("ponto_tipo");
   if (tipo === "PONTO_FUNCIONARIO" && !dados.horario && !dados.agora) missing.push("horario");

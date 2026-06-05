@@ -27,6 +27,11 @@ export const questionByField: Record<string, string> = {
   unidade: "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
   funcionario_nome: "Qual funcionário?",
   telefone: "Qual é o WhatsApp do funcionário?Envie com DDD.",
+  funcao: "Qual e a funcao/cargo do funcionario? Exemplo: vaqueiro, gerente, ordenhador.",
+  data_admissao: "Qual e a data de admissao? Envie DD/MM/AAAA ou responda 2 para usar hoje.",
+  pagamento_tipo: "Esse pagamento e salario, diaria, adiantamento, bonus ou outro?",
+  periodo_pagamento: "Esse pagamento e referente a qual periodo? 1 - Mes atual, 2 - Mes anterior, 3 - Informar outro.",
+
   ponto_tipo: "Foi entrada ou saída?",
   horario: "Qual horário? Envie por exemplo: 7:30 ou 17:00.",
   categoria_animal: "Qual é a categoria do animal?Ex: vaca, bezerro ou touro.",

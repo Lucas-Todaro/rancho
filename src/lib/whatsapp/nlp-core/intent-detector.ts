@@ -23,6 +23,9 @@ import {
   extractEmployeeCpf,
   extractEmployeeLooseName,
   extractEmployeeName,
+  extractEmployeePaymentName,
+  extractEmployeePaymentPeriod,
+  extractEmployeePaymentType,
   extractEmployeeRole,
   extractEmployeeSalary,
   extractExplicitTimeReference,
@@ -927,7 +930,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const explicitFinanceValue = hasValue(extractMoneyValue(normalized));
   const financeQueryBlocked = /\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|ponto)\b/.test(normalized) || /\b(?:entrada|saida)\s+(?:do|da)\s+\w+\b/.test(normalized);
-  const enhancedFinanceQuery = !financeQueryBlocked && !explicitFinanceValue && ((
+  const payrollQueryText = /\b(?:ja recebeu|salario .* pago|quanto falta pagar|quem falta pagar|folha de pagamento|folha do mes|quanto deu a folha|quanto .* recebe)\b/i.test(original);
+  const enhancedFinanceQuery = !financeQueryBlocked && !explicitFinanceValue && !payrollQueryText && ((
     /\b(?:como ta|como esta|saldo|resultado|resutado|financeiro|finaceiro|financeirro|caixa|entradas?|saidas?|lucro|relatorio|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha)\b/.test(normalized)
     && /\b(?:financeiro|finaceiro|financeirro|mes|mez|hoje|hj|ontem|semana|caixa|entradas?|saidas?|lucro|resultado|resutado|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha|dia|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized)
   ) || /\bquanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
@@ -936,7 +940,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro|relatorio|relatório|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
     && /\b(?:financeiro|mes|mês|hoje|ontem|semana|caixa|entradas|saidas|saídas|lucro|resultado|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)
   ) || /\bquanto\s+(?:entrou|saiu|vendemos|gastamos)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
-  if (isFinanceQuery) return finalize("CONSULTA_FINANCEIRO", { data_referencia: extractDateReference(normalized) || "mes" }, [], 0.9);
+  if (isFinanceQuery && !payrollQueryText) return finalize("CONSULTA_FINANCEIRO", { data_referencia: extractDateReference(normalized) || "mes" }, [], 0.9);
 
   const employeeName = extractEmployeeLooseName(original, normalized);
   const employeePhone = extractWhatsappPhone(original);
@@ -944,6 +948,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const employeeSalary = extractEmployeeSalary(original, normalized);
   const employeeAccessMode = extractEmployeeAccessMode(original, normalized);
   const employeeRole = extractEmployeeRole(normalized);
+  const employeePaymentName = extractEmployeePaymentName(original, normalized);
+  const employeePaymentType = extractEmployeePaymentType(normalized);
 
   const employeeQuery = !explicitFinanceValue
     && (
@@ -971,6 +977,40 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       data_referencia: extractDateReference(normalized) || (/\bmes|mês\b/.test(normalized) ?"mes" : "hoje"),
       consulta: true
     }, [], 0.86);
+  }
+
+  const employeePayrollQuery = !explicitFinanceValue && (
+    payrollQueryText
+    || (/\b(?:folha|salario|salário)\b/.test(normalized) && /\b(?:pago|recebeu|pagar|falta|mes|mês)\b/.test(normalized) && !/\bpaguei\b/.test(normalized))
+  );
+  if (employeePayrollQuery) {
+    return finalize("CONSULTA_FOLHA", {
+      funcionario_nome: /\b(?:quem falta|folha|quanto deu)\b/.test(normalized) ? undefined : employeePaymentName || employeeName,
+      consulta_folha: /\bquem falta\b/.test(normalized) ? "faltantes" : /\b(?:folha|quanto deu)\b/.test(normalized) ? "resumo" : "funcionario",
+      periodo_pagamento: extractEmployeePaymentPeriod(normalized)
+    }, [], 0.86);
+  }
+
+  const paymentTarget = normalizeRanchoText(employeePaymentName || "");
+  const genericPaymentTarget = /^(?:agua|aluguel|combustivel|conta luz|diesel|energia|frete|luz|racao|rem|remedio|veterinario|vaqueiro|ordenhador|gerente|pagamento)$/.test(paymentTarget);
+  const employeePaymentKeyword = /\b(?:salario|folha|funcionario|funcionaria|colaborador|colaboradora|adiantamento|diaria|pagamento)\b/.test(normalized);
+  const employeePayment = /\b(?:paguei|pagar|pagamento|quitar|quitei|salario pago|adiantamento|diaria)\b/.test(normalized)
+    && (
+      (employeePaymentKeyword && !genericPaymentTarget)
+      || Boolean(employeePaymentName && !genericPaymentTarget && /\bpaguei\s+[A-Z?-?]/.test(original))
+    )
+    && !/\bpagamento recebido\b/i.test(original)
+    && !hasPhysicalQuantity(original)
+    && !stockItemHintPattern.test(normalized);
+  if (employeePayment) {
+    const dados = {
+      funcionario_nome: employeePaymentName || employeeName,
+      valor: extractMoneyValue(normalized),
+      pagamento_tipo: employeePaymentType,
+      periodo_pagamento: extractEmployeePaymentPeriod(normalized),
+      data_referencia: extractDateReference(normalized) || "hoje"
+    };
+    return finalize("PAGAMENTO_FUNCIONARIO", dados, buildMissing("PAGAMENTO_FUNCIONARIO", dados), 0.88);
   }
 
   const employeeDelete = /\b(?:exclui|excluir|apaga|apagar|remove|remover|deleta|deletar)\b/.test(normalized)

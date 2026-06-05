@@ -74,7 +74,7 @@ export function extractWhatsappPhone(original: string) {
     .map((match) => normalizeBotPhone(match))
     .filter((phone) => phone.length >= 12);
 
-  return phones.find(isValidBotPhone) || phones[0];
+  return phones.find(isValidBotPhone);
 }
 
 export function removeWhatsappPhone(original: string) {
@@ -725,6 +725,36 @@ export function extractEmployeeSalary(original: string, normalized: string) {
     return undefined;
   }
   return extractMoneyValue(normalized);
+}
+
+export function extractEmployeePaymentType(normalized: string) {
+  if (/\b(?:adiantamento|adiantar|adiantado)\b/.test(normalized)) return "adiantamento";
+  if (/\b(?:diaria|diarias)\b/.test(normalized)) return "diaria";
+  if (/\b(?:bonus|bonificacao|premio)\b/.test(normalized)) return "bonus";
+  if (/\b(?:salario|salarial|folha)\b/.test(normalized)) return "salario";
+  return "salario";
+}
+
+export function extractEmployeePaymentPeriod(normalized: string) {
+  if (/\b(?:mes anterior|mês anterior|mes passado|mês passado)\b/.test(normalized)) return "mes_anterior";
+  if (/\b(?:este mes|esse mes|neste mes|mês atual|mes atual)\b/.test(normalized)) return "mes_atual";
+  if (/\b(?:semana)\b/.test(normalized)) return "semana";
+  if (/\b(?:hoje|diaria)\b/.test(normalized)) return "hoje";
+  return "mes_atual";
+}
+
+export function extractEmployeePaymentName(original: string, normalized: string) {
+  const patterns = [
+    /\b(?:salario|salário)\s+pago\s+([a-zA-ZÀ-ÿ\s]+?)(?:\s+\d|\s+por|\s+referente|$)/i,
+    /\b(?:salario|salário|adiantamento|diaria|diária|bonus|bônus)\s+(?:do|da|de|para|pra|pro)\s+([a-zA-ZÀ-ÿ\s]+?)(?:\s+\d|\s+por|\s+referente|$)/i,
+    /\bpaguei\s+(?:o\s+)?(?:salario|salário|adiantamento|diaria|diária)?\s*(?:do|da|de|para|pra|pro)?\s*([a-zA-ZÀ-ÿ\s]+?)(?:\s+\d|\s+por|\s+referente|$)/i,
+    /\b(?:para|pra|pro)\s+([a-zA-ZÀ-ÿ\s]+?)(?:\s+\d|\s+por|\s+referente|$)/i
+  ];
+  for (const pattern of patterns) {
+    const candidate = cleanEmployeeName(original.match(pattern)?.[1]);
+    if (candidate && !/^(?:salario|adiantamento|diaria|funcionario)$/.test(normalizeRanchoText(candidate))) return candidate;
+  }
+  return extractEmployeeName(original, normalized) || extractEmployeeLooseName(original, normalized);
 }
 
 export function extractPointType(text: string) {

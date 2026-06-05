@@ -19,6 +19,8 @@ import {
   extractEmployeeAccessMode,
   extractEmployeeCpf,
   extractEmployeeName,
+  extractEmployeePaymentPeriod,
+  extractEmployeePaymentType,
   extractEmployeeSalary,
   extractFinanceDescription,
   extractLiters,
@@ -78,6 +80,10 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "descricao" && original) dados.descricao = original;
     if (expectedField === "funcionario_nome" && original) dados.funcionario_nome = extractEmployeeCreationName(original) || original;
     if (expectedField === "telefone" && contextualPhone) dados.telefone = contextualPhone;
+    if (expectedField === "funcao" && original) dados.funcao = original;
+    if (expectedField === "data_admissao" && original) dados.data_admissao = normalized === "2" ? new Date().toISOString().slice(0, 10) : extractDateReference(normalized) || original;
+    if (expectedField === "pagamento_tipo" && original) dados.pagamento_tipo = extractEmployeePaymentType(normalized);
+    if (expectedField === "periodo_pagamento" && original) dados.periodo_pagamento = normalized === "1" ? "mes_atual" : normalized === "2" ? "mes_anterior" : extractEmployeePaymentPeriod(normalized);
     if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);
     if (expectedField === "horario") dados.horario = extractPointTime(normalized) || original;
     if (expectedField === "campo_alterado" && original) {
@@ -165,6 +171,12 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     dados.telefone_obrigatorio = true;
   }
   if (phone && current.tipo === "CRIAR_FUNCIONARIO" && (!dados.telefone || expectedField === "telefone" || isCorrection)) dados.telefone = phone;
+  if (current.tipo === "PAGAMENTO_FUNCIONARIO") {
+    if (employeeName && (!dados.funcionario_nome || expectedField === "funcionario_nome" || isCorrection)) dados.funcionario_nome = employeeName;
+    if (value !== undefined && (!hasValue(dados.valor) || expectedField === "valor" || isCorrection)) dados.valor = value;
+    if (!dados.pagamento_tipo || expectedField === "pagamento_tipo" || isCorrection) dados.pagamento_tipo = extractEmployeePaymentType(normalized);
+    if (!dados.periodo_pagamento || expectedField === "periodo_pagamento" || isCorrection) dados.periodo_pagamento = extractEmployeePaymentPeriod(normalized);
+  }
   if (current.tipo === "ATUALIZAR_FUNCIONARIO") {
     if (employeeName && (!dados.funcionario_nome || expectedField === "funcionario_nome" || isCorrection)) dados.funcionario_nome = employeeName;
     if (phone && (!dados.novo_valor || expectedField === "novo_valor" || isCorrection)) {

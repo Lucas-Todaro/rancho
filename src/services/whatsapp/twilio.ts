@@ -117,6 +117,7 @@ const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_ESTOQUE_ITEM",
   "CONSULTA_ESTOQUE_GERAL",
   "CONSULTA_FUNCIONARIO",
+  "CONSULTA_FOLHA",
   "CONSULTA_PONTO",
   "CONSULTA_ANIMAL",
   "CONSULTA_GENEALOGIA",
@@ -137,7 +138,8 @@ const EMPLOYEE_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CRIAR_FUNCIONARIO",
   "ATUALIZAR_FUNCIONARIO",
   "DESLIGAR_FUNCIONARIO",
-  "EXCLUIR_FUNCIONARIO"
+  "EXCLUIR_FUNCIONARIO",
+  "PAGAMENTO_FUNCIONARIO"
 ]);
 const GENEALOGY_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "ATUALIZACAO_GENEALOGIA"
@@ -162,6 +164,7 @@ const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.estoqueItens]: new Set(["fazenda_id", "nome", "categoria", "unidade_medida", "quantidade_atual", "quantidade_minima", "valor_unitario", "fornecedor", "ativo", "created_by"]),
   [TABLES.estoqueMovimentacoes]: new Set(["fazenda_id", "item_id", "tipo", "quantidade", "valor_unitario", "motivo", "responsavel_usuario_id", "origem", "source_type", "source_id", "producao_id"]),
   [TABLES.funcionarios]: new Set(["fazenda_id", "nome", "funcao", "cpf", "contato_whatsapp", "salario_base", "data_admissao", "carga_horaria_mensal", "valor_hora_extra", "ativo", "tipo_acesso", "papel_sistema"]),
+  [TABLES.folhaPagamento]: new Set(["fazenda_id", "funcionario_id", "competencia", "salario_base", "horas_extras", "valor_horas_extras", "descontos", "adiantamentos", "total_liquido", "status", "pago_em"]),
   [TABLES.whatsappUsuarios]: new Set(["fazenda_id", "telefone_e164", "funcionario_id", "usuario_id", "nome_exibicao", "ativo", "papel", "papel_bot"]),
   [TABLES.registrosPonto]: new Set(["fazenda_id", "funcionario_id", "tipo", "registrado_em", "observacao", "origem", "created_by"])
 };
@@ -192,6 +195,16 @@ function dateOnly(date = new Date()) {
 
 function dateOnlyFromReference(reference?: string) {
   return dateOnly(dateFromReference(reference));
+}
+
+function monthStartFromPaymentPeriod(period?: string) {
+  const date = new Date();
+  if (period === "mes_anterior") date.setMonth(date.getMonth() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function monthKeyFromDate(value: unknown) {
+  return String(value || "").slice(0, 7);
 }
 
 function isoFromReference(reference?: string, time?: string) {
@@ -566,6 +579,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     ATUALIZAR_FUNCIONARIO: "atualização de funcionário",
     DESLIGAR_FUNCIONARIO: "desligamento de funcionário",
     EXCLUIR_FUNCIONARIO: "exclusão de funcionário",
+    PAGAMENTO_FUNCIONARIO: "pagamento de funcionário",
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
     ATUALIZACAO_ANIMAL: "atualização de animal",
@@ -583,6 +597,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     CONSULTA_ESTOQUE_ITEM: "consulta de estoque",
     CONSULTA_ESTOQUE_GERAL: "consulta de estoque",
     CONSULTA_FUNCIONARIO: "consulta de funcionário",
+    CONSULTA_FOLHA: "consulta de folha",
     CONSULTA_PONTO: "consulta de ponto",
     CONSULTA_REGISTROS_HOJE: "consulta de registros",
     ORDEM_SERVICO: "ordem de serviço",
@@ -826,6 +841,7 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   const dados = pending.dados || {};
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
   if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
+  if (pending.tipo === "PAGAMENTO_FUNCIONARIO" && invalidPositiveNumber(dados.valor)) return "Informe um valor de pagamento válido antes de salvar.";
   if ((pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") && invalidPositiveNumber(dados.quantidade)) return "Informe uma quantidade de estoque válida antes de salvar.";
   if ((pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") && dados.valor !== undefined && dados.valor !== null && dados.valor !== "" && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
   if ((pending.tipo === "ESTOQUE_CADASTRO" || pending.tipo === "CRIAR_ITEM_ESTOQUE") && invalidNonNegativeNumber(dados.quantidade || 0)) return "Informe uma quantidade inicial válida antes de salvar.";
@@ -2236,8 +2252,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     const phone = normalizeWhatsappNumber(dados.telefone);
-    const requiresPhone = Boolean(dados.telefone_obrigatorio || dados.tipo_acesso === "bot_only");
-    if (requiresPhone && !isValidBotPhone(phone)) {
+    if (!isValidBotPhone(phone)) {
       return {
         response: "Informe um WhatsApp válido para o funcionário.",
         nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { telefone: undefined }) } }
@@ -2246,22 +2261,31 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 
     const { data: employees, error: employeesError } = await supabase
       .from(TABLES.funcionarios)
-      .select("id,nome,contato_whatsapp,ativo,deleted_at")
+      .select("id,nome,cpf,contato_whatsapp,ativo,deleted_at")
       .eq("fazenda_id", owner.fazenda_id)
       .limit(2000);
     if (employeesError) throw new Error(employeesError.message);
 
-    if (phone) {
-      const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
-        row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
+    const duplicateEmployee = ((employees || []) as AnyRecord[]).find((row) => (
+      row.ativo !== false && !row.deleted_at && whatsappNumbersMatch(phone, String(row.contato_whatsapp || ""))
+    ));
+    if (duplicateEmployee) {
+      return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
+    }
+
+    const cpf = String(dados.cpf || "").replace(/\D/g, "");
+    if (cpf && cpf.length !== 11) {
+      return { response: "Informe um CPF válido para o funcionário ou responda 2 para deixar sem CPF." };
+    }
+    if (cpf) {
+      const duplicateCpf = ((employees || []) as AnyRecord[]).find((row) => (
+        row.ativo !== false && !row.deleted_at && String(row.cpf || "").replace(/\D/g, "") === cpf
       ));
-      if (duplicateEmployee) {
-        return { response: `Não cadastrei. O WhatsApp ${formatWhatsappForBot(phone)} já está vinculado ao funcionário ${duplicateEmployee.nome}.` };
-      }
+      if (duplicateCpf) return { response: `Não cadastrei. O CPF informado já está vinculado ao funcionário ${duplicateCpf.nome}.` };
     }
 
     let whatsappRows: AnyRecord[] = [];
-    if (phone) {
+    {
       const { data, error } = await supabase
         .from(TABLES.whatsappUsuarios)
         .select("id,telefone_e164,funcionario_id,ativo,nome_exibicao")
@@ -2282,10 +2306,10 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       fazenda_id: owner.fazenda_id,
       nome: dados.funcionario_nome,
       funcao: dados.funcao || "Funcionário",
-      cpf: dados.cpf || null,
-      contato_whatsapp: phone || null,
+      cpf: cpf || null,
+      contato_whatsapp: phone,
       salario_base: Number(dados.salario_base || 0),
-      data_admissao: dateOnly(),
+      data_admissao: String(dados.data_admissao || dateOnly()).slice(0, 10),
       carga_horaria_mensal: 220,
       valor_hora_extra: 0,
       tipo_acesso: dados.tipo_acesso || "bot_only",
@@ -2294,7 +2318,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     });
 
     const savedTables: string[] = [TABLES.funcionarios];
-    if (phone) {
+    {
       const reusableWhatsapp = whatsappRows.find((row) => (
         whatsappNumbersMatch(phone, String(row.telefone_e164 || "")) && (row.ativo === false || !row.funcionario_id)
       ));
@@ -2321,8 +2345,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       savedTables.push(TABLES.whatsappUsuarios);
     }
 
-    const phoneText = phone ?formatWhatsappForBot(phone) : "sem WhatsApp vinculado";
-    return realSaveResult(`Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${phoneText}.`, savedTables);
+    return realSaveResult(`Pronto, funcionário cadastrado com sucesso.\n${dados.funcionario_nome}: ${formatWhatsappForBot(phone)}.`, savedTables);
   }
 
   if (pending.tipo === "ATUALIZAR_FUNCIONARIO") {
@@ -2505,6 +2528,103 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 
     const action = pending.tipo === "EXCLUIR_FUNCIONARIO" ?"excluído" : "desligado";
     return realSaveResult(`Pronto, funcionário ${action} com sucesso.\n${found.row.nome}.`, [TABLES.funcionarios, TABLES.whatsappUsuarios]);
+  }
+
+  if (pending.tipo === "PAGAMENTO_FUNCIONARIO") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para registrar pagamento de funcionários pelo bot. Peça para um administrador fazer esse lançamento." };
+    }
+
+    const found = await findEmployee(supabase, owner, String(dados.funcionario_nome || ""));
+    if (!found) {
+      return {
+        response: `Não encontrei o funcionário "${dados.funcionario_nome || ""}". Qual é o nome correto ou WhatsApp?`,
+        nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { funcionario_nome: undefined }) } }
+      };
+    }
+    if (!found.exact) {
+      const nextPending = pendingWithData(pending, { funcionario_nome: found.row.nome });
+      return {
+        response: `Encontrei um funcionário parecido: ${found.row.nome}. Quer usar esse funcionário?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const paymentType = String(dados.pagamento_tipo || "salario");
+    const value = Number(dados.valor || 0);
+    const competencia = monthStartFromPaymentPeriod(String(dados.periodo_pagamento || "mes_atual"));
+    const paidAt = dateOnlyFromReference(dados.data_referencia);
+
+    const { data: existingPayroll, error: payrollLookupError } = await supabase
+      .from(TABLES.folhaPagamento)
+      .select("id,funcionario_id,competencia,salario_base,horas_extras,valor_horas_extras,descontos,adiantamentos,total_liquido,status,pago_em")
+      .eq("fazenda_id", owner.fazenda_id)
+      .eq("funcionario_id", found.row.id)
+      .gte("competencia", competencia)
+      .lt("competencia", monthRange(monthKeyFromDate(competencia)).end.slice(0, 10))
+      .maybeSingle();
+    if (payrollLookupError) throw new Error(payrollLookupError.message);
+
+    if (existingPayroll?.status === "paga" && paymentType === "salario" && !dados.confirmar_pagamento_duplicado) {
+      const nextPending = pendingWithData(pending, { confirmar_pagamento_duplicado: true, funcionario_nome: found.row.nome });
+      return {
+        response: `Já existe pagamento registrado para ${found.row.nome} neste período. Deseja registrar outro pagamento mesmo assim?\n1 - Confirmar\n2 - Corrigir`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+      };
+    }
+
+    const base = Number(existingPayroll?.salario_base ?? found.row.salario_base ?? 0);
+    const currentExtra = Number(existingPayroll?.valor_horas_extras ?? 0);
+    const currentDiscounts = Number(existingPayroll?.descontos ?? 0);
+    const currentAdvance = Number(existingPayroll?.adiantamentos ?? 0);
+    const payrollPayload = {
+      fazenda_id: owner.fazenda_id,
+      funcionario_id: found.row.id,
+      competencia,
+      salario_base: paymentType === "salario" ? value : base,
+      horas_extras: Number(existingPayroll?.horas_extras ?? 0),
+      valor_horas_extras: paymentType === "bonus" || paymentType === "diaria" ? currentExtra + value : currentExtra,
+      descontos: currentDiscounts,
+      adiantamentos: paymentType === "adiantamento" ? currentAdvance + value : currentAdvance,
+      total_liquido: paymentType === "adiantamento"
+        ? Math.max(0, base + currentExtra - currentDiscounts - (currentAdvance + value))
+        : paymentType === "salario" ? value : base + currentExtra + value - currentDiscounts - currentAdvance,
+      status: paymentType === "salario" ? "paga" : String(existingPayroll?.status || "rascunho"),
+      pago_em: paymentType === "salario" ? paidAt : existingPayroll?.pago_em || null
+    };
+
+    let payrollRecord: AnyRecord;
+    if (existingPayroll?.id) {
+      const { data, error } = await supabase
+        .from(TABLES.folhaPagamento)
+        .update(safeBotPayload(TABLES.folhaPagamento, payrollPayload))
+        .eq("id", existingPayroll.id)
+        .eq("fazenda_id", owner.fazenda_id)
+        .select("*")
+        .single();
+      if (error) throw new Error(error.message);
+      payrollRecord = data || { ...existingPayroll, ...payrollPayload };
+      await logAudit(supabase, owner, TABLES.folhaPagamento, "update", payrollRecord);
+    } else {
+      payrollRecord = await insertRealRecord(supabase, owner, TABLES.folhaPagamento, payrollPayload);
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+      fazenda_id: owner.fazenda_id,
+      tipo: "saida",
+      data_transacao: paidAt,
+      valor: value,
+      categoria: "Folha de pagamento",
+      descricao: `Pagamento de ${paymentType} - ${found.row.nome}`,
+      metodo_pagamento: "whatsapp",
+      origem: `folha_pagamento:${payrollRecord.id || found.row.id}`,
+      created_by: owner.usuario_id || null
+    });
+
+    return realSaveResult(
+      `Pronto, pagamento salvo com sucesso.\n${found.row.nome}: ${formatMoney(value)} (${paymentType}). Folha e financeiro atualizados.`,
+      [TABLES.folhaPagamento, TABLES.transacoesFinanceiras]
+    );
   }
 
   if (pending.tipo === "PONTO_FUNCIONARIO") {
@@ -3581,6 +3701,61 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     if (error) throw new Error(error.message);
     const active = (data || []).filter((row) => row.ativo !== false && !row.deleted_at).length;
     return `Funcionários ativos: ${active}.`;
+  }
+
+  if (parsed.tipo === "CONSULTA_FOLHA") {
+    const consultaFolha = String(parsed.dados.consulta_folha || "");
+    const isGeneral = ["geral", "faltantes", "resumo"].includes(consultaFolha) || !parsed.dados.funcionario_nome;
+    if (isGeneral && !isBotAdmin(owner)) return "Você não tem permissão para consultar folha geral pelo WhatsApp.";
+
+    const competencia = monthStartFromPaymentPeriod(String(parsed.dados.periodo_pagamento || "mes_atual"));
+
+    if (parsed.dados.funcionario_nome) {
+      if (!isBotAdmin(owner)) return "Você não tem permissão para consultar folha de funcionários pelo WhatsApp.";
+      const found = await findEmployee(supabase, owner, String(parsed.dados.funcionario_nome));
+      if (!found?.row) return `Não encontrei o funcionário "${parsed.dados.funcionario_nome}".`;
+
+      const { data, error } = await supabase
+        .from(TABLES.folhaPagamento)
+        .select("id,total_liquido,salario_base,adiantamentos,status,pago_em,competencia")
+        .eq("fazenda_id", owner.fazenda_id)
+        .eq("funcionario_id", found.row.id)
+        .gte("competencia", competencia)
+        .lt("competencia", monthRange(monthKeyFromDate(competencia)).end.slice(0, 10))
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return `${found.row.nome} ainda não tem pagamento registrado este mês. Salário-base previsto: ${formatMoney(found.row.salario_base)}.`;
+      const total = Number(data.total_liquido ?? data.salario_base ?? 0);
+      return `${found.row.nome} já tem folha este mês: ${formatMoney(total)}. Status: ${data.status || "rascunho"}${data.pago_em ?` em ${String(data.pago_em).slice(0, 10)}` : ""}.`;
+    }
+
+    const { data: employees, error: employeesError } = await supabase
+      .from(TABLES.funcionarios)
+      .select("id,nome,salario_base,ativo,deleted_at")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(2000);
+    if (employeesError) throw new Error(employeesError.message);
+    const activeEmployees = ((employees || []) as AnyRecord[]).filter((row) => row.ativo !== false && !row.deleted_at);
+
+    const { data: payrolls, error: payrollError } = await supabase
+      .from(TABLES.folhaPagamento)
+      .select("funcionario_id,total_liquido,salario_base,status,competencia")
+      .eq("fazenda_id", owner.fazenda_id)
+      .gte("competencia", competencia)
+      .lt("competencia", monthRange(monthKeyFromDate(competencia)).end.slice(0, 10))
+      .limit(2000);
+    if (payrollError) throw new Error(payrollError.message);
+
+    const paid = new Set(((payrolls || []) as AnyRecord[]).filter((row) => row.status === "paga").map((row) => String(row.funcionario_id)));
+    if (consultaFolha === "faltantes") {
+      const missing = activeEmployees.filter((row) => !paid.has(String(row.id))).slice(0, 20);
+      if (!missing.length) return "Todos os funcionários ativos têm pagamento registrado este mês.";
+      return `Funcionários ainda sem pagamento no mês:\n${missing.map((row, index) => `${index + 1}. ${row.nome}`).join("\n")}`;
+    }
+
+    const paidTotal = ((payrolls || []) as AnyRecord[]).reduce((sum, row) => sum + Number(row.total_liquido ?? row.salario_base ?? 0), 0);
+    const expectedTotal = activeEmployees.reduce((sum, row) => sum + Number(row.salario_base || 0), 0);
+    return `Folha do mês: ${formatMoney(paidTotal)} pagos de ${formatMoney(expectedTotal)} previstos.`;
   }
 
   if (parsed.tipo === "CONSULTA_PONTO") {
