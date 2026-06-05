@@ -70,9 +70,6 @@ const pagedModuleTables = new Set<string>([
 const moduleExtraColumns: Record<string, string[]> = {
   [TABLES.animais]: [
     "sexo",
-    "sex",
-    "genero",
-    "gender",
     "fase",
     "status",
     "lote_id",

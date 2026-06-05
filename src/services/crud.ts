@@ -142,6 +142,27 @@ function secondaryOrderBy(tableName: string, orderBy: string) {
   return tableName === TABLES.transacoesFinanceiras && orderBy === "data_transacao" ? "created_at" : null;
 }
 
+function missingSelectColumn(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+  return message.match(/Could not find the '([^']+)' column/i)?.[1]
+    || message.match(/column\s+["']?(?:\w+\.)?([^"'\s]+)["']?\s+does not exist/i)?.[1]
+    || null;
+}
+
+function selectWithoutColumn(select: string, column: string) {
+  if (!select || select === "*") return select;
+  const normalizedColumn = column.toLowerCase();
+  const columns = select
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const nextColumns = columns.filter((item) => {
+    const plainName = item.split(":").pop()?.split(".").pop()?.trim().toLowerCase();
+    return plainName !== normalizedColumn;
+  });
+  return nextColumns.length ? nextColumns.join(",") : select;
+}
+
 function compareValues(left: unknown, right: unknown, ascending: boolean) {
   if (left === right) return 0;
   return (String(left ?? "") > String(right ?? "") ? 1 : -1) * (ascending ? 1 : -1);
@@ -204,48 +225,67 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
     return paginated;
   }
 
-  const secondary = secondaryOrderBy(tableName, orderBy);
-  let query = supabaseBrowser
-    .from(tableName)
-    .select(select)
-    .order(orderBy, { ascending });
-  if (secondary) query = query.order(secondary, { ascending });
+  const client = supabaseBrowser;
 
-  if (fazendaId && FARM_SCOPED_TABLES.has(tableName)) {
-    query = query.eq("fazenda_id", fazendaId);
-  }
+  const buildQuery = (selectColumns: string) => {
+    const secondary = secondaryOrderBy(tableName, orderBy);
+    let query = client
+      .from(tableName)
+      .select(selectColumns)
+      .order(orderBy, { ascending });
+    if (secondary) query = query.order(secondary, { ascending });
 
-  filters.forEach((filter) => {
-    if (filter.value === undefined) return;
-    const operator = filter.operator || "eq";
-    if (filter.value === null) {
-      query = query.is(filter.column, null);
-      return;
+    if (fazendaId && FARM_SCOPED_TABLES.has(tableName)) {
+      query = query.eq("fazenda_id", fazendaId);
     }
-    if (operator === "gte") query = query.gte(filter.column, filter.value);
-    else if (operator === "lte") query = query.lte(filter.column, filter.value);
-    else if (operator === "gt") query = query.gt(filter.column, filter.value);
-    else if (operator === "lt") query = query.lt(filter.column, filter.value);
-    else query = query.eq(filter.column, filter.value);
-  });
 
-  if (options.limit && options.limit > 0) {
-    const offset = Math.max(0, options.offset || 0);
-    query = options.offset !== undefined
-      ? query.range(offset, offset + options.limit - 1)
-      : query.limit(options.limit);
+    filters.forEach((filter) => {
+      if (filter.value === undefined) return;
+      const operator = filter.operator || "eq";
+      if (filter.value === null) {
+        query = query.is(filter.column, null);
+        return;
+      }
+      if (operator === "gte") query = query.gte(filter.column, filter.value);
+      else if (operator === "lte") query = query.lte(filter.column, filter.value);
+      else if (operator === "gt") query = query.gt(filter.column, filter.value);
+      else if (operator === "lt") query = query.lt(filter.column, filter.value);
+      else query = query.eq(filter.column, filter.value);
+    });
+
+    if (options.limit && options.limit > 0) {
+      const offset = Math.max(0, options.offset || 0);
+      query = options.offset !== undefined
+        ? query.range(offset, offset + options.limit - 1)
+        : query.limit(options.limit);
+    }
+
+    return query;
+  };
+
+  let currentSelect = select;
+  let data: AnyRecord[] | null = null;
+  let error: unknown = null;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await buildQuery(currentSelect);
+    data = (result.data || null) as AnyRecord[] | null;
+    error = result.error;
+    if (!error) break;
+
+    const missingColumn = missingSelectColumn(error);
+    const nextSelect = missingColumn ? selectWithoutColumn(currentSelect, missingColumn) : currentSelect;
+    if (!missingColumn || nextSelect === currentSelect) break;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[Rancho] Coluna ${missingColumn} ausente em ${tableName}. Repetindo leitura sem essa coluna.`);
+    }
+    currentSelect = nextSelect;
   }
-
-  const { data, error } = await query;
 
   if (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[Rancho] Falha ao ler ${tableName}. Usando dados locais.`);
-    }
-    const rows = mockData[tableName] || [];
-    const fallbackRows = paginateLocal(sortLocal(filterLocalRows(tableName, rows, options), tableName, orderBy, ascending), options);
-    if (cacheKey) writeRecordCache(cacheKey, fallbackRows, options.cacheTtlMs);
-    return fallbackRows;
+    logTechnicalError(`Falha ao ler registros em ${tableName}`, error);
+    throw new Error(getFriendlyErrorMessage(error, "Não foi possível carregar os dados agora."));
   }
 
   const rows = (data || []) as AnyRecord[];

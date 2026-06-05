@@ -68,7 +68,6 @@ const STOCK_ITEMS_SELECT = [
   "id",
   "fazenda_id",
   "nome",
-  "descricao",
   "categoria",
   "unidade_medida",
   "quantidade_atual",
