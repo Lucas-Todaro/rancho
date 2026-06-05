@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import type { Session } from "@supabase/supabase-js";
 import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
 import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
-import { isBrowserSupabaseConfigured } from "@/lib/supabase/browser";
+import { isBrowserSupabaseConfigured, isDemoFallbackAllowed } from "@/lib/supabase/browser";
 import type { DataContext, UsuarioProfile } from "@/lib/types";
 
 type AuthContextValue = {
@@ -138,9 +138,10 @@ async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isBrowserSupabaseConfigured();
+  const demoAllowed = isDemoFallbackAllowed();
   const [loading, setLoading] = useState(configured);
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoProfile);
+  const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoAllowed ? demoProfile : null);
   const [error, setError] = useState("");
   const lastBackgroundRefreshAt = useRef(0);
   const backgroundRefreshRunning = useRef(false);
@@ -150,7 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError("");
 
     if (!configured) {
-      setProfile(demoProfile);
+      setProfile(demoAllowed ? demoProfile : null);
+      if (!demoAllowed) setError("Configuração do Supabase ausente. Entre em contato com o suporte.");
       return;
     }
 
@@ -161,7 +163,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const client = await getSupabaseBrowser();
     if (!client) {
-      setProfile(demoProfile);
+      setProfile(demoAllowed ? demoProfile : null);
+      if (!demoAllowed) setError("Configuração do Supabase ausente. Entre em contato com o suporte.");
       return;
     }
 
@@ -195,7 +198,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function boot() {
       if (!configured) {
         if (mounted) {
-          setProfile(demoProfile);
+          setProfile(demoAllowed ? demoProfile : null);
+          if (!demoAllowed) setError("Configuração do Supabase ausente. Entre em contato com o suporte.");
           setLoading(false);
         }
         return;
@@ -205,7 +209,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       if (!client) {
-        setProfile(demoProfile);
+        setProfile(demoAllowed ? demoProfile : null);
+        if (!demoAllowed) setError("Configuração do Supabase ausente. Entre em contato com o suporte.");
         setLoading(false);
         return;
       }
@@ -284,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configured]);
+  }, [configured, demoAllowed]);
 
   useEffect(() => {
     if (!configured || !session?.user?.id) return;
@@ -408,7 +413,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     profile,
     error,
-    isDemo: !configured,
+    isDemo: !configured && demoAllowed,
     dataContext: {
       fazendaId: profile?.fazenda_id,
       usuarioId: profile?.id,
@@ -418,7 +423,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     reloadProfile: retryProfile
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [configured, error, loading, profile, session]);
+  }), [configured, demoAllowed, error, loading, profile, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

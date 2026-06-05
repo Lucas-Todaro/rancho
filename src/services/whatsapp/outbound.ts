@@ -1,5 +1,6 @@
 import { env, isMetaConfigured, isTwilioConfigured } from "@/lib/env";
 import { normalizeWhatsappNumber } from "@/lib/phone";
+import { safeErrorText } from "@/lib/security";
 import { sendWhatsAppText } from "@/services/whatsapp/meta";
 
 function twilioAddress(value: string) {
@@ -42,7 +43,7 @@ async function sendTwilioWhatsAppText(to: string, body: string) {
       provider: "twilio",
       to: maskPhone(to),
       status: response.status,
-      message: data?.message
+      message: safeErrorText(data?.message)
     });
     throw new Error(data?.message || "Não foi possível enviar pelo Twilio.");
   }
