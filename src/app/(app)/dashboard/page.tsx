@@ -1,9 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Activity, AlertTriangle, Banknote, Droplets, PackageOpen, PawPrint, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { BarChart } from "@/components/ui/BarChart";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -69,6 +69,11 @@ function ChartSkeleton() {
     </div>
   );
 }
+
+const BarChart = dynamic(
+  () => import("@/components/ui/BarChart").then((module) => module.BarChart),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
 
 export default function DashboardPage() {
   const { dataContext, profile } = useAuth();

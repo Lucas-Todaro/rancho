@@ -17,7 +17,7 @@ import {
   Wallet,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DataTable } from "@/components/ui/DataTable";
 import { AnimalCards } from "@/components/modules/AnimalCards";
@@ -183,6 +183,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [visibleLimit, setVisibleLimit] = useState<number | undefined>(() => modulePageSize(config.tableName));
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const deferredSearch = useDeferredValue(search);
 
   const Icon = moduleIcons[config.icon] || Database;
   const showPlaceholders = loading || Boolean(error && !rows.length);
@@ -234,10 +235,14 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   );
 
   const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     if (!term) return rows;
     return searchableRows.filter((item) => item.text.includes(term)).map((item) => item.row);
-  }, [rows, search, searchableRows]);
+  }, [deferredSearch, rows, searchableRows]);
+
+  const denyManage = useCallback(() => setError(PERMISSION_DENIED_MESSAGE), []);
+  const exportFilteredRows = useCallback(() => exportCsv(config.key, filteredRows, config.fields), [config.fields, config.key, filteredRows]);
+  const exportAnimals = useCallback((animals: AnyRecord[]) => exportCsv(config.key, animals, config.fields), [config.fields, config.key]);
 
   async function assertAnimalCanReceiveRecord(values: AnyRecord) {
     const isAnimalRecord = config.tableName === TABLES.ordenhas || config.tableName === TABLES.eventosAnimal;
@@ -505,9 +510,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               relationOptions={relationOptions}
               loading={showPlaceholders}
               onDelete={remove}
-              onEdit={canManage ? openEditor : () => setError(PERMISSION_DENIED_MESSAGE)}
+              onEdit={canManage ? openEditor : denyManage}
               onView={setSelectedAnimal}
-              onExport={(animals) => exportCsv(config.key, animals, config.fields)}
+              onExport={exportAnimals}
               canManage={canManage}
             />
           ) : (
@@ -517,8 +522,8 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               search={search}
               setSearch={setSearch}
               onDelete={remove}
-              onEdit={canManage ? openEditor : () => setError(PERMISSION_DENIED_MESSAGE)}
-              onExport={() => exportCsv(config.key, filteredRows, config.fields)}
+              onEdit={canManage ? openEditor : denyManage}
+              onExport={exportFilteredRows}
               relationOptions={relationOptions}
               loading={showPlaceholders}
               canManage={canManage}

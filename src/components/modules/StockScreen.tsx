@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, PackageOpen, Pencil, Plus, RefreshCw, Scale, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
@@ -20,6 +20,8 @@ type StockAction = {
   item: AnyRecord;
   type: StockMovementType;
 };
+
+const STOCK_RENDER_BATCH_SIZE = 60;
 
 const actionCopy = {
   entrada: {
@@ -239,7 +241,9 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [visibleItemLimit, setVisibleItemLimit] = useState(STOCK_RENDER_BATCH_SIZE);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const deferredSearch = useDeferredValue(search);
 
   const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
@@ -284,11 +288,20 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   );
 
   const filteredItems = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     if (!term) return items;
 
     return searchableItems.filter((item) => item.text.includes(term)).map((item) => item.item);
-  }, [items, search, searchableItems]);
+  }, [deferredSearch, items, searchableItems]);
+
+  const visibleItems = useMemo(
+    () => filteredItems.slice(0, visibleItemLimit),
+    [filteredItems, visibleItemLimit]
+  );
+
+  useEffect(() => {
+    setVisibleItemLimit(STOCK_RENDER_BATCH_SIZE);
+  }, [deferredSearch, items.length]);
 
   const estimatedValue = useMemo(
     () => items.reduce((sum, item) => sum + Number(item.quantidade_atual || 0) * Number(item.valor_unitario || 0), 0),
@@ -430,7 +443,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         </div>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          {showPlaceholders ? Array.from({ length: 4 }).map((_, index) => <StockItemSkeleton key={`stock-skeleton-${index}`} />) : filteredItems.length ? filteredItems.map((item) => {
+          {showPlaceholders ? Array.from({ length: 4 }).map((_, index) => <StockItemSkeleton key={`stock-skeleton-${index}`} />) : filteredItems.length ? visibleItems.map((item) => {
             const current = Number(item.quantidade_atual || 0);
             const minimum = Number(item.quantidade_minima || 0);
             const critical = current <= minimum;
@@ -496,6 +509,13 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
             </div>
           )}
         </div>
+        {!showPlaceholders && filteredItems.length > visibleItemLimit ? (
+          <div className="mt-5 flex justify-center">
+            <button className="btn btn-secondary" type="button" onClick={() => setVisibleItemLimit((current) => current + STOCK_RENDER_BATCH_SIZE)}>
+              Mostrar mais itens
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {action ? <StockActionModal action={action} onClose={() => setAction(null)} onSubmit={submitMovement} busy={busy} /> : null}

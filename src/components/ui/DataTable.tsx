@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownCircle, ArrowUpCircle, Download, Eye, Pencil, Search, Trash2, X } from "lucide-react";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { AnyRecord, ModuleField, RelationOption } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -44,7 +44,7 @@ function renderCell(row: AnyRecord, field: ModuleField, lookups?: Record<string,
   return String(value ?? "-");
 }
 
-export function DataTable({
+export const DataTable = memo(function DataTable({
   rows,
   fields,
   search,
@@ -152,4 +152,4 @@ export function DataTable({
       </div>
     </div>
   );
-}
+});

@@ -24,7 +24,7 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { max-width: 100%; overflow-x: hidden; scroll-behavior: smooth; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
@@ -32,6 +32,8 @@ button:disabled { cursor: not-allowed; }
 body {
   margin: 0;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(47, 133, 90, 0.18), transparent 34rem),
     radial-gradient(circle at bottom right, rgba(22, 101, 52, 0.08), transparent 30rem),
@@ -137,6 +139,22 @@ tbody tr:hover { background: rgba(236, 253, 245, 0.48); }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media (max-width: 767px) {
+  body {
+    background: var(--bg);
+  }
+
+  .glass {
+    backdrop-filter: none;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.055);
+  }
+
+  .btn:hover:not(:disabled),
+  .card-hover:hover {
+    transform: none;
+  }
 }
 
 .print-only { display: none; }

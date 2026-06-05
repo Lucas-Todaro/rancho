@@ -1,13 +1,32 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { FileText, Printer, TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BarChart } from "@/components/ui/BarChart";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { loadDashboardData } from "@/services/dashboard";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { formatStockQuantity } from "@/lib/stock-format";
+
+function ChartSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={`report-chart-skeleton-${index}`} className="grid grid-cols-[5rem_1fr_5rem] items-center gap-3">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-3 w-full rounded-full" />
+          <Skeleton className="h-4 w-14 justify-self-end" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const BarChart = dynamic(
+  () => import("@/components/ui/BarChart").then((module) => module.BarChart),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
 
 export default function RelatoriosPage() {
   const { dataContext, profile } = useAuth();

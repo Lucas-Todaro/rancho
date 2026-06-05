@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Download, MailPlus, MessageCircle, RefreshCw, Search, Users, Wallet, X, Clock3 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -16,9 +17,21 @@ import { formatBrazilianPhone } from "@/lib/input-format";
 import { currentMonth, formatCurrency } from "@/lib/utils";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
-import { EmployeeDetails } from "@/components/modules/employees/EmployeeDetails";
-import { EmployeeForm } from "@/components/modules/employees/EmployeeForm";
-import { InviteEmployeeForm } from "@/components/modules/employees/InviteEmployeeForm";
+
+const EmployeeDetails = dynamic(
+  () => import("@/components/modules/employees/EmployeeDetails").then((module) => module.EmployeeDetails),
+  { ssr: false }
+);
+
+const EmployeeForm = dynamic(
+  () => import("@/components/modules/employees/EmployeeForm").then((module) => module.EmployeeForm),
+  { ssr: false }
+);
+
+const InviteEmployeeForm = dynamic(
+  () => import("@/components/modules/employees/InviteEmployeeForm").then((module) => module.InviteEmployeeForm),
+  { ssr: false }
+);
 
 function monthKey(value: unknown) {
   return String(value || "").slice(0, 7);
@@ -27,6 +40,8 @@ function monthKey(value: unknown) {
 function currentMonthKey() {
   return currentMonth();
 }
+
+const EMPLOYEE_RENDER_BATCH_SIZE = 60;
 
 const EMPLOYEE_LIST_SELECT = [
   "id",
@@ -88,6 +103,8 @@ export function EmployeeScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [visibleEmployeeLimit, setVisibleEmployeeLimit] = useState(EMPLOYEE_RENDER_BATCH_SIZE);
+  const deferredSearch = useDeferredValue(search);
 
   const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
@@ -153,7 +170,7 @@ export function EmployeeScreen() {
   }, [timeEntries]);
 
   const filteredEmployees = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     if (!term) return employees;
     return employees.filter((employee) => [
       employee.nome,
@@ -164,31 +181,49 @@ export function EmployeeScreen() {
       employee.convite_status,
       employee.ativo !== false ? "ativo" : "inativo"
     ].filter(Boolean).join(" ").toLowerCase().includes(term));
-  }, [employees, search]);
+  }, [deferredSearch, employees]);
+
+  const visibleEmployees = useMemo(
+    () => filteredEmployees.slice(0, visibleEmployeeLimit),
+    [filteredEmployees, visibleEmployeeLimit]
+  );
+
+  useEffect(() => {
+    setVisibleEmployeeLimit(EMPLOYEE_RENDER_BATCH_SIZE);
+  }, [deferredSearch, employees.length]);
 
   const month = currentMonthKey();
   const visibleEmployeeIds = useMemo(() => new Set(employees.map((employee) => employee.id)), [employees]);
-  const activeEmployees = employees.filter((employee) => employee.ativo !== false);
-  const monthlyPayroll = activeEmployees.reduce((sum, employee) => {
+  const activeEmployees = useMemo(() => employees.filter((employee) => employee.ativo !== false), [employees]);
+  const monthlyPayroll = useMemo(() => activeEmployees.reduce((sum, employee) => {
     const payroll = payrolls.find((row) => row.funcionario_id === employee.id && monthKey(row.competencia) === month);
     return sum + Number(payroll?.total_liquido ?? employee.salario_base ?? 0);
-  }, 0);
-  const pointsThisMonth = timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length;
+  }, 0), [activeEmployees, month, payrolls]);
+  const pointsThisMonth = useMemo(
+    () => timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length,
+    [month, timeEntries, visibleEmployeeIds]
+  );
   const showPlaceholders = loading || Boolean(error && !employees.length);
   const canInvite = ["dono", "admin", "gerente"].includes(String(profile?.papel || ""));
   const canManage = canManageData(profile);
 
-  function closeForm() {
+  const closeForm = useCallback(() => {
     setShowForm(false);
     setEditing(null);
     setFormAccessMode("bot_only");
-  }
+  }, []);
 
-  function openWhatsAppOnlyForm() {
+  const openWhatsAppOnlyForm = useCallback(() => {
     setEditing(null);
     setFormAccessMode("bot_only");
     setShowForm(true);
-  }
+  }, []);
+
+  const openEmployeeEditor = useCallback((row: AnyRecord) => {
+    setEditing(row);
+    setFormAccessMode(row.tipo_acesso === "sistema_whatsapp" ? "sistema_whatsapp" : row.tipo_acesso === "sistema" ? "sistema" : "bot_only");
+    setShowForm(true);
+  }, []);
 
   async function submitEmployee(values: AnyRecord) {
     setBusy(true);
@@ -229,7 +264,7 @@ export function EmployeeScreen() {
     }
   }
 
-  async function toggleActive(employee: AnyRecord) {
+  const toggleActive = useCallback(async (employee: AnyRecord) => {
     if (!canManage) {
       setError(PERMISSION_DENIED_MESSAGE);
       return;
@@ -257,18 +292,18 @@ export function EmployeeScreen() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [canManage, dataContext, load, session?.access_token]);
 
-  async function softDeleteEmployee(employee: AnyRecord) {
+  const softDeleteEmployee = useCallback(async (employee: AnyRecord) => {
     await updateRecord(TABLES.funcionarios, employee.id, {
       ativo: false,
       deleted_at: new Date().toISOString()
     }, dataContext);
     await deactivateEmployeeWhatsAppUser(employee, dataContext);
     await syncEmployeePanelAccess(employee.id, session?.access_token);
-  }
+  }, [dataContext, session?.access_token]);
 
-  async function removeEmployee(employee: AnyRecord) {
+  const removeEmployee = useCallback(async (employee: AnyRecord) => {
     if (!canManage) {
       setError(PERMISSION_DENIED_MESSAGE);
       return;
@@ -296,7 +331,7 @@ export function EmployeeScreen() {
         }
       }
 
-      if (selected?.id === employee.id) setSelected(null);
+      setSelected((current) => current?.id === employee.id ? null : current);
       notifyDashboardUpdated();
       await load(true);
     } catch (err) {
@@ -309,7 +344,7 @@ export function EmployeeScreen() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [canManage, dataContext, load, payrolls, session?.access_token, softDeleteEmployee, timeEntries]);
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -378,17 +413,13 @@ export function EmployeeScreen() {
         </div>
 
         <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
-          {showPlaceholders ? Array.from({ length: 6 }).map((_, index) => <EmployeeCardSkeleton key={`employee-skeleton-${index}`} />) : filteredEmployees.length ? filteredEmployees.map((employee) => (
+          {showPlaceholders ? Array.from({ length: 6 }).map((_, index) => <EmployeeCardSkeleton key={`employee-skeleton-${index}`} />) : filteredEmployees.length ? visibleEmployees.map((employee) => (
             <EmployeeCard
               key={employee.id}
               employee={employee}
               lastPoint={lastPointByEmployee.get(employee.id)}
               onView={setSelected}
-              onEdit={(row) => {
-                setEditing(row);
-                setFormAccessMode(row.tipo_acesso === "sistema_whatsapp" ? "sistema_whatsapp" : row.tipo_acesso === "sistema" ? "sistema" : "bot_only");
-                setShowForm(true);
-              }}
+              onEdit={openEmployeeEditor}
               onToggleActive={toggleActive}
               onDelete={removeEmployee}
               canManage={canManage}
@@ -399,6 +430,13 @@ export function EmployeeScreen() {
             </div>
           )}
         </div>
+        {!showPlaceholders && filteredEmployees.length > visibleEmployeeLimit ? (
+          <div className="flex justify-center">
+            <button className="btn btn-secondary" type="button" onClick={() => setVisibleEmployeeLimit((current) => current + EMPLOYEE_RENDER_BATCH_SIZE)}>
+              Mostrar mais funcionários
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {showForm ? (

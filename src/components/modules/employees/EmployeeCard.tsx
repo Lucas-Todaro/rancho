@@ -1,6 +1,7 @@
 "use client";
 
 import { Clock3, Eye, Pencil, Power, Trash2, UserRound } from "lucide-react";
+import { memo } from "react";
 import type { AnyRecord } from "@/lib/types";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -33,7 +34,7 @@ export function EmployeeCardSkeleton() {
   );
 }
 
-export function EmployeeCard({
+export const EmployeeCard = memo(function EmployeeCard({
   employee,
   lastPoint,
   onView,
@@ -124,4 +125,4 @@ export function EmployeeCard({
       </div>
     </article>
   );
-}
+});

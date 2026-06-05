@@ -1,7 +1,8 @@
+import { memo, useMemo } from "react";
 import { formatNumber } from "@/lib/utils";
 
-export function BarChart({ data, suffix = "" }: { data: Array<{ label: string; value: number }>; suffix?: string }) {
-  const max = Math.max(...data.map((item) => Math.abs(item.value)), 1);
+export const BarChart = memo(function BarChart({ data, suffix = "" }: { data: Array<{ label: string; value: number }>; suffix?: string }) {
+  const max = useMemo(() => Math.max(...data.map((item) => Math.abs(item.value)), 1), [data]);
 
   if (!data.length) {
     return <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Sem dados para exibir.</div>;
@@ -20,4 +21,4 @@ export function BarChart({ data, suffix = "" }: { data: Array<{ label: string; v
       ))}
     </div>
   );
-}
+});

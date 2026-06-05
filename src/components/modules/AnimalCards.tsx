@@ -1,10 +1,12 @@
 "use client";
 
 import { Download, Eye, PawPrint, Pencil, Search, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getAnimalSexInfo } from "@/lib/animal-sex";
 import type { AnyRecord, RelationOption } from "@/lib/types";
+
+const ANIMAL_RENDER_BATCH_SIZE = 72;
 
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
@@ -117,7 +119,7 @@ function AnimalCardSkeleton() {
   );
 }
 
-export function AnimalCards({
+export const AnimalCards = memo(function AnimalCards({
   rows,
   search,
   setSearch,
@@ -142,6 +144,8 @@ export function AnimalCards({
 }) {
   const [loteFilter, setLoteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(ANIMAL_RENDER_BATCH_SIZE);
+  const deferredSearch = useDeferredValue(search);
 
   const loteLookup = useMemo(
     () => Object.fromEntries((relationOptions.lote_id || []).map((option) => [option.value, option.label])),
@@ -154,7 +158,7 @@ export function AnimalCards({
   }, [rows]);
 
   const filteredAnimals = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
 
     return rows.filter((animal) => {
       if (loteFilter && animal.lote_id !== loteFilter) return false;
@@ -175,7 +179,16 @@ export function AnimalCards({
 
       return text.includes(term);
     });
-  }, [loteFilter, loteLookup, rows, search, statusFilter]);
+  }, [deferredSearch, loteFilter, loteLookup, rows, statusFilter]);
+
+  const visibleAnimals = useMemo(
+    () => filteredAnimals.slice(0, visibleLimit),
+    [filteredAnimals, visibleLimit]
+  );
+
+  useEffect(() => {
+    setVisibleLimit(ANIMAL_RENDER_BATCH_SIZE);
+  }, [deferredSearch, loteFilter, rows.length, statusFilter]);
 
   return (
     <section className="space-y-5">
@@ -227,7 +240,7 @@ export function AnimalCards({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalCardSkeleton key={`animal-skeleton-${index}`} />) : filteredAnimals.length ? filteredAnimals.map((animal) => {
+        {loading ? Array.from({ length: 6 }).map((_, index) => <AnimalCardSkeleton key={`animal-skeleton-${index}`} />) : filteredAnimals.length ? visibleAnimals.map((animal) => {
           const lote = loteLookup[String(animal.lote_id || "")] || "Sem lote";
           const phase = displayLabel(phaseLabels, animal.fase, "Sem fase");
           const category = displayLabel(categoryLabels, animal.categoria, "Animal");
@@ -333,7 +346,14 @@ export function AnimalCards({
           </div>
         )}
       </div>
+      {!loading && filteredAnimals.length > visibleLimit ? (
+        <div className="flex justify-center">
+          <button className="btn btn-secondary" type="button" onClick={() => setVisibleLimit((current) => current + ANIMAL_RENDER_BATCH_SIZE)}>
+            Mostrar mais animais
+          </button>
+        </div>
+      ) : null}
     </section>
   );
-}
+});
 //o
