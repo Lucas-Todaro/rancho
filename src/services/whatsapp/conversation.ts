@@ -61,7 +61,7 @@ async function getSession(phone: string): Promise<WhatsAppSession> {
 
   const { data } = await supabase
     .from(TABLES.whatsappSessoes)
-    .select("*")
+    .select("id,fazenda_id,whatsapp_usuario_id,etapa,dados,updated_at")
     .eq("telefone_e164", normalizedPhone)
     .maybeSingle();
 

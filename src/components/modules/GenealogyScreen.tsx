@@ -20,6 +20,23 @@ const categoryLabels: Record<string, string> = {
   outro: "Outro"
 };
 
+const GENEALOGY_ANIMAL_SELECT = [
+  "id",
+  "fazenda_id",
+  "nome",
+  "brinco",
+  "categoria",
+  "sexo",
+  "sex",
+  "genero",
+  "gender",
+  "raca",
+  "mae_id",
+  "pai_id",
+  "genealogia_observacoes",
+  "created_at"
+].join(",");
+
 function animalLabel(animal?: AnyRecord | null) {
   if (!animal) return "Não informado";
   return animal.nome ? `${animal.nome} (${animal.brinco || "sem brinco"})` : animal.brinco || "Sem brinco";
@@ -337,15 +354,18 @@ export function GenealogyScreen() {
   const [success, setSuccess] = useState("");
   const [draft, setDraft] = useState({ mae_id: "", pai_id: "", genealogia_observacoes: "" });
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const data = await listRecords(TABLES.animais, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
+        select: GENEALOGY_ANIMAL_SELECT,
         orderBy: "brinco",
-        ascending: true
+        ascending: true,
+        cache: true,
+        forceRefresh
       });
       setAnimals(data);
     } catch (err) {
@@ -357,7 +377,7 @@ export function GenealogyScreen() {
 
   useEffect(() => {
     load();
-    return subscribeTable(TABLES.animais, load);
+    return subscribeTable(TABLES.animais, () => { void load(true); });
   }, [load]);
 
   const animalById = useMemo(() => new Map(animals.map((animal) => [String(animal.id), animal])), [animals]);
@@ -453,7 +473,7 @@ export function GenealogyScreen() {
       }, dataContext);
 
       setSuccess("Genealogia salva com sucesso.");
-      await load();
+      await load(true);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível salvar a genealogia."));
     } finally {

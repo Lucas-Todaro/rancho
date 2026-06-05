@@ -8,6 +8,7 @@ export async function syncAnimalPhaseAfterEvent(eventRecord: AnyRecord, context:
   const [animal] = await listRecords(TABLES.animais, {
     fazendaId: context.fazendaId,
     usuarioId: context.usuarioId,
+    select: "id,fase",
     filters: [{ column: "id", value: eventRecord.animal_id }]
   });
 

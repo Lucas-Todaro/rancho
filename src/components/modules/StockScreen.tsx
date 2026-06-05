@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, deleteRecord, deleteRecords, listRecords, updateRecord } from "@/services/crud";
+import { createRecord, deleteRecord, deleteRecords, invalidateRecordsCache, listRecords, updateRecord } from "@/services/crud";
+import { notifyDashboardUpdated } from "@/services/dashboard";
 import { recordStockMovement, type StockMovementType } from "@/services/stock";
 import { TABLES } from "@/lib/tables";
 import { useAuth } from "@/lib/auth-context";
@@ -57,6 +58,34 @@ const movementLabels: Record<string, string> = {
   saida: "saída",
   ajuste: "ajuste"
 };
+
+const STOCK_ITEMS_SELECT = [
+  "id",
+  "fazenda_id",
+  "nome",
+  "descricao",
+  "categoria",
+  "unidade_medida",
+  "quantidade_atual",
+  "quantidade_minima",
+  "valor_unitario",
+  "fornecedor",
+  "ativo",
+  "created_at"
+].join(",");
+
+const STOCK_MOVEMENTS_SELECT = [
+  "id",
+  "item_id",
+  "tipo",
+  "quantidade",
+  "valor_unitario",
+  "motivo",
+  "created_at",
+  "origem",
+  "source_type",
+  "source_id"
+].join(",");
 
 function exportStockCsv(rows: AnyRecord[]) {
   const header = ["Produto", "Categoria", "Unidade", "Quantidade atual", "Quantidade mínima", "Valor unitário", "Fornecedor"];
@@ -212,13 +241,28 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   const [error, setError] = useState("");
   const formRef = useRef<HTMLDivElement | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const [nextItems, nextMovements] = await Promise.all([
-        listRecords(TABLES.estoqueItens, { orderBy: "created_at", fazendaId: dataContext.fazendaId, usuarioId: dataContext.usuarioId }),
-        listRecords(TABLES.estoqueMovimentacoes, { orderBy: "created_at", fazendaId: dataContext.fazendaId, usuarioId: dataContext.usuarioId })
+        listRecords(TABLES.estoqueItens, {
+          orderBy: "created_at",
+          fazendaId: dataContext.fazendaId,
+          usuarioId: dataContext.usuarioId,
+          select: STOCK_ITEMS_SELECT,
+          cache: true,
+          forceRefresh
+        }),
+        listRecords(TABLES.estoqueMovimentacoes, {
+          orderBy: "created_at",
+          fazendaId: dataContext.fazendaId,
+          usuarioId: dataContext.usuarioId,
+          select: STOCK_MOVEMENTS_SELECT,
+          limit: 1000,
+          cache: true,
+          forceRefresh
+        })
       ]);
 
       setItems(nextItems);
@@ -282,7 +326,8 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       } else {
         await createRecord(TABLES.estoqueItens, values, dataContext);
       }
-      await load();
+      notifyDashboardUpdated();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar o item.");
     } finally {
@@ -304,8 +349,11 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         reason: values.reason,
         context: dataContext
       });
+      invalidateRecordsCache(TABLES.estoqueItens, dataContext);
+      invalidateRecordsCache(TABLES.estoqueMovimentacoes, dataContext);
       setAction(null);
-      await load();
+      notifyDashboardUpdated();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível registrar a movimentação.");
     } finally {
@@ -323,7 +371,8 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       await deleteRecords(TABLES.estoqueMovimentacoes, [{ column: "item_id", value: item.id }], dataContext);
       await deleteRecord(TABLES.estoqueItens, item.id, dataContext);
-      await load();
+      notifyDashboardUpdated();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível excluir.");
     } finally {
@@ -345,7 +394,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn btn-secondary" type="button" onClick={() => exportStockCsv(filteredItems)}>Baixar planilha</button>
-          <button className="btn btn-secondary" type="button" onClick={load}>
+          <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
         </div>

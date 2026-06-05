@@ -1,6 +1,6 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-05T18:15:22.773Z
+Gerado em: 2026-06-05T18:53:19.294Z
 
 ## Resumo Geral
 

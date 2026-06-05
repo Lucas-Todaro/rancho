@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
 import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
 import { isBrowserSupabaseConfigured, isDemoFallbackAllowed } from "@/lib/supabase/browser";
+import { clearRecordsCache } from "@/services/crud";
 import type { DataContext, UsuarioProfile } from "@/lib/types";
 
 type AuthContextValue = {
@@ -145,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const lastBackgroundRefreshAt = useRef(0);
   const backgroundRefreshRunning = useRef(false);
+  const cacheScope = useRef("");
 
   async function loadProfile(nextSession?: Session | null, options: { clearOnError?: boolean; silentOnError?: boolean } = {}) {
     const activeSession = nextSession ?? session;
@@ -180,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message = profileResult.error.message || "Não foi possível carregar os dados da fazenda.";
       if (isProfileBlockingError(message)) {
         await client.auth.signOut().catch(() => undefined);
+        clearRecordsCache();
         setSession(null);
         setProfile(null);
         setError(message);
@@ -258,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(nextSession);
 
         if (!nextSession) {
+          clearRecordsCache();
           setProfile(null);
           setError("");
           setLoading(false);
@@ -322,6 +326,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configured, session?.user?.id]);
+
+  useEffect(() => {
+    const nextScope = session?.user?.id && profile?.fazenda_id ? `${session.user.id}:${profile.fazenda_id}` : "";
+    if (cacheScope.current && cacheScope.current !== nextScope) clearRecordsCache();
+    cacheScope.current = nextScope;
+  }, [profile?.fazenda_id, session?.user?.id]);
 
   useEffect(() => {
     if (!configured || !session?.user?.id) return;
@@ -390,10 +400,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     const client = await getSupabaseBrowser();
-    if (!client) return;
+    if (!client) {
+      clearRecordsCache();
+      return;
+    }
 
     const { error: signOutError } = await client.auth.signOut();
     if (signOutError) throw signOutError;
+    clearRecordsCache();
     setSession(null);
     setProfile(null);
     setError("");

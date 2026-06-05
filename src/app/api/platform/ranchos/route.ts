@@ -237,7 +237,7 @@ export async function GET(request: NextRequest) {
 
     const { data: farms, error: farmsError } = await permission.supabase
       .from(TABLES.fazendas)
-      .select("*")
+      .select("id,nome,slug,plano,status,ativa,cidade,estado,created_at,dono_nome,dono_email")
       .order("created_at", { ascending: false });
 
     if (farmsError) throw new Error(farmsError.message);

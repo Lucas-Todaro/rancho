@@ -24,7 +24,7 @@ import { AnimalCards } from "@/components/modules/AnimalCards";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { createRecord, deleteRecord, deleteRecords, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
+import { createRecord, deleteRecord, deleteRecords, invalidateRecordsCache, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
@@ -54,6 +54,84 @@ const moduleIcons: Record<string, LucideIcon> = {
   Clock3,
   Receipt
 };
+
+const MODULE_PAGE_SIZE = 50;
+
+const pagedModuleTables = new Set<string>([
+  TABLES.eventosAnimal,
+  TABLES.ordenhas,
+  TABLES.transacoesFinanceiras,
+  TABLES.registrosPonto,
+  TABLES.folhaPagamento
+]);
+
+const moduleExtraColumns: Record<string, string[]> = {
+  [TABLES.animais]: [
+    "sexo",
+    "sex",
+    "genero",
+    "gender",
+    "fase",
+    "status",
+    "lote_id",
+    "brinco",
+    "nome",
+    "categoria",
+    "raca",
+    "peso",
+    "data_nascimento",
+    "observacoes"
+  ],
+  [TABLES.transacoesFinanceiras]: [
+    "tipo",
+    "valor",
+    "categoria",
+    "descricao",
+    "data_transacao",
+    "created_at",
+    "metodo_pagamento",
+    "origem"
+  ],
+  [TABLES.ordenhas]: ["animal_id", "litros", "turno", "ordenhado_em", "destino", "estoque_item_id", "observacoes"],
+  [TABLES.eventosAnimal]: ["animal_id", "tipo", "data_evento", "descricao", "medicamento", "dose", "custo"],
+  [TABLES.registrosPonto]: ["funcionario_id", "tipo", "registrado_em", "observacao"],
+  [TABLES.folhaPagamento]: [
+    "funcionario_id",
+    "competencia",
+    "salario_base",
+    "horas_extras",
+    "valor_horas_extras",
+    "descontos",
+    "adiantamentos",
+    "total_liquido",
+    "status",
+    "pago_em"
+  ]
+};
+
+function uniqueColumns(columns: Array<string | undefined | null>) {
+  return Array.from(new Set(columns.filter(Boolean) as string[]));
+}
+
+function moduleListSelect(config: ModuleConfig) {
+  const columns = uniqueColumns([
+    "id",
+    "created_at",
+    "fazenda_id",
+    config.primaryColumn,
+    config.descriptionColumn,
+    config.orderBy,
+    ...config.fields.filter((field) => !field.formOnly).map((field) => field.name),
+    ...(config.quickStats || []).flatMap((stat) => [stat.field, stat.compareField]),
+    ...(moduleExtraColumns[config.tableName] || [])
+  ]);
+
+  return columns.join(",");
+}
+
+function modulePageSize(tableName: string) {
+  return pagedModuleTables.has(tableName) ? MODULE_PAGE_SIZE : undefined;
+}
 
 function calcStat(rows: AnyRecord[], stat: NonNullable<ModuleConfig["quickStats"]>[number]) {
   if (stat.mode === "count") return rows.length;
@@ -102,22 +180,35 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState<number | undefined>(() => modulePageSize(config.tableName));
+  const [hasMoreRows, setHasMoreRows] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
 
   const Icon = moduleIcons[config.icon] || Database;
   const showPlaceholders = loading || Boolean(error && !rows.length);
   const canManage = canManageData(profile);
+  const selectColumns = useMemo(() => moduleListSelect(config), [config]);
+  const pageSize = useMemo(() => modulePageSize(config.tableName), [config.tableName]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const relationFields = config.fields.filter((field) => field.type === "relation" && field.relation);
       const [data, relationPairs] = await Promise.all([
-        listRecords(config.tableName, { orderBy: config.orderBy, fazendaId: queryContext.fazendaId, usuarioId: queryContext.usuarioId }),
+        listRecords(config.tableName, {
+          orderBy: config.orderBy,
+          fazendaId: queryContext.fazendaId,
+          usuarioId: queryContext.usuarioId,
+          select: selectColumns,
+          limit: visibleLimit,
+          cache: true,
+          forceRefresh
+        }),
         Promise.all(relationFields.map(async (field) => [field.name, await loadRelationOptions(field, queryContext)] as const))
       ]);
       setRows(data);
+      setHasMoreRows(Boolean(pageSize && visibleLimit && data.length >= visibleLimit));
       setSelectedAnimal((current) => current ? data.find((row) => String(row.id) === String(current.id)) || current : current);
       setRelationOptions(Object.fromEntries(relationPairs));
     } catch (err) {
@@ -125,12 +216,17 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     } finally {
       setLoading(false);
     }
-  }, [config.fields, config.orderBy, config.tableName, queryContext]);
+  }, [config.fields, config.orderBy, config.tableName, pageSize, queryContext, selectColumns, visibleLimit]);
 
   useEffect(() => {
     load();
-    return subscribeTable(config.tableName, load);
+    return subscribeTable(config.tableName, () => { void load(true); });
   }, [config.tableName, load]);
+
+  useEffect(() => {
+    setVisibleLimit(modulePageSize(config.tableName));
+    setHasMoreRows(false);
+  }, [config.tableName]);
 
   const searchableRows = useMemo(
     () => rows.map((row) => ({ row, text: JSON.stringify(row).toLowerCase() })),
@@ -149,7 +245,9 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     const [animal] = await listRecords(TABLES.animais, {
       fazendaId: dataContext.fazendaId,
       usuarioId: dataContext.usuarioId,
-      filters: [{ column: "id", value: values.animal_id }]
+      select: "id,status,brinco,nome,died_at,death_date,data_morte",
+      filters: [{ column: "id", value: values.animal_id }],
+      cache: true
     });
 
     if (animal && isAnimalInactiveForBot(animal)) {
@@ -207,7 +305,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         }
       }
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível salvar o registro agora."));
     } finally {
@@ -241,6 +339,8 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
             body: JSON.stringify({ productionId: id })
           });
           const result = await response.json().catch(() => ({}));
+          invalidateRecordsCache(config.tableName, dataContext);
+          invalidateRecordsCache(TABLES.estoqueMovimentacoes, dataContext);
           if (!response.ok || result?.ok === false) {
             throw new Error(result?.error || "Não foi possível excluir o registro de produção agora.");
           }
@@ -255,7 +355,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         await removeEventCostFromFinance(id, dataContext);
       }
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível excluir o registro agora."));
     } finally {
@@ -272,7 +372,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       await updateRecord(TABLES.animais, animalDeleteTarget.id, { status: "inativo" }, dataContext);
       setAnimalDeleteTarget(null);
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível inativar o animal agora."));
     } finally {
@@ -299,6 +399,15 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           body: JSON.stringify({ animalId })
         });
         const result = await response.json().catch(() => ({}));
+        [
+          TABLES.animais,
+          TABLES.ordenhas,
+          TABLES.eventosAnimal,
+          TABLES.transacoesFinanceiras,
+          TABLES.estoqueMovimentacoes,
+          TABLES.alertas,
+          TABLES.notificacoes
+        ].forEach((tableName) => invalidateRecordsCache(tableName, dataContext));
         if (!response.ok || result?.ok === false) {
           throw new Error(result?.error || "Não foi possível excluir o animal agora.");
         }
@@ -307,16 +416,19 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           listRecords(TABLES.eventosAnimal, {
             fazendaId: dataContext.fazendaId,
             usuarioId: dataContext.usuarioId,
+            select: "id",
             filters: [{ column: "animal_id", value: animalId }]
           }),
           listRecords(TABLES.animais, {
             fazendaId: dataContext.fazendaId,
             usuarioId: dataContext.usuarioId,
+            select: "id,mae_id,pai_id",
             filters: [{ column: "mae_id", value: animalId }]
           }),
           listRecords(TABLES.animais, {
             fazendaId: dataContext.fazendaId,
             usuarioId: dataContext.usuarioId,
+            select: "id,mae_id,pai_id",
             filters: [{ column: "pai_id", value: animalId }]
           })
         ]);
@@ -337,7 +449,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       setAnimalDeleteTarget(null);
       if (selectedAnimal?.id === animalId) setSelectedAnimal(null);
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível excluir o animal agora."));
     } finally {
@@ -355,7 +467,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           <h1 className="text-3xl font-black tracking-tight md:text-4xl">{config.title}</h1>
           <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">{config.subtitle}</p>
         </div>
-        <button className="btn btn-secondary" type="button" onClick={load}>
+        <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
           <RefreshCw className="h-4 w-4" /> Atualizar
         </button>
       </div>
@@ -412,6 +524,17 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               canManage={canManage}
             />
           )}
+          {pageSize && hasMoreRows ? (
+            <div className="flex justify-center">
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => setVisibleLimit((current) => (current || pageSize) + pageSize)}
+              >
+                Carregar mais registros
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -421,7 +544,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           context={dataContext}
           relationOptions={relationOptions}
           onClose={() => setSelectedAnimal(null)}
-          onChanged={load}
+          onChanged={() => load(true)}
         />,
         document.body
       ) : null}

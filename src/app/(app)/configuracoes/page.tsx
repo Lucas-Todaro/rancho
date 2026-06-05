@@ -25,6 +25,9 @@ const roleLabels: Record<string, string> = {
   contador: "Contador"
 };
 
+const SETTINGS_FARM_SELECT = "id,nome,responsavel,telefone_contato,cidade,estado,ativa,descricao,configuracoes,notificacoes,whatsapp_config";
+const SETTINGS_USER_SELECT = "id,fazenda_id,nome,telefone,cpf,cargo,papel,preferencias,ativo";
+
 const stateOptions = ["", "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
 function asObject(value: unknown) {
@@ -143,8 +146,8 @@ export default function ConfiguracoesPage() {
     try {
       const [healthResponse, farmRows, userRows] = await Promise.all([
         fetch("/api/health").then((res) => res.json()).catch(() => null),
-        profile?.fazenda_id ? listRecords(TABLES.fazendas, { filters: [{ column: "id", value: profile.fazenda_id }] }) : Promise.resolve([]),
-        profile?.id ? listRecords(TABLES.usuarios, { fazendaId: profile.fazenda_id, usuarioId: profile.id, filters: [{ column: "id", value: profile.id }] }) : Promise.resolve([])
+        profile?.fazenda_id ? listRecords(TABLES.fazendas, { select: SETTINGS_FARM_SELECT, filters: [{ column: "id", value: profile.fazenda_id }] }) : Promise.resolve([]),
+        profile?.id ? listRecords(TABLES.usuarios, { fazendaId: profile.fazenda_id, usuarioId: profile.id, select: SETTINGS_USER_SELECT, filters: [{ column: "id", value: profile.id }] }) : Promise.resolve([])
       ]);
 
       const nextFarm = farmRows[0] || profile?.fazenda || null;

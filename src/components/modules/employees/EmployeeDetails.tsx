@@ -31,6 +31,22 @@ function payrollTotal(row: AnyRecord) {
   return parseCurrencyInput(row.salario_base) + parseCurrencyInput(row.valor_horas_extras) - parseCurrencyInput(row.descontos) - parseCurrencyInput(row.adiantamentos);
 }
 
+const EMPLOYEE_DETAIL_POINT_SELECT = "id,funcionario_id,tipo,registrado_em,observacao,created_at";
+const EMPLOYEE_DETAIL_PAYROLL_SELECT = [
+  "id",
+  "funcionario_id",
+  "competencia",
+  "salario_base",
+  "horas_extras",
+  "valor_horas_extras",
+  "descontos",
+  "adiantamentos",
+  "total_liquido",
+  "status",
+  "pago_em",
+  "created_at"
+].join(",");
+
 export function EmployeeDetails({
   employee,
   context,
@@ -67,7 +83,7 @@ export function EmployeeDetails({
     pago_em: ""
   });
 
-  const loadDetails = useCallback(async () => {
+  const loadDetails = useCallback(async (forceRefresh = false) => {
     setDetailsLoading(true);
     setError("");
     try {
@@ -76,13 +92,19 @@ export function EmployeeDetails({
           orderBy: "registrado_em",
           fazendaId: context.fazendaId,
           usuarioId: context.usuarioId,
-          filters: [{ column: "funcionario_id", value: employee.id }]
+          select: EMPLOYEE_DETAIL_POINT_SELECT,
+          filters: [{ column: "funcionario_id", value: employee.id }],
+          cache: true,
+          forceRefresh
         }),
         listRecords(TABLES.folhaPagamento, {
           orderBy: "competencia",
           fazendaId: context.fazendaId,
           usuarioId: context.usuarioId,
-          filters: [{ column: "funcionario_id", value: employee.id }]
+          select: EMPLOYEE_DETAIL_PAYROLL_SELECT,
+          filters: [{ column: "funcionario_id", value: employee.id }],
+          cache: true,
+          forceRefresh
         })
       ]);
       setTimeEntries(nextTimeEntries);
@@ -173,7 +195,7 @@ export function EmployeeDetails({
       setPointDraft({ tipo: "entrada", registrado_em: nowLocalDatetime(), observacao: "" });
       setShowPointForm(false);
       notifyDashboardUpdated();
-      await loadDetails();
+      await loadDetails(true);
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível registrar o ponto.");
@@ -209,7 +231,7 @@ export function EmployeeDetails({
       }
 
       notifyDashboardUpdated();
-      await loadDetails();
+      await loadDetails(true);
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar a folha.");

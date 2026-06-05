@@ -23,6 +23,8 @@ const routeByEntity: Record<string, string> = {
   [TABLES.animais]: "/rebanho"
 };
 
+const NOTIFICATIONS_SELECT = "id,titulo,mensagem,entidade_tipo,lida_em,created_at";
+
 function detailsHref(notification: AnyRecord) {
   return routeByEntity[String(notification.entidade_tipo || "")] || "/dashboard";
 }
@@ -48,9 +50,11 @@ export function NotificationsMenu() {
       const data = await listRecords(TABLES.notificacoes, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
-        orderBy: "created_at"
+        orderBy: "created_at",
+        select: NOTIFICATIONS_SELECT,
+        limit: 20
       });
-      setRows(data.slice(0, 20));
+      setRows(data);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível carregar as notificações."));
     } finally {

@@ -72,6 +72,9 @@ function dateTime(value: unknown) {
   return parseLocalDate(String(value || ""))?.getTime() || 0;
 }
 
+const ANIMAL_DETAIL_EVENTS_SELECT = "id,animal_id,tipo,data_evento,descricao,medicamento,dose,custo,created_at";
+const ANIMAL_DETAIL_PRODUCTIONS_SELECT = "id,animal_id,litros,turno,ordenhado_em,destino,created_at";
+
 export function AnimalDetailModal({
   animal,
   context,
@@ -101,7 +104,7 @@ export function AnimalDetailModal({
     custo: ""
   });
 
-  const loadDetails = useCallback(async () => {
+  const loadDetails = useCallback(async (forceRefresh = false) => {
     setDetailsLoading(true);
     try {
       const [animalEvents, animalProductions] = await Promise.all([
@@ -109,13 +112,19 @@ export function AnimalDetailModal({
           orderBy: "data_evento",
           fazendaId: context.fazendaId,
           usuarioId: context.usuarioId,
-          filters: [{ column: "animal_id", value: animal.id }]
+          select: ANIMAL_DETAIL_EVENTS_SELECT,
+          filters: [{ column: "animal_id", value: animal.id }],
+          cache: true,
+          forceRefresh
         }),
         listRecords(TABLES.ordenhas, {
           orderBy: "ordenhado_em",
           fazendaId: context.fazendaId,
           usuarioId: context.usuarioId,
-          filters: [{ column: "animal_id", value: animal.id }]
+          select: ANIMAL_DETAIL_PRODUCTIONS_SELECT,
+          filters: [{ column: "animal_id", value: animal.id }],
+          cache: true,
+          forceRefresh
         })
       ]);
 
@@ -222,7 +231,7 @@ export function AnimalDetailModal({
 
       notifyDashboardUpdated();
       setShowForm(false);
-      await loadDetails();
+      await loadDetails(true);
       await onChanged();
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível registrar o manejo."));

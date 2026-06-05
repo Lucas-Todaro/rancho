@@ -28,6 +28,30 @@ function currentMonthKey() {
   return currentMonth();
 }
 
+const EMPLOYEE_LIST_SELECT = [
+  "id",
+  "fazenda_id",
+  "nome",
+  "funcao",
+  "cpf",
+  "salario_base",
+  "data_admissao",
+  "contato_whatsapp",
+  "carga_horaria_mensal",
+  "valor_hora_extra",
+  "email",
+  "tipo_acesso",
+  "papel_sistema",
+  "convite_status",
+  "usuario_id",
+  "ativo",
+  "deleted_at",
+  "created_at"
+].join(",");
+
+const EMPLOYEE_POINT_SELECT = "id,funcionario_id,tipo,registrado_em,observacao,created_at";
+const EMPLOYEE_PAYROLL_SELECT = "id,funcionario_id,competencia,salario_base,total_liquido,status,pago_em,created_at";
+
 function exportEmployeesCsv(rows: AnyRecord[]) {
   const header = ["Nome", "Função", "Salário", "E-mail", "WhatsApp", "Tipo de acesso", "Ativo"];
   const body = rows.map((row) => [
@@ -65,14 +89,35 @@ export function EmployeeScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const [nextEmployees, nextTimeEntries, nextPayrolls] = await Promise.all([
-        listRecords(TABLES.funcionarios, { orderBy: "created_at", fazendaId: farmId, usuarioId: userId }),
-        listRecords(TABLES.registrosPonto, { orderBy: "registrado_em", fazendaId: farmId, usuarioId: userId }),
-        listRecords(TABLES.folhaPagamento, { orderBy: "competencia", fazendaId: farmId, usuarioId: userId })
+        listRecords(TABLES.funcionarios, {
+          orderBy: "created_at",
+          fazendaId: farmId,
+          usuarioId: userId,
+          select: EMPLOYEE_LIST_SELECT,
+          cache: true,
+          forceRefresh
+        }),
+        listRecords(TABLES.registrosPonto, {
+          orderBy: "registrado_em",
+          fazendaId: farmId,
+          usuarioId: userId,
+          select: EMPLOYEE_POINT_SELECT,
+          cache: true,
+          forceRefresh
+        }),
+        listRecords(TABLES.folhaPagamento, {
+          orderBy: "competencia",
+          fazendaId: farmId,
+          usuarioId: userId,
+          select: EMPLOYEE_PAYROLL_SELECT,
+          cache: true,
+          forceRefresh
+        })
       ]);
       const visibleEmployees = nextEmployees.filter((employee) => !employee.deleted_at);
       setEmployees(visibleEmployees);
@@ -88,9 +133,10 @@ export function EmployeeScreen() {
 
   useEffect(() => {
     load();
-    const unsubscribeEmployees = subscribeTable(TABLES.funcionarios, load);
-    const unsubscribePoints = subscribeTable(TABLES.registrosPonto, load);
-    const unsubscribePayrolls = subscribeTable(TABLES.folhaPagamento, load);
+    const refresh = () => { void load(true); };
+    const unsubscribeEmployees = subscribeTable(TABLES.funcionarios, refresh);
+    const unsubscribePoints = subscribeTable(TABLES.registrosPonto, refresh);
+    const unsubscribePayrolls = subscribeTable(TABLES.folhaPagamento, refresh);
     return () => {
       unsubscribeEmployees();
       unsubscribePoints();
@@ -175,7 +221,7 @@ export function EmployeeScreen() {
       }
       notifyDashboardUpdated();
       closeForm();
-      await load();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar funcionário.");
     } finally {
@@ -205,7 +251,7 @@ export function EmployeeScreen() {
       }
       await syncEmployeePanelAccess(employee.id, session?.access_token);
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível alterar o status.");
     } finally {
@@ -252,7 +298,7 @@ export function EmployeeScreen() {
 
       if (selected?.id === employee.id) setSelected(null);
       notifyDashboardUpdated();
-      await load();
+      await load(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       setError(
@@ -278,7 +324,7 @@ export function EmployeeScreen() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-secondary" type="button" onClick={load}>
+          <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
           <button className="btn btn-secondary" type="button" onClick={openWhatsAppOnlyForm}>
@@ -370,7 +416,7 @@ export function EmployeeScreen() {
           busy={busy}
           session={session}
           onClose={() => setShowInviteForm(false)}
-          onCreated={load}
+          onCreated={() => load(true)}
         />,
         document.body
       ) : null}
@@ -380,7 +426,7 @@ export function EmployeeScreen() {
           employee={selected}
           context={dataContext}
           onClose={() => setSelected(null)}
-          onChanged={load}
+          onChanged={() => load(true)}
         />
       ) : null}
     </div>

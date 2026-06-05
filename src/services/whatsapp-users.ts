@@ -27,7 +27,8 @@ export async function assertUniqueActiveEmployeeWhatsApp(employee: AnyRecord, co
   const employees = await listRecords(TABLES.funcionarios, {
     fazendaId: context?.fazendaId,
     usuarioId: context?.usuarioId,
-    orderBy: "created_at"
+    orderBy: "created_at",
+    select: "id,ativo,deleted_at,contato_whatsapp"
   });
 
   const duplicate = employees.find((row) => {
@@ -48,6 +49,7 @@ async function findWhatsAppUserRows(employee: AnyRecord, phone: string, context?
         fazendaId: context?.fazendaId,
         usuarioId: context?.usuarioId,
         orderBy: "created_at",
+        select: "id,funcionario_id,telefone_e164,ativo",
         filters: [{ column: "funcionario_id", value: employee.id }]
       })
       : Promise.resolve([]),
@@ -56,6 +58,7 @@ async function findWhatsAppUserRows(employee: AnyRecord, phone: string, context?
         fazendaId: context?.fazendaId,
         usuarioId: context?.usuarioId,
         orderBy: "created_at",
+        select: "id,funcionario_id,telefone_e164,ativo",
         filters: [{ column: "telefone_e164", value: phone }]
       })
       : Promise.resolve([])
@@ -115,6 +118,7 @@ async function findOwnerWhatsAppUserRows(user: AnyRecord, phone: string, context
         fazendaId: context?.fazendaId,
         usuarioId: context?.usuarioId,
         orderBy: "created_at",
+        select: "id,usuario_id,telefone_e164,ativo",
         filters: [{ column: "usuario_id", value: user.id }]
       })
       : Promise.resolve([]),
@@ -123,6 +127,7 @@ async function findOwnerWhatsAppUserRows(user: AnyRecord, phone: string, context
         fazendaId: context?.fazendaId,
         usuarioId: context?.usuarioId,
         orderBy: "created_at",
+        select: "id,usuario_id,telefone_e164,ativo",
         filters: [{ column: "telefone_e164", value: phone }]
       })
       : Promise.resolve([])

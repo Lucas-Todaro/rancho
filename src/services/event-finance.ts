@@ -72,12 +72,14 @@ async function findEventFinanceRecords(eventId: string, context: DataContext) {
   const sourceRows = await listRecords(TABLES.transacoesFinanceiras, {
     fazendaId: context.fazendaId,
     usuarioId: context.usuarioId,
+    select: "id",
     filters: sourceFilters(eventId)
   });
 
   const legacyRows = await listRecords(TABLES.transacoesFinanceiras, {
     fazendaId: context.fazendaId,
     usuarioId: context.usuarioId,
+    select: "id",
     filters: [{ column: "origem", value: legacyEventFinanceOrigin(eventId) }]
   });
 

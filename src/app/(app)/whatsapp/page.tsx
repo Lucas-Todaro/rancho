@@ -59,6 +59,18 @@ type BotTestHistoryItem = {
 
 const defaultBotTestMessage = "vaca B-002 deu 32 litros";
 
+const WHATSAPP_USERS_SELECT = [
+  "id",
+  "fazenda_id",
+  "telefone_e164",
+  "nome_exibicao",
+  "papel_bot",
+  "ativo",
+  "usuario_id",
+  "funcionario_id",
+  "created_at"
+].join(",");
+
 function roleLabel(value: unknown) {
   return roleOptions.find((option) => option.value === roleFromDatabase(value))?.label || "Usuário";
 }
@@ -97,14 +109,17 @@ export default function WhatsAppPage() {
   const sandboxNumber = publicWhatsappConfig.sandboxNumber;
   const sandboxJoinCode = publicWhatsappConfig.sandboxJoinCode;
 
-  const loadAuthorizedNumbers = useCallback(async () => {
+  const loadAuthorizedNumbers = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const data = await listRecords(TABLES.whatsappUsuarios, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
-        orderBy: "created_at"
+        orderBy: "created_at",
+        select: WHATSAPP_USERS_SELECT,
+        cache: true,
+        forceRefresh
       });
       setRows(data);
     } catch (err) {
@@ -203,7 +218,7 @@ export default function WhatsAppPage() {
       }
 
       resetForm();
-      await loadAuthorizedNumbers();
+      await loadAuthorizedNumbers(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar o número.");
     } finally {
@@ -219,7 +234,7 @@ export default function WhatsAppPage() {
     try {
       await updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: row.ativo === false }, dataContext);
       setSuccess(row.ativo === false ? "Número ativado." : "Número desativado.");
-      await loadAuthorizedNumbers();
+      await loadAuthorizedNumbers(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível alterar o status.");
     } finally {
@@ -239,7 +254,7 @@ export default function WhatsAppPage() {
       await deleteRecords(TABLES.whatsappSessoes, [{ column: "whatsapp_usuario_id", value: row.id }], dataContext);
       await deleteRecord(TABLES.whatsappUsuarios, row.id, dataContext);
       setSuccess("Número removido da lista.");
-      await loadAuthorizedNumbers();
+      await loadAuthorizedNumbers(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível excluir o número.");
     } finally {

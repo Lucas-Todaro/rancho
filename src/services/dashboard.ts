@@ -19,19 +19,83 @@ export function onDashboardUpdated(callback: () => void) {
   return () => window.removeEventListener(DASHBOARD_UPDATED_EVENT, callback);
 }
 
-export async function loadDashboardData(context?: DataContext) {
-  const [animals, productions, stock, finance, employees, payrolls, alerts] = await Promise.all([
-    listRecords(TABLES.animais, { ...context, orderBy: "created_at" }),
-    listRecords(TABLES.ordenhas, { ...context, orderBy: "ordenhado_em" }),
-    listRecords(TABLES.estoqueItens, { ...context, orderBy: "created_at" }),
-    listRecords(TABLES.transacoesFinanceiras, { ...context, orderBy: "data_transacao" }),
-    listRecords(TABLES.funcionarios, { ...context, orderBy: "created_at" }),
-    listRecords(TABLES.folhaPagamento, { ...context, orderBy: "competencia" }),
-    listRecords(TABLES.alertas, { ...context, orderBy: "created_at" })
-  ]);
+type LoadDashboardOptions = {
+  forceRefresh?: boolean;
+};
 
+const DASHBOARD_CACHE_TTL_MS = 30 * 1000;
+
+function startOfCurrentMonthIso() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+}
+
+function startOfCurrentMonthDate() {
+  return toDateOnlyString(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+}
+
+function startOfNextMonthDate() {
+  return toDateOnlyString(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1));
+}
+
+function startOfRollingMonthsDate(months: number) {
+  const now = new Date();
+  return toDateOnlyString(new Date(now.getFullYear(), now.getMonth() - Math.max(0, months - 1), 1));
+}
+
+export async function loadDashboardData(context?: DataContext, options: LoadDashboardOptions = {}) {
   const today = toDateOnlyString(new Date());
   const month = today.slice(0, 7);
+  const monthStartIso = startOfCurrentMonthIso();
+  const monthStartDate = startOfCurrentMonthDate();
+  const nextMonthStartDate = startOfNextMonthDate();
+  const sixMonthsStartDate = startOfRollingMonthsDate(6);
+  const cacheOptions = {
+    cache: true,
+    cacheTtlMs: DASHBOARD_CACHE_TTL_MS,
+    forceRefresh: options.forceRefresh
+  };
+
+  const [animals, productions, stock, finance, employees, payrolls, alerts] = await Promise.all([
+    listRecords(TABLES.animais, { ...context, ...cacheOptions, select: "id,status,brinco", orderBy: "created_at" }),
+    listRecords(TABLES.ordenhas, {
+      ...context,
+      ...cacheOptions,
+      select: "id,animal_id,litros,ordenhado_em",
+      orderBy: "ordenhado_em",
+      filters: [{ column: "ordenhado_em", operator: "gte", value: monthStartIso }]
+    }),
+    listRecords(TABLES.estoqueItens, {
+      ...context,
+      ...cacheOptions,
+      select: "id,nome,categoria,quantidade_atual,quantidade_minima,unidade_medida",
+      orderBy: "created_at"
+    }),
+    listRecords(TABLES.transacoesFinanceiras, {
+      ...context,
+      ...cacheOptions,
+      select: "id,tipo,valor,data_transacao,categoria,descricao,created_at",
+      orderBy: "data_transacao",
+      filters: [{ column: "data_transacao", operator: "gte", value: sixMonthsStartDate }]
+    }),
+    listRecords(TABLES.funcionarios, {
+      ...context,
+      ...cacheOptions,
+      select: "id,ativo,deleted_at,salario_base",
+      orderBy: "created_at"
+    }),
+    listRecords(TABLES.folhaPagamento, {
+      ...context,
+      ...cacheOptions,
+      select: "id,funcionario_id,total_liquido,salario_base,competencia",
+      orderBy: "competencia",
+      filters: [
+        { column: "competencia", operator: "gte", value: monthStartDate },
+        { column: "competencia", operator: "lt", value: nextMonthStartDate }
+      ]
+    }),
+    listRecords(TABLES.alertas, { ...context, ...cacheOptions, select: "id,resolvido,created_at", orderBy: "created_at" })
+  ]);
 
   const animalMap = Object.fromEntries(animals.map((animal) => [animal.id, animal.brinco || animal.id]));
 

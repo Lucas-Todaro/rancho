@@ -78,11 +78,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options: { forceRefresh?: boolean } = {}) => {
     setLoading(true);
     setError("");
     try {
-      const dashboard = await loadDashboardData({ fazendaId: farmId, usuarioId: userId });
+      const dashboard = await loadDashboardData({ fazendaId: farmId, usuarioId: userId }, options);
       setData(dashboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar o painel.");
@@ -92,7 +92,7 @@ export default function DashboardPage() {
   }, [farmId, userId]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => onDashboardUpdated(load), [load]);
+  useEffect(() => onDashboardUpdated(() => { void load({ forceRefresh: true }); }), [load]);
 
   const profitLabel = formatCurrency(data.cards.profit);
   const incomeLabel = formatCurrency(data.cards.income);
@@ -116,7 +116,7 @@ export default function DashboardPage() {
               Acompanhe rebanho, leite, estoque, financeiro, equipe e pagamentos em uma visão simples para o dia a dia.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <button onClick={load} className="btn bg-white text-emerald-950" type="button">{loading ? "Atualizando..." : "Atualizar painel"}</button>
+              <button onClick={() => load({ forceRefresh: true })} className="btn bg-white text-emerald-950" type="button">{loading ? "Atualizando..." : "Atualizar painel"}</button>
               <a href="/whatsapp" className="btn border border-white/25 bg-white/10 text-white">Abrir WhatsApp</a>
             </div>
           </div>

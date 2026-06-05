@@ -38,6 +38,7 @@ async function findStockItem(itemId: string, context: DataContext) {
   const [item] = await listRecords(TABLES.estoqueItens, {
     fazendaId: context.fazendaId,
     usuarioId: context.usuarioId,
+    select: "id,nome,unidade_medida,quantidade_atual,valor_unitario",
     filters: [{ column: "id", value: itemId }]
   });
 

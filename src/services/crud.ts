@@ -10,8 +10,81 @@ type ListOptions = DataContext & {
   orderBy?: string;
   ascending?: boolean;
   select?: string;
-  filters?: Array<{ column: string; value: string | number | boolean | null | undefined }>;
+  limit?: number;
+  offset?: number;
+  filters?: Array<{
+    column: string;
+    value: string | number | boolean | null | undefined;
+    operator?: "eq" | "gte" | "lte" | "gt" | "lt";
+  }>;
+  cache?: boolean;
+  cacheTtlMs?: number;
+  forceRefresh?: boolean;
 };
+
+const MODULE_CACHE_TTL_MS = 60 * 1000;
+
+type RecordCacheEntry = {
+  rows: AnyRecord[];
+  expiresAt: number;
+};
+
+const recordCache = new Map<string, RecordCacheEntry>();
+
+function normalizedFilters(filters: ListOptions["filters"] = []) {
+  return filters
+    .filter((filter) => filter.value !== undefined)
+    .map((filter) => ({
+      column: filter.column,
+      operator: filter.operator || "eq",
+      value: filter.value
+    }))
+    .sort((left, right) => `${left.column}:${left.operator}`.localeCompare(`${right.column}:${right.operator}`));
+}
+
+function recordCacheKey(tableName: string, options: ListOptions) {
+  return [
+    tableName,
+    `farm:${options.fazendaId || ""}`,
+    `user:${options.usuarioId || ""}`,
+    `order:${options.orderBy || "created_at"}`,
+    `asc:${options.ascending === true}`,
+    `select:${options.select || "*"}`,
+    `limit:${options.limit || ""}`,
+    `offset:${options.offset || ""}`,
+    `filters:${JSON.stringify(normalizedFilters(options.filters))}`
+  ].join("|");
+}
+
+function readRecordCache(key: string) {
+  const entry = recordCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    recordCache.delete(key);
+    return null;
+  }
+  return entry.rows;
+}
+
+function writeRecordCache(key: string, rows: AnyRecord[], ttlMs?: number) {
+  recordCache.set(key, {
+    rows,
+    expiresAt: Date.now() + (ttlMs || MODULE_CACHE_TTL_MS)
+  });
+}
+
+export function invalidateRecordsCache(tableName?: string, context?: DataContext) {
+  const farmNeedle = context?.fazendaId ? `|farm:${context.fazendaId}|` : "";
+  for (const key of Array.from(recordCache.keys())) {
+    if (tableName && !key.startsWith(`${tableName}|`)) continue;
+    if (farmNeedle && !key.includes(farmNeedle)) continue;
+    recordCache.delete(key);
+  }
+}
+
+export function clearRecordsCache() {
+  recordCache.clear();
+}
 
 function withId(tableName: string, record: AnyRecord, context?: DataContext): AnyRecord {
   return {
@@ -83,6 +156,12 @@ function sortLocal(rows: AnyRecord[], tableName: string, orderBy = "created_at",
   });
 }
 
+function paginateLocal(rows: AnyRecord[], options: ListOptions) {
+  if (!options.limit || options.limit <= 0) return rows;
+  const start = Math.max(0, options.offset || 0);
+  return rows.slice(start, start + options.limit);
+}
+
 function shouldScopeByFarm(tableName: string, context?: DataContext) {
   return Boolean(context?.fazendaId && FARM_SCOPED_TABLES.has(tableName));
 }
@@ -98,18 +177,31 @@ function filterLocalRows(tableName: string, rows: AnyRecord[], options: ListOpti
 
   return (options.filters || []).reduce((current, filter) => {
     if (filter.value === undefined) return current;
+    const operator = filter.operator || "eq";
     if (filter.value === null) return current.filter((row) => row[filter.column] == null);
+    if (operator === "gte") return current.filter((row) => String(row[filter.column] ?? "") >= String(filter.value));
+    if (operator === "lte") return current.filter((row) => String(row[filter.column] ?? "") <= String(filter.value));
+    if (operator === "gt") return current.filter((row) => String(row[filter.column] ?? "") > String(filter.value));
+    if (operator === "lt") return current.filter((row) => String(row[filter.column] ?? "") < String(filter.value));
     return current.filter((row) => String(row[filter.column]) === String(filter.value));
   }, scoped);
 }
 
 export async function listRecords(tableName: string, options: ListOptions = {}): Promise<AnyRecord[]> {
   const { orderBy = "created_at", ascending = false, fazendaId, select = "*", filters = [] } = options;
+  const cacheKey = options.cache ? recordCacheKey(tableName, { ...options, orderBy, ascending, select, filters }) : "";
+  if (cacheKey && !options.forceRefresh) {
+    const cachedRows = readRecordCache(cacheKey);
+    if (cachedRows) return cachedRows;
+  }
 
   if (!supabaseBrowser) {
     const rows = mockData[tableName] || [];
     const scoped = filterLocalRows(tableName, rows, options);
-    return sortLocal(scoped, tableName, orderBy, ascending);
+    const sorted = sortLocal(scoped, tableName, orderBy, ascending);
+    const paginated = paginateLocal(sorted, options);
+    if (cacheKey) writeRecordCache(cacheKey, paginated, options.cacheTtlMs);
+    return paginated;
   }
 
   const secondary = secondaryOrderBy(tableName, orderBy);
@@ -125,8 +217,24 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
 
   filters.forEach((filter) => {
     if (filter.value === undefined) return;
-    query = filter.value === null ? query.is(filter.column, null) : query.eq(filter.column, filter.value);
+    const operator = filter.operator || "eq";
+    if (filter.value === null) {
+      query = query.is(filter.column, null);
+      return;
+    }
+    if (operator === "gte") query = query.gte(filter.column, filter.value);
+    else if (operator === "lte") query = query.lte(filter.column, filter.value);
+    else if (operator === "gt") query = query.gt(filter.column, filter.value);
+    else if (operator === "lt") query = query.lt(filter.column, filter.value);
+    else query = query.eq(filter.column, filter.value);
   });
+
+  if (options.limit && options.limit > 0) {
+    const offset = Math.max(0, options.offset || 0);
+    query = options.offset !== undefined
+      ? query.range(offset, offset + options.limit - 1)
+      : query.limit(options.limit);
+  }
 
   const { data, error } = await query;
 
@@ -135,10 +243,14 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
       console.warn(`[Rancho] Falha ao ler ${tableName}. Usando dados locais.`);
     }
     const rows = mockData[tableName] || [];
-    return sortLocal(filterLocalRows(tableName, rows, options), tableName, orderBy, ascending);
+    const fallbackRows = paginateLocal(sortLocal(filterLocalRows(tableName, rows, options), tableName, orderBy, ascending), options);
+    if (cacheKey) writeRecordCache(cacheKey, fallbackRows, options.cacheTtlMs);
+    return fallbackRows;
   }
 
-  return (data || []) as AnyRecord[];
+  const rows = (data || []) as AnyRecord[];
+  if (cacheKey) writeRecordCache(cacheKey, rows, options.cacheTtlMs);
+  return rows;
 }
 
 export async function createRecord(tableName: string, values: AnyRecord, context?: DataContext) {
@@ -147,6 +259,7 @@ export async function createRecord(tableName: string, values: AnyRecord, context
   if (!supabaseBrowser) {
     const localPayload = withId(tableName, payload, context);
     mockData[tableName] = [localPayload, ...(mockData[tableName] || [])];
+    invalidateRecordsCache(tableName, context);
     return localPayload;
   }
 
@@ -164,12 +277,16 @@ export async function createRecord(tableName: string, values: AnyRecord, context
         .select("*")
         .single();
 
-      if (!fallbackError) return fallbackData;
+      if (!fallbackError) {
+        invalidateRecordsCache(tableName, context);
+        return fallbackData;
+      }
     }
 
     logTechnicalError(`Falha ao criar registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar o registro agora."));
   }
+  invalidateRecordsCache(tableName, context);
   return data;
 }
 
@@ -180,6 +297,7 @@ export async function updateRecord(tableName: string, id: string, values: AnyRec
     mockData[tableName] = (mockData[tableName] || []).map((item) => (
       item.id === id && matchesFarmScope(tableName, item, context) ? { ...item, ...payload } : item
     ));
+    invalidateRecordsCache(tableName, context);
     return mockData[tableName].find((item) => item.id === id && matchesFarmScope(tableName, item, context));
   }
 
@@ -207,12 +325,16 @@ export async function updateRecord(tableName: string, id: string, values: AnyRec
 
       const { data: fallbackData, error: fallbackError } = await fallbackQuery.select("*").single();
 
-      if (!fallbackError) return fallbackData;
+      if (!fallbackError) {
+        invalidateRecordsCache(tableName, context);
+        return fallbackData;
+      }
     }
 
     logTechnicalError(`Falha ao atualizar registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível salvar as alterações agora."));
   }
+  invalidateRecordsCache(tableName, context);
   return data;
 }
 
@@ -221,6 +343,7 @@ export async function deleteRecord(tableName: string, id: string, context?: Data
     mockData[tableName] = (mockData[tableName] || []).filter((item) => (
       item.id !== id || !matchesFarmScope(tableName, item, context)
     ));
+    invalidateRecordsCache(tableName, context);
     return true;
   }
 
@@ -234,6 +357,7 @@ export async function deleteRecord(tableName: string, id: string, context?: Data
     logTechnicalError(`Falha ao excluir registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível excluir o registro agora."));
   }
+  invalidateRecordsCache(tableName, context);
   return true;
 }
 
@@ -246,6 +370,7 @@ export async function deleteRecords(tableName: string, filters: ListOptions["fil
       usuarioId: context?.usuarioId
     }).map((item) => item.id));
     mockData[tableName] = rows.filter((item) => !rowsToDelete.has(item.id));
+    invalidateRecordsCache(tableName, context);
     return true;
   }
 
@@ -264,7 +389,19 @@ export async function deleteRecords(tableName: string, filters: ListOptions["fil
     logTechnicalError(`Falha ao excluir registros em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível excluir os registros agora."));
   }
+  invalidateRecordsCache(tableName, context);
   return true;
+}
+
+function relationOptionSelect(field: ModuleField) {
+  const relation = field.relation;
+  if (!relation) return "id";
+
+  return Array.from(new Set([
+    relation.valueColumn || "id",
+    relation.labelColumn,
+    relation.descriptionColumn
+  ].filter(Boolean))).join(",");
 }
 
 export async function loadRelationOptions(field: ModuleField, context?: DataContext): Promise<RelationOption[]> {
@@ -275,7 +412,9 @@ export async function loadRelationOptions(field: ModuleField, context?: DataCont
     fazendaId: context?.fazendaId,
     usuarioId: context?.usuarioId,
     orderBy: relation.orderBy || relation.labelColumn,
-    ascending: true
+    ascending: true,
+    select: relationOptionSelect(field),
+    cache: true
   });
 
   return rows.map((row) => {
