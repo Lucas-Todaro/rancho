@@ -925,7 +925,7 @@ function resolveParsed(parsed) {
     dados.motivo_processamento = parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra
       ? dados.item_estoque_encontrado ? "item_encontrado: estoque+financeiro" : "item_nao_encontrado: fluxo_criar_item_ou_financeiro"
       : parsed.tipo === "ESTOQUE_SAIDA" && dados.venda
-        ? dados.item_estoque_encontrado ? "item_encontrado: estoque+receita" : "item_nao_encontrado: financeiro_apenas"
+        ? dados.item_estoque_encontrado ? "item_encontrado: perguntar_baixa_estoque_ou_financeiro" : "item_nao_encontrado: financeiro_apenas"
         : dados.item_estoque_encontrado ? "item_encontrado" : "item_nao_encontrado";
 
     if (resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86) {
@@ -1097,7 +1097,7 @@ function assertExpected(test, parsed) {
       if ("quantidade" in detail && Number(registroDados.quantidade) !== Number(detail.quantidade)) failures.push(`registro ${index + 1}: quantidade esperada ${detail.quantidade}, recebida ${registroDados.quantidade}`);
       if (detail.unidade && normalize(registroDados.unidade) !== normalize(detail.unidade)) failures.push(`registro ${index + 1}: unidade esperada ${detail.unidade}, recebida ${registroDados.unidade}`);
       if ("valor" in detail && Number(registroDados.valor) !== Number(detail.valor)) failures.push(`registro ${index + 1}: valor esperado ${detail.valor}, recebido ${registroDados.valor}`);
-      if (detail.descricao && !normalize(registroDados.descricao).includes(normalize(detail.descricao))) failures.push(`registro ${index + 1}: descriÃ§Ã£o esperada ${detail.descricao}, recebida ${registroDados.descricao}`);
+      if (detail.descricao && !normalize(registroDados.descricao).includes(normalize(detail.descricao))) failures.push(`registro ${index + 1}: descrição esperada ${detail.descricao}, recebida ${registroDados.descricao}`);
     });
   }
 
@@ -1118,13 +1118,13 @@ function adminActionDenied(test, parsed) {
   if (!actor || actor.admin) return null;
   if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA", "CRIAR_LOTE", "CADASTRO_ANIMAL"].includes(parsed.tipo)) {
     if (parsed.tipo === "ATUALIZACAO_GENEALOGIA") {
-      return "VocÃª nÃ£o tem permissÃ£o para alterar genealogia pelo bot. PeÃ§a para um administrador fazer essa alteraÃ§Ã£o.";
+      return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
     }
     if (parsed.tipo === "CRIAR_LOTE") {
       return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
     }
     if (parsed.tipo === "CADASTRO_ANIMAL") {
-      return "VocÃª nÃ£o tem permissÃ£o para cadastrar animais.";
+      return "Você não tem permissão para cadastrar animais.";
     }
     return parsed.tipo === "CRIAR_ITEM_ESTOQUE"
       ? "Você não tem permissão para criar itens de estoque. Peça para um administrador cadastrar esse item."
@@ -1222,8 +1222,8 @@ const extraTests = [
   { phrase: "comprei 10 sacos de ração de boi por R$ 300", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração de boi", valor: 300 } },
   { phrase: "comprei ração", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, item: "Ração", missing: ["quantidade"] } },
   { phrase: "vendi 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", missing: ["valor"] } },
-  { phrase: "vendi 30kg de ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", valor: 300, motivoIncludes: "estoque+receita" } },
-  { phrase: "vendi ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], valor: 300, missing: ["quantidade"] } },
+  { phrase: "vendi 30kg de ração por 300 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", valor: 300, motivoIncludes: "perguntar_baixa" } },
+  { phrase: "vendi racao por 300 reais", expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 300, descricao: "racao" } },
   { phrase: "vendi bezerro por 15 mil", expected: { tipo: "RECEITA_VENDA", exactTipo: true, valor: 15000, descricao: "bezerro" } },
   { phrase: "comprei 30kg de ração", expected: { tipo: "ESTOQUE_ENTRADA", exactTipo: true, compra: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg", noMissing: true } },
   { phrase: "usei 30kg de ração", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, itemAny: ["Ração", "Ração de boi"], quantidade: 30, unidade: "kg" } },
@@ -1232,8 +1232,8 @@ const extraTests = [
   { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE" } },
   { phrase: "recebi 900 do leite", expected: { tipo: "RECEITA_VENDA", valor: 900, descricao: "leite" } },
   { phrase: "vendi leite por 800 reais", expected: { tipo: "RECEITA_VENDA", valor: 800, descricao: "leite" } },
-  { phrase: "vendi 40L de leite", expected: { tipo: "RECEITA_VENDA", exactTipo: true, quantidade: 40, unidade: "L", descricao: "leite", missing: ["valor"], notValor: 40 } },
-  { phrase: "vendi 40L de leite por 200 reais", expected: { tipo: "RECEITA_VENDA", exactTipo: true, quantidade: 40, unidade: "L", descricao: "leite", valor: 200 } },
+  { phrase: "vendi 40L de leite", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, item: "Leite Cru", quantidade: 40, unidade: "L", missing: ["valor"], notValor: 40 } },
+  { phrase: "vendi 40L de leite por 200 reais", expected: { tipo: "ESTOQUE_SAIDA", exactTipo: true, venda: true, item: "Leite Cru", quantidade: 40, unidade: "L", valor: 200, motivoIncludes: "perguntar_baixa" } },
   { phrase: "vendi leite por 200 reais", expected: { tipo: "RECEITA_VENDA", exactTipo: true, descricao: "leite", valor: 200 } },
   { phrase: "despesa de 45 com energia", expected: { tipo: "DESPESA", valor: 45, descricao: "energia" } },
   { phrase: "paguei 300 de veterinario", expected: { tipo: "DESPESA", valor: 300, descricao: "veterinario" } },
@@ -1261,7 +1261,7 @@ const extraTests = [
   { phrase: "vaca 1 deu 15 litros evaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
   { phrase: "vaca 1 deu 15 litros e vaca 3 tomou vacina da raiva", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE", "VACINA_MEDICAMENTO"], registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" }] } },
   { phrase: "vaca 1 deu 14 litros e vaca 2 15", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
-  { phrase: "vaca 1 deu 15 litros e vaca 2 tambÃ©m", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 30, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
+  { phrase: "vaca 1 deu 15 litros e vaca 2 também", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 30, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
   { phrase: "B-002 deu 30 litros, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
   { phrase: "ordenha: B-002 30, A12 18", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 48, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 18 }] } },
   { phrase: "vaca 2 pariu e B-002 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PARTO", "PRODUCAO_LEITE"], registroDetalhes: [{ tipo: "PARTO", animalAny: ["2", "002"] }, { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 20 }] } },
@@ -1270,15 +1270,15 @@ const extraTests = [
   { phrase: "paguei 300 de racao e 120 de remedio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["DESPESA"], registroDetalhes: [{ tipo: "DESPESA", valor: 300, descricao: "racao" }, { tipo: "DESPESA", valor: 120, descricao: "remedio" }] } },
   { phrase: "recebi 500 do leite e 1200 do bezerro", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["RECEITA_VENDA"], registroDetalhes: [{ tipo: "RECEITA_VENDA", valor: 500, descricao: "leite" }, { tipo: "RECEITA_VENDA", valor: 1200, descricao: "bezerro" }] } },
   { phrase: "vendi boi por 15 mil e leite por 500", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["RECEITA_VENDA"], registroDetalhes: [{ tipo: "RECEITA_VENDA", valor: 15000, descricao: "boi" }, { tipo: "RECEITA_VENDA", valor: 500, descricao: "leite" }] } },
-  { phrase: "usei 20kg de raÃ§Ã£o e 2 doses de aftosa", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"], registroDetalhes: [{ tipo: "ESTOQUE_SAIDA", item: "Ração", quantidade: 20, unidade: "kg" }, { tipo: "ESTOQUE_SAIDA", item: "Aftosa", quantidade: 2, unidade: "dose" }] } },
-  { phrase: "chegou 10 sacos de raÃ§Ã£o e 5 fardos de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_ENTRADA"], registroDetalhes: [{ tipo: "ESTOQUE_ENTRADA", item: "Ração", quantidade: 10, unidade: "saco" }, { tipo: "ESTOQUE_ENTRADA", item: "Feno", quantidade: 5, unidade: "fardo" }] } },
-  { phrase: "B-002 morreu e paguei 300 de remÃ©dio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["MORTE", "DESPESA"], registroDetalhes: [{ tipo: "MORTE", animal: "B-002" }, { tipo: "DESPESA", valor: 300 }] } },
+  { phrase: "usei 20kg de ração e 2 doses de aftosa", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"], registroDetalhes: [{ tipo: "ESTOQUE_SAIDA", item: "Ração", quantidade: 20, unidade: "kg" }, { tipo: "ESTOQUE_SAIDA", item: "Aftosa", quantidade: 2, unidade: "dose" }] } },
+  { phrase: "chegou 10 sacos de ração e 5 fardos de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_ENTRADA"], registroDetalhes: [{ tipo: "ESTOQUE_ENTRADA", item: "Ração", quantidade: 10, unidade: "saco" }, { tipo: "ESTOQUE_ENTRADA", item: "Feno", quantidade: 5, unidade: "fardo" }] } },
+  { phrase: "B-002 morreu e paguei 300 de remédio", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["MORTE", "DESPESA"], registroDetalhes: [{ tipo: "MORTE", animal: "B-002" }, { tipo: "DESPESA", valor: 300 }] } },
   { phrase: "vaca 1 deu 14 litros e vaca 2 15 no tanque", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 29, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 14 }, { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }] } },
   { phrase: "vaca 2 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 } },
   { phrase: "vaca 1 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 } },
   { phrase: "vaca 3 tomou vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", animal: "3", produto: "raiva" } },
   { phrase: "racao de boi", expected: { tipo: "DESCONHECIDO" } },
-  { phrase: "raÃ§Ã£o de boi", expected: { tipo: "DESCONHECIDO" } },
+  { phrase: "ração de boi", expected: { tipo: "DESCONHECIDO" } },
   { phrase: "vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", produto: "raiva", missing: ["animal_codigo"] } }
 ];
 
@@ -2004,7 +2004,7 @@ const botConversationTests = [
           eventoConfirmado: true,
           responseIncludes: "Nenhum registro real foi salvo",
           responseRawIncludes: "Confirmação",
-          responseRawNotIncludes: ["ConfirmaÃ", "produÃ"]
+          responseRawNotIncludes: ["Confirma\u00c3", "produ\u00c3"]
         }
       }
     ]
@@ -2652,7 +2652,7 @@ const botConversationTests = [
           },
           responseIncludes: "estoque de Leite Cru",
           responseRawIncludes: ["entrada"],
-          responseRawNotIncludes: ["ficar", "produÃ"]
+          responseRawNotIncludes: ["ficar", "produ\u00c3"]
         }
       },
       {
@@ -2663,7 +2663,7 @@ const botConversationTests = [
           eventoConfirmado: true,
           responseIncludes: "estoque_movimentar: sim",
           responseRawIncludes: "Simulação",
-          responseRawNotIncludes: ["SimulaÃ", "produÃ"]
+          responseRawNotIncludes: ["Simula\u00c3", "produ\u00c3"]
         }
       }
     ]
@@ -4445,8 +4445,8 @@ const financeFrameworkCases = [
     phone: BOT_TEST_ADMIN_PHONE,
     messages: ["vendi 40L de leite"],
     expected: {
-      finalIntent: "RECEITA_VENDA",
-      entities: { quantidade: 40, unidade: "L", descricao: "leite" },
+      finalIntent: "ESTOQUE_SAIDA",
+      entities: { quantidade: 40, unidade: "L", item_nome: "Leite Cru" },
       responseIncludes: "valor da venda",
       shouldAskFollowUp: true,
       shouldSaveBeforeConfirmation: false,
@@ -4455,13 +4455,32 @@ const financeFrameworkCases = [
     }
   },
   {
-    name: "venda fisica de leite com valor confirma receita",
+    name: "venda fisica de leite com valor pergunta baixa e salva estoque mais receita",
     module: "financeiro",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["vendi 40L de leite por 200 reais", "sim"],
+    messages: ["vendi 40L de leite por 200 reais", "1", "sim"],
+    expected: {
+      finalIntent: "ESTOQUE_SAIDA",
+      entities: { quantidade: 40, unidade: "L", valor: 200, item_nome: "Leite Cru", deve_baixar_estoque: true },
+      responseIncludes: "Nenhum registro real foi salvo",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { valor: 200 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "venda fisica de leite pode registrar apenas receita",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi 40L de leite por 200 reais", "2", "sim"],
     expected: {
       finalIntent: "RECEITA_VENDA",
-      entities: { quantidade: 40, unidade: "L", valor: 200, descricao: "leite" },
+      entities: { quantidade: 40, unidade: "L", valor: 200, descricao: "venda de Leite Cru" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
@@ -7120,7 +7139,10 @@ function simulatedSaveActionsForResult(result, phone) {
   if (tipo === "ESTOQUE_ENTRADA" || tipo === "ESTOQUE_SAIDA") {
     if (!dados.item_id && dados.item_estoque_encontrado === false) return [];
 
-    const actions = [{
+    const actions = [];
+
+    if (!(tipo === "ESTOQUE_SAIDA" && dados.venda && dados.deve_baixar_estoque === false)) {
+      actions.push({
       ...base,
       table: BOT_TEST_TABLES.estoqueMovimentacoes,
       payload: {
@@ -7130,7 +7152,8 @@ function simulatedSaveActionsForResult(result, phone) {
         tipo: tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida",
         quantidade: Number(dados.quantidade || 0)
       }
-    }];
+      });
+    }
 
     if (dados.compra && dados.valor) {
       actions.push({

@@ -765,8 +765,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     }, [], 0.9);
   }
 
-  const isTodayRecordsQuery = /\b(?:o que|quais|meus|minhas|ultimos|Ãºltimos|ultimas|Ãºltimas)\b/.test(normalized)
-    && /\b(?:registrei|registros|eventos|lancei|lancamentos|lanÃ§amentos|hoje)\b/.test(normalized)
+  const isTodayRecordsQuery = /\b(?:o que|quais|meus|minhas|ultimos|últimos|ultimas|últimas)\b/.test(normalized)
+    && /\b(?:registrei|registros|eventos|lancei|lancamentos|lançamentos|hoje)\b/.test(normalized)
     || /\b(?:eventos|registros|lancamentos)\s+(?:de\s+)?hoje\b/.test(normalized);
   if (isTodayRecordsQuery) return finalize("CONSULTA_REGISTROS_HOJE", { data_referencia: "hoje", consulta: true }, [], 0.9);
 
@@ -790,7 +790,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CONSULTA_ESTOQUE_GERAL", { consulta: true }, [], 0.88);
   }
 
-  const explicitStockItemQuery = /\b(?:estoque\s+de|quanto\s+tem\s+de|tem\s+quanto\s+de|saldo\s+de|ainda\s+tem|como\s+(?:esta|estÃ¡|ta|tÃ¡)\s+o\s+estoque\s+de)\b/.test(normalized);
+  const explicitStockItemQuery = /\b(?:estoque\s+de|quanto\s+tem\s+de|tem\s+quanto\s+de|saldo\s+de|ainda\s+tem|como\s+(?:esta|está|ta|tá)\s+o\s+estoque\s+de)\b/.test(normalized);
   if (explicitStockItemQuery && !earlyStockActionForQuery) {
     const itemNome = cleanStockQueryItem(original, normalized);
     if (itemNome) return finalize("CONSULTA_ESTOQUE_ITEM", { item_nome: itemNome, consulta: true }, [], 0.88);
@@ -798,8 +798,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const period = extractConsultationPeriod(normalized);
   const productionQuestionCue = /\b(?:quanto|quantos|total|media|média|consulta|consultar|ver|relatorio|relatório)\b/.test(normalized) || /\?/.test(original);
-  const productionSubjectCue = /\b(?:producao|produÃ§Ã£o|produziu|ordenha|ordenhados|ordenhado|leite|litros|tirou)\b/.test(normalized);
-  const productionReportCue = /\b(?:producao|produÃ§Ã£o)\b/.test(normalized) && /\b(?:hoje|semana|mes|relatorio|relatório)\b/.test(normalized);
+  const productionSubjectCue = /\b(?:producao|produção|produziu|ordenha|ordenhados|ordenhado|leite|litros|tirou)\b/.test(normalized);
+  const productionReportCue = /\b(?:producao|produção)\b/.test(normalized) && /\b(?:hoje|semana|mes|relatorio|relatório)\b/.test(normalized);
   const productionQueryCue = productionSubjectCue && (productionQuestionCue || productionReportCue);
   const productionRankingQuery = productionSubjectCue && normalized.match(/\bqual\s+(?:vaca|animal)\s+produziu\s+(mais|menos)\b/);
   if (productionRankingQuery) {
@@ -1103,7 +1103,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const physicalQuantity = hasPhysicalQuantity(original) || hasLooseStockQuantity(original);
   const explicitMoney = hasExplicitMoney(original);
   const isPurchase = isPurchaseText(original);
-  const isSale = /\b(?:vendi|vendii|vendeu|vendemos|vender|venda)\b/.test(normalized);
+  const isSale = /\b(?:vendi|vendii|vendeu|vendemos|vender)\b/.test(normalized) || /^venda\b/.test(normalized);
   const stockItemName = extractStockItem(original);
   const hasPurchaseQuantity = isPurchase && hasValue(stockQuantity) && Boolean(stockItemName);
   const hasStockVocabulary = stockItemHintPattern.test(normalized) || /\bestoque\b/.test(normalized);
@@ -1156,10 +1156,10 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
   const animalEventCue = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|teve bezerro|teve bezerra|deu cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized)
     && !(/\bcria\b/.test(normalized) && animalCreationCue && !/\b(?:deu cria|criou|pariu|parto|nasceu|teve)\b/.test(normalized));
-  const earlyHasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produÃ§Ã£o)\b/.test(normalized);
+  const earlyHasProductionCue = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção)\b/.test(normalized);
   const earlyMedicineCue = vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized);
   const clearAnimalRegistrationDetails = Boolean(extractAnimalRegistrationCode(normalized))
-    || /\b(?:peso|pesou|brinco|codigo|cod|numero|nÃºmero|nome|chamado|chamada|raca|raÃ§a|lote|nascimento|nasceu)\b/.test(normalized);
+    || /\b(?:peso|pesou|brinco|codigo|cod|numero|número|nome|chamado|chamada|raca|raça|lote|nascimento|nasceu)\b/.test(normalized);
   if (!earlyHasProductionCue && !animalEventCue && !earlyMedicineCue && animalCreationCue && (!hasStockItemHint || clearAnimalRegistrationDetails)) {
     const dados = {
       animal_codigo: extractAnimalRegistrationCode(normalized),
@@ -1213,7 +1213,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const stockOutVerb = /\b(?:baixa|baixar|dar baixa|da baixa|retira|retirar|retirei|retire|tira|tirar|usei|usar|gastei|dei|deu para|saiu|saida|saída|consumi|consumiu|descartei)\b/.test(normalized);
   const medicineAnimalCue = (vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized)) && Boolean(extractAnimalCode(normalized, "VACINA_MEDICAMENTO"));
-  const isStockSale = isSale && !medicineAnimalCue && hasStockItemHint;
+  const isStockSale = isSale && physicalQuantity && !medicineAnimalCue && Boolean(stockItemName);
   if (isStockSale) {
     const dados = {
       item_nome: stockItemName,
@@ -1301,22 +1301,6 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       tanque: destino === "tanque"
     };
     return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados));
-  }
-
-  const isMilkPhysicalSale = /^(?:vendi|vendii|venda)\b/.test(normalized)
-    && /\bleite\b/.test(normalized)
-    && hasValue(extractLiters(normalized));
-  if (isMilkPhysicalSale) {
-    const explicitSaleMoney = hasExplicitMoney(normalized);
-    const dados = {
-      valor: explicitSaleMoney ? extractMoneyValue(normalized) : undefined,
-      descricao: "leite",
-      quantidade: extractLiters(normalized),
-      unidade: "L",
-      venda_leite: true,
-      data_referencia: extractDateReference(normalized) || "hoje"
-    };
-    return finalize("RECEITA_VENDA", dados, buildMissing("RECEITA_VENDA", dados), 0.88);
   }
 
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);

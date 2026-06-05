@@ -1,4 +1,4 @@
-﻿import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
@@ -317,6 +317,10 @@ function formatNumber(value: number | string | null | undefined, suffix = "") {
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(value || 0))}${suffix}`;
 }
 
+function hasBotValue(value: unknown) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
 function formatStockAmount(quantity: number | string | null | undefined, unit: string | null | undefined) {
   return `${formatNumber(quantity)} ${formatStockUnit(quantity, unit)}`.trim();
 }
@@ -400,7 +404,9 @@ function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
 
 function stockDecisionReason(parsed: ParsedRanchoMessage, found?: StockLookupResult, owner?: WhatsAppOwner) {
   if (parsed.tipo === "ESTOQUE_SAIDA" && parsed.dados?.venda && found?.row && !found.ambiguousRows?.length && found.score >= 0.86) {
-    return "item_encontrado: estoque+receita";
+    return parsed.dados?.deve_baixar_estoque === true
+      ? "item_encontrado: estoque+receita"
+      : "item_encontrado: perguntar_baixa_estoque_ou_financeiro";
   }
   if (parsed.tipo === "ESTOQUE_SAIDA" && parsed.dados?.venda && !found?.row) {
     return "item_nao_encontrado: financeiro_apenas";
@@ -1249,6 +1255,58 @@ function withMilkStockMovementDecision(parsed: ParsedRanchoMessage, shouldMove: 
   return refreshRanchoMessage(parsed, dados);
 }
 
+function physicalSaleNeedsStockDecision(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  return Boolean(
+    parsed.tipo === "ESTOQUE_SAIDA"
+    && dados.venda
+    && hasBotValue(dados.valor)
+    && dados.item_estoque_encontrado
+    && dados.item_id
+    && dados.deve_baixar_estoque !== true
+    && dados.deve_baixar_estoque !== false
+  );
+}
+
+function physicalSaleStockDecisionQuestion(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const item = dados.item_resolvido || dados.item_nome || "item";
+  return `Encontrei ${item} no estoque. Deseja dar baixa de ${formatStockAmount(Number(dados.quantidade || 0), dados.unidade)} desse item?\n1 - Sim\n2 - Não`;
+}
+
+function saleFinanceDataFromStockSale(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const item = dados.item_extraido || dados.item_nome || dados.item_resolvido || "item";
+  return {
+    valor: dados.valor,
+    descricao: `venda de ${item}`,
+    data_referencia: dados.data_referencia,
+    quantidade: dados.quantidade,
+    unidade: dados.unidade,
+    item_extraido: dados.item_extraido || item,
+    item_normalizado: dados.item_normalizado,
+    item_resolvido: dados.item_resolvido || null,
+    item_estoque_encontrado: Boolean(dados.item_estoque_encontrado),
+    item_id: dados.item_id || null,
+    deve_baixar_estoque: false,
+    motivo_processamento: "usuario_escolheu_financeiro_apenas"
+  };
+}
+
+function withPhysicalSaleStockDecision(parsed: ParsedRanchoMessage, shouldMove: boolean) {
+  if (shouldMove) {
+    const dados = {
+      ...(parsed.dados || {}),
+      deve_baixar_estoque: true,
+      motivo_processamento: "usuario_escolheu_estoque+receita"
+    };
+    return refreshRanchoMessage(parsed, dados);
+  }
+
+  const financeData = saleFinanceDataFromStockSale(parsed);
+  return refreshRanchoMessage({ ...parsed, tipo: "RECEITA_VENDA", dados: financeData }, financeData);
+}
+
 function withoutChildMilkStockMetadata(parsed: ParsedRanchoMessage) {
   if (parsed.tipo !== "PRODUCAO_LEITE") return parsed;
   const dados = { ...(parsed.dados || {}) };
@@ -1636,7 +1694,7 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     if (parsed.tipo === "ESTOQUE_SAIDA" && dados.venda && !found.row) {
       const financeData = {
         valor: dados.valor,
-        descricao: dados.item_nome,
+        descricao: `venda de ${dados.item_nome || originalItemName}`,
         data_referencia: dados.data_referencia,
         quantidade: dados.quantidade,
         unidade: dados.unidade,
@@ -2137,6 +2195,22 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         };
       }
 
+      if (pending.tipo === "ESTOQUE_SAIDA" && dados.venda && hasBotValue(dados.valor)) {
+        await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+          fazenda_id: owner.fazenda_id,
+          tipo: "entrada",
+          data_transacao: dateOnlyFromReference(dados.data_referencia),
+          valor: Number(dados.valor),
+          categoria: dados.item_nome || "Venda via WhatsApp",
+          descricao: `Venda de ${dados.item_nome || "item"} registrada via WhatsApp`,
+          metodo_pagamento: "whatsapp",
+          origem: "whatsapp",
+          created_by: owner.usuario_id || null
+        });
+
+        return realSaveResult(`Pronto, receita salva com sucesso.\nReceita: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
+      }
+
       return {
         response: `Não encontrei "${dados.item_nome || ""}" no estoque. Me envie o nome do item cadastrado.`,
         nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { item_nome: undefined }) } }
@@ -2176,6 +2250,30 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     const type = pending.tipo === "ESTOQUE_ENTRADA" ?"entrada" : "saida";
     const current = Number(found.row.quantidade_atual || 0);
     const quantity = Number(dados.quantidade || 0);
+
+    if (pending.tipo === "ESTOQUE_SAIDA" && dados.venda && hasBotValue(dados.valor) && dados.deve_baixar_estoque !== true) {
+      if (dados.deve_baixar_estoque === false) {
+        await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+          fazenda_id: owner.fazenda_id,
+          tipo: "entrada",
+          data_transacao: dateOnlyFromReference(dados.data_referencia),
+          valor: Number(dados.valor),
+          categoria: dados.item_nome || found.row.nome,
+          descricao: `Venda de ${dados.item_nome || found.row.nome} registrada via WhatsApp`,
+          metodo_pagamento: "whatsapp",
+          origem: "whatsapp",
+          created_by: owner.usuario_id || null
+        });
+
+        return realSaveResult(`Pronto, receita salva com sucesso.\nReceita: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
+      }
+
+      return {
+        response: physicalSaleStockDecisionQuestion(refreshRanchoMessage(pending, { ...dados, item_estoque_encontrado: true, item_id: found.row.id, item_resolvido: found.row.nome })),
+        nextSession: { etapa: "aguardando_dado", dados: { pending: refreshRanchoMessage(pending, { ...dados, item_estoque_encontrado: true, item_id: found.row.id, item_resolvido: found.row.nome }), acao_pendente: "venda_baixa_estoque_opcional" } }
+      };
+    }
+
     if (type === "saida" && quantity > current) {
       return { response: `Não salvei. O saldo de ${found.row.nome} é ${formatStockAmount(current, found.row.unidade_medida)}, menor que a baixa pedida.` };
     }
@@ -3921,6 +4019,11 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return milkStockDecisionQuestion(parsed);
   }
 
+  if (physicalSaleNeedsStockDecision(parsed)) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed, acao_pendente: "venda_baixa_estoque_opcional" } });
+    return physicalSaleStockDecisionQuestion(parsed);
+  }
+
   if (parsed.dados?.gemini_requires_confirmation) {
     botLog("pending_confirmation", owner, {
       currentIntent: parsed.tipo,
@@ -4196,6 +4299,11 @@ async function saveCorrectedPending(
     return { response: [prefix, milkStockDecisionQuestion(next)].filter(Boolean).join("\n"), parsed: next };
   }
 
+  if (physicalSaleNeedsStockDecision(next)) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next, acao_pendente: "venda_baixa_estoque_opcional" } });
+    return { response: [prefix, physicalSaleStockDecisionQuestion(next)].filter(Boolean).join("\n"), parsed: next };
+  }
+
   await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
   const intro = prefix ?`Agora entendi. ${prefix}` : "Agora entendi:";
   return { response: [intro, confirmationText(next)].filter(Boolean).join("\n"), parsed: next };
@@ -4341,6 +4449,26 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     return "Responda 1 para adicionar ao estoque ou 2 para registrar apenas a produção.";
   }
 
+  if (session.dados?.acao_pendente === "venda_baixa_estoque_opcional") {
+    const command = normalizeRanchoText(text);
+    const wantsStockOut = command === "1" || /\b(?:sim|s|ss|quero|pode|baixa|dar baixa|tira do estoque)\b/.test(command);
+    const onlyFinance = command === "2" || /\b(?:nao|n|nn|nao precisa|so financeiro|somente financeiro|apenas receita|nao baixa|sem estoque)\b/.test(command);
+
+    if (wantsStockOut) {
+      const next = withPhysicalSaleStockDecision(pending, true);
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+      return confirmationText(next);
+    }
+
+    if (onlyFinance) {
+      const next = withPhysicalSaleStockDecision(pending, false);
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+      return confirmationText(next);
+    }
+
+    return "Responda 1 para dar baixa no estoque ou 2 para registrar apenas a receita.";
+  }
+
   const next = await enrichWithCatalog(supabase, owner, mergeRanchoMessageData(pending, text));
   botLog("contextual_reply", owner, {
     pending: next,
@@ -4381,6 +4509,11 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   if (milkStockNeedsDecision(next)) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next, acao_pendente: "producao_leite_estoque_opcional" } });
     return milkStockDecisionQuestion(next);
+  }
+
+  if (physicalSaleNeedsStockDecision(next)) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next, acao_pendente: "venda_baixa_estoque_opcional" } });
+    return physicalSaleStockDecisionQuestion(next);
   }
 
   await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });

@@ -31,9 +31,6 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     if (field === "valor" && tipo === "ESTOQUE_SAIDA" && dados.venda) {
       return `Entendi que você vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"}. Qual foi o valor da venda?`;
     }
-    if (field === "valor" && tipo === "RECEITA_VENDA" && dados.venda_leite) {
-      return `Entendi que você vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de leite. Qual foi o valor da venda?`;
-    }
     if (field === "quantidade" && tipo === "ESTOQUE_SAIDA" && dados.item_nome) {
       return `Qual quantidade de ${dados.item_nome} saiu do estoque?`;
     }
@@ -82,10 +79,6 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "DESPESA") return `registrar saída financeira${dados.valor ?` de ${moneyText(dados.valor)}` : ""}${dados.descricao ?` (${dados.descricao})` : ""}`;
 
-  if (tipo === "RECEITA_VENDA" && dados.venda_leite) {
-    return `vender ${formatStockQuantity(dados.quantidade, dados.unidade)} de leite${dados.valor ?` e registrar receita de ${moneyText(dados.valor)}` : ""}`;
-  }
-
   if (tipo === "RECEITA_VENDA") return `registrar entrada financeira${dados.valor ?` de ${moneyText(dados.valor)}` : ""}${dados.descricao ?` (${dados.descricao})` : ""}`;
 
   if (["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) {
@@ -100,7 +93,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "ESTOQUE_ENTRADA") return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque`;
 
   if (tipo === "ESTOQUE_SAIDA" && dados.venda && hasValue(dados.valor)) {
-    return `vender ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} e registrar receita de ${moneyText(dados.valor)}`;
+    return `registrar receita de ${moneyText(dados.valor)} com venda de ${dados.item_nome || "item"} e dar baixa de ${formatStockQuantity(dados.quantidade, dados.unidade)} no estoque`;
   }
 
   if (tipo === "ESTOQUE_SAIDA" && dados.venda) return `vender ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"}`;
