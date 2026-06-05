@@ -63,6 +63,11 @@ const {
   animalBlockedMessage,
   isAnimalInactiveForBot
 } = require("../src/lib/whatsapp/animal-status.ts");
+const {
+  maskSensitivePhone,
+  redactSensitiveText,
+  safeErrorText
+} = require("../src/lib/security.ts");
 const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
 
 const mockAnimals = [
@@ -6084,6 +6089,24 @@ const sessionSecurityCases = [
     }
   },
   {
+    name: "confirmacao de sessao expirada nao salva",
+    module: "seguranca-sessao",
+    phone: SECURITY_OWNER_A_PHONE,
+    whatsappUsers: securityWhatsappUsers(),
+    initialSession: () => ({
+      etapa: "aguardando_confirmacao",
+      expira_em: new Date(Date.now() - 60 * 1000).toISOString(),
+      dados: { pending: parseResolved("vendi leite por 900") }
+    }),
+    messages: ["sim"],
+    expected: {
+      responseIncludes: "entender",
+      savedAfterConfirmation: false,
+      shouldClearSession: true,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cancelamento de A nao cancela sessao de B",
     module: "seguranca-sessao",
     phone: SECURITY_OWNER_A_PHONE,
@@ -6934,7 +6957,7 @@ function seedInitialSession(supabase, test = {}) {
     dados: clone(session.dados || {}),
     status: "ativa",
     ultimo_interacao_em: new Date().toISOString(),
-    expira_em: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    expira_em: session.expira_em || new Date(Date.now() + 60 * 60 * 1000).toISOString()
   });
 }
 
@@ -7598,6 +7621,59 @@ const animalResults = animalStatusTests.map((test, index) => {
   };
 });
 
+const securityUtilityTests = [
+  {
+    name: "logs: telefone, cpf, email e token sao mascarados",
+    module: "seguranca-logs",
+    run() {
+      const text = redactSensitiveText("telefone whatsapp:+55 (83) 99673-2761 cpf 123.456.789-09 email henrique@rancho.com token eyJabcdefghijklmnopqrstuvwxyz123456");
+      const failures = [];
+      for (const forbidden of ["99673-2761", "123.456.789-09", "henrique@rancho.com", "eyJabcdefghijklmnopqrstuvwxyz123456"]) {
+        if (text.includes(forbidden)) failures.push(`valor sensivel nao mascarado: ${forbidden}`);
+      }
+      if (!text.includes("+55******2761")) failures.push("telefone nao foi mascarado no formato esperado");
+      if (!text.includes("***.***.***-09")) failures.push("cpf nao foi mascarado no formato esperado");
+      if (!text.includes("he***@rancho.com")) failures.push("email nao foi mascarado no formato esperado");
+      if (!text.includes("[redacted]")) failures.push("token nao foi redigido");
+      return failures;
+    }
+  },
+  {
+    name: "logs: safeErrorText nao expoe erro tecnico sensivel",
+    module: "seguranca-logs",
+    run() {
+      const text = safeErrorText(new Error("Authorization: Bearer eyJabcdefghijklmnopqrstuvwxyz123456 telefone 5583996732761 password=abc123"));
+      const failures = [];
+      for (const forbidden of ["eyJabcdefghijklmnopqrstuvwxyz123456", "5583996732761", "password=abc123"]) {
+        if (text.includes(forbidden)) failures.push(`erro sensivel nao mascarado: ${forbidden}`);
+      }
+      if (!text.includes("+55******2761")) failures.push("telefone do erro nao foi mascarado");
+      if (!text.includes("[redacted]")) failures.push("token/senha do erro nao foram redigidos");
+      return failures;
+    }
+  },
+  {
+    name: "logs: mascaramento direto de telefone whatsapp",
+    module: "seguranca-logs",
+    run() {
+      const received = maskSensitivePhone("whatsapp:+55 (83) 99673-2761");
+      return received === "+55******2761" ? [] : [`telefone mascarado esperado +55******2761, recebido ${received}`];
+    }
+  }
+];
+
+const securityUtilityResults = securityUtilityTests.map((test, index) => {
+  const failures = test.run();
+  return {
+    index: allTests.length + animalResults.length + index + 1,
+    kind: "security-utility",
+    module: test.module,
+    test,
+    ok: failures.length === 0,
+    failures
+  };
+});
+
 function resultModule(result) {
   if (result.module) return result.module;
   if (result.test?.module) return result.test.module;
@@ -8252,16 +8328,16 @@ function writeBotTestReports(summary) {
 async function main() {
   const conversationResults = [];
   for (let index = 0; index < botConversationTests.length; index += 1) {
-    conversationResults.push(await runConversationTest(botConversationTests[index], parserResults.length + animalResults.length + index + 1));
+    conversationResults.push(await runConversationTest(botConversationTests[index], parserResults.length + animalResults.length + securityUtilityResults.length + index + 1));
   }
 
   const evaluationResults = [];
-  const evaluationBaseIndex = parserResults.length + animalResults.length + conversationResults.length;
+  const evaluationBaseIndex = parserResults.length + animalResults.length + securityUtilityResults.length + conversationResults.length;
   for (let index = 0; index < structuredBotEvaluationCases.length; index += 1) {
     evaluationResults.push(await runStructuredEvaluationCase(structuredBotEvaluationCases[index], evaluationBaseIndex + index + 1));
   }
 
-  const results = [...parserResults, ...animalResults, ...conversationResults, ...evaluationResults];
+  const results = [...parserResults, ...animalResults, ...securityUtilityResults, ...conversationResults, ...evaluationResults];
 
 const failed = results.filter((result) => !result.ok);
 const passed = results.length - failed.length;
@@ -8282,6 +8358,7 @@ writeBotTestReports({
 console.log("Bot test offline Rancho");
 console.log(`Usuarios mockados: ${mockUsers.length}`);
 console.log(`Parser/status: ${parserResults.length + animalResults.length}`);
+console.log(`Seguranca/logs: ${securityUtilityResults.length}`);
 console.log(`Conversas reais simuladas: ${conversationResults.length}`);
 console.log(`Casos estruturados de framework: ${evaluationResults.length}`);
 console.log("Motor real: processWhatsappMessage em modoTeste=true, salvarReal=false");

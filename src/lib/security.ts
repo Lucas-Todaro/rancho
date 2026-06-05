@@ -1,6 +1,9 @@
 const SECRET_VALUE_PATTERN = /\b(?:eyJ[a-zA-Z0-9_-]{20,}|sk-[a-zA-Z0-9_-]{20,}|SG\.[a-zA-Z0-9_-]{20,}|AC[a-f0-9]{20,}|[a-zA-Z0-9_-]{32,})\b/g;
 const SECRET_ASSIGNMENT_PATTERN = /\b(?:service[_ -]?role|auth[_ -]?token|api[_ -]?key|secret|password|jwt|private[_ -]?key|supabase[_ -]?key|twilio[_ -]?token)\b\s*[:=]\s*["']?[^"',\s}]+/gi;
 const CONTROL_CHARS_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const CPF_PATTERN = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g;
+const EMAIL_PATTERN = /\b([a-zA-Z0-9._%+-]{1,2})[a-zA-Z0-9._%+-]*(@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g;
+const PHONE_PATTERN = /\b(?:whatsapp:)?\+?\d[\d\s().-]{9,}\d\b/g;
 
 export const MAX_WHATSAPP_MESSAGE_LENGTH = 2000;
 export const SAFE_OPERATION_BLOCKED_MESSAGE = "Não posso executar esse tipo de comando nem revelar dados internos. Envie uma consulta ou registro permitido do Rancho.";
@@ -18,7 +21,17 @@ export function redactSensitiveText(value: unknown) {
       const key = match.split(/[:=]/)[0]?.trim() || "secret";
       return `${key}: [redacted]`;
     })
-    .replace(SECRET_VALUE_PATTERN, "[redacted]");
+    .replace(SECRET_VALUE_PATTERN, "[redacted]")
+    .replace(CPF_PATTERN, (match) => `***.***.***-${match.replace(/\D/g, "").slice(-2)}`)
+    .replace(EMAIL_PATTERN, (_match, prefix, domain) => `${prefix}***${domain}`)
+    .replace(PHONE_PATTERN, (match) => maskSensitivePhone(match));
+}
+
+export function maskSensitivePhone(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  const suffix = digits.slice(-4);
+  return digits.startsWith("55") ? `+55******${suffix}` : `******${suffix}`;
 }
 
 export function safeErrorText(error: unknown) {

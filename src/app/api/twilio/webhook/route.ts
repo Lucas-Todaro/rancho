@@ -1,5 +1,5 @@
 import { handleTwilioRanchoMessage } from "@/services/whatsapp/twilio";
-import { isOversizedText, safeErrorText, sanitizeFreeText } from "@/lib/security";
+import { isOversizedText, maskSensitivePhone, safeErrorText, sanitizeFreeText } from "@/lib/security";
 
 function escapeXml(value: string) {
   return value
@@ -48,7 +48,12 @@ export async function POST(request: Request) {
     const To = sanitizeFreeText(params.get("To") || "", 80);
     const MessageSid = sanitizeFreeText(params.get("MessageSid") || "", 120);
 
-    console.log("[Twilio webhook]", { From, To, MessageSid, hasBody: Boolean(Body) });
+    console.log("[Twilio webhook]", {
+      From: maskSensitivePhone(From),
+      To: maskSensitivePhone(To),
+      MessageSid,
+      hasBody: Boolean(Body)
+    });
 
     const responseMessage = await handleTwilioRanchoMessage({ Body, From, To, MessageSid });
 

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { maskSensitivePhone } from "@/lib/security";
 import { TABLES } from "@/lib/tables";
 import { normalizeWhatsappNumber, whatsappNumberCandidates, whatsappNumbersMatch } from "@/lib/phone";
 
@@ -74,8 +75,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
 
     if (activeFarmIds.size > 1) {
       console.log("[BOT AUTH]", {
-        fromRaw: from,
-        normalized: normalizedPhone,
+        fromRaw: maskSensitivePhone(from),
+        normalized: maskSensitivePhone(normalizedPhone),
         source: "whatsapp_usuarios",
         userFound: true,
         ranchoFound: true,
@@ -106,8 +107,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
       };
 
       console.log("[BOT AUTH]", {
-        fromRaw: from,
-        normalized: normalizedPhone,
+        fromRaw: maskSensitivePhone(from),
+        normalized: maskSensitivePhone(normalizedPhone),
         source: "whatsapp_usuarios",
         userFound: true,
         ranchoFound: Boolean(owner.fazenda_id),
@@ -118,8 +119,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
     }
 
     console.log("[BOT AUTH]", {
-      fromRaw: from,
-      normalized: normalizedPhone,
+      fromRaw: maskSensitivePhone(from),
+      normalized: maskSensitivePhone(normalizedPhone),
       source: "whatsapp_usuarios",
       userFound: true,
       ranchoFound: whatsappUsers.some((row) => Boolean(row.fazenda_id)),
@@ -137,8 +138,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
 
     if (activeFarmIds.size > 1) {
       console.log("[BOT AUTH]", {
-        fromRaw: from,
-        normalized: normalizedPhone,
+        fromRaw: maskSensitivePhone(from),
+        normalized: maskSensitivePhone(normalizedPhone),
         source: "usuarios",
         userFound: true,
         ranchoFound: true,
@@ -169,8 +170,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
       };
 
       console.log("[BOT AUTH]", {
-        fromRaw: from,
-        normalized: normalizedPhone,
+        fromRaw: maskSensitivePhone(from),
+        normalized: maskSensitivePhone(normalizedPhone),
         source: "usuarios",
         userFound: true,
         ranchoFound: Boolean(owner.fazenda_id),
@@ -181,8 +182,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
     }
 
     console.log("[BOT AUTH]", {
-      fromRaw: from,
-      normalized: normalizedPhone,
+      fromRaw: maskSensitivePhone(from),
+      normalized: maskSensitivePhone(normalizedPhone),
       source: "usuarios",
       userFound: true,
       ranchoFound: ownerUsers.some((row) => Boolean(row.fazenda_id)),
@@ -193,8 +194,8 @@ export async function resolveWhatsAppOwner(supabase: SupabaseAdmin, from: string
   }
 
   console.log("[BOT AUTH]", {
-    fromRaw: from,
-    normalized: normalizedPhone,
+    fromRaw: maskSensitivePhone(from),
+    normalized: maskSensitivePhone(normalizedPhone),
     source: "none",
     userFound: false,
     ranchoFound: false,
