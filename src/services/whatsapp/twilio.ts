@@ -2,6 +2,14 @@
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import {
+  isOversizedText,
+  isUnsafeOperationalMessage,
+  safeErrorText,
+  sanitizeFreeText,
+  sanitizePayloadValue,
+  SAFE_OPERATION_BLOCKED_MESSAGE
+} from "@/lib/security";
 import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
@@ -144,6 +152,19 @@ const LOT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const ANIMAL_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CADASTRO_ANIMAL"
 ]);
+
+const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
+  [TABLES.ordenhas]: new Set(["fazenda_id", "animal_id", "litros", "ordenhado_em", "turno", "destino", "origem", "registrado_por", "observacoes"]),
+  [TABLES.eventosAnimal]: new Set(["fazenda_id", "animal_id", "tipo", "data_evento", "descricao", "medicamento", "dose", "custo", "responsavel_usuario_id"]),
+  [TABLES.animais]: new Set(["fazenda_id", "brinco", "nome", "categoria", "sexo", "fase", "raca", "peso", "lote_id", "data_nascimento", "status", "created_by", "observacoes"]),
+  [TABLES.lotes]: new Set(["fazenda_id", "nome", "descricao", "ativo"]),
+  [TABLES.transacoesFinanceiras]: new Set(["fazenda_id", "tipo", "data_transacao", "valor", "categoria", "descricao", "metodo_pagamento", "origem", "created_by"]),
+  [TABLES.estoqueItens]: new Set(["fazenda_id", "nome", "categoria", "unidade_medida", "quantidade_atual", "quantidade_minima", "valor_unitario", "fornecedor", "ativo", "created_by"]),
+  [TABLES.estoqueMovimentacoes]: new Set(["fazenda_id", "item_id", "tipo", "quantidade", "valor_unitario", "motivo", "responsavel_usuario_id", "origem", "source_type", "source_id", "producao_id"]),
+  [TABLES.funcionarios]: new Set(["fazenda_id", "nome", "funcao", "cpf", "contato_whatsapp", "salario_base", "data_admissao", "carga_horaria_mensal", "valor_hora_extra", "ativo", "tipo_acesso", "papel_sistema"]),
+  [TABLES.whatsappUsuarios]: new Set(["fazenda_id", "telefone_e164", "funcionario_id", "usuario_id", "nome_exibicao", "ativo", "papel", "papel_bot"]),
+  [TABLES.registrosPonto]: new Set(["fazenda_id", "funcionario_id", "tipo", "registrado_em", "observacao", "origem", "created_by"])
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -604,12 +625,12 @@ async function saveWhatsAppMessage(
     if (error) {
       console.error("[Twilio webhook] Falha ao salvar mensagem", {
         code: (error as AnyRecord).code || null,
-        message: error.message
+        message: safeErrorText(error)
       });
     }
   } catch (error) {
     console.error("[Twilio webhook] Falha inesperada ao salvar mensagem", {
-      message: error instanceof Error ? error.message : "erro desconhecido"
+      message: safeErrorText(error) || "erro desconhecido"
     });
   }
 }
@@ -766,16 +787,61 @@ async function createBotNotificationForInsert(supabase: SupabaseAdmin, owner: Wh
     console.warn("[BOT FLOW] Falha ao criar notificação interna", {
       table,
       code: error.code,
-      message: error.message
+      message: safeErrorText(error)
     });
   }
 }
 
+function finiteNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ?number : null;
+}
+
+function invalidPositiveNumber(value: unknown) {
+  const number = finiteNumber(value);
+  return number === null || number <= 0;
+}
+
+function invalidNonNegativeNumber(value: unknown) {
+  const number = finiteNumber(value);
+  return number === null || number < 0;
+}
+
+function safeBotPayload(table: string, payload: AnyRecord) {
+  const allowed = BOT_INSERT_COLUMNS[table];
+  if (!allowed) throw new Error("Tabela não permitida para inserção via bot.");
+
+  const cleaned = Object.fromEntries(
+    Object.entries(payload)
+      .filter(([key, value]) => allowed.has(key) && value !== undefined)
+      .map(([key, value]) => [key, sanitizePayloadValue(value)])
+      .filter(([, value]) => value !== undefined)
+  ) as AnyRecord;
+
+  if (!cleaned.fazenda_id) throw new Error("Payload do bot sem fazenda vinculada.");
+  return cleaned;
+}
+
+function validatePendingForSave(pending: ParsedRanchoMessage) {
+  const dados = pending.dados || {};
+  if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
+  if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
+  if ((pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") && invalidPositiveNumber(dados.quantidade)) return "Informe uma quantidade de estoque válida antes de salvar.";
+  if ((pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") && dados.valor !== undefined && dados.valor !== null && dados.valor !== "" && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
+  if ((pending.tipo === "ESTOQUE_CADASTRO" || pending.tipo === "CRIAR_ITEM_ESTOQUE") && invalidNonNegativeNumber(dados.quantidade || 0)) return "Informe uma quantidade inicial válida antes de salvar.";
+  if (pending.tipo === "CADASTRO_ANIMAL" && dados.peso !== undefined && dados.peso !== null && dados.peso !== "" && invalidNonNegativeNumber(dados.peso)) return "Informe um peso válido antes de salvar.";
+  if (pending.tipo === "ATUALIZACAO_ANIMAL" && dados.campo_alterado === "peso" && invalidNonNegativeNumber(dados.novo_valor)) return "Informe um peso válido antes de salvar.";
+  if (pending.tipo === "ATUALIZACAO_ANIMAL" && dados.campo_alterado === "status" && !["ativo", "vendido", "morto", "inativo"].includes(String(dados.novo_valor || ""))) return "Informe um status válido para o animal.";
+  if (pending.tipo === "CADASTRO_ANIMAL" && dados.categoria && !["vaca", "boi", "bezerro", "novilha", "touro", "outro"].includes(String(dados.categoria))) return "Informe uma categoria válida para o animal.";
+  return null;
+}
+
 async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, table: string, payload: AnyRecord) {
-  const { data, error } = await supabase.from(table).insert(payload).select("*").single();
+  const safePayload = safeBotPayload(table, payload);
+  const { data, error } = await supabase.from(table).insert(safePayload).select("*").single();
   if (error) throw new Error(error.message);
-  await logAudit(supabase, owner, table, "insert", data || payload);
-  await createBotNotificationForInsert(supabase, owner, table, (data || payload) as AnyRecord);
+  await logAudit(supabase, owner, table, "insert", data || safePayload);
+  await createBotNotificationForInsert(supabase, owner, table, (data || safePayload) as AnyRecord);
   return data;
 }
 
@@ -1574,6 +1640,8 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
 async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, pending: ParsedRanchoMessage): Promise<SaveResult> {
   const dados = pending.dados || {};
+  const invalidReason = validatePendingForSave(pending);
+  if (invalidReason) return { response: invalidReason };
 
   if (pending.tipo === "LOTE_REGISTROS") {
     const registros = Array.isArray(dados.registros) ?dados.registros as ParsedRanchoMessage[] : [];
@@ -3603,7 +3671,7 @@ async function handlePostConfirmationConsultations(supabase: SupabaseAdmin, owne
   } catch (error) {
     console.error("[Gemini fallback]", {
       event: "post_confirmation_consultation_error",
-      message: error instanceof Error ?error.message : "Erro ao executar consulta depois da confirmação"
+      message: safeErrorText(error) || "Erro ao executar consulta depois da confirmação"
     });
     return "Registro salvo, mas não consegui gerar a consulta depois. Peça a consulta novamente.";
   }
@@ -4311,6 +4379,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
   }
 
   const phone = normalizeWhatsappNumber(input.telefone) || input.telefone;
+  const originalMessage = String(input.mensagem || "");
+  const message = sanitizeFreeText(originalMessage);
+  const messageTooLong = isOversizedText(originalMessage);
   const salvarRealNoTeste = Boolean(input.modoTeste && input.salvarReal);
   let owner: WhatsAppOwner | null = null;
   let previousSession: BotSession | null = null;
@@ -4330,7 +4401,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         phone,
         messageSid: input.messageSid,
         direction: "entrada",
-        body: input.mensagem,
+        body: message,
         raw: {
           provider: input.provider,
           modoTeste: Boolean(input.modoTeste),
@@ -4362,21 +4433,30 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       return buildProcessResult({ response });
     }
 
-    const command = normalizeRanchoText(input.mensagem);
+    const command = normalizeRanchoText(message);
     previousSession = await getSession(supabase, owner);
+    if (!message || messageTooLong) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      response = messageTooLong ? "Mensagem muito longa para processar com segurança. Envie uma mensagem mais curta." : "Envie uma mensagem para o bot.";
+      suppressPreviousPending = true;
+    } else if (isUnsafeOperationalMessage(message)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      response = SAFE_OPERATION_BLOCKED_MESSAGE;
+      suppressPreviousPending = true;
+    } else {
     const conversationAct = detectConversationAct({
-      text: input.mensagem,
+      text: message,
       command,
       session: previousSession,
       pending: pendingFromSession(previousSession)
     });
-    logConversationAct(input.mensagem, conversationAct);
+    logConversationAct(message, conversationAct);
 
     if (isMenuCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = helpText();
     } else if (conversationAct.messageType === "cancellation") {
-      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, message, conversationAct);
       parsed = handled.parsed;
       suppressPreviousPending = Boolean(handled.suppressPreviousPending);
       response = handled.response || "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
@@ -4396,10 +4476,15 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isConfirmCommand(command)) {
       parsed = pendingFromSession(previousSession);
       const denied = permissionDeniedMessage(owner, parsed);
+      const invalidReason = parsed ?validatePendingForSave(parsed) : null;
       if (denied) {
         eventConfirmed = false;
         await saveSession(supabase, owner, { etapa: "livre", dados: {} });
         response = denied;
+      } else if (invalidReason) {
+        eventConfirmed = false;
+        await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+        response = invalidReason;
       } else {
       eventConfirmed = true;
       await saveSession(supabase, owner, {
@@ -4415,7 +4500,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
-      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, message, conversationAct);
       if (handled.handled) {
         parsed = handled.parsed;
         suppressPreviousPending = Boolean(handled.suppressPreviousPending);
@@ -4423,29 +4508,29 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         response = handled.response || "";
       } else {
         eventConfirmed = isConfirmCommand(command);
-        response = await handleConfirmation(supabase, owner, previousSession, input.mensagem, command, {
+        response = await handleConfirmation(supabase, owner, previousSession, message, command, {
           modoTesteSalvarReal: salvarRealNoTeste
         });
       }
     } else if (previousSession.etapa === "aguardando_dado") {
-      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, message, conversationAct);
       if (handled.handled) {
         parsed = handled.parsed;
         suppressPreviousPending = Boolean(handled.suppressPreviousPending);
         response = handled.response || "";
       } else {
-        response = await handleMissingData(supabase, owner, previousSession, input.mensagem);
+        response = await handleMissingData(supabase, owner, previousSession, message);
       }
     } else {
-      const handled = await handleConversationActMessage(supabase, owner, previousSession, input.mensagem, conversationAct);
+      const handled = await handleConversationActMessage(supabase, owner, previousSession, message, conversationAct);
       if (handled.handled) {
         parsed = handled.parsed;
         suppressPreviousPending = Boolean(handled.suppressPreviousPending);
         response = handled.response || "";
       } else {
-        const localParsed = parseRanchoMessage(input.mensagem);
+        const localParsed = parseRanchoMessage(message);
         const fallback = await parseWithGeminiFallback({
-          text: input.mensagem,
+          text: message,
           localParsed,
           owner
         });
@@ -4462,13 +4547,14 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
             ?await handleGeminiConsultationBatch(supabase, owner, fallback.immediateConsultations)
             : "";
           parsed = await enrichWithCatalog(supabase, owner, fallback.pending);
-          const actionText = await handleFreeText(supabase, owner, input.mensagem, parsed);
+          const actionText = await handleFreeText(supabase, owner, message, parsed);
           response = [immediateText, actionText].filter(Boolean).join("\n\n");
         } else {
           parsed = await enrichWithCatalog(supabase, owner, fallback.parsed);
-          response = await handleFreeText(supabase, owner, input.mensagem, parsed);
+          response = await handleFreeText(supabase, owner, message, parsed);
         }
       }
+    }
     }
 
     nextSession = await getSession(supabase, owner);
@@ -4497,7 +4583,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       suppressPreviousPending
     });
   } catch (error) {
-    const message = error instanceof Error ?error.message : "Erro interno no Rancho.";
+    const message = safeErrorText(error) || "Erro interno no Rancho.";
     console.error("[BOT FLOW]", {
       event: "process_error",
       provider: input.provider,
@@ -4526,7 +4612,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       previousSession,
       nextSession,
       eventConfirmed,
-      error: message
+      error: "Erro interno no Rancho."
     });
   }
 }

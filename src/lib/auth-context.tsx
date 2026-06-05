@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { isSupabaseConfigured } from "@/lib/env";
 import { getFriendlyErrorMessage, logTechnicalError } from "@/lib/errors";
 import { DEMO_FAZENDA_ID, DEMO_USUARIO_ID } from "@/lib/mock-data";
+import { isBrowserSupabaseConfigured } from "@/lib/supabase/browser";
 import type { DataContext, UsuarioProfile } from "@/lib/types";
 
 type AuthContextValue = {
@@ -137,7 +137,7 @@ async function fetchProfile(userId: string, client: SupabaseBrowserClient) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const configured = isSupabaseConfigured();
+  const configured = isBrowserSupabaseConfigured();
   const [loading, setLoading] = useState(configured);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UsuarioProfile | null>(configured ? null : demoProfile);

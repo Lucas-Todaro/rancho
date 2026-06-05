@@ -1,3 +1,5 @@
+import { safeErrorText } from "@/lib/security";
+
 type ErrorLike = {
   message?: unknown;
   code?: unknown;
@@ -62,9 +64,5 @@ export function getFriendlyErrorMessage(error: unknown, fallback = "Algo deu err
 }
 
 export function logTechnicalError(scope: string, error: unknown) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(`[Rancho] ${scope}`, error);
-  } else {
-    console.error(`[Rancho] ${scope}`, rawErrorText(error));
-  }
+  console.error(`[Rancho] ${scope}`, safeErrorText(error) || rawErrorText(error));
 }

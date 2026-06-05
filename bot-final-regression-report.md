@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-05T15:32:30.036Z
+Gerado em: 2026-06-05T16:00:25.053Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1093
-- Aprovados: 1093
+- Total geral de testes: 1104
+- Aprovados: 1104
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -31,7 +31,7 @@ Gerado em: 2026-06-05T15:32:30.036Z
 | Permissoes | 12 | 12 | 0 | 100% |
 | Multi-fazenda | 11 | 11 | 0 | 100% |
 | Sessao/contexto | 38 | 38 | 0 | 100% |
-| Seguranca/mensagens maliciosas | 13 | 13 | 0 | 100% |
+| Seguranca/mensagens maliciosas | 24 | 24 | 0 | 100% |
 
 ## Estoque - Consultas
 

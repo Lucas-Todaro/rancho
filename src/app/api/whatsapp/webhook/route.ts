@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { safeErrorText, sanitizeFreeText } from "@/lib/security";
 import { getIncomingMessage } from "@/services/whatsapp/meta";
 import { handleConversation } from "@/services/whatsapp/conversation";
 
@@ -18,6 +19,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType && !contentType.toLowerCase().includes("application/json")) {
+      return NextResponse.json({ ok: false, error: "Formato de requisição inválido." }, { status: 415 });
+    }
+
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > 10000) {
+      return NextResponse.json({ ok: false, error: "Mensagem muito longa para processar com segurança." }, { status: 413 });
+    }
+
     const payload = await request.json();
     const incoming = getIncomingMessage(payload);
 
@@ -26,16 +37,14 @@ export async function POST(request: NextRequest) {
     }
 
     await handleConversation({
-      phone: incoming.phone,
-      text: incoming.text,
-      buttonId: incoming.buttonId
+      phone: sanitizeFreeText(incoming.phone, 80),
+      text: sanitizeFreeText(incoming.text),
+      buttonId: sanitizeFreeText(incoming.buttonId, 120)
     });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[WhatsApp webhook]", error instanceof Error ? error.message : "Erro interno");
-    }
+    console.error("[WhatsApp webhook]", safeErrorText(error));
     return NextResponse.json({ ok: false, error: "Não foi possível processar a mensagem agora." }, { status: 500 });
   }
 }

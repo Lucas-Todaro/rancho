@@ -3,6 +3,7 @@ import { INTERNAL_TOOLS_FORBIDDEN_MESSAGE } from "@/lib/internal-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import { whatsappNumbersMatch } from "@/lib/phone";
+import { isOversizedText, safeErrorText, sanitizeFreeText } from "@/lib/security";
 import { requireInternalWhatsappTester } from "@/lib/server/internal-whatsapp-tools";
 import { processWhatsappMessage } from "@/services/whatsapp/twilio";
 
@@ -52,12 +53,18 @@ async function assertCanUseSimulator(request: NextRequest, telefone: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType && !contentType.toLowerCase().includes("application/json")) {
+      return jsonError("Formato de requisição inválido.", 415);
+    }
+
     const { telefone, mensagem, salvarReal } = await request.json();
-    const phone = String(telefone || "").trim();
-    const text = String(mensagem || "").trim();
+    const phone = sanitizeFreeText(telefone || "", 80);
+    const text = sanitizeFreeText(mensagem || "");
 
     if (!phone) return jsonError("Informe o telefone simulado.", 400);
     if (!text) return jsonError("Informe a mensagem para simular.", 400);
+    if (isOversizedText(mensagem)) return jsonError("Mensagem muito longa para processar com segurança.", 413);
 
     const permission = await assertCanUseSimulator(request, phone);
     if (permission.error) return permission.error;
@@ -72,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("[WhatsApp bot simulator]", error);
+    console.error("[WhatsApp bot simulator]", safeErrorText(error));
     return jsonError("Erro interno ao simular o bot.", 500);
   }
 }
