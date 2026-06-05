@@ -12,6 +12,6 @@ export async function syncAnimalPhaseAfterEvent(eventRecord: AnyRecord, context:
   });
 
   if (animal?.id && animal.fase === "gestante") {
-    await updateRecord(TABLES.animais, animal.id, { fase: "lactacao" });
+    await updateRecord(TABLES.animais, animal.id, { fase: "lactacao" }, context);
   }
 }

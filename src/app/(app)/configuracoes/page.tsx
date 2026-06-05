@@ -86,6 +86,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export default function ConfiguracoesPage() {
   const router = useRouter();
   const { profile, session, isDemo, reloadProfile, signOut } = useAuth();
+  const dataContext = useMemo(() => ({
+    fazendaId: profile?.fazenda_id,
+    usuarioId: profile?.id,
+    papel: profile?.papel
+  }), [profile?.fazenda_id, profile?.id, profile?.papel]);
   const [health, setHealth] = useState<Health | null>(null);
   const [farm, setFarm] = useState<AnyRecord | null>(null);
   const [user, setUser] = useState<AnyRecord | null>(null);
@@ -274,13 +279,12 @@ export default function ConfiguracoesPage() {
         telefone: normalizedPhone,
         cpf: onlyDigits(userDraft.cpf) || null,
         cargo: userDraft.cargo || null
-      });
+      }, dataContext);
       const nextUser = { ...user, ...savedUser, nome: userDraft.nome, telefone: normalizedPhone };
-      const ownerContext = { ...profile, fazendaId: profile?.fazenda_id, usuarioId: profile?.id };
       if (normalizedPhone) {
-        await syncOwnerWhatsAppUser(nextUser, ownerContext);
+        await syncOwnerWhatsAppUser(nextUser, dataContext);
       } else {
-        await deactivateOwnerWhatsAppUser(nextUser, ownerContext);
+        await deactivateOwnerWhatsAppUser(nextUser, dataContext);
       }
       await reloadProfile();
       await load();
@@ -298,7 +302,7 @@ export default function ConfiguracoesPage() {
     setSaving("preferences");
     setError("");
     try {
-      await updateRecord(TABLES.usuarios, user.id, { preferencias: preferencesDraft });
+      await updateRecord(TABLES.usuarios, user.id, { preferencias: preferencesDraft }, dataContext);
       if (preferencesDraft.tema !== "sistema") {
         localStorage.setItem("rancho-theme", preferencesDraft.tema);
         document.documentElement.classList.toggle("dark", preferencesDraft.tema === "dark");

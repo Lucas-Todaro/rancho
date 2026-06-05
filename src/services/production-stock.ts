@@ -75,7 +75,7 @@ export async function removeProductionStockMovement(productionId: string, contex
   }
 
   try {
-    await deleteRecords(TABLES.estoqueMovimentacoes, scopedSourceFilters(productionId, context));
+    await deleteRecords(TABLES.estoqueMovimentacoes, scopedSourceFilters(productionId, context), context);
   } catch (error) {
     if (!isMissingSourceColumn(error)) throw error;
   }

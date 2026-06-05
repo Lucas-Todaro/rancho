@@ -6067,6 +6067,23 @@ const sessionSecurityCases = [
     }
   },
   {
+    name: "sessao antiga com mesmo telefone em outro rancho nao e reaproveitada",
+    module: "seguranca-sessao",
+    phone: SECURITY_OWNER_A_PHONE,
+    whatsappUsers: securityWhatsappUsers(),
+    initialSession: () => ({
+      fazenda_id: BOT_TEST_FARM_ID_B,
+      etapa: "aguardando_confirmacao",
+      dados: { pending: parseResolved("vendi leite por 900") }
+    }),
+    messages: ["sim"],
+    expected: {
+      responseIncludes: "entender",
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cancelamento de A nao cancela sessao de B",
     module: "seguranca-sessao",
     phone: SECURITY_OWNER_A_PHONE,
@@ -6821,7 +6838,7 @@ function seedInitialSession(supabase, test = {}) {
   const whatsappUser = supabase.tables[BOT_TEST_TABLES.whatsappUsuarios].find((row) => row.telefone_e164 === phone) || {};
   supabase.tables[BOT_TEST_TABLES.whatsappSessoes].push({
     id: `session-${phone}`,
-    fazenda_id: test.ranch?.id || whatsappUser.fazenda_id || BOT_TEST_FARM_ID,
+    fazenda_id: session.fazenda_id || test.ranch?.id || whatsappUser.fazenda_id || BOT_TEST_FARM_ID,
     whatsapp_usuario_id: whatsappUser.id || "wa-admin",
     telefone_e164: phone,
     fluxo: session.etapa === "livre" ? null : "nlp_local",

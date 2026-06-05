@@ -161,7 +161,7 @@ export function EmployeeScreen() {
       };
 
       if (editing?.id) {
-        const saved = await updateRecord(TABLES.funcionarios, editing.id, payload);
+        const saved = await updateRecord(TABLES.funcionarios, editing.id, payload, dataContext);
         if (contato_whatsapp) {
           await syncEmployeeWhatsAppUser({ ...editing, ...payload, ...saved, id: editing.id }, dataContext);
         } else {
@@ -197,7 +197,7 @@ export function EmployeeScreen() {
       const nextEmployee: AnyRecord = { ...employee, ativo: !active };
       if (!active && nextEmployee.contato_whatsapp) await assertUniqueActiveEmployeeWhatsApp(nextEmployee, dataContext);
 
-      const saved = await updateRecord(TABLES.funcionarios, employee.id, { ativo: !active });
+      const saved = await updateRecord(TABLES.funcionarios, employee.id, { ativo: !active }, dataContext);
       if (nextEmployee.ativo && nextEmployee.contato_whatsapp) {
         await syncEmployeeWhatsAppUser({ ...nextEmployee, ...saved }, dataContext);
       } else {
@@ -217,7 +217,7 @@ export function EmployeeScreen() {
     await updateRecord(TABLES.funcionarios, employee.id, {
       ativo: false,
       deleted_at: new Date().toISOString()
-    });
+    }, dataContext);
     await deactivateEmployeeWhatsAppUser(employee, dataContext);
     await syncEmployeePanelAccess(employee.id, session?.access_token);
   }
@@ -244,7 +244,7 @@ export function EmployeeScreen() {
         try {
           await deactivateEmployeeWhatsAppUser(employee, dataContext, { clearEmployeeLink: true });
           await syncEmployeePanelAccess(employee.id, session?.access_token, { forceDisabled: true });
-          await deleteRecord(TABLES.funcionarios, employee.id);
+          await deleteRecord(TABLES.funcionarios, employee.id, dataContext);
         } catch {
           await softDeleteEmployee(employee);
         }

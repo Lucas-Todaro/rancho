@@ -450,7 +450,7 @@ export function GenealogyScreen() {
         mae_id: draft.mae_id || null,
         pai_id: draft.pai_id || null,
         genealogia_observacoes: draft.genealogia_observacoes || null
-      });
+      }, dataContext);
 
       setSuccess("Genealogia salva com sucesso.");
       await load();

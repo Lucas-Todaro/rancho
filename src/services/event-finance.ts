@@ -103,8 +103,8 @@ export async function syncEventCostToFinance(eventRecord: AnyRecord, context: Da
 
   const payload = financePayload(eventRecord, animalOptions);
   if (existing[0]?.id) {
-    await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, payload);
-    await Promise.all(existing.slice(1).map((record) => deleteRecord(TABLES.transacoesFinanceiras, record.id)));
+    await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, payload, context);
+    await Promise.all(existing.slice(1).map((record) => deleteRecord(TABLES.transacoesFinanceiras, record.id, context)));
     return;
   }
 
@@ -113,6 +113,6 @@ export async function syncEventCostToFinance(eventRecord: AnyRecord, context: Da
 
 export async function removeEventCostFromFinance(eventId: string, context?: DataContext) {
   if (!eventId) return;
-  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context));
-  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters([{ column: "origem", value: legacyEventFinanceOrigin(eventId) }], context));
+  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context), context);
+  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters([{ column: "origem", value: legacyEventFinanceOrigin(eventId) }], context), context);
 }

@@ -16,18 +16,21 @@ function isIgnorableCleanupError(error: unknown) {
   return /column|schema cache|invalid input syntax|invalid input value|22P02|42703|42P01/i.test(errorMessage(error));
 }
 
-async function deleteByColumn(supabase: SupabaseClient, table: string, column: string, value: string) {
-  const { error } = await supabase.from(table).delete().eq(column, value);
+async function deleteByColumn(supabase: SupabaseClient, table: string, column: string, value: string, farmId?: string) {
+  let query = supabase.from(table).delete().eq(column, value);
+  if (farmId) query = query.eq("fazenda_id", farmId);
+
+  const { error } = await query;
   if (error && !isIgnorableCleanupError(error)) throw new Error(error.message);
 }
 
-async function deleteNotificationsForId(supabase: SupabaseClient, id: string) {
-  await deleteByColumn(supabase, TABLES.notificacoes, "entidade_id", id);
-  await deleteByColumn(supabase, TABLES.notificacoes, "registro_id", id);
-  await deleteByColumn(supabase, TABLES.notificacoes, "referencia_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "entidade_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "registro_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "referencia_id", id);
+async function deleteNotificationsForId(supabase: SupabaseClient, id: string, farmId?: string) {
+  await deleteByColumn(supabase, TABLES.notificacoes, "entidade_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.notificacoes, "registro_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.notificacoes, "referencia_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "entidade_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "registro_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "referencia_id", id, farmId);
 }
 
 export async function POST(request: NextRequest) {
@@ -49,9 +52,10 @@ export async function POST(request: NextRequest) {
     if (productionError) throw new Error(productionError.message);
     if (!production) return invitationError("Registro de produção não encontrado.", 404);
 
-    await deleteNotificationsForId(permission.supabase, id);
-    await deleteByColumn(permission.supabase, TABLES.notificacoes, "dedupe_key", `bot:${TABLES.ordenhas}:${id}`);
-    await deleteByColumn(permission.supabase, TABLES.estoqueMovimentacoes, "source_id", id);
+    const farmId = permission.profile.fazenda_id;
+    await deleteNotificationsForId(permission.supabase, id, farmId);
+    await deleteByColumn(permission.supabase, TABLES.notificacoes, "dedupe_key", `bot:${TABLES.ordenhas}:${id}`, farmId);
+    await deleteByColumn(permission.supabase, TABLES.estoqueMovimentacoes, "source_id", id, farmId);
 
     const { error: deleteError } = await permission.supabase
       .from(TABLES.ordenhas)

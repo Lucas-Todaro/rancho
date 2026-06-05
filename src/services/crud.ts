@@ -83,6 +83,14 @@ function sortLocal(rows: AnyRecord[], tableName: string, orderBy = "created_at",
   });
 }
 
+function shouldScopeByFarm(tableName: string, context?: DataContext) {
+  return Boolean(context?.fazendaId && FARM_SCOPED_TABLES.has(tableName));
+}
+
+function matchesFarmScope(tableName: string, row: AnyRecord, context?: DataContext) {
+  return !shouldScopeByFarm(tableName, context) || row.fazenda_id === context?.fazendaId;
+}
+
 function filterLocalRows(tableName: string, rows: AnyRecord[], options: ListOptions) {
   const scoped = options.fazendaId && FARM_SCOPED_TABLES.has(tableName)
     ? rows.filter((row) => row.fazenda_id === options.fazendaId)
@@ -165,29 +173,39 @@ export async function createRecord(tableName: string, values: AnyRecord, context
   return data;
 }
 
-export async function updateRecord(tableName: string, id: string, values: AnyRecord) {
+export async function updateRecord(tableName: string, id: string, values: AnyRecord, context?: DataContext) {
   const payload = normalizePayload(values);
 
   if (!supabaseBrowser) {
-    mockData[tableName] = (mockData[tableName] || []).map((item) => item.id === id ? { ...item, ...payload } : item);
-    return mockData[tableName].find((item) => item.id === id);
+    mockData[tableName] = (mockData[tableName] || []).map((item) => (
+      item.id === id && matchesFarmScope(tableName, item, context) ? { ...item, ...payload } : item
+    ));
+    return mockData[tableName].find((item) => item.id === id && matchesFarmScope(tableName, item, context));
   }
 
-  const { data, error } = await supabaseBrowser
+  let query = supabaseBrowser
     .from(tableName)
     .update(payload)
-    .eq("id", id)
-    .select("*")
-    .single();
+    .eq("id", id);
+
+  if (shouldScopeByFarm(tableName, context)) {
+    query = query.eq("fazenda_id", context?.fazendaId as string);
+  }
+
+  const { data, error } = await query.select("*").single();
 
   if (error) {
     if (canRetryWithoutAnimalOptionalFields(tableName, payload, error)) {
-      const { data: fallbackData, error: fallbackError } = await supabaseBrowser
+      let fallbackQuery = supabaseBrowser
         .from(tableName)
         .update(withoutAnimalOptionalFields(payload))
-        .eq("id", id)
-        .select("*")
-        .single();
+        .eq("id", id);
+
+      if (shouldScopeByFarm(tableName, context)) {
+        fallbackQuery = fallbackQuery.eq("fazenda_id", context?.fazendaId as string);
+      }
+
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery.select("*").single();
 
       if (!fallbackError) return fallbackData;
     }
@@ -198,13 +216,20 @@ export async function updateRecord(tableName: string, id: string, values: AnyRec
   return data;
 }
 
-export async function deleteRecord(tableName: string, id: string) {
+export async function deleteRecord(tableName: string, id: string, context?: DataContext) {
   if (!supabaseBrowser) {
-    mockData[tableName] = (mockData[tableName] || []).filter((item) => item.id !== id);
+    mockData[tableName] = (mockData[tableName] || []).filter((item) => (
+      item.id !== id || !matchesFarmScope(tableName, item, context)
+    ));
     return true;
   }
 
-  const { error } = await supabaseBrowser.from(tableName).delete().eq("id", id);
+  let query = supabaseBrowser.from(tableName).delete().eq("id", id);
+  if (shouldScopeByFarm(tableName, context)) {
+    query = query.eq("fazenda_id", context?.fazendaId as string);
+  }
+
+  const { error } = await query;
   if (error) {
     logTechnicalError(`Falha ao excluir registro em ${tableName}`, error);
     throw new Error(getFriendlyErrorMessage(error, "Não foi possível excluir o registro agora."));
@@ -212,15 +237,22 @@ export async function deleteRecord(tableName: string, id: string) {
   return true;
 }
 
-export async function deleteRecords(tableName: string, filters: ListOptions["filters"] = []) {
+export async function deleteRecords(tableName: string, filters: ListOptions["filters"] = [], context?: DataContext) {
   if (!supabaseBrowser) {
     const rows = mockData[tableName] || [];
-    const rowsToDelete = new Set(filterLocalRows(tableName, rows, { filters }).map((item) => item.id));
+    const rowsToDelete = new Set(filterLocalRows(tableName, rows, {
+      filters,
+      fazendaId: context?.fazendaId,
+      usuarioId: context?.usuarioId
+    }).map((item) => item.id));
     mockData[tableName] = rows.filter((item) => !rowsToDelete.has(item.id));
     return true;
   }
 
   let query = supabaseBrowser.from(tableName).delete();
+  if (shouldScopeByFarm(tableName, context)) {
+    query = query.eq("fazenda_id", context?.fazendaId as string);
+  }
 
   filters.forEach((filter) => {
     if (filter.value === undefined) return;

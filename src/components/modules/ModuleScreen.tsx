@@ -185,7 +185,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
       }
 
       if (editing?.id) {
-        const updated = await updateRecord(config.tableName, editing.id, payload);
+        const updated = await updateRecord(config.tableName, editing.id, payload, dataContext);
         if (config.tableName === TABLES.eventosAnimal) {
           const eventRecord = updated || { ...editing, ...payload };
           await syncEventCostToFinance(eventRecord, dataContext, relationOptions.animal_id);
@@ -246,10 +246,10 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           }
         } else {
           await removeProductionStockMovement(id, dataContext);
-          await deleteRecord(config.tableName, id);
+          await deleteRecord(config.tableName, id, dataContext);
         }
       } else {
-        await deleteRecord(config.tableName, id);
+        await deleteRecord(config.tableName, id, dataContext);
       }
       if (config.tableName === TABLES.eventosAnimal && deletedRow) {
         await removeEventCostFromFinance(id, dataContext);
@@ -269,7 +269,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
     setError("");
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
-      await updateRecord(TABLES.animais, animalDeleteTarget.id, { status: "inativo" });
+      await updateRecord(TABLES.animais, animalDeleteTarget.id, { status: "inativo" }, dataContext);
       setAnimalDeleteTarget(null);
       notifyDashboardUpdated();
       await load();
@@ -322,16 +322,16 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
         ]);
 
         await Promise.all(animalEvents.map((event) => event.id ? removeEventCostFromFinance(String(event.id), dataContext) : Promise.resolve()));
-        await deleteRecords(TABLES.ordenhas, [{ column: "animal_id", value: animalId }]);
-        await deleteRecords(TABLES.eventosAnimal, [{ column: "animal_id", value: animalId }]);
+        await deleteRecords(TABLES.ordenhas, [{ column: "animal_id", value: animalId }], dataContext);
+        await deleteRecords(TABLES.eventosAnimal, [{ column: "animal_id", value: animalId }], dataContext);
 
         const children = Array.from(new Map([...childrenByMother, ...childrenByFather].map((child) => [String(child.id), child])).values());
         await Promise.all(children.map((child) => updateRecord(TABLES.animais, child.id, {
           ...(String(child.mae_id || "") === animalId ? { mae_id: null } : {}),
           ...(String(child.pai_id || "") === animalId ? { pai_id: null } : {})
-        })));
+        }, dataContext)));
 
-        await deleteRecord(TABLES.animais, animalId);
+        await deleteRecord(TABLES.animais, animalId, dataContext);
       }
 
       setAnimalDeleteTarget(null);

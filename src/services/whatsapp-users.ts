@@ -87,10 +87,10 @@ export async function syncEmployeeWhatsAppUser(employee: AnyRecord, context?: Da
   const target = ownRow || (employee.ativo !== false ? reusablePhoneRow : undefined);
 
   if (target?.id) {
-    await updateRecord(TABLES.whatsappUsuarios, target.id, payload);
+    await updateRecord(TABLES.whatsappUsuarios, target.id, payload, context);
     await Promise.all(rows
       .filter((row) => row.id !== target.id && row.funcionario_id === employee.id)
-      .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false })));
+      .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false }, context)));
     return;
   }
 
@@ -104,7 +104,7 @@ export async function deactivateEmployeeWhatsAppUser(employee: AnyRecord, contex
   await Promise.all(rows.map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, {
     ativo: false,
     ...(options.clearEmployeeLink ? { funcionario_id: null } : {})
-  })));
+  }, context)));
 }
 
 async function findOwnerWhatsAppUserRows(user: AnyRecord, phone: string, context?: DataContext) {
@@ -159,10 +159,10 @@ export async function syncOwnerWhatsAppUser(user: AnyRecord, context?: DataConte
   const target = ownRow || phoneRow;
 
   if (target?.id) {
-    await updateRecord(TABLES.whatsappUsuarios, target.id, payload);
+    await updateRecord(TABLES.whatsappUsuarios, target.id, payload, context);
     await Promise.all(rows
       .filter((row) => row.id !== target.id && (row.usuario_id === user.id || whatsappNumbersMatch(row.telefone_e164, phone)))
-      .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false })));
+      .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false }, context)));
     return;
   }
 
@@ -176,5 +176,5 @@ export async function deactivateOwnerWhatsAppUser(user: AnyRecord, context?: Dat
   const rows = await findOwnerWhatsAppUserRows(user, normalizeBrazilianWhatsApp(user.telefone), context);
   await Promise.all(rows
     .filter((row) => row.usuario_id === user.id)
-    .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false })));
+    .map((row) => updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: false }, context)));
 }

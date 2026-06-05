@@ -141,7 +141,7 @@ export function EmployeeDetails({
       const hasWhatsApp = Boolean(values.contato_whatsapp);
       const contato_whatsapp = hasWhatsApp ? await assertUniqueActiveEmployeeWhatsApp({ ...employee, ...values }, context) : null;
       const payload = { ...values, contato_whatsapp };
-      const saved = await updateRecord(TABLES.funcionarios, employee.id, payload);
+      const saved = await updateRecord(TABLES.funcionarios, employee.id, payload, context);
       if (contato_whatsapp) {
         await syncEmployeeWhatsAppUser({ ...employee, ...payload, ...saved }, context);
       } else {
@@ -203,7 +203,7 @@ export function EmployeeDetails({
 
       const existing = payrolls.find((row) => monthKey(row.competencia) === payrollDraft.competencia);
       if (existing?.id) {
-        await updateRecord(TABLES.folhaPagamento, existing.id, payload);
+        await updateRecord(TABLES.folhaPagamento, existing.id, payload, context);
       } else {
         await createRecord(TABLES.folhaPagamento, payload, context);
       }

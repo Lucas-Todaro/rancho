@@ -54,6 +54,6 @@ export async function recordStockMovement({
     await updateRecord(TABLES.estoqueItens, item.id, {
       quantidade_atual: nextQuantity,
       valor_unitario: unitValue || item.valor_unitario || null
-    });
+    }, context);
   }
 }

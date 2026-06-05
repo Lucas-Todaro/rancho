@@ -17,18 +17,19 @@ function isIgnorableCleanupError(error: unknown) {
   return /column|schema cache|invalid input syntax|invalid input value|22P02/i.test(message);
 }
 
-function isMissingColumn(error: unknown) {
-  const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
-  return /column|schema cache/i.test(message);
-}
+async function deleteByColumn(supabase: SupabaseClient, table: string, column: string, value: string, farmId?: string) {
+  let query = supabase.from(table).delete().eq(column, value);
+  if (farmId) query = query.eq("fazenda_id", farmId);
 
-async function deleteByColumn(supabase: SupabaseClient, table: string, column: string, value: string) {
-  const { error } = await supabase.from(table).delete().eq(column, value);
+  const { error } = await query;
   if (error && !isIgnorableCleanupError(error)) throw new Error(error.message);
 }
 
-async function selectIdsByColumn(supabase: SupabaseClient, table: string, column: string, value: string) {
-  const { data, error } = await supabase.from(table).select("id").eq(column, value);
+async function selectIdsByColumn(supabase: SupabaseClient, table: string, column: string, value: string, farmId?: string) {
+  let query = supabase.from(table).select("id").eq(column, value);
+  if (farmId) query = query.eq("fazenda_id", farmId);
+
+  const { data, error } = await query;
   if (error) {
     if (isIgnorableCleanupError(error)) return [];
     throw new Error(error.message);
@@ -36,17 +37,17 @@ async function selectIdsByColumn(supabase: SupabaseClient, table: string, column
   return (data || []).map((row: { id?: string }) => String(row.id || "")).filter(Boolean);
 }
 
-async function deleteNotificationsForId(supabase: SupabaseClient, id: string) {
-  await deleteByColumn(supabase, TABLES.notificacoes, "entidade_id", id);
-  await deleteByColumn(supabase, TABLES.notificacoes, "registro_id", id);
-  await deleteByColumn(supabase, TABLES.notificacoes, "referencia_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "entidade_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "registro_id", id);
-  await deleteByColumn(supabase, TABLES.alertas, "referencia_id", id);
+async function deleteNotificationsForId(supabase: SupabaseClient, id: string, farmId?: string) {
+  await deleteByColumn(supabase, TABLES.notificacoes, "entidade_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.notificacoes, "registro_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.notificacoes, "referencia_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "entidade_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "registro_id", id, farmId);
+  await deleteByColumn(supabase, TABLES.alertas, "referencia_id", id, farmId);
 }
 
-async function deleteBotNotificationByDedupeKey(supabase: SupabaseClient, table: string, id: string) {
-  await deleteByColumn(supabase, TABLES.notificacoes, "dedupe_key", `bot:${table}:${id}`);
+async function deleteBotNotificationByDedupeKey(supabase: SupabaseClient, table: string, id: string, farmId?: string) {
+  await deleteByColumn(supabase, TABLES.notificacoes, "dedupe_key", `bot:${table}:${id}`, farmId);
 }
 
 export async function POST(request: NextRequest) {
@@ -77,34 +78,35 @@ export async function POST(request: NextRequest) {
     if (eventsError) throw new Error(eventsError.message);
 
     const eventIds = (events || []).map((event: { id?: string }) => String(event.id || "")).filter(Boolean);
-    const milkingIds = await selectIdsByColumn(permission.supabase, TABLES.ordenhas, "animal_id", id);
+    const farmId = permission.profile.fazenda_id;
+    const milkingIds = await selectIdsByColumn(permission.supabase, TABLES.ordenhas, "animal_id", id, farmId);
     const financeIds = new Set<string>();
 
     for (const eventId of eventIds) {
-      const bySourceId = await selectIdsByColumn(permission.supabase, TABLES.transacoesFinanceiras, "source_id", eventId);
-      const byLegacyOrigin = await selectIdsByColumn(permission.supabase, TABLES.transacoesFinanceiras, "origem", `evento_animal:${eventId}`);
+      const bySourceId = await selectIdsByColumn(permission.supabase, TABLES.transacoesFinanceiras, "source_id", eventId, farmId);
+      const byLegacyOrigin = await selectIdsByColumn(permission.supabase, TABLES.transacoesFinanceiras, "origem", `evento_animal:${eventId}`, farmId);
       [...bySourceId, ...byLegacyOrigin].forEach((financeId) => financeIds.add(financeId));
     }
 
     for (const linkedId of [id, ...eventIds, ...milkingIds, ...Array.from(financeIds)]) {
-      await deleteNotificationsForId(permission.supabase, linkedId);
+      await deleteNotificationsForId(permission.supabase, linkedId, farmId);
     }
 
-    await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.animais, id);
+    await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.animais, id, farmId);
     for (const eventId of eventIds) {
-      await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.eventosAnimal, eventId);
-      await deleteByColumn(permission.supabase, TABLES.transacoesFinanceiras, "source_id", eventId);
-      await deleteByColumn(permission.supabase, TABLES.transacoesFinanceiras, "origem", `evento_animal:${eventId}`);
+      await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.eventosAnimal, eventId, farmId);
+      await deleteByColumn(permission.supabase, TABLES.transacoesFinanceiras, "source_id", eventId, farmId);
+      await deleteByColumn(permission.supabase, TABLES.transacoesFinanceiras, "origem", `evento_animal:${eventId}`, farmId);
     }
     for (const milkingId of milkingIds) {
-      await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.ordenhas, milkingId);
-      await deleteByColumn(permission.supabase, TABLES.estoqueMovimentacoes, "source_id", milkingId);
+      await deleteBotNotificationByDedupeKey(permission.supabase, TABLES.ordenhas, milkingId, farmId);
+      await deleteByColumn(permission.supabase, TABLES.estoqueMovimentacoes, "source_id", milkingId, farmId);
     }
 
-    await deleteByColumn(permission.supabase, TABLES.ordenhas, "animal_id", id);
-    await deleteByColumn(permission.supabase, TABLES.eventosAnimal, "animal_id", id);
-    await deleteByColumn(permission.supabase, TABLES.alertas, "animal_id", id);
-    await deleteByColumn(permission.supabase, TABLES.notificacoes, "animal_id", id);
+    await deleteByColumn(permission.supabase, TABLES.ordenhas, "animal_id", id, farmId);
+    await deleteByColumn(permission.supabase, TABLES.eventosAnimal, "animal_id", id, farmId);
+    await deleteByColumn(permission.supabase, TABLES.alertas, "animal_id", id, farmId);
+    await deleteByColumn(permission.supabase, TABLES.notificacoes, "animal_id", id, farmId);
 
     const { error: motherError } = await permission.supabase
       .from(TABLES.animais)

@@ -192,7 +192,7 @@ export default function WhatsAppPage() {
       };
 
       if (editing?.id) {
-        await updateRecord(TABLES.whatsappUsuarios, editing.id, payload);
+        await updateRecord(TABLES.whatsappUsuarios, editing.id, payload, dataContext);
         setSuccess("Número autorizado atualizado.");
       } else {
         await createRecord(TABLES.whatsappUsuarios, {
@@ -217,7 +217,7 @@ export default function WhatsAppPage() {
     setError("");
     setSuccess("");
     try {
-      await updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: row.ativo === false });
+      await updateRecord(TABLES.whatsappUsuarios, row.id, { ativo: row.ativo === false }, dataContext);
       setSuccess(row.ativo === false ? "Número ativado." : "Número desativado.");
       await loadAuthorizedNumbers();
     } catch (err) {
@@ -236,8 +236,8 @@ export default function WhatsAppPage() {
     setError("");
     setSuccess("");
     try {
-      await deleteRecords(TABLES.whatsappSessoes, [{ column: "whatsapp_usuario_id", value: row.id }]);
-      await deleteRecord(TABLES.whatsappUsuarios, row.id);
+      await deleteRecords(TABLES.whatsappSessoes, [{ column: "whatsapp_usuario_id", value: row.id }], dataContext);
+      await deleteRecord(TABLES.whatsappUsuarios, row.id, dataContext);
       setSuccess("Número removido da lista.");
       await loadAuthorizedNumbers();
     } catch (err) {

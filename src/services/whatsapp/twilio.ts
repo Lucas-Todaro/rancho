@@ -619,6 +619,7 @@ async function getSession(supabase: SupabaseAdmin, owner: WhatsAppOwner): Promis
     .from(TABLES.whatsappSessoes)
     .select("etapa,dados,status,expira_em")
     .eq("telefone_e164", owner.telefone_e164)
+    .eq("fazenda_id", owner.fazenda_id)
     .maybeSingle();
 
   if (error) throw new Error(error.message);

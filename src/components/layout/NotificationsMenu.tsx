@@ -71,7 +71,7 @@ export function NotificationsMenu() {
     try {
       const readAt = new Date().toISOString();
       setRows((current) => current.map((row) => row.id === notification.id ? { ...row, lida_em: readAt } : row));
-      await updateRecord(TABLES.notificacoes, notification.id, { lida_em: readAt });
+      await updateRecord(TABLES.notificacoes, notification.id, { lida_em: readAt }, dataContext);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Não foi possível marcar a notificação como lida."));
       await load();

@@ -277,7 +277,7 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
       if (editing?.id) {
-        await updateRecord(TABLES.estoqueItens, editing.id, values);
+        await updateRecord(TABLES.estoqueItens, editing.id, values, dataContext);
         setEditing(null);
       } else {
         await createRecord(TABLES.estoqueItens, values, dataContext);
@@ -321,8 +321,8 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     setError("");
     try {
       if (!canManage) throw new Error(PERMISSION_DENIED_MESSAGE);
-      await deleteRecords(TABLES.estoqueMovimentacoes, [{ column: "item_id", value: item.id }]);
-      await deleteRecord(TABLES.estoqueItens, item.id);
+      await deleteRecords(TABLES.estoqueMovimentacoes, [{ column: "item_id", value: item.id }], dataContext);
+      await deleteRecord(TABLES.estoqueItens, item.id, dataContext);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível excluir.");
