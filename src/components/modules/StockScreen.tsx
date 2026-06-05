@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
 import { createRecord, deleteRecord, deleteRecords, invalidateRecordsCache, listRecords, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { recordStockMovement, type StockMovementType } from "@/services/stock";
@@ -15,6 +16,8 @@ import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import { formatStockQuantity } from "@/lib/stock-format";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
+import { getFriendlyErrorMessage } from "@/lib/errors";
+import { withAsyncTimeout } from "@/lib/async";
 
 type StockAction = {
   item: AnyRecord;
@@ -243,13 +246,15 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
   const [error, setError] = useState("");
   const [visibleItemLimit, setVisibleItemLimit] = useState(STOCK_RENDER_BATCH_SIZE);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestRef = useRef(0);
   const deferredSearch = useDeferredValue(search);
 
   const load = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const [nextItems, nextMovements] = await Promise.all([
+      const [nextItems, nextMovements] = await withAsyncTimeout(Promise.all([
         listRecords(TABLES.estoqueItens, {
           orderBy: "created_at",
           fazendaId: dataContext.fazendaId,
@@ -267,19 +272,25 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
           cache: true,
           forceRefresh
         })
-      ]);
+      ]), "O estoque demorou para carregar. Tente novamente.");
 
+      if (loadRequestRef.current !== requestId) return;
       setItems(nextItems);
       setMovements(nextMovements);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar o estoque.");
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar o estoque agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [dataContext.fazendaId, dataContext.usuarioId]);
 
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
 
   const searchableItems = useMemo(
@@ -318,8 +329,11 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
     });
     return entries;
   }, [movements]);
-  const showPlaceholders = loading || Boolean(error && !items.length);
+  const initialLoading = loading && !items.length;
+  const initialError = Boolean(error && !items.length && !loading);
+  const showPlaceholders = initialLoading;
   const canManage = canManageData(profile);
+  const hasSearch = Boolean(deferredSearch.trim());
 
   function startEditing(item: AnyRecord) {
     setEditing(item);
@@ -407,18 +421,24 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn btn-secondary" type="button" onClick={() => exportStockCsv(filteredItems)}>Baixar planilha</button>
-          <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
-            <RefreshCw className="h-4 w-4" /> Atualizar
+          <button className="btn btn-secondary" type="button" onClick={() => load(true)} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {loading ? "Atualizando..." : "Atualizar"}
           </button>
         </div>
       </div>
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
+      {error ? (
+        <ErrorState
+          title={items.length ? "Nao consegui atualizar o estoque agora." : "Nao consegui carregar o estoque."}
+          message={items.length ? "Os ultimos itens carregados continuam visiveis." : error}
+          onRetry={() => load(true)}
+        />
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Itens cadastrados" value={items.length} hint="Produtos e insumos" icon={PackageOpen} tone="green" loading={showPlaceholders} />
-        <StatCard title="Estoque crítico" value={criticalCount} hint="Abaixo do mínimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} loading={showPlaceholders} />
-        <StatCard title="Valor estimado" value={formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Itens cadastrados" value={initialError ? "-" : items.length} hint="Produtos e insumos" icon={PackageOpen} tone="green" loading={showPlaceholders} />
+        <StatCard title="Estoque crítico" value={initialError ? "-" : criticalCount} hint="Abaixo do mínimo" icon={AlertTriangle} tone={criticalCount ? "red" : "green"} loading={showPlaceholders} />
+        <StatCard title="Valor estimado" value={initialError ? "-" : formatCurrency(estimatedValue)} hint="Saldo x valor unitário" icon={Scale} tone="blue" loading={showPlaceholders} />
       </div>
 
       {canManage ? (
@@ -504,9 +524,11 @@ export function StockScreen({ config }: { config: ModuleConfig }) {
               </article>
             );
           }) : (
-            <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-              Nenhum item encontrado.
-            </div>
+            <EmptyState
+              className="xl:col-span-2"
+              title={hasSearch ? "Nenhum item encontrado para esta busca." : "Voce ainda nao cadastrou itens no estoque."}
+              message={hasSearch ? "Limpe a busca ou pesquise por outro nome, categoria ou fornecedor." : "Cadastre o primeiro item para acompanhar saldo, entradas, saidas e estoque minimo."}
+            />
           )}
         </div>
         {!showPlaceholders && filteredItems.length > visibleItemLimit ? (

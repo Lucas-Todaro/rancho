@@ -2,10 +2,11 @@
 
 import dynamic from "next/dynamic";
 import { Download, MailPlus, MessageCircle, RefreshCw, Search, Users, Wallet, X, Clock3 } from "lucide-react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
 import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { syncEmployeePanelAccess } from "@/services/employee-access";
@@ -16,6 +17,8 @@ import type { AnyRecord } from "@/lib/types";
 import { formatBrazilianPhone } from "@/lib/input-format";
 import { currentMonth, formatCurrency } from "@/lib/utils";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
+import { getFriendlyErrorMessage } from "@/lib/errors";
+import { withAsyncTimeout } from "@/lib/async";
 import { EmployeeCard, EmployeeCardSkeleton } from "@/components/modules/employees/EmployeeCard";
 
 const EmployeeDetails = dynamic(
@@ -104,13 +107,15 @@ export function EmployeeScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [visibleEmployeeLimit, setVisibleEmployeeLimit] = useState(EMPLOYEE_RENDER_BATCH_SIZE);
+  const loadRequestRef = useRef(0);
   const deferredSearch = useDeferredValue(search);
 
   const load = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const [nextEmployees, nextTimeEntries, nextPayrolls] = await Promise.all([
+      const [nextEmployees, nextTimeEntries, nextPayrolls] = await withAsyncTimeout(Promise.all([
         listRecords(TABLES.funcionarios, {
           orderBy: "created_at",
           fazendaId: farmId,
@@ -135,26 +140,30 @@ export function EmployeeScreen() {
           cache: true,
           forceRefresh
         })
-      ]);
+      ]), "A equipe demorou para carregar. Tente novamente.");
+      if (loadRequestRef.current !== requestId) return;
       const visibleEmployees = nextEmployees.filter((employee) => !employee.deleted_at);
       setEmployees(visibleEmployees);
       setTimeEntries(nextTimeEntries);
       setPayrolls(nextPayrolls);
       setSelected((current) => current ? visibleEmployees.find((employee) => employee.id === current.id) || null : null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar funcionários.");
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar funcionarios agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [farmId, userId]);
 
   useEffect(() => {
-    load();
+    void load();
     const refresh = () => { void load(true); };
     const unsubscribeEmployees = subscribeTable(TABLES.funcionarios, refresh);
     const unsubscribePoints = subscribeTable(TABLES.registrosPonto, refresh);
     const unsubscribePayrolls = subscribeTable(TABLES.folhaPagamento, refresh);
     return () => {
+      loadRequestRef.current += 1;
       unsubscribeEmployees();
       unsubscribePoints();
       unsubscribePayrolls();
@@ -203,9 +212,12 @@ export function EmployeeScreen() {
     () => timeEntries.filter((entry) => visibleEmployeeIds.has(entry.funcionario_id) && monthKey(entry.registrado_em) === month).length,
     [month, timeEntries, visibleEmployeeIds]
   );
-  const showPlaceholders = loading || Boolean(error && !employees.length);
+  const initialLoading = loading && !employees.length;
+  const initialError = Boolean(error && !employees.length && !loading);
+  const showPlaceholders = initialLoading;
   const canInvite = ["dono", "admin", "gerente"].includes(String(profile?.papel || ""));
   const canManage = canManageData(profile);
+  const hasSearch = Boolean(deferredSearch.trim());
 
   const closeForm = useCallback(() => {
     setShowForm(false);
@@ -359,8 +371,8 @@ export function EmployeeScreen() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
-            <RefreshCw className="h-4 w-4" /> Atualizar
+          <button className="btn btn-secondary" type="button" onClick={() => load(true)} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {loading ? "Atualizando..." : "Atualizar"}
           </button>
           <button className="btn btn-secondary" type="button" onClick={openWhatsAppOnlyForm}>
             <MessageCircle className="h-4 w-4" /> Cadastrar apenas WhatsApp
@@ -371,13 +383,19 @@ export function EmployeeScreen() {
         </div>
       </div>
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
+      {error ? (
+        <ErrorState
+          title={employees.length ? "Nao consegui atualizar funcionarios agora." : "Nao consegui carregar funcionarios."}
+          message={employees.length ? "Os ultimos dados carregados continuam visiveis." : error}
+          onRetry={() => load(true)}
+        />
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Funcionários" value={employees.length} hint="Total cadastrado" icon={Users} tone="green" loading={showPlaceholders} />
-        <StatCard title="Ativos" value={activeEmployees.length} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} />
-        <StatCard title="Folha estimada" value={formatCurrency(monthlyPayroll)} hint="Mês atual" icon={Wallet} tone="amber" loading={showPlaceholders} />
-        <StatCard title="Pontos no mês" value={pointsThisMonth} hint="Entradas e saídas" icon={Clock3} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Funcionários" value={initialError ? "-" : employees.length} hint="Total cadastrado" icon={Users} tone="green" loading={showPlaceholders} />
+        <StatCard title="Ativos" value={initialError ? "-" : activeEmployees.length} hint="Equipe operacional" icon={Users} tone="blue" loading={showPlaceholders} />
+        <StatCard title="Folha estimada" value={initialError ? "-" : formatCurrency(monthlyPayroll)} hint="Mês atual" icon={Wallet} tone="amber" loading={showPlaceholders} />
+        <StatCard title="Pontos no mês" value={initialError ? "-" : pointsThisMonth} hint="Entradas e saídas" icon={Clock3} tone="blue" loading={showPlaceholders} />
       </div>
 
       <section className="space-y-5">
@@ -425,9 +443,11 @@ export function EmployeeScreen() {
               canManage={canManage}
             />
           )) : (
-            <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 md:col-span-2 2xl:col-span-3">
-              Nenhum funcionário cadastrado.
-            </div>
+            <EmptyState
+              className="md:col-span-2 2xl:col-span-3"
+              title={hasSearch ? "Nenhum funcionario encontrado para esta busca." : "Voce ainda nao cadastrou funcionarios."}
+              message={hasSearch ? "Limpe a busca ou pesquise por outro nome, funcao, WhatsApp ou status." : "Cadastre a equipe para acompanhar contatos, ponto e folha."}
+            />
           )}
         </div>
         {!showPlaceholders && filteredEmployees.length > visibleEmployeeLimit ? (

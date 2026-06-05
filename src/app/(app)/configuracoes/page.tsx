@@ -2,8 +2,9 @@
 
 import { Bell, Bot, Building2, KeyRound, Loader2, MessageCircle, Palette, Save, Settings2, ShieldCheck, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { ErrorState } from "@/components/ui/AsyncState";
 import { CPFInput, WhatsAppInput } from "@/components/ui/MaskedInputs";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { listRecords, updateRecord } from "@/services/crud";
@@ -13,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getPasswordResetRedirectUrl } from "@/lib/app-url";
 import type { AnyRecord } from "@/lib/types";
 import { formatBrazilianPhone, formatCPF, isValidBrazilianPhone, isValidCPF, onlyDigits, stripBrazilCountryCode } from "@/lib/input-format";
+import { withAsyncTimeout } from "@/lib/async";
 
 type Health = { meta: boolean; supabasePublic: boolean; supabaseServer: boolean };
 type SaveKey = "farm" | "user" | "preferences" | "notifications" | "whatsapp" | "security";
@@ -102,6 +104,7 @@ export default function ConfiguracoesPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const loadRequestRef = useRef(0);
 
   const [farmDraft, setFarmDraft] = useState({
     nome: "",
@@ -141,14 +144,16 @@ export default function ConfiguracoesPage() {
   });
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const [healthResponse, farmRows, userRows] = await Promise.all([
+      const [healthResponse, farmRows, userRows] = await withAsyncTimeout(Promise.all([
         fetch("/api/health").then((res) => res.json()).catch(() => null),
         profile?.fazenda_id ? listRecords(TABLES.fazendas, { select: SETTINGS_FARM_SELECT, filters: [{ column: "id", value: profile.fazenda_id }] }) : Promise.resolve([]),
         profile?.id ? listRecords(TABLES.usuarios, { fazendaId: profile.fazenda_id, usuarioId: profile.id, select: SETTINGS_USER_SELECT, filters: [{ column: "id", value: profile.id }] }) : Promise.resolve([])
-      ]);
+      ]), "As configuracoes demoraram para carregar. Tente novamente.");
+      if (loadRequestRef.current !== requestId) return;
 
       const nextFarm = farmRows[0] || profile?.fazenda || null;
       const nextUser = userRows[0] || profile || null;
@@ -197,17 +202,23 @@ export default function ConfiguracoesPage() {
         mensagem_boas_vindas: String(whatsApp.mensagem_boas_vindas || "Bem-vindo ao Rancho. Escolha uma opção para continuar.")
       });
     } catch (err) {
-      setError(settingsError(err instanceof Error ? err.message : "Não foi possível carregar as configurações."));
+      if (loadRequestRef.current === requestId) {
+        setError(settingsError(err instanceof Error ? err.message : "Nao foi possivel carregar as configuracoes."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [profile]);
 
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
 
-  const showSkeleton = loading || Boolean(error && !farm && !user);
+  const initialError = Boolean(error && !farm && !user && !loading);
+  const showSkeleton = loading && !farm && !user;
   const cards = useMemo(() => [
     {
       icon: Building2,
@@ -386,6 +397,23 @@ export default function ConfiguracoesPage() {
       setError("Não foi possível sair da conta. Tente novamente.");
       setIsLoggingOut(false);
     }
+  }
+
+  if (initialError) {
+    return (
+      <div className="animate-fade-in space-y-6">
+        <div>
+          <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <Settings2 className="h-4 w-4" /> Configurações
+          </div>
+          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Configurações</h1>
+          <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">
+            Personalize a propriedade, seu perfil, preferências do sistema e alertas usados no Rancho.
+          </p>
+        </div>
+        <ErrorState title="Nao consegui carregar as configuracoes." message={error} onRetry={load} />
+      </div>
+    );
   }
 
   return (

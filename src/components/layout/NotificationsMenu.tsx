@@ -1,9 +1,10 @@
 "use client";
 
 import { Bell, Check, ExternalLink } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
+import { ErrorState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
@@ -11,6 +12,7 @@ import type { AnyRecord } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { withAsyncTimeout } from "@/lib/async";
 
 const routeByEntity: Record<string, string> = {
   [TABLES.ordenhas]: "/producao",
@@ -36,8 +38,10 @@ export function NotificationsMenu() {
   const [rows, setRows] = useState<AnyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     if (!dataContext.fazendaId) {
       setRows([]);
       setLoading(false);
@@ -47,24 +51,31 @@ export function NotificationsMenu() {
     setLoading(true);
     setError("");
     try {
-      const data = await listRecords(TABLES.notificacoes, {
+      const data = await withAsyncTimeout(listRecords(TABLES.notificacoes, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
         orderBy: "created_at",
         select: NOTIFICATIONS_SELECT,
         limit: 20
-      });
+      }), "As notificacoes demoraram para carregar. Tente novamente.");
+      if (loadRequestRef.current !== requestId) return;
       setRows(data);
     } catch (err) {
-      setError(getFriendlyErrorMessage(err, "Não foi possível carregar as notificações."));
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar as notificacoes agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [dataContext.fazendaId, dataContext.usuarioId]);
 
   useEffect(() => {
-    load();
-    return subscribeTable(TABLES.notificacoes, load);
+    void load();
+    const unsubscribe = subscribeTable(TABLES.notificacoes, load);
+    return () => {
+      loadRequestRef.current += 1;
+      unsubscribe();
+    };
   }, [load]);
 
   const unreadCount = useMemo(() => rows.filter((row) => !row.lida_em).length, [rows]);
@@ -123,9 +134,7 @@ export function NotificationsMenu() {
                 <Skeleton className="mt-2 h-3 w-64 max-w-full" />
               </div>
             )) : error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-                {error}
-              </div>
+              <ErrorState title="Nao consegui carregar notificacoes." message={error} onRetry={load} />
             ) : rows.length ? rows.map((notification) => (
               <article
                 key={notification.id}

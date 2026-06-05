@@ -24,6 +24,7 @@ import { AnimalCards } from "@/components/modules/AnimalCards";
 import { ModuleForm } from "@/components/modules/ModuleForm";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/ui/AsyncState";
 import { createRecord, deleteRecord, deleteRecords, invalidateRecordsCache, listRecords, loadRelationOptions, subscribeTable, updateRecord } from "@/services/crud";
 import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { notifyDashboardUpdated } from "@/services/dashboard";
@@ -35,6 +36,7 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord, ModuleConfig, RelationOption } from "@/lib/types";
 import { financialAmount, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { withAsyncTimeout } from "@/lib/async";
 import { animalBlockedMessage, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
 
@@ -107,6 +109,15 @@ const moduleExtraColumns: Record<string, string[]> = {
     "status",
     "pago_em"
   ]
+};
+
+const moduleEmptyMessages: Record<string, string> = {
+  lotes: "Voce ainda nao cadastrou lotes.",
+  eventos: "Nao ha eventos registrados neste periodo.",
+  producao: "Nao ha registros de producao por enquanto.",
+  financeiro: "Nao ha transacoes registradas neste periodo.",
+  ponto: "Nao ha registros de ponto neste periodo.",
+  folha: "Nao ha folhas de pagamento cadastradas."
 };
 
 function uniqueColumns(columns: Array<string | undefined | null>) {
@@ -183,20 +194,29 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
   const [visibleLimit, setVisibleLimit] = useState<number | undefined>(() => modulePageSize(config.tableName));
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestRef = useRef(0);
   const deferredSearch = useDeferredValue(search);
 
   const Icon = moduleIcons[config.icon] || Database;
-  const showPlaceholders = loading || Boolean(error && !rows.length);
+  const initialLoading = loading && !rows.length;
+  const initialError = Boolean(error && !rows.length && !loading);
+  const showPlaceholders = initialLoading;
   const canManage = canManageData(profile);
   const selectColumns = useMemo(() => moduleListSelect(config), [config]);
   const pageSize = useMemo(() => modulePageSize(config.tableName), [config.tableName]);
+  const emptyMessage = initialError
+    ? `Nao consegui carregar os registros de ${config.title.toLowerCase()} agora.`
+    : deferredSearch.trim()
+      ? "Nenhum registro encontrado para esta busca."
+      : moduleEmptyMessages[config.key] || "Nenhum registro cadastrado ainda.";
 
   const load = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
       const relationFields = config.fields.filter((field) => field.type === "relation" && field.relation);
-      const [data, relationPairs] = await Promise.all([
+      const [data, relationPairs] = await withAsyncTimeout(Promise.all([
         listRecords(config.tableName, {
           orderBy: config.orderBy,
           fazendaId: queryContext.fazendaId,
@@ -207,21 +227,28 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           forceRefresh
         }),
         Promise.all(relationFields.map(async (field) => [field.name, await loadRelationOptions(field, queryContext)] as const))
-      ]);
+      ]), `A tela de ${config.title} demorou para carregar. Tente novamente.`);
+      if (loadRequestRef.current !== requestId) return;
       setRows(data);
       setHasMoreRows(Boolean(pageSize && visibleLimit && data.length >= visibleLimit));
       setSelectedAnimal((current) => current ? data.find((row) => String(row.id) === String(current.id)) || current : current);
       setRelationOptions(Object.fromEntries(relationPairs));
     } catch (err) {
-      setError(getFriendlyErrorMessage(err, "Não foi possível carregar os dados agora."));
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar os dados agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
-  }, [config.fields, config.orderBy, config.tableName, pageSize, queryContext, selectColumns, visibleLimit]);
+  }, [config.fields, config.orderBy, config.tableName, config.title, pageSize, queryContext, selectColumns, visibleLimit]);
 
   useEffect(() => {
-    load();
-    return subscribeTable(config.tableName, () => { void load(true); });
+    void load();
+    const unsubscribe = subscribeTable(config.tableName, () => { void load(true); });
+    return () => {
+      loadRequestRef.current += 1;
+      unsubscribe();
+    };
   }, [config.tableName, load]);
 
   useEffect(() => {
@@ -472,16 +499,22 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           <h1 className="text-3xl font-black tracking-tight md:text-4xl">{config.title}</h1>
           <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">{config.subtitle}</p>
         </div>
-        <button className="btn btn-secondary" type="button" onClick={() => load(true)}>
-          <RefreshCw className="h-4 w-4" /> Atualizar
+        <button className="btn btn-secondary" type="button" onClick={() => load(true)} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {loading ? "Atualizando..." : "Atualizar"}
         </button>
       </div>
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div> : null}
+      {error ? (
+        <ErrorState
+          title={rows.length ? "Nao consegui atualizar agora." : "Nao consegui carregar esta tela."}
+          message={rows.length ? "Os ultimos dados carregados continuam visiveis." : error}
+          onRetry={() => load(true)}
+        />
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {(config.quickStats || []).map((stat, index) => (
-          <StatCard key={stat.label} title={stat.label} value={calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Activity : Icon} tone={index % 2 ? "blue" : "green"} loading={showPlaceholders} />
+          <StatCard key={stat.label} title={stat.label} value={initialError ? "-" : calcStat(rows, stat)} hint="Resumo da tela" icon={index % 2 ? Activity : Icon} tone={index % 2 ? "blue" : "green"} loading={showPlaceholders} />
         ))}
       </div>
 
@@ -499,7 +532,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">{config.key === "rebanho" ? "Animais do rebanho" : "Registros"}</h2>
             <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <Plus className="h-4 w-4" /> {showPlaceholders ? <Skeleton className="h-4 w-20" /> : config.key === "rebanho" ? `${rows.length} animais` : `${filteredRows.length} itens`}
+              <Plus className="h-4 w-4" /> {showPlaceholders ? <Skeleton className="h-4 w-20" /> : initialError ? "-" : config.key === "rebanho" ? `${rows.length} animais` : `${filteredRows.length} itens`}
             </div>
           </div>
           {config.key === "rebanho" ? (
@@ -527,6 +560,7 @@ export function ModuleScreen({ config }: { config: ModuleConfig }) {
               relationOptions={relationOptions}
               loading={showPlaceholders}
               canManage={canManage}
+              emptyMessage={emptyMessage}
             />
           )}
           {pageSize && hasMoreRows ? (

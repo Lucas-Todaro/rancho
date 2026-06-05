@@ -2,12 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { FileText, Printer, TrendingDown, TrendingUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { loadDashboardData } from "@/services/dashboard";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { formatStockQuantity } from "@/lib/stock-format";
+import { getFriendlyErrorMessage } from "@/lib/errors";
+import { withAsyncTimeout } from "@/lib/async";
 
 function ChartSkeleton() {
   return (
@@ -33,23 +36,44 @@ export default function RelatoriosPage() {
   const farmId = dataContext.fazendaId;
   const userId = dataContext.usuarioId;
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadRequestRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    setLoading(true);
+    setError("");
+    try {
+      const dashboard = await withAsyncTimeout(
+        loadDashboardData({ fazendaId: farmId, usuarioId: userId }),
+        "Os relatorios demoraram para carregar. Tente novamente."
+      );
+      if (loadRequestRef.current !== requestId) return;
+      setData(dashboard);
+    } catch (err) {
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar os relatorios agora."));
+      }
+    } finally {
+      if (loadRequestRef.current === requestId) setLoading(false);
+    }
+  }, [farmId, userId]);
 
   useEffect(() => {
-    setError("");
-    loadDashboardData({ fazendaId: farmId, usuarioId: userId })
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar os relatórios."));
-  }, [farmId, userId]);
+    void load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [load]);
 
   function printReport() {
     window.print();
   }
 
-  if (!data) {
+  if (!data && loading) {
     return (
       <div className="animate-fade-in space-y-6">
-        {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">Não foi possível carregar os relatórios agora.</div> : null}
         <div className="grid gap-4 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={`report-card-skeleton-${index}`} className="glass rounded-lg p-5">
@@ -62,6 +86,22 @@ export default function RelatoriosPage() {
           <div className="glass rounded-lg p-5"><Skeleton className="h-6 w-40" /><Skeleton className="mt-6 h-48 w-full" /></div>
           <div className="glass rounded-lg p-5"><Skeleton className="h-6 w-40" /><Skeleton className="mt-6 h-48 w-full" /></div>
         </div>
+      </div>
+    );
+  }
+
+  if (!data && error) {
+    return (
+      <div className="animate-fade-in space-y-6">
+        <ErrorState title="Nao consegui carregar os relatorios." message={error} onRetry={load} />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="animate-fade-in space-y-6">
+        <ErrorState title="Relatorios indisponiveis." message="Tente carregar novamente." onRetry={load} />
       </div>
     );
   }

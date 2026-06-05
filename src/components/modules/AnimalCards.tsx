@@ -2,6 +2,7 @@
 
 import { Download, Eye, PawPrint, Pencil, Search, Trash2, X } from "lucide-react";
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { EmptyState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getAnimalSexInfo } from "@/lib/animal-sex";
 import type { AnyRecord, RelationOption } from "@/lib/types";
@@ -185,6 +186,7 @@ export const AnimalCards = memo(function AnimalCards({
     () => filteredAnimals.slice(0, visibleLimit),
     [filteredAnimals, visibleLimit]
   );
+  const hasActiveFilters = Boolean(deferredSearch.trim() || loteFilter || statusFilter);
 
   useEffect(() => {
     setVisibleLimit(ANIMAL_RENDER_BATCH_SIZE);
@@ -341,9 +343,11 @@ export const AnimalCards = memo(function AnimalCards({
             </article>
           );
         }) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-            Nenhum animal encontrado com esses filtros.
-          </div>
+          <EmptyState
+            className="sm:col-span-2 xl:col-span-3 2xl:col-span-4"
+            title={hasActiveFilters ? "Nenhum animal encontrado com esses filtros." : "Voce ainda nao cadastrou animais."}
+            message={hasActiveFilters ? "Limpe a busca ou ajuste os filtros para ver mais resultados." : "Cadastre o primeiro animal para acompanhar rebanho, producao e eventos."}
+          />
         )}
       </div>
       {!loading && filteredAnimals.length > visibleLimit ? (

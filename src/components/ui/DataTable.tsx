@@ -55,7 +55,8 @@ export const DataTable = memo(function DataTable({
   onExport,
   relationOptions = {},
   loading = false,
-  canManage = true
+  canManage = true,
+  emptyMessage = "Nenhum registro encontrado."
 }: {
   rows: AnyRecord[];
   fields: ModuleField[];
@@ -68,6 +69,7 @@ export const DataTable = memo(function DataTable({
   relationOptions?: Record<string, RelationOption[]>;
   loading?: boolean;
   canManage?: boolean;
+  emptyMessage?: string;
 }) {
   const visibleFields = useMemo(() => fields.filter((field) => field.tableVisible !== false).slice(0, 8), [fields]);
   const lookups = useMemo(() => Object.entries(relationOptions).reduce<Record<string, Record<string, string>>>((acc, [field, options]) => {
@@ -144,7 +146,7 @@ export const DataTable = memo(function DataTable({
               </tr>
             )) : (
               <tr>
-                <td colSpan={visibleFields.length + 1} className="py-12 text-center text-slate-500">Nenhum registro encontrado.</td>
+                <td colSpan={visibleFields.length + 1} className="py-12 text-center text-slate-500">{emptyMessage}</td>
               </tr>
             )}
           </tbody>

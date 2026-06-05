@@ -402,11 +402,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const client = await getSupabaseBrowser();
     if (!client) {
       clearRecordsCache();
+      setSession(null);
+      setProfile(null);
+      setError("");
       return;
     }
 
-    const { error: signOutError } = await client.auth.signOut();
-    if (signOutError) throw signOutError;
+    const signOutResult = await waitWithLimit(
+      client.auth.signOut(),
+      "A saida demorou para responder. Tente novamente."
+    );
+    if (!signOutResult.ok) throw signOutResult.error;
+    if (signOutResult.value.error) throw signOutResult.value.error;
     clearRecordsCache();
     setSession(null);
     setProfile(null);

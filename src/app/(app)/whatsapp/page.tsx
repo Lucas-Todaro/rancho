@@ -1,8 +1,9 @@
 "use client";
 
 import { Bot, CheckCircle2, MessageCircle, Pencil, Send, ShieldCheck, Smartphone, Trash2, UserPlus, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { formatBrazilianPhone, isValidBrazilianPhone } from "@/lib/input-format";
@@ -12,6 +13,8 @@ import { formatDate } from "@/lib/utils";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import { canManageData } from "@/lib/permissions";
 import { isWhatsappSandboxEnvironment, publicWhatsappConfig } from "@/lib/public-env";
+import { getFriendlyErrorMessage } from "@/lib/errors";
+import { withAsyncTimeout } from "@/lib/async";
 import { createRecord, deleteRecord, deleteRecords, listRecords, updateRecord } from "@/services/crud";
 import type { AnyRecord } from "@/lib/types";
 
@@ -103,6 +106,7 @@ export default function WhatsAppPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const loadRequestRef = useRef(0);
 
   const canManage = canManageData(profile);
   const isSandbox = isWhatsappSandboxEnvironment();
@@ -110,27 +114,34 @@ export default function WhatsAppPage() {
   const sandboxJoinCode = publicWhatsappConfig.sandboxJoinCode;
 
   const loadAuthorizedNumbers = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const data = await listRecords(TABLES.whatsappUsuarios, {
+      const data = await withAsyncTimeout(listRecords(TABLES.whatsappUsuarios, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
         orderBy: "created_at",
         select: WHATSAPP_USERS_SELECT,
         cache: true,
         forceRefresh
-      });
+      }), "Os numeros do WhatsApp demoraram para carregar. Tente novamente.");
+      if (loadRequestRef.current !== requestId) return;
       setRows(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível carregar os números autorizados.");
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar os numeros autorizados agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [dataContext.fazendaId, dataContext.usuarioId]);
 
   useEffect(() => {
-    loadAuthorizedNumbers();
+    void loadAuthorizedNumbers();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [loadAuthorizedNumbers]);
 
   const totals = useMemo(() => ({
@@ -138,6 +149,7 @@ export default function WhatsAppPage() {
     active: rows.filter((row) => row.ativo !== false).length,
     inactive: rows.filter((row) => row.ativo === false).length
   }), [rows]);
+  const initialLoadError = Boolean(error && !rows.length && !loading);
 
   const firstActiveWhatsapp = useMemo(() => (
     rows.find((row) => row.ativo !== false)?.telefone_e164
@@ -388,15 +400,15 @@ export default function WhatsAppPage() {
       <section className="grid gap-4 md:grid-cols-3">
         <div className="glass rounded-lg p-5 shadow-soft">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Cadastrados</p>
-          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black">{totals.total}</strong>}
+          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black">{initialLoadError ? "-" : totals.total}</strong>}
         </div>
         <div className="glass rounded-lg p-5 shadow-soft">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Ativos</p>
-          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black text-emerald-700 dark:text-emerald-300">{totals.active}</strong>}
+          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black text-emerald-700 dark:text-emerald-300">{initialLoadError ? "-" : totals.active}</strong>}
         </div>
         <div className="glass rounded-lg p-5 shadow-soft">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Inativos</p>
-          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black text-slate-600 dark:text-slate-300">{totals.inactive}</strong>}
+          {loading ? <Skeleton className="mt-3 h-8 w-16" /> : <strong className="mt-2 block text-3xl font-black text-slate-600 dark:text-slate-300">{initialLoadError ? "-" : totals.inactive}</strong>}
         </div>
       </section>
 
@@ -523,7 +535,9 @@ export default function WhatsAppPage() {
                 <Skeleton className="h-5 w-40" />
                 <Skeleton className="mt-3 h-4 w-56" />
               </div>
-            )) : rows.length ? rows.map((row) => (
+            )) : initialLoadError ? (
+              <ErrorState title="Nao consegui carregar os numeros autorizados." message={error} onRetry={() => loadAuthorizedNumbers(true)} />
+            ) : rows.length ? rows.map((row) => (
               <article key={row.id} className="rounded-lg border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/55">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
@@ -550,9 +564,10 @@ export default function WhatsAppPage() {
                 </div>
               </article>
             )) : (
-              <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-                Nenhum número autorizado cadastrado ainda.
-              </div>
+              <EmptyState
+                title="Nenhum numero autorizado cadastrado ainda."
+                message="Cadastre ao menos um WhatsApp ativo para liberar o uso do bot nesta fazenda."
+              />
             )}
           </div>
         </div>

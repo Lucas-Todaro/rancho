@@ -1,8 +1,9 @@
 "use client";
 
 import { GitBranch, PawPrint, Save, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { getFriendlyErrorMessage } from "@/lib/errors";
@@ -10,6 +11,7 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { withAsyncTimeout } from "@/lib/async";
 
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
@@ -353,12 +355,14 @@ export function GenealogyScreen() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [draft, setDraft] = useState({ mae_id: "", pai_id: "", genealogia_observacoes: "" });
+  const loadRequestRef = useRef(0);
 
   const load = useCallback(async (forceRefresh = false) => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const data = await listRecords(TABLES.animais, {
+      const data = await withAsyncTimeout(listRecords(TABLES.animais, {
         fazendaId: dataContext.fazendaId,
         usuarioId: dataContext.usuarioId,
         select: GENEALOGY_ANIMAL_SELECT,
@@ -366,18 +370,25 @@ export function GenealogyScreen() {
         ascending: true,
         cache: true,
         forceRefresh
-      });
+      }), "A genealogia demorou para carregar. Tente novamente.");
+      if (loadRequestRef.current !== requestId) return;
       setAnimals(data);
     } catch (err) {
-      setError(getFriendlyErrorMessage(err, "Não foi possível carregar a genealogia."));
+      if (loadRequestRef.current === requestId) {
+        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar a genealogia agora."));
+      }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) setLoading(false);
     }
   }, [dataContext.fazendaId, dataContext.usuarioId]);
 
   useEffect(() => {
-    load();
-    return subscribeTable(TABLES.animais, () => { void load(true); });
+    void load();
+    const unsubscribe = subscribeTable(TABLES.animais, () => { void load(true); });
+    return () => {
+      loadRequestRef.current += 1;
+      unsubscribe();
+    };
   }, [load]);
 
   const animalById = useMemo(() => new Map(animals.map((animal) => [String(animal.id), animal])), [animals]);
@@ -514,9 +525,11 @@ export function GenealogyScreen() {
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </div>
+        <ErrorState
+          title={animals.length ? "Nao consegui atualizar a genealogia agora." : "Nao consegui carregar a genealogia."}
+          message={animals.length ? "Os ultimos animais carregados continuam visiveis." : error}
+          onRetry={() => load(true)}
+        />
       ) : null}
 
       {!selected ? (
@@ -531,9 +544,11 @@ export function GenealogyScreen() {
                 onSelect={() => selectAnimal(animal)}
               />
             )) : (
-              <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-                Nenhum animal encontrado.
-              </div>
+              <EmptyState
+                className="sm:col-span-2 xl:col-span-3 2xl:col-span-4"
+                title={normalize(search) ? "Nenhum animal encontrado para esta busca." : "Voce ainda nao cadastrou animais."}
+                message={normalize(search) ? "Limpe a busca ou pesquise por outro nome, brinco, raca ou categoria." : "Cadastre animais no rebanho para montar a arvore genealogica."}
+              />
             )}
           </section>
         </>
