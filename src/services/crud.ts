@@ -65,12 +65,21 @@ function withoutAnimalOptionalFields(payload: AnyRecord) {
   return nextPayload;
 }
 
-function sortLocal(rows: AnyRecord[], orderBy = "created_at", ascending = false) {
+function secondaryOrderBy(tableName: string, orderBy: string) {
+  return tableName === TABLES.transacoesFinanceiras && orderBy === "data_transacao" ? "created_at" : null;
+}
+
+function compareValues(left: unknown, right: unknown, ascending: boolean) {
+  if (left === right) return 0;
+  return (String(left ?? "") > String(right ?? "") ? 1 : -1) * (ascending ? 1 : -1);
+}
+
+function sortLocal(rows: AnyRecord[], tableName: string, orderBy = "created_at", ascending = false) {
+  const secondary = secondaryOrderBy(tableName, orderBy);
   return [...rows].sort((a, b) => {
-    const left = a[orderBy] ?? "";
-    const right = b[orderBy] ?? "";
-    if (left === right) return 0;
-    return (left > right ? 1 : -1) * (ascending ? 1 : -1);
+    const primary = compareValues(a[orderBy], b[orderBy], ascending);
+    if (primary || !secondary) return primary;
+    return compareValues(a[secondary], b[secondary], ascending);
   });
 }
 
@@ -92,13 +101,15 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
   if (!supabaseBrowser) {
     const rows = mockData[tableName] || [];
     const scoped = filterLocalRows(tableName, rows, options);
-    return sortLocal(scoped, orderBy, ascending);
+    return sortLocal(scoped, tableName, orderBy, ascending);
   }
 
+  const secondary = secondaryOrderBy(tableName, orderBy);
   let query = supabaseBrowser
     .from(tableName)
     .select(select)
     .order(orderBy, { ascending });
+  if (secondary) query = query.order(secondary, { ascending });
 
   if (fazendaId && FARM_SCOPED_TABLES.has(tableName)) {
     query = query.eq("fazenda_id", fazendaId);
@@ -116,7 +127,7 @@ export async function listRecords(tableName: string, options: ListOptions = {}):
       console.warn(`[Rancho] Falha ao ler ${tableName}. Usando dados locais.`);
     }
     const rows = mockData[tableName] || [];
-    return sortLocal(filterLocalRows(tableName, rows, options), orderBy, ascending);
+    return sortLocal(filterLocalRows(tableName, rows, options), tableName, orderBy, ascending);
   }
 
   return (data || []) as AnyRecord[];
