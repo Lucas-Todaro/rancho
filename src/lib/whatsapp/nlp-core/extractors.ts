@@ -182,6 +182,16 @@ export function extractPointTime(text: string) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+export function extractExplicitTimeReference(text: string) {
+  const normalized = normalizeRanchoText(text);
+  const match = normalized.match(/\b(?:as|a|de|por volta de)?\s*(\d{1,2})(?::(\d{2})|h(\d{2})?)\b/);
+  if (!match?.[1]) return undefined;
+  const hour = Number(match[1]);
+  const minute = Number(match[2] || match[3] || 0);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return undefined;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function candidateFromMatch(value?: string | null) {
   if (!value) return undefined;
   const code = normalizeAnimalCandidate(value);
@@ -194,6 +204,39 @@ export function candidateFromMatch(value?: string | null) {
     .trim();
   if (!cleaned || /\s/.test(cleaned) || isForbiddenAnimalCode(cleaned)) return undefined;
   return cleaned;
+}
+
+function cleanProductionAnimalReference(value?: string | null) {
+  const cleaned = cleanAnswer(value || "")
+    .replace(/\b(?:hoje|hj|ontem|anteontem|amanha|manha|tarde|noite|primeira|segunda|terceira|ordenha)\b.*$/i, " ")
+    .replace(/\b(?:as|a|de|por volta de)?\s*\d{1,2}(?::\d{2}|h\d{0,2})\b.*$/i, " ")
+    .replace(/\b(?:litros?|l|lt|lts|leite)\b/gi, " ")
+    .replace(/^(?:da|do|de|na|no|a|o)\s+/i, " ")
+    .replace(/[.,;:!?()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return undefined;
+  const normalizedCleaned = normalizeRanchoText(cleaned);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned) || /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(cleaned)) return undefined;
+  if (/^(?:e meio|meio|kg|kgs|quilo|quilos|gramas?|g|sacos?|unidades?|dose|doses|reais?|real|rs|r\$?|lito|litos?)$/.test(normalizedCleaned)) return undefined;
+  if (/^(?:para venda|pra venda|venda|tanque|no tanque|na venda|para o tanque|pro tanque)$/.test(normalizedCleaned)) return undefined;
+  if (/\b(?:venda|tanque)\b/.test(normalizedCleaned) && !/[0-9-]/.test(normalizedCleaned)) return undefined;
+  const candidate = candidateFromMatch(cleaned);
+  if (candidate && /[0-9-]/.test(candidate)) return candidate;
+  return cleaned;
+}
+
+export function extractProductionAnimalReference(original: string, normalized = normalizeRanchoText(original)) {
+  const withUnitOriginal = original.match(new RegExp(`\\b${decimalNumberPattern}\\s*(?:l|lt|lts|litro\\w*|lito\\w*|litr\\w*)\\s+(?:da|do|de)\\s+(.+)$`, "i"))?.[1];
+  const direct = cleanProductionAnimalReference(withUnitOriginal);
+  if (direct) return direct;
+
+  const withUnitNormalized = normalized.match(new RegExp(`\\b${decimalNumberPattern}\\s*(?:l|lt|lts|litro\\w*|lito\\w*|litr\\w*)\\s+(?:da|do|de)\\s+(.+)$`))?.[1];
+  const normalizedDirect = cleanProductionAnimalReference(withUnitNormalized);
+  if (normalizedDirect) return normalizedDirect;
+
+  const afterProduction = original.match(new RegExp(`\\b(?:produziu|deu|fez|ordenhei|tirei|tirou|ordenhou)\\s+${decimalNumberPattern}\\s*(?:l|lt|lts|litro\\w*|lito\\w*|litr\\w*)?\\s+(.+)$`, "i"))?.[1];
+  return cleanProductionAnimalReference(afterProduction);
 }
 
 export function extractAnimalCode(text: string, intent?: RanchoIntent) {
@@ -248,7 +291,7 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const productionCandidate = candidateFromMatch(productionNamed?.[1]);
   if (productionCandidate) return normalizeAnimalCandidate(productionCandidate) || productionCandidate.toUpperCase();
 
-  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu|recebeu|ficou|esta|ta|entrou|apresentou|precisa|teve|foi|com|inseminada|inseminado|coberta|coberto)\b/);
+  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu|recebeu|ficou|esta|ta|entrou|apresentou|precisa|teve|foi|com|comeu|levantou|mancou|mancando|inseminada|inseminado|coberta|coberto)\b/);
   const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]?.replace(/\bnao\b/g, " "));
   if (beforeVerbCandidate && !/^(registra|registrar|lanca|lancar|anota|anotar)$/.test(beforeVerbCandidate)) {
     return normalizeAnimalCandidate(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();

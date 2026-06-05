@@ -29,7 +29,10 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
       return "Quanto custou essa compra?";
     }
     if (field === "valor" && tipo === "ESTOQUE_SAIDA" && dados.venda) {
-      return `Entendi que vocÃª vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"}. Qual foi o valor da venda?`;
+      return `Entendi que você vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"}. Qual foi o valor da venda?`;
+    }
+    if (field === "valor" && tipo === "RECEITA_VENDA" && dados.venda_leite) {
+      return `Entendi que você vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de leite. Qual foi o valor da venda?`;
     }
     if (field === "quantidade" && tipo === "ESTOQUE_SAIDA" && dados.item_nome) {
       return `Qual quantidade de ${dados.item_nome} saiu do estoque?`;
@@ -75,6 +78,10 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "MORTE") return `registrar morte do animal ${dados.animal_codigo || "informado"}${dados.data_referencia ?` (${dados.data_referencia})` : ""}`;
 
   if (tipo === "DESPESA") return `registrar saída financeira${dados.valor ?` de ${moneyText(dados.valor)}` : ""}${dados.descricao ?` (${dados.descricao})` : ""}`;
+
+  if (tipo === "RECEITA_VENDA" && dados.venda_leite) {
+    return `vender ${formatStockQuantity(dados.quantidade, dados.unidade)} de leite${dados.valor ?` e registrar receita de ${moneyText(dados.valor)}` : ""}`;
+  }
 
   if (tipo === "RECEITA_VENDA") return `registrar entrada financeira${dados.valor ?` de ${moneyText(dados.valor)}` : ""}${dados.descricao ?` (${dados.descricao})` : ""}`;
 
@@ -165,6 +172,9 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   }
 
   if (tipo === "ATUALIZACAO_ANIMAL") {
+    if (dados.campo_alterado === "observacoes") {
+      return `registrar observação de saúde${dados.animal_codigo ?` para ${dados.animal_codigo}` : ""}${dados.novo_valor ?`: ${dados.novo_valor}` : ""}`;
+    }
     const value = hasValue(dados.novo_valor) ?` para ${dados.novo_valor}` : "";
     return `atualizar ${dados.campo_alterado || "dados"} do animal ${dados.animal_codigo || "informado"}${value}`;
   }
@@ -240,6 +250,7 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
     if (!dados.categoria) missing.push("categoria_animal");
   }
   if (tipo === "ATUALIZACAO_ANIMAL") {
+    if (!dados.animal_codigo) missing.push("animal_codigo");
     if (!dados.campo_alterado) missing.push("campo_alterado");
     if (!hasValue(dados.novo_valor)) missing.push("novo_valor");
   }

@@ -25,6 +25,7 @@ import {
   extractEmployeeName,
   extractEmployeeRole,
   extractEmployeeSalary,
+  extractExplicitTimeReference,
   extractFinanceDescription,
   extractLiters,
   extractLooseProductionLiters,
@@ -32,6 +33,7 @@ import {
   extractPointTime,
   extractPointType,
   extractProduct,
+  extractProductionAnimalReference,
   extractServiceLocal,
   extractStockDestination,
   extractStockItem,
@@ -53,7 +55,7 @@ function cleanUpdateValue(value?: string | null) {
     .trim();
 }
 
-const clinicalObservationCue = /\b(?:mancando|doente|doenca|doença|recuperou|febre|diarreia|sem comer|mastite|carrapato|triste|fraco|tossindo|ferida|veterinario|queda de producao|problema no casco|casco)\b/;
+const clinicalObservationCue = /\b(?:mancando|doente|doenca|doença|recuperou|febre|diarreia|sem comer|nao comeu|nao levantou|mastite|carrapato|triste|fraco|fraca|ruim|tossindo|ferida|veterinario|queda de producao|problema no casco|casco)\b/;
 const reproductiveObservationCue = /\b(?:cio|ia|inseminada|inseminado|inseminacao|inseminar|cobertura|coberta|coberto|aborto)\b/;
 const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
 const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
@@ -1238,24 +1240,43 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("ESTOQUE_ENTRADA", dados, buildMissing("ESTOQUE_ENTRADA", dados));
   }
 
+  const productionAnimalReference = extractProductionAnimalReference(original, normalized) || extractAnimalCode(normalized, "PRODUCAO_LEITE");
+  const explicitProductionTime = extractExplicitTimeReference(original);
   const productionLitersBeforeFinance = extractLiters(normalized) ?? extractLooseProductionLiters(normalized);
   const productionBeforeFinance = /\b(?:leite|litro|litros|ordenha|ordenhei|produziu|producao|produção|tirei|deu|fez)\b/.test(normalized)
     && Number(productionLitersBeforeFinance || 0) > 0
-    && Boolean(extractAnimalCode(normalized, "PRODUCAO_LEITE"))
+    && Boolean(productionAnimalReference)
     && !/^(?:recebi|recebemos|ganhei|receita|vendi|vendii|venda)\b/.test(normalized)
     && !/\b(?:baixa|cria|parto)\b/.test(normalized);
   if (productionBeforeFinance) {
     const destino = milkProductionDestination(normalized);
     const dados = {
-      animal_codigo: extractAnimalCode(normalized, "PRODUCAO_LEITE"),
+      animal_codigo: productionAnimalReference,
       litros: extractLiters(normalized) ?? extractLooseProductionLiters(normalized),
       turno: extractTurno(normalized),
+      horario: explicitProductionTime,
       data_referencia: extractDateReference(normalized) || "hoje",
       destino_leite: destino,
       destino_leite_claro: Boolean(destino),
       tanque: destino === "tanque"
     };
     return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados));
+  }
+
+  const isMilkPhysicalSale = /^(?:vendi|vendii|venda)\b/.test(normalized)
+    && /\bleite\b/.test(normalized)
+    && hasValue(extractLiters(normalized));
+  if (isMilkPhysicalSale) {
+    const explicitSaleMoney = hasExplicitMoney(normalized);
+    const dados = {
+      valor: explicitSaleMoney ? extractMoneyValue(normalized) : undefined,
+      descricao: "leite",
+      quantidade: extractLiters(normalized),
+      unidade: "L",
+      venda_leite: true,
+      data_referencia: extractDateReference(normalized) || "hoje"
+    };
+    return finalize("RECEITA_VENDA", dados, buildMissing("RECEITA_VENDA", dados), 0.88);
   }
 
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
@@ -1354,10 +1375,12 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     && !/\b(?:baixa|cria|parto)\b/.test(normalized);
   if (isProduction) {
     const destino = milkProductionDestination(normalized);
+    const animalReference = extractProductionAnimalReference(original, normalized) || extractAnimalCode(normalized, "PRODUCAO_LEITE");
     const dados = {
-      animal_codigo: extractAnimalCode(normalized, "PRODUCAO_LEITE"),
+      animal_codigo: animalReference,
       litros: extractLiters(normalized) ?? extractLooseProductionLiters(normalized),
       turno: extractTurno(normalized),
+      horario: extractExplicitTimeReference(original),
       data_referencia: extractDateReference(normalized) || "hoje",
       destino_leite: destino,
       destino_leite_claro: Boolean(destino),

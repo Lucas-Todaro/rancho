@@ -507,6 +507,10 @@ function buildStockSection(stock: AnyRecord[], stockMovements: Awaited<ReturnTyp
   return {
     low,
     zero,
+    movementCount: stockMovements.rows.length,
+    entradas: stockMovements.entradas.length,
+    saidas: stockMovements.saidas.length,
+    itemNames: stockMovements.itemNames,
     text: `Estoque: ${movementText}${movedItems}${lowText}${balanceText}`
   };
 }
@@ -537,16 +541,9 @@ function buildGeneralText(input: {
   const productionLine = input.production.count
     ? `Produção: ${formatNumber(input.production.total)} litros em ${input.production.count} registro(s), média de ${formatNumber(input.production.averageByDay)} L/dia.${top ? ` Maior produção: ${top.animal} com ${formatNumber(top.litros)} L.` : ""}`
     : `Produção: não encontrei produção registrada ${periodLabel}.`;
-  const eventLine = input.events.length
-    ? `Eventos: ${input.events.length} evento(s). Vacinas: ${counts.vacina}, clínicos: ${counts.clinico}, partos: ${counts.parto}, reprodutivos: ${counts.reprodutivo}.`
-    : `Eventos: não encontrei eventos registrados ${periodLabel}.`;
-  const herdLine = input.animalsCreated.length
-    ? `Rebanho: ${input.animalsCreated.length} animal(is) cadastrado(s) ${periodLabel}. Total ativo conhecido: ${input.animals.filter((row) => row.status !== "morto" && row.status !== "inativo").length}.`
-    : `Rebanho: nenhum animal novo cadastrado ${periodLabel}. Total ativo conhecido: ${input.animals.filter((row) => row.status !== "morto" && row.status !== "inativo").length}.`;
   const employeeLine = input.employees.allowed
     ? `Funcionários: ${input.employees.active} ativo(s). Ponto: ${input.point.rows.length} registro(s), ${input.point.funcionarios} funcionário(s) com entrada.`
     : "Funcionários: você não tem permissão para visualizar dados de equipe.";
-  const whatsappLine = `WhatsApp: ${input.whatsapp.registrations.length} registro(s) operacional(is) no período.`;
   const conclusion = reportConclusion({
     productionTotal: input.production.total,
     productionCount: input.production.count,
@@ -564,18 +561,87 @@ function buildGeneralText(input: {
   if (input.kind === "funcionarios") return `Relatório de funcionários de ${periodLabel}:\n${employeeLine}\n${financeLine}\n${conclusion}`;
 
   const title = input.mode === "rapido" ? `Resumo rápido de ${periodLabel}:` : `Relatório de ${periodLabel}:`;
-  const executive = `Resumo: ${input.production.count ? `${formatNumber(input.production.total)} L de leite` : "sem produção registrada"}; ${input.finance.allowed ? `saldo ${formatMoney(input.finance.totals.resultado)}` : "financeiro restrito"}; ${input.stockSection.low.length} item(ns) abaixo do mínimo; ${input.events.length} evento(s).`;
+  const executiveLines = [
+    "Resumo:",
+    `- Produção: ${input.production.count ? `${formatNumber(input.production.total)} L de leite` : "sem produção registrada"}`,
+    `- Financeiro: ${input.finance.allowed ? `saldo ${formatMoney(input.finance.totals.resultado)}` : "restrito"}`,
+    `- Estoque: ${input.stockSection.low.length} item(ns) abaixo do mínimo`,
+    `- Eventos: ${input.events.length} evento(s)`
+  ];
+  const financeCategoryLines = input.finance.allowed && (input.finance.entradaCategorias.length || input.finance.saidaCategorias.length)
+    ? ["- Principais categorias:", ...[...input.finance.entradaCategorias, ...input.finance.saidaCategorias].slice(0, 3).map((row, index) => `  ${index + 1}. ${row}`)]
+    : [];
+  const financeLines = input.finance.allowed
+    ? input.finance.rows.length
+      ? [
+          "Financeiro:",
+          `- Receitas: ${formatMoney(input.finance.totals.entrada)}`,
+          `- Despesas: ${formatMoney(input.finance.totals.saida)}`,
+          `- Saldo: ${formatMoney(input.finance.totals.resultado)}`,
+          ...financeCategoryLines
+        ]
+      : ["Financeiro:", `- Não encontrei transações ${periodLabel}.`]
+    : ["Financeiro:", "- Você não tem permissão para visualizar esses dados."];
+  const productionLines = input.production.count
+    ? [
+        "Produção:",
+        `- Total: ${formatNumber(input.production.total)} litros`,
+        `- Registros: ${input.production.count}`,
+        `- Média: ${formatNumber(input.production.averageByDay)} L/dia`,
+        ...(top ? [`- Maior produção: ${top.animal}, ${formatNumber(top.litros)} L`] : [])
+      ]
+    : ["Produção:", `- Não encontrei produção registrada ${periodLabel}.`];
+  const stockMovementText = input.stockSection.movementCount === 1
+    ? "1 movimentação"
+    : `${input.stockSection.movementCount} movimentações`;
+  const stockLines = [
+    "Estoque:",
+    `- Movimentações: ${stockMovementText}`,
+    `- Entradas: ${input.stockSection.entradas}`,
+    `- Saídas: ${input.stockSection.saidas}`,
+    ...(input.stockSection.itemNames.length ? [`- Itens movimentados: ${input.stockSection.itemNames.join(", ")}`] : []),
+    ...(input.stockSection.low.length ? [`- Atenção: ${input.stockSection.low.slice(0, 4).map((row) => row.nome).join(", ")} abaixo do mínimo`] : [])
+  ];
+  const activeAnimals = input.animals.filter((row) => row.status !== "morto" && row.status !== "inativo").length;
+  const herdLines = [
+    "Rebanho:",
+    `- Animais cadastrados ${periodLabel}: ${input.animalsCreated.length}`,
+    `- Total ativo conhecido: ${activeAnimals}`
+  ];
+  const eventLines = input.events.length
+    ? [
+        "Eventos:",
+        `- Total: ${input.events.length}`,
+        `- Vacinas: ${counts.vacina}`,
+        `- Clínicos: ${counts.clinico}`,
+        `- Partos: ${counts.parto}`,
+        `- Reprodutivos: ${counts.reprodutivo}`
+      ]
+    : ["Eventos:", `- Não encontrei eventos registrados ${periodLabel}.`];
+  const employeeLines = input.employees.allowed
+    ? [
+        "Funcionários:",
+        `- Ativos: ${input.employees.active}`,
+        `- Ponto: ${input.point.rows.length} registro(s)`,
+        `- WhatsApp: ${input.whatsapp.registrations.length} registro(s) operacionais no período`
+      ]
+    : ["Funcionários:", "- Você não tem permissão para visualizar dados de equipe."];
   const lines = [
     title,
-    executive,
     "",
-    financeLine,
-    productionLine,
-    input.stockSection.text,
-    herdLine,
-    eventLine,
-    employeeLine,
-    whatsappLine,
+    ...executiveLines,
+    "",
+    ...financeLines,
+    "",
+    ...productionLines,
+    "",
+    ...stockLines,
+    "",
+    ...herdLines,
+    "",
+    ...eventLines,
+    "",
+    ...employeeLines,
     "",
     conclusion
   ];

@@ -993,6 +993,7 @@ function assertExpected(test, parsed) {
   if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
+  if (expected.notAnimal && normalize(dados.animal_codigo) === normalize(expected.notAnimal)) failures.push(`animal nao deveria ser ${expected.notAnimal}`);
   if (expected.animalId && dados.animal_id !== expected.animalId) failures.push(`animal_id esperado ${expected.animalId}, recebido ${dados.animal_id}`);
   if (expected.categoria && normalize(dados.categoria) !== normalize(expected.categoria)) failures.push(`categoria esperada ${expected.categoria}, recebida ${dados.categoria}`);
   if (expected.nome && normalize(dados.nome) !== normalize(expected.nome)) failures.push(`nome esperado ${expected.nome}, recebido ${dados.nome}`);
@@ -1011,6 +1012,7 @@ function assertExpected(test, parsed) {
   if ("peso" in expected && Number(dados.peso) !== Number(expected.peso)) failures.push(`peso esperado ${expected.peso}, recebido ${dados.peso}`);
   if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
   if ("novo_valor" in expected && normalize(dados.novo_valor) !== normalize(expected.novo_valor)) failures.push(`novo_valor esperado ${expected.novo_valor}, recebido ${dados.novo_valor}`);
+  if (expected.novoValorIncludes && !normalize(dados.novo_valor).includes(normalize(expected.novoValorIncludes))) failures.push(`novo_valor deveria conter ${expected.novoValorIncludes}, recebido ${dados.novo_valor}`);
   if ("consulta" in expected && Boolean(dados.consulta) !== Boolean(expected.consulta)) failures.push(`consulta esperada ${expected.consulta}, recebida ${dados.consulta}`);
   if (expected.consulta_registros && normalize(dados.consulta_registros) !== normalize(expected.consulta_registros)) failures.push(`consulta_registros esperada ${expected.consulta_registros}, recebida ${dados.consulta_registros}`);
   if (expected.consulta_producao && normalize(dados.consulta_producao) !== normalize(expected.consulta_producao)) failures.push(`consulta_producao esperada ${expected.consulta_producao}, recebida ${dados.consulta_producao}`);
@@ -1031,6 +1033,7 @@ function assertExpected(test, parsed) {
   if ("quantidade" in expected && Number(dados.quantidade) !== Number(expected.quantidade)) failures.push(`quantidade esperada ${expected.quantidade}, recebida ${dados.quantidade}`);
   if (expected.unidade && normalize(dados.unidade) !== normalize(expected.unidade)) failures.push(`unidade esperada ${expected.unidade}, recebida ${dados.unidade}`);
   if ("valor" in expected && Number(dados.valor) !== Number(expected.valor)) failures.push(`valor esperado ${expected.valor}, recebido ${dados.valor}`);
+  if ("notValor" in expected && Number(dados.valor) === Number(expected.notValor)) failures.push(`valor nao deveria ser ${expected.notValor}`);
   if (expected.descricao && !normalize(dados.descricao).includes(normalize(expected.descricao))) failures.push(`descrição esperada ${expected.descricao}, recebida ${dados.descricao}`);
   if (expected.funcionario_nome && normalize(dados.funcionario_nome) !== normalize(expected.funcionario_nome)) failures.push(`funcionário esperado ${expected.funcionario_nome}, recebido ${dados.funcionario_nome}`);
   if (expected.telefone && normalizeWhatsappNumber(dados.telefone) !== expected.telefone) failures.push(`telefone esperado ${expected.telefone}, recebido ${dados.telefone}`);
@@ -1157,6 +1160,9 @@ const extraTests = [
   { phrase: "vaca 2 produziu 20", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 20 } },
   { phrase: "vaca 2 fez leite", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], missing: ["litros"] } },
   { phrase: "registra 25 litros da vaca 2", expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 25 } },
+  { phrase: "ordenhei 21,5L de Natasha hoje", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "Natasha", notAnimal: "ORDENHEI", litros: 21.5, data_referencia: "hoje" } },
+  { phrase: "ordenhei 21,5L de Natasha hoje de 10h", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "Natasha", notAnimal: "10H", litros: 21.5, data_referencia: "hoje", horario: "10:00" } },
+  { phrase: "tirei 30 litros de Lindona hoje", expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "Lindona", litros: 30, data_referencia: "hoje" } },
   { phrase: "vacinei B002 com aftosa", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "aftosa", animal: "B-002" } },
   { phrase: "vaca 2 recebeu vacina da raiva", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "raiva", animalAny: ["2", "002"], resumoIncludes: "vacina de raiva" } },
   { phrase: "vaca 2 tomou vacina de aftosa", expected: { tipo: "VACINA_MEDICAMENTO", evento_tipo: "vacina", produto: "aftosa", animalAny: ["2", "002"] } },
@@ -1213,6 +1219,9 @@ const extraTests = [
   { phrase: "estoque baixo", expected: { tipo: "CONSULTA_ESTOQUE" } },
   { phrase: "recebi 900 do leite", expected: { tipo: "RECEITA_VENDA", valor: 900, descricao: "leite" } },
   { phrase: "vendi leite por 800 reais", expected: { tipo: "RECEITA_VENDA", valor: 800, descricao: "leite" } },
+  { phrase: "vendi 40L de leite", expected: { tipo: "RECEITA_VENDA", exactTipo: true, quantidade: 40, unidade: "L", descricao: "leite", missing: ["valor"], notValor: 40 } },
+  { phrase: "vendi 40L de leite por 200 reais", expected: { tipo: "RECEITA_VENDA", exactTipo: true, quantidade: 40, unidade: "L", descricao: "leite", valor: 200 } },
+  { phrase: "vendi leite por 200 reais", expected: { tipo: "RECEITA_VENDA", exactTipo: true, descricao: "leite", valor: 200 } },
   { phrase: "despesa de 45 com energia", expected: { tipo: "DESPESA", valor: 45, descricao: "energia" } },
   { phrase: "paguei 300 de veterinario", expected: { tipo: "DESPESA", valor: 300, descricao: "veterinario" } },
   { phrase: "gastei 80 com diesel", expected: { tipo: "DESPESA", valor: 80, descricao: "diesel" } },
@@ -1808,6 +1817,11 @@ const eventHumanParserTests = [
   { module: "eventos-relatorios", phrase: "relatirio de hoje", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "hoje", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "resumo do mez", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
+
+  eventParser("Lindona não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "Lindona", campo_alterado: "observacoes", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
+  eventParser("B-002 não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
+  eventParser("a preta tá mancando hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "PRETA", campo_alterado: "observacoes", novoValorIncludes: "mancando", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
+  eventParser("tem vaca doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", novoValorIncludes: "vaca doente", missing: ["animal_codigo"] }),
 
   eventParser("B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] }, { pending: () => pendingFrom("registrar vacina") }),
   eventParser("Aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Aftosa", noMissing: true }, { pending: () => pendingFrom("registrar vacina", ["B-002"]) }),
@@ -3295,6 +3309,41 @@ const eventFrameworkCases = [
     }
   },
   {
+    name: "observacao sanitaria com nome nao vira cancelamento",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    extraAnimals: [{ id: "animal-lindona", brinco: "001", nome: "Lindona" }],
+    messages: ["Lindona não comeu hoje", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "001", campo_alterado: "observacoes" },
+      responseNotIncludes: "cancelar ou corrigir",
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { animal_codigo: "001", campo_alterado: "observacoes" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "ocorrencia sanitaria generica pede animal antes de salvar",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["tem vaca doente"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { campo_alterado: "observacoes" },
+      responseIncludes: "brinco",
+      responseNotIncludes: "Está correto",
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cio vira observacao reprodutiva e salva so apos confirmacao",
     module: "eventos",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -3634,6 +3683,7 @@ const eventFrameworkCases = [
       finalIntent: "CONSULTA_REGISTROS_HOJE",
       entities: { consulta_registros: "relatorio", data_referencia: "hoje" },
       responseIncludes: "WhatsApp: 1 registro",
+      responseRawIncludes: ["Resumo:\n-", "\n\nFinanceiro:", "\n\nProdução:", "\n\nEstoque:", "\n\nEventos:", "\n\nFuncionários:"],
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -4376,6 +4426,39 @@ const inventoryFrameworkCases = [
 ];
 
 const financeFrameworkCases = [
+  {
+    name: "venda fisica de leite sem valor pergunta valor",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi 40L de leite"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { quantidade: 40, unidade: "L", descricao: "leite" },
+      responseIncludes: "valor da venda",
+      shouldAskFollowUp: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "venda fisica de leite com valor confirma receita",
+    module: "financeiro",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["vendi 40L de leite por 200 reais", "sim"],
+    expected: {
+      finalIntent: "RECEITA_VENDA",
+      entities: { quantidade: 40, unidade: "L", valor: 200, descricao: "leite" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { valor: 200 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
   {
     name: "entrada financeira completa pede confirmacao e nao salva antes",
     module: "financeiro",
@@ -6208,6 +6291,42 @@ const structuredBotEvaluationCases = [
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "producao por nome inexistente pede brinco sem usar verbo",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["ordenhei 21,5L de Natasha hoje de 10h"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { litros: 21.5, horario: "10:00" },
+      responseIncludes: "Natasha",
+      responseNotIncludes: "ORDENHEI",
+      shouldAskFollowUp: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "producao por apelido resolve animal cadastrado",
+    module: "producao",
+    phone: BOT_TEST_ADMIN_PHONE,
+    extraAnimals: [{ id: "animal-lindona-producao", brinco: "001", nome: "Lindona" }],
+    stockItems: mockStock.filter((item) => !/leite/i.test(item.nome)),
+    messages: ["tirei 30 litros de Lindona hoje", "sim"],
+    expected: {
+      finalIntent: "PRODUCAO_LEITE",
+      entities: { animal_codigo: "001", litros: 30, data_referencia: "hoje" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.ordenhas],
+      shouldSaveValues: { animal_codigo: "001", litros: 30 },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
     }
   },
   {

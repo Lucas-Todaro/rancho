@@ -94,6 +94,7 @@ const STRONG_NEGATION_PATTERN = /\bnao\s+(?:e|foi|era|quis dizer)\b|\b(?:entende
 const CORRECTION_PATTERN = /\b(?:errei|corrige|corrigir|corrija|quero corrigir|na verdade|quis dizer|nao quis dizer|troca|trocar|ajusta|ajustar|atualiza|atualizar|entendeu errado|ta errado|esta errado|errado|incorreto)\b/;
 const REPLACEMENT_PATTERN = /\b(?:nao\s+(?:era|foi|e).+\b(?:era|foi|e)\b|foi\s+(?:na|no|a|o)?\s*\w+|era\s+(?:a|o)?\s*\w+|foram?\s+\d|era\s+\d|uso|saida|baixa|cio)\b/;
 const CONTEXT_REFERENCE_PATTERN = /\b(?:isso|essa|esse|dessa|desse|ultimo|ultima|anterior|lancamento|registro|entendeu|quis dizer)\b/;
+const HEALTH_OBSERVATION_PATTERN = /\b(?:nao comeu|nao levantou|sem comer|mancando|doente|fraco|fraca|ruim|febre|diarreia|mastite|tossindo|ferida)\b/;
 
 function uniqueFlags(values: ParserRiskFlag[]) {
   return Array.from(new Set(values));
@@ -176,6 +177,18 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
   const isNegation = NEGATION_PATTERN.test(normalized) || STRONG_NEGATION_PATTERN.test(normalized);
   const hasReplacement = REPLACEMENT_PATTERN.test(normalized);
   const referencesContext = CONTEXT_REFERENCE_PATTERN.test(normalized);
+
+  if (HEALTH_OBSERVATION_PATTERN.test(normalized) && !isCorrection) {
+    return {
+      ...base,
+      messageType: "new_action",
+      confidence: 0.82,
+      correction: null,
+      flags: uniqueFlags(flags),
+      decision: "new_action",
+      reason: "Mensagem com observacao sanitaria tratada como nova acao."
+    };
+  }
 
   if (isCorrection || (isNegation && hasReplacement)) {
     flags.push("correction_message", "requires_confirmation", "possible_duplicate_risk");
