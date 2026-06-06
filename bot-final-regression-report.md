@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-06T12:24:51.175Z
+Gerado em: 2026-06-06T15:15:27.762Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1116
-- Aprovados: 1116
+- Total geral de testes: 1137
+- Aprovados: 1137
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -16,13 +16,13 @@ Gerado em: 2026-06-06T12:24:51.175Z
 | --- | ---: | ---: | ---: | ---: |
 | Geral/comandos humanos | 18 | 18 | 0 | 100% |
 | Producao | 63 | 63 | 0 | 100% |
-| Animais | 36 | 36 | 0 | 100% |
+| Animais | 40 | 40 | 0 | 100% |
 | Estoque | 207 | 207 | 0 | 100% |
 | Financeiro | 167 | 167 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
 | Ponto | 19 | 19 | 0 | 100% |
 | Folha/salarios | 8 | 8 | 0 | 100% |
-| Eventos/vacinas/medicamentos | 179 | 179 | 0 | 100% |
+| Eventos/vacinas/medicamentos | 194 | 194 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
 | Rebanho/lotes | 26 | 26 | 0 | 100% |
 | Dashboard/relatorios | 26 | 26 | 0 | 100% |
@@ -54,12 +54,12 @@ Gerado em: 2026-06-06T12:24:51.175Z
 ## Cadastro De Animal
 
 - Testes adicionados nesta rodada: 22
-- Fluxos estruturados cobertos: 16
-- Aprovados: 16
+- Fluxos estruturados cobertos: 18
+- Aprovados: 18
 - Falhos: 0
 - Coberturas:
   - frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela
-  - extracao de nome, categoria, sexo inferido, brinco/codigo, peso e raca
+  - extracao de nome, categoria, sexo informado explicitamente, brinco/codigo, peso e raca
   - nome opcional: pergunta somente brinco/codigo quando categoria ja existe
   - confirmacao obrigatoria antes de qualquer salvamento
   - respostas curtas em fluxo guiado preservam codigos como N-935

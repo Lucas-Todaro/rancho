@@ -174,6 +174,11 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   }
 
   if (tipo === "ATUALIZACAO_ANIMAL") {
+    if (dados.registro_evento_animal) {
+      const evento = dados.evento_tipo === "reprodutivo" ?"ocorrência reprodutiva" : "ocorrência clínica";
+      const custo = hasValue(dados.custo || dados.valor) ?` com custo de ${moneyText(dados.custo || dados.valor)}` : "";
+      return `registrar ${evento}${dados.animal_codigo ?` para ${dados.animal_codigo}` : ""}${custo}${dados.descricao ?`: ${dados.descricao}` : ""}`;
+    }
     if (dados.campo_alterado === "observacoes") {
       return `registrar observação de saúde${dados.animal_codigo ?` para ${dados.animal_codigo}` : ""}${dados.novo_valor ?`: ${dados.novo_valor}` : ""}`;
     }

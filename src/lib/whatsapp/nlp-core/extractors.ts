@@ -9,7 +9,6 @@ import {
   animalCodePattern,
   animalOptionalFields,
   animalPhaseMap,
-  animalSexMap,
   animalWords,
   forbiddenAnimalCodes,
   stockUnitAfterQuantityPattern,
@@ -291,7 +290,7 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const productionCandidate = candidateFromMatch(productionNamed?.[1]);
   if (productionCandidate) return normalizeAnimalCandidate(productionCandidate) || productionCandidate.toUpperCase();
 
-  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu|recebeu|ficou|esta|ta|entrou|apresentou|precisa|teve|foi|com|comeu|levantou|mancou|mancando|inseminada|inseminado|coberta|coberto)\b/);
+  const beforeVerb = searchable.match(/^(.+?)\s+(?:deu|produziu|fez|pariu|tomou|morreu|recebeu|ficou|esta|ta|entrou|apresentou|precisa|teve|foi|com|comeu|quer|passando|levantou|mancou|mancando|adoeceu|machucou|sangrou|sangrando|inchou|inchada|inchado|inseminada|inseminado|coberta|coberto)\b/);
   const beforeVerbCandidate = candidateFromMatch(beforeVerb?.[1]?.replace(/\bnao\b/g, " "));
   if (beforeVerbCandidate && !/^(registra|registrar|lanca|lancar|anota|anotar)$/.test(beforeVerbCandidate)) {
     return normalizeAnimalCandidate(beforeVerbCandidate) || beforeVerbCandidate.toUpperCase();
@@ -804,11 +803,8 @@ export function isSkipOptionalAnswer(text: string) {
 
 export function extractAnimalSex(text: string) {
   const normalized = normalizeRanchoText(text);
-  const word = Object.keys(animalSexMap).find((item) => new RegExp(`\\b${item}\\b`).test(normalized));
-  if (word) return animalSexMap[word];
-  const category = extractAnimalCategory(normalized);
-  if (["vaca", "novilha"].includes(String(category || "")) || /\b(?:bezerra|bezerras|matriz|matrizes)\b/.test(normalized)) return "femea";
-  if (["boi", "touro"].includes(String(category || "")) || /\b(?:bezerro|bezerros|bezero|reprodutor|reprodutores)\b/.test(normalized)) return "macho";
+  if (/\b(?:femea|femeas|feme|feminino)\b/.test(normalized) || /\bsexo\s+f\b/.test(normalized)) return "femea";
+  if (/\b(?:macho|machos|maxo|maxos|masculino)\b/.test(normalized) || /\bsexo\s+m\b/.test(normalized)) return "macho";
   return undefined;
 }
 
@@ -907,7 +903,7 @@ export function extractAnimalRegistrationName(original: string) {
   const broadExplicitName = cleanAnimalRegistrationName(broadExplicit);
   if (broadExplicitName) return broadExplicitName;
 
-  const broadAfterCategory = original.match(/\b(?:vacas?|vca|bois?|boii|touros?|bezerros?|bezero|bezerras?|novilhas?|novila|matriz|matrizes|reprodutor(?:es)?|animais?|animau|gado|femeas?|machos?|maxos?)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF\s'-]{0,40}?)(?=\s+(?:com|brinco|codigo|cod|numero|n|peso|raca|lote|nascimento|[a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*|\d+(?:[,.]\d+)?\s*(?:kg|kgs|quilo|quilos))\b|$)/i)?.[1];
+  const broadAfterCategory = original.match(/\b(?:vacas?|vca|bois?|boii|touros?|bezerros?|bezero|bezerras?|novilhas?|novila|matriz|matrizes|reprodutor(?:es)?|animal|animais|animau|gado|femeas?|machos?|maxos?)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF\s'-]{0,40}?)(?=\s+(?:com|brinco|codigo|cod|numero|n|peso|raca|lote|nascimento|[a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*|\d+(?:[,.]\d+)?\s*(?:kg|kgs|quilo|quilos))\b|$)/i)?.[1];
   const broadName = cleanAnimalRegistrationName(broadAfterCategory);
   if (broadName) return broadName;
 

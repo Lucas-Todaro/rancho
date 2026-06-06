@@ -1005,6 +1005,7 @@ function assertExpected(test, parsed) {
 
   if (expected.compra && !dados.compra) failures.push("esperava compra=true");
   if (expected.venda && !dados.venda) failures.push("esperava venda=true");
+  if ("registro_evento_animal" in expected && Boolean(dados.registro_evento_animal) !== Boolean(expected.registro_evento_animal)) failures.push(`registro_evento_animal esperado ${expected.registro_evento_animal}, recebido ${dados.registro_evento_animal}`);
   if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
   if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
   if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
@@ -1146,8 +1147,9 @@ const mandatoryTests = [
   { phrase: "adicionar vaca", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", missing: ["animal_codigo"] } },
   { phrase: "adicionar touro", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", missing: ["animal_codigo"] } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
-  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", sexo: "macho", noMissing: true } },
-  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", sexo: "macho", noMissing: true } },
+  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", noMissing: true } },
+  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", noMissing: true } },
+  { phrase: "cadastrar boi Todaro brinco TD-01 macho", expected: { tipo: "CADASTRO_ANIMAL", categoria: "boi", animal: "TD-01", nome: "Todaro", sexo: "macho", noMissing: true } },
   { phrase: "adicionar vaca Mimosa brinco B-043 femea gestante raca Girolando lote Lactacao 1 nascimento 01/02/2024", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", animal: "B-043", nome: "Mimosa", sexo: "femea", fase: "gestante", raca: "Girolando", lote: "Lactacao 1", data_nascimento: "2024-02-01", noMissing: true } },
   { phrase: "a vaca do fundo morreu", expected: { tipo: "MORTE", local: "fundo", missing: ["animal_codigo"] } },
   { phrase: "bota 20kg de racao de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
@@ -1678,12 +1680,15 @@ const animalConsultationAndUpdateTests = [
   { phrase: "B-002 observacao: mancando da pata", expected: { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novo_valor: "mancando da pata" } },
   { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", exactTipo: true, animal: "B-002" } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
-  { phrase: "criar vaca Amanda", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", sexo: "femea", missing: ["animal_codigo"] } },
-  { phrase: "criar vaca Amanda B-902", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-902", sexo: "femea", noMissing: true } },
-  { phrase: "adiciona boi Anderson 320kg B-100", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "boi", nome: "Anderson", animal: "B-100", sexo: "macho", peso: 320, noMissing: true } },
-  { phrase: "nova novilha Estrela", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "novilha", nome: "Estrela", sexo: "femea", missing: ["animal_codigo"] } },
-  { phrase: "cadatra vaca Mimosaa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosaa", sexo: "femea", missing: ["animal_codigo"] } },
-  { phrase: "cadastra reprodutor Touro Rei", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Touro Rei", sexo: "macho", missing: ["animal_codigo"] } }
+  { phrase: "criar vaca Amanda", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", missing: ["animal_codigo"] } },
+  { phrase: "criar vaca Amanda B-902", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-902", noMissing: true } },
+  { phrase: "adiciona boi Anderson 320kg B-100", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "boi", nome: "Anderson", animal: "B-100", peso: 320, noMissing: true } },
+  { phrase: "nova novilha Estrela", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "novilha", nome: "Estrela", missing: ["animal_codigo"] } },
+  { phrase: "cadatra vaca Mimosaa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosaa", missing: ["animal_codigo"] } },
+  { phrase: "cadastra reprodutor Touro Rei", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Touro Rei", missing: ["animal_codigo"] } },
+  { phrase: "cadastrar animal Todaro", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, nome: "Todaro", missing: ["animal_codigo"] } },
+  { phrase: "cadastrar vaca Amanda B-903 femea", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-903", sexo: "femea", noMissing: true } },
+  { phrase: "cadastrar touro Brutus T-904 macho", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Brutus", animal: "T-904", sexo: "macho", noMissing: true } }
 ];
 
 const eventHumanParserTests = [
@@ -1758,6 +1763,20 @@ const eventHumanParserTests = [
   eventParser("b002 fico doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes" }),
   eventParser("mimosa esta duente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes" }),
   eventParser("vaca mancandoo", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", missing: ["animal_codigo"] }),
+  eventParser("B-002 ficou doente e custou 500 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 500, resumoIncludes: "ocorrência clínica" }),
+  eventParser("a vaca estrela ficou doente custou 500", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 500 }),
+  eventParser("Mimosa teve mastite e gastei 220 no veterinario", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 220 }),
+  eventParser("B001 com febre paguei 80 de remedio", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 80 }),
+  eventParser("animal A12 machucado custo 150 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "A12", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 150 }),
+  eventParser("vaca 15 ferida na pata saiu 90 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "15", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 90 }),
+  eventParser("B-002 passando mal despesa veterinaria de 300 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 300 }),
+  eventParser("mimosa nao quer comer e custou 120 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 120 }),
+  eventParser("Estrela com problema no casco, veterinario ficou 250 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 250 }),
+  eventParser("a B-002 adoeceu e paguei 500", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 500 }),
+  eventParser("B-002 ficou fraca e a consulta do veterinario deu 180 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 180 }),
+  eventParser("a novilha N-01 apareceu inchada e custou 75 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "N-01", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 75 }),
+  eventParser("B001 sangrando na pata paguei 60 reais", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 60 }),
+  eventParser("veterinario veio na Mimosa porque ela esta doente e cobrou 400", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 400 }),
 
   eventParser("mimosa pariu hoje", { tipo: "PARTO", exactTipo: true, animal: "B-001", data_referencia: "hoje" }),
   eventParser("B-002 teve parto", { tipo: "PARTO", exactTipo: true, animal: "B-002" }),
@@ -1840,10 +1859,10 @@ const eventHumanParserTests = [
   { module: "eventos-relatorios", phrase: "resumo do mez", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true, data_referencia: "mes", consulta_registros: "relatorio" } },
   { module: "eventos-relatorios", phrase: "relatorio", expected: { tipo: "CONSULTA_REGISTROS_HOJE", exactTipo: true } },
 
-  eventParser("Lindona não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "Lindona", campo_alterado: "observacoes", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
-  eventParser("B-002 não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
-  eventParser("a preta tá mancando hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "PRETA", campo_alterado: "observacoes", novoValorIncludes: "mancando", data_referencia: "hoje", resumoIncludes: "observação de saúde" }),
-  eventParser("tem vaca doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", novoValorIncludes: "vaca doente", missing: ["animal_codigo"] }),
+  eventParser("Lindona não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "Lindona", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "ocorrência clínica" }),
+  eventParser("B-002 não comeu hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", novoValorIncludes: "não comeu", data_referencia: "hoje", resumoIncludes: "ocorrência clínica" }),
+  eventParser("a preta tá mancando hoje", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, animal: "PRETA", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", novoValorIncludes: "mancando", data_referencia: "hoje", resumoIncludes: "ocorrência clínica" }),
+  eventParser("tem vaca doente", { tipo: "ATUALIZACAO_ANIMAL", exactTipo: true, campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", novoValorIncludes: "vaca doente", missing: ["animal_codigo"] }),
 
   eventParser("B-002", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", missing: ["produto"] }, { pending: () => pendingFrom("registrar vacina") }),
   eventParser("Aftosa", { tipo: "VACINA_MEDICAMENTO", exactTipo: true, animal: "B-002", produto: "Aftosa", noMissing: true }, { pending: () => pendingFrom("registrar vacina", ["B-002"]) }),
@@ -2339,7 +2358,7 @@ const botConversationTests = [
           intent: "CADASTRO_ANIMAL",
           estadoAnterior: "aguardando_dado",
           estadoNovo: "aguardando_confirmacao",
-          dados: { animal_codigo: "B-777", categoria: "vaca", sexo: "femea" },
+          dados: { animal_codigo: "B-777", categoria: "vaca" },
           responseIncludes: "correto"
         }
       },
@@ -2813,17 +2832,53 @@ const animalRegistrationNaturalCases = [
     messages: ["criar vaca Amanda", "B-900", "sim"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-900", sexo: "femea" },
+      entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-900" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { brinco: "B-900", nome: "Amanda", categoria: "vaca", sexo: "femea" },
+      shouldSaveValues: { brinco: "B-900", nome: "Amanda", categoria: "vaca" },
       shouldNotDuplicate: true,
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "cadastro animal sem sexo nao inventa macho nem femea",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar animal Todaro", "TD-01", "vaca", "sim"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Todaro", animal_codigo: "TD-01" },
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { brinco: "TD-01", nome: "Todaro" },
+      shouldNotSaveValues: { sexo: "macho" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastro animal com sexo explicito salva sexo informado",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar vaca Aurora B-905 femea", "sim"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Aurora", categoria: "vaca", animal_codigo: "B-905", sexo: "femea" },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { brinco: "B-905", nome: "Aurora", categoria: "vaca", sexo: "femea" },
+      shouldNotWriteBusiness: true
     }
   },
   {
@@ -2833,14 +2888,14 @@ const animalRegistrationNaturalCases = [
     messages: ["cadastrar boi Anderson 320kg", "B-901", "sim"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { nome: "Anderson", categoria: "boi", animal_codigo: "B-901", sexo: "macho", peso: 320 },
+      entities: { nome: "Anderson", categoria: "boi", animal_codigo: "B-901", peso: 320 },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { brinco: "B-901", nome: "Anderson", categoria: "boi", sexo: "macho", peso: 320 },
+      shouldSaveValues: { brinco: "B-901", nome: "Anderson", categoria: "boi", peso: 320 },
       shouldNotWriteBusiness: true
     }
   },
@@ -2868,7 +2923,7 @@ const animalRegistrationNaturalCases = [
     messages: ["cadastrar novilha Estrela raca Jersey", "N-935", "sim"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { nome: "Estrela", categoria: "novilha", animal_codigo: "N-935", sexo: "femea", raca: "Jersey" },
+      entities: { nome: "Estrela", categoria: "novilha", animal_codigo: "N-935", raca: "Jersey" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
@@ -2904,13 +2959,13 @@ const animalRegistrationNaturalCases = [
     messages: ["cadastrar boi Brutus A912", "nao, e touro", "sim"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { nome: "Brutus", categoria: "touro", animal_codigo: "A912", sexo: "macho" },
+      entities: { nome: "Brutus", categoria: "touro", animal_codigo: "A912" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { brinco: "A912", nome: "Brutus", categoria: "touro", sexo: "macho" },
+      shouldSaveValues: { brinco: "A912", nome: "Brutus", categoria: "touro" },
       shouldNotWriteBusiness: true
     }
   },
@@ -3313,19 +3368,19 @@ const eventFrameworkCases = [
     }
   },
   {
-    name: "doenca vira observacao clinica e salva so apos confirmacao",
+    name: "doenca vira evento clinico e salva so apos confirmacao",
     module: "eventos",
     phone: BOT_TEST_ADMIN_PHONE,
     messages: ["B-002 ficou doente", "sim"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "B-002", evento_tipo: "clinico" },
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -3338,14 +3393,32 @@ const eventFrameworkCases = [
     messages: ["Lindona não comeu hoje", "sim"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "001", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico" },
       responseNotIncludes: "cancelar ou corrigir",
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { animal_codigo: "001", campo_alterado: "observacoes" },
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
+      shouldSaveValues: { animal_codigo: "001", evento_tipo: "clinico" },
+      shouldNotWriteBusiness: true,
+      ranchId: BOT_TEST_FARM_ID
+    }
+  },
+  {
+    name: "doenca com custo salva evento e financeiro apos confirmacao",
+    module: "eventos",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["B-002 ficou doente e custou 500 reais", "sim"],
+    expected: {
+      finalIntent: "ATUALIZACAO_ANIMAL",
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico", valor: 500 },
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 2,
+      savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.transacoesFinanceiras],
+      shouldSaveValues: { animal_codigo: "B-002", evento_tipo: "clinico", valor: 500 },
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -3357,7 +3430,7 @@ const eventFrameworkCases = [
     messages: ["tem vaca doente"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { campo_alterado: "observacoes" },
+      entities: { campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico" },
       responseIncludes: "brinco",
       responseNotIncludes: "Está correto",
       shouldSaveBeforeConfirmation: false,
@@ -3366,18 +3439,18 @@ const eventFrameworkCases = [
     }
   },
   {
-    name: "cio vira observacao reprodutiva e salva so apos confirmacao",
+    name: "cio vira evento reprodutivo e salva so apos confirmacao",
     module: "eventos",
     phone: BOT_TEST_ADMIN_PHONE,
     messages: ["Mimosa entrou no cio", "pode salvar"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B-001", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.animais],
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -3407,12 +3480,12 @@ const eventFrameworkCases = [
     messages: ["B-002 inseminada com semen do touro T-01", "certo"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B-002", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo" },
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.animais],
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -3462,13 +3535,13 @@ const eventFrameworkCases = [
     messages: ["animal doente", "B001", "sim"],
     expected: {
       finalIntent: "ATUALIZACAO_ANIMAL",
-      entities: { animal_codigo: "B-001", campo_alterado: "observacoes" },
+      entities: { animal_codigo: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "clinico" },
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
-      savedTables: [BOT_TEST_TABLES.animais],
+      savedTables: [BOT_TEST_TABLES.eventosAnimal],
       shouldNotWriteBusiness: true,
       ranchId: BOT_TEST_FARM_ID
     }
@@ -7310,6 +7383,38 @@ function simulatedSaveActionsForResult(result, phone) {
   }
 
   if (tipo === "ATUALIZACAO_ANIMAL") {
+    if (dados.registro_evento_animal) {
+      const actions = [{
+        ...base,
+        table: BOT_TEST_TABLES.eventosAnimal,
+        payload: {
+          fazenda_id: fazendaId,
+          animal_id: dados.animal_id || null,
+          animal_codigo: dados.animal_codigo,
+          evento_tipo: dados.evento_tipo || "observacao",
+          descricao: dados.descricao || dados.novo_valor || null,
+          custo: Number(dados.custo || dados.valor || 0),
+          origem: "whatsapp"
+        }
+      }];
+
+      if (Number(dados.custo || dados.valor || 0) > 0) {
+        actions.push({
+          ...base,
+          table: BOT_TEST_TABLES.transacoesFinanceiras,
+          payload: {
+            fazenda_id: fazendaId,
+            tipo: "saida",
+            valor: Number(dados.custo || dados.valor || 0),
+            descricao: dados.descricao || dados.novo_valor || null,
+            origem: "whatsapp"
+          }
+        });
+      }
+
+      return actions;
+    }
+
     return [{
       ...base,
       type: "update",
@@ -7932,7 +8037,7 @@ function buildFinalRegressionReport(report, summary) {
       failed: animalRegistrationFailed.length,
       coveredFlows: [
         "frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela",
-        "extracao de nome, categoria, sexo inferido, brinco/codigo, peso e raca",
+        "extracao de nome, categoria, sexo informado explicitamente, brinco/codigo, peso e raca",
         "nome opcional: pergunta somente brinco/codigo quando categoria ja existe",
         "confirmacao obrigatoria antes de qualquer salvamento",
         "respostas curtas em fluxo guiado preservam codigos como N-935",
@@ -8142,7 +8247,7 @@ function writeBotTestReports(summary) {
         successRate: eventSuccessRate,
         coverage: [
           "registro de vacinas, medicamentos e tratamentos",
-          "doencas e observacoes clinicas como atualizacao confirmada",
+          "doencas e observacoes clinicas/reprodutivas como eventos confirmados",
           "parto, cio, prenhez, inseminacao e cobertura",
           "consultas de historico por animal e registros de hoje",
           "coleta por etapas, correcao, cancelamento, repeticao e confirmacao duplicada",
@@ -8304,7 +8409,7 @@ function writeBotTestReports(summary) {
     `- Falhos eventos: ${report.summary.eventos.failed}`,
     `- Taxa eventos: ${report.summary.eventos.successRate}%`,
     "- Cobertura: vacinas, medicamentos, tratamentos, doencas/observacoes clinicas, parto, cio, prenhez, inseminacao/cobertura, historico por animal, etapas, correcao, cancelamento, repeticao, confirmacao duplicada, permissao e fazenda_id.",
-    "- Correcoes feitas: produto corrigido antes de salvar substitui o antigo, erros comuns de digitacao sao normalizados, observacoes clinicas/reprodutivas entram em fluxo de confirmacao, e consultas/atualizacoes de animal usam catalogo do rancho.",
+    "- Correcoes feitas: produto corrigido antes de salvar substitui o antigo, erros comuns de digitacao sao normalizados, observacoes clinicas/reprodutivas entram em fluxo de confirmacao e viram eventos do animal, e consultas/atualizacoes de animal usam catalogo do rancho.",
     "- Casos frageis: consultas gerais de calendario/proximas vacinas ainda precisam de consulta dedicada; baixa de estoque por dose continua fluxo separado e nao movimenta estoque real em teste.",
     "- Observacao: nenhum evento real, WhatsApp real ou baixa real de estoque e executado nesta bateria.",
     "",

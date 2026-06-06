@@ -1976,6 +1976,47 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     const animal = found.row;
+
+    if (dados.registro_evento_animal) {
+      const custo = hasBotValue(dados.custo ?? dados.valor) ?Number(dados.custo ?? dados.valor) : 0;
+      const descricao = String(dados.descricao || dados.novo_valor || pending.resumo || "Ocorrência registrada via WhatsApp");
+      const eventoLabel = dados.evento_tipo === "reprodutivo" ?"Ocorrência reprodutiva" : "Ocorrência clínica";
+      const savedTables: string[] = [TABLES.eventosAnimal];
+
+      await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+        fazenda_id: owner.fazenda_id,
+        animal_id: animal.id,
+        tipo: "observacao",
+        data_evento: isoFromReference(dados.data_referencia),
+        descricao: `${eventoLabel} registrada via WhatsApp: ${descricao}`,
+        medicamento: null,
+        dose: null,
+        custo,
+        responsavel_usuario_id: owner.usuario_id || null
+      });
+
+      let financeText = "";
+      if (custo > 0 && isBotAdmin(owner)) {
+        await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+          fazenda_id: owner.fazenda_id,
+          tipo: "saida",
+          data_transacao: dateOnlyFromReference(dados.data_referencia),
+          valor: custo,
+          categoria: "Saúde animal",
+          descricao: `${eventoLabel} de ${animal.brinco}: ${descricao}`,
+          metodo_pagamento: "whatsapp",
+          origem: "whatsapp",
+          created_by: owner.usuario_id || null
+        });
+        savedTables.push(TABLES.transacoesFinanceiras);
+        financeText = `\nSaída financeira: ${formatMoney(custo)}.`;
+      } else if (custo > 0) {
+        financeText = "\nO custo informado não foi lançado no financeiro porque seu usuário não tem permissão para financeiro.";
+      }
+
+      return realSaveResult(`Pronto, registro salvo com sucesso.\n${eventoLabel} em ${animal.brinco}.${financeText}`, savedTables);
+    }
+
     const field = String(dados.campo_alterado || "");
     const value = dados.novo_valor;
     let payload: AnyRecord = {};

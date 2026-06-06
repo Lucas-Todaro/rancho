@@ -63,6 +63,35 @@ const reproductiveObservationCue = /\b(?:cio|ia|inseminada|inseminado|inseminaca
 const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
 const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
 
+const extendedClinicalObservationCue = /\b(?:mancou|adoeceu|ferimento|machucado|machucada|sangrando|inchado|inchada|bicheira|berne|infeccao|veterinaria|veterinario|mal de saude|passando mal|nao quer comer|sem apetite|tratamento caro|despesa veterinaria)\b/;
+
+function hasClinicalObservationCue(normalized: string) {
+  clinicalObservationCue.lastIndex = 0;
+  extendedClinicalObservationCue.lastIndex = 0;
+  return clinicalObservationCue.test(normalized) || extendedClinicalObservationCue.test(normalized);
+}
+
+function animalObservationEventType(normalized: string) {
+  if (hasClinicalObservationCue(normalized)) return "clinico";
+  if (reproductiveObservationCue.test(normalized)) return "reprodutivo";
+  return "observacao";
+}
+
+function withAnimalObservationEventData(dados: Record<string, unknown>, original: string, normalized: string) {
+  const cost = extractMoneyValue(normalized);
+  const descricao = cleanUpdateValue(String(dados.novo_valor || original));
+  return {
+    ...dados,
+    campo_alterado: dados.campo_alterado || "observacoes",
+    novo_valor: dados.novo_valor || descricao || original,
+    descricao: descricao || original,
+    registro_evento_animal: true,
+    evento_tipo: animalObservationEventType(normalized),
+    data_referencia: dados.data_referencia || extractDateReference(normalized) || "hoje",
+    ...(hasValue(cost) && Number(cost) > 0 ?{ custo: cost, valor: cost } : {})
+  };
+}
+
 type StockConsultationDetection = {
   tipo: ParsedRanchoMessage["tipo"];
   dados: Record<string, unknown>;
@@ -514,6 +543,15 @@ function extractAnimalUpdateData(original: string, normalized: string) {
     return { animal_codigo, campo_alterado: "peso", novo_valor: weight };
   }
 
+  if (hasClinicalObservationCue(normalized) || reproductiveObservationCue.test(normalized)) {
+    return withAnimalObservationEventData({
+      animal_codigo,
+      campo_alterado: "observacoes",
+      novo_valor: cleanUpdateValue(observation || original),
+      data_referencia
+    }, original, normalized);
+  }
+
   if (observation || clinicalObservationCue.test(normalized) || reproductiveObservationCue.test(normalized) || /\b(?:observacao|observação|obs)\b/.test(normalized)) {
     return {
       animal_codigo,
@@ -827,7 +865,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const productionAnimalReport = /\b(?:producao|produção|historico|histórico|ultima|última|media|média)\b/.test(normalized)
     && Boolean(extractAnimalCode(normalized, "CONSULTA_PRODUCAO_ANIMAL"))
     && !hasValue(extractLiters(normalized))
-    && !clinicalObservationCue.test(normalized)
+    && !hasClinicalObservationCue(normalized)
     && !/\b(?:vacina|vacinas|evento|eventos|medicamento|medicamentos|tratamento|tratamentos|parto|partos|clinico|reprodutivo)\b/.test(normalized);
   if (productionAnimalReport) {
     return finalize("CONSULTA_PRODUCAO_ANIMAL", {
@@ -1149,7 +1187,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const animalQueryCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
   const animalUpdateVerb = /\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|em|marcar|marca|para|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|peso|pesou|nome|vendida|vendido|saiu do rebanho)\b/.test(normalized)
-    || clinicalObservationCue.test(normalized)
+    || hasClinicalObservationCue(normalized)
     || reproductiveObservationCue.test(normalized);
   const isQuestion = /\?/.test(original);
   const animalCreationCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|cadatra|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
@@ -1200,6 +1238,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isPoint = /\b(?:ponto|entrou|entrada|saiu|saida|saída|bateu|bater ponto|registrar ponto)\b/.test(normalized)
     && !physicalQuantity
     && !hasFinanceOperation
+    && !hasClinicalObservationCue(normalized)
     && !reproductiveObservationCue.test(normalized);
   if (isPoint) {
     const dados = {
@@ -1303,9 +1342,19 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados));
   }
 
+  const animalObservationBeforeFinanceData = extractAnimalUpdateData(original, normalized) as Record<string, unknown>;
+  const animalObservationBeforeFinance = !animalCreationCue
+    && !isQuestion
+    && (hasClinicalObservationCue(normalized) || reproductiveObservationCue.test(normalized))
+    && (Boolean(animalObservationBeforeFinanceData.animal_codigo)
+      || /\b(?:animal|vaca|gado|novilha|bezerro|bezerra|registrar|registra|observacao|doenca|clinica|clinico|cio|prenhez|inseminacao|cobertura)\b/.test(normalized));
+  if (animalObservationBeforeFinance) {
+    return finalize("ATUALIZACAO_ANIMAL", animalObservationBeforeFinanceData, buildMissing("ATUALIZACAO_ANIMAL", animalObservationBeforeFinanceData), 0.88);
+  }
+
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
   const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized)
-    && !clinicalObservationCue.test(normalized)
+    && !hasClinicalObservationCue(normalized)
     && !reproductiveObservationCue.test(normalized);
 
   if (isRevenue && !isExpense) {
@@ -1358,18 +1407,18 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("MORTE", dados, buildMissing("MORTE", dados));
   }
 
-  const animalUpdateData = extractAnimalUpdateData(original, normalized);
+  const animalUpdateData = extractAnimalUpdateData(original, normalized) as Record<string, unknown>;
   const isAnimalUpdate = Boolean(animalUpdateData.animal_codigo)
     && !animalCreationCue
     && (/\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|em|marcar|marca|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|lote|piquete|pasto|peso|pesou|kg|nome|raca|raça|observacao|observação|vendida|vendido|saiu do rebanho)\b/.test(normalized)
-      || clinicalObservationCue.test(normalized)
+      || hasClinicalObservationCue(normalized)
       || reproductiveObservationCue.test(normalized))
     && !/\bdeu\b/.test(normalized)
     && !isQuestion;
   const isIncompleteAnimalUpdate = !animalCreationCue
     && !isQuestion
     && !animalUpdateData.animal_codigo
-    && (clinicalObservationCue.test(normalized) || reproductiveObservationCue.test(normalized))
+    && (hasClinicalObservationCue(normalized) || reproductiveObservationCue.test(normalized))
     && /\b(?:animal|vaca|gado|novilha|registrar|registra|observacao|observação|doenca|doença|clinica|clinico|cio|prenhez|inseminacao|cobertura)\b/.test(normalized);
   if (isAnimalUpdate || isIncompleteAnimalUpdate) {
     return finalize("ATUALIZACAO_ANIMAL", animalUpdateData, buildMissing("ATUALIZACAO_ANIMAL", animalUpdateData));
