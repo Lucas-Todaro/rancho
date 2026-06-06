@@ -889,6 +889,7 @@ export function cleanAnimalRegistrationName(value?: string | null) {
     .trim();
 
   if (!cleaned) return undefined;
+  if (/^(?:novo|nova|cadastrar|cadastra|cadastro|animal|adicionar|adiciona|registrar|registra|criar|cria)$/i.test(normalizeRanchoText(cleaned))) return undefined;
   if (!/\s/.test(cleaned) && extractAnimalCategory(normalizeRanchoText(cleaned))) return undefined;
   if (explicitRegistrationCode(cleaned)) return undefined;
   return cleaned;

@@ -2826,6 +2826,78 @@ const animalFrameworkCases = [
 
 const animalRegistrationNaturalCases = [
   {
+    name: "cadastro animal por comando inicial nao usa novo como nome",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["novo animal", "021", "vaca", "sim"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { animal_codigo: "021", categoria: "vaca" },
+      absentEntities: ["nome"],
+      shouldAskFollowUp: true,
+      shouldAskConfirmation: true,
+      shouldSaveBeforeConfirmation: false,
+      savedAfterConfirmation: true,
+      simulatedSaveCount: 1,
+      savedTables: [BOT_TEST_TABLES.animais],
+      shouldSaveValues: { brinco: "021", categoria: "vaca" },
+      shouldNotSaveValues: { nome: "novo" },
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastrar animal sem nome mantem nome ausente",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar animal"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      absentEntities: ["nome"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "novo animal com nome preserva nome real",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["novo animal Anderson"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Anderson" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "nova vaca com nome preserva categoria e nome real",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["nova vaca Estrela"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "vaca", nome: "Estrela" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastrar boi com nome e peso preserva dados reais",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar boi Anderson 320kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "boi", nome: "Anderson", peso: 320 },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cadastro natural com nome pergunta somente brinco",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -7527,6 +7599,10 @@ function evaluateStructuredCase(test, trace) {
   for (const [field, value] of Object.entries(expected.entities || {})) {
     const received = finalData[field];
     if (!sameValue(received, value)) failures.push(`entidade ${field} esperada ${value}, recebida ${received}`);
+  }
+
+  for (const field of expected.absentEntities || []) {
+    if (hasValue(finalData[field])) failures.push(`entidade ${field} deveria estar ausente, recebida ${finalData[field]}`);
   }
 
   if (expected.responseIncludes && !normalize(finalResult.respostaTexto).includes(normalize(expected.responseIncludes))) {
