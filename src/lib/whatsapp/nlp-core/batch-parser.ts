@@ -2,6 +2,7 @@ import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-t
 import type { ParsedRanchoMessage, RanchoIntent } from "./types";
 import { buildMissing, finalize } from "./result";
 import { parseSingleRanchoMessage } from "./intent-detector";
+import { numberMatches } from "@/lib/whatsapp/nlp-numbers";
 import {
   extractAnimalCode,
   extractDateReference,
@@ -14,7 +15,8 @@ import {
   extractStockQuantity,
   extractStockUnit,
   extractTurno,
-  hasExplicitMoney
+  hasExplicitMoney,
+  numberHasUnitOrMoneyContext
 } from "./extractors";
 
 const batchableIntents = new Set<RanchoIntent>([
@@ -40,15 +42,66 @@ function splitBatchSegments(text: string) {
     .filter(Boolean);
 }
 
+function splitBatchSegmentsForContext(text: string) {
+  const freeAnimalWithQuantity = "[a-z\\u00c0-\\u00ff][a-z\\u00c0-\\u00ff0-9'-]*(?:\\s+[a-z\\u00c0-\\u00ff][a-z\\u00c0-\\u00ff0-9'-]*){0,3}\\s+\\d";
+  const freeAnimalWithAlso = "[a-z\\u00c0-\\u00ff][a-z\\u00c0-\\u00ff0-9'-]*(?:\\s+[a-z\\u00c0-\\u00ff][a-z\\u00c0-\\u00ff0-9'-]*){0,3}\\s+tamb(?:e|é|em)m?";
+  const nextActionStart = `(?:\\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\\d|[a-z]*\\d[a-z0-9-]*\\s+(?:\\d|deu|produziu|fez|pariu|morreu)|${freeAnimalWithQuantity}|${freeAnimalWithAlso}|[a-z\\u00c0-\\u00ff]+(?:\\s+[a-z\\u00c0-\\u00ff]+){0,3}\\s+por\\s+\\d|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu)`;
+  const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é|em)m?|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
+
+  return cleanAnswer(String(text || ""))
+    .split(/[\n;]+|,(?!\d)(?=\s*\S)/g)
+    .flatMap((chunk) => chunk.split(connectorPattern))
+    .flatMap((chunk) => chunk.split(/\s+\be\b\s+(?=\d)/i))
+    .map((chunk) => chunk.trim().replace(/^(?:e|mais|tamb[eé]m|tambem)\s+/i, "").trim())
+    .filter(Boolean);
+}
+
+function cleanBatchProductionAnimalCandidate(value?: string | null) {
+  const cleaned = cleanAnswer(value || "")
+    .replace(/^(?:e|tamb[eé]m|tambem|mais)\s+/i, "")
+    .replace(/^(?:a|o)\s+(?=\d+\b)/i, "")
+    .replace(/\b(?:deu|produziu|fez|ordenhou|ordenha|leite|litros?|l|lt|lts)\b/gi, " ")
+    .replace(/\b\d+(?:[,.]\d+)?\s*(?:l|lt|lts|litro\w*)?\b/g, " ")
+    .replace(/\b(?:tamb[eé]m|tambem)\b.*$/i, " ")
+    .replace(/[.,;:!?()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || undefined;
+}
+
+function compactProductionKey(value: unknown) {
+  return normalizeRanchoText(String(value || "")).replace(/[^a-z0-9]/g, "");
+}
+
+function contextualProductionAnimal(segment: string, normalized: string) {
+  const byCode = extractAnimalCode(normalized, "PRODUCAO_LEITE");
+  if (byCode) return byCode;
+
+  const beforeNumber = segment.match(/^\s*(?:e|mais|tamb[eé]m|tambem)?\s*(?:a\s+)?(.+?)\s+\d+(?:[,.]\d+)?\s*(?:l|lt|lts|litro\w*)?\b/i)?.[1];
+  const beforeAlso = segment.match(/^\s*(?:e|mais)?\s*(?:a\s+)?(.+?)\s+(?:tamb[eé]m|tambem)\b/i)?.[1];
+  return cleanBatchProductionAnimalCandidate(beforeNumber || beforeAlso);
+}
+
+function contextualProductionLiters(segment: string, normalized: string, previous: ParsedRanchoMessage) {
+  const explicit = extractLiters(normalized) ?? extractLooseProductionLiters(normalized);
+  if (hasValue(explicit)) return explicit;
+  if (/\btamb/.test(normalized)) return previous.dados.litros;
+
+  const animalKey = compactProductionKey(contextualProductionAnimal(segment, normalized));
+  const quantity = [...numberMatches(normalized)].reverse().find((match) => {
+    if (compactProductionKey(match.raw) === animalKey) return false;
+    return !numberHasUnitOrMoneyContext(normalized, match.index, match.raw);
+  });
+  return quantity?.value;
+}
+
 function parseBatchSegmentWithContext(segment: string, previous: ParsedRanchoMessage): ParsedRanchoMessage | null {
   const original = cleanAnswer(segment);
   const normalized = normalizeRanchoText(original);
 
   if (previous.tipo === "PRODUCAO_LEITE") {
-    const animal = extractAnimalCode(normalized, "PRODUCAO_LEITE");
-    const liters = extractLiters(normalized)
-      ?? extractLooseProductionLiters(normalized)
-      ?? (/\btamb/.test(normalized) ? previous.dados.litros : undefined);
+    const animal = contextualProductionAnimal(original, normalized);
+    const liters = contextualProductionLiters(original, normalized, previous);
     if (animal && hasValue(liters)) {
       const dados = {
         animal_codigo: animal,
@@ -101,7 +154,7 @@ function milkBatchDestination(text: string) {
 }
 
 export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
-  const segments = splitBatchSegments(text);
+  const segments = splitBatchSegmentsForContext(text);
   if (segments.length < 2) return null;
 
   const registros: ParsedRanchoMessage[] = [];

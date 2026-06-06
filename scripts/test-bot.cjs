@@ -86,7 +86,9 @@ const mockAnimals = [
   { id: "animal-15", brinco: "15" },
   { id: "animal-n-01", brinco: "N-01" },
   { id: "animal-malhada", brinco: "MALHADA" },
-  { id: "animal-preta", brinco: "PRETA" }
+  { id: "animal-preta", brinco: "PRETA" },
+  { id: "animal-kelly", brinco: "KELLY", nome: "Kelly", sexo: "femea", categoria: "vaca", fase: "lactacao" },
+  { id: "animal-thais", brinco: "THAIS", nome: "Thais", sexo: "femea", categoria: "vaca", fase: "lactacao" }
 ];
 
 const mockStock = [
@@ -1253,6 +1255,13 @@ const extraTests = [
   { phrase: "32", pending: () => pendingFrom("vaca 2 deu leite"), expected: { tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 32, noMissing: true } },
   { phrase: "vaca B-002 deu 32 litros e vaca 15 deu 20 litros", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"] } },
   { phrase: "usei 2 kg de milho e tirei 1 fardo de feno", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["ESTOQUE_SAIDA"] } },
+  { phrase: "Kelly deu 28 litros e Thais 25", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 53, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "KELLY", litros: 28 }, { tipo: "PRODUCAO_LEITE", animal: "THAIS", litros: 25 }] } },
+  { phrase: "Mimosa deu 28 litros e Estrela 25", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 53, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-001", litros: 28 }, { tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 25 }] } },
+  { phrase: "Lindona 30 litros e Preta 22", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 52, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "Lindona", litros: 30 }, { tipo: "PRODUCAO_LEITE", animal: "PRETA", litros: 22 }] } },
+  { phrase: "B-002 deu 28 litros e A12 25", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 53, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "B-002", litros: 28 }, { tipo: "PRODUCAO_LEITE", animal: "A12", litros: 25 }] } },
+  { phrase: "vaca 1 deu 15 e a 2 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "2", litros: 20 }] } },
+  { phrase: "Kelly deu 28 e Thais também", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 56, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "KELLY", litros: 28 }, { tipo: "PRODUCAO_LEITE", animal: "THAIS", litros: 28 }] } },
+  { phrase: "Kelly deu 28 litros, Thais 25, Lindona 30", expected: { tipo: "LOTE_REGISTROS", registros: 3, registroTipos: ["PRODUCAO_LEITE"], total_litros: 83, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animal: "KELLY", litros: 28 }, { tipo: "PRODUCAO_LEITE", animal: "THAIS", litros: 25 }, { tipo: "PRODUCAO_LEITE", animal: "Lindona", litros: 30 }] } },
   { phrase: "vaca 2 deu 15 litros e a 1 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }] } },
   { phrase: "vaca 2 deu 15 litros e vaca 1 20", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 35, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 20 }] } },
   { phrase: "vaca 2 deu 15 litros e a vaca 1 tambem", expected: { tipo: "LOTE_REGISTROS", registros: 2, registroTipos: ["PRODUCAO_LEITE"], total_litros: 30, registroDetalhes: [{ tipo: "PRODUCAO_LEITE", animalAny: ["2", "002"], litros: 15 }, { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15 }] } },
