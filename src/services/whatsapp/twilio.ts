@@ -2082,7 +2082,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       data_nascimento: dados.data_nascimento || null,
       status: "ativo",
       created_by: owner.usuario_id || null,
-      observacoes: "Cadastrado via WhatsApp"
+      observacoes: dados.observacoes || "Cadastrado via WhatsApp"
     });
     const details = [
       dados.nome ?`Nome: ${dados.nome}.` : "",
@@ -2092,7 +2092,8 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
       dados.raca ?`Raça: ${dados.raca}.` : "",
       dados.peso ?`Peso: ${dados.peso} kg.` : "",
       dados.lote_nome ?`Lote: ${dados.lote_nome}.` : "",
-      dados.data_nascimento ?`Nascimento: ${dados.data_nascimento}.` : ""
+      dados.data_nascimento ?`Nascimento: ${dados.data_nascimento}.` : "",
+      dados.observacoes ?`Observações: ${dados.observacoes}.` : ""
     ].filter(Boolean).join("\n");
     return realSaveResult(`Pronto, animal cadastrado com sucesso.\n${details}`, [TABLES.animais]);
   }

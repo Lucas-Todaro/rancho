@@ -1,9 +1,9 @@
 import type { AnyRecord } from "@/lib/types";
 import { hasValue } from "@/lib/whatsapp/nlp-text";
 import { formatBotNumber, formatStockQuantity, moneyText } from "@/lib/whatsapp/nlp-format";
-import { BOT_EXAMPLES, questionByField } from "./constants";
+import { BOT_EXAMPLES, animalOptionalFields, questionByField } from "./constants";
 import type { ParsedRanchoMessage, RanchoIntent } from "./types";
-import { isValidBotPhone } from "./extractors";
+import { hasAnimalOptionalValue, hasSkippedAnimalOptionalField, isValidBotPhone } from "./extractors";
 
 function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord) {
   return fields.map((field) => {
@@ -15,6 +15,9 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     }
     if (field === "lote_animal" && dados.lote_nao_encontrado) {
       return `Não encontrei o lote "${dados.lote_nao_encontrado}". Envie o nome de um lote já cadastrado ou 2 para pular.`;
+    }
+    if (dados.campo_obrigatorio_pulado === field) {
+      return `Esse campo é obrigatório. ${questionByField[field] || "Informe o dado para continuar."}`;
     }
     if (field === "unidade" && ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo)) {
       return "Qual unidade padrão?Exemplos: kg, saco, unidade, dose, fardo.";
@@ -260,6 +263,11 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "CADASTRO_ANIMAL") {
     if (!dados.animal_codigo) missing.push("animal_codigo");
     if (!dados.categoria) missing.push("categoria_animal");
+    if (!missing.length) {
+      for (const field of animalOptionalFields) {
+        if (!hasAnimalOptionalValue(dados, field) && !hasSkippedAnimalOptionalField(dados, field)) missing.push(field);
+      }
+    }
   }
   if (tipo === "ATUALIZACAO_ANIMAL") {
     if (!dados.animal_codigo) missing.push("animal_codigo");

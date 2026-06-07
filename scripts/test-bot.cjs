@@ -1147,10 +1147,10 @@ const mandatoryTests = [
   { phrase: "adicionar vaca", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", missing: ["animal_codigo"] } },
   { phrase: "adicionar touro", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", missing: ["animal_codigo"] } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
-  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01", noMissing: true } },
-  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123", noMissing: true } },
-  { phrase: "cadastrar boi Todaro brinco TD-01 macho", expected: { tipo: "CADASTRO_ANIMAL", categoria: "boi", animal: "TD-01", nome: "Todaro", sexo: "macho", noMissing: true } },
-  { phrase: "adicionar vaca Mimosa brinco B-043 femea gestante raca Girolando lote Lactacao 1 nascimento 01/02/2024", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", animal: "B-043", nome: "Mimosa", sexo: "femea", fase: "gestante", raca: "Girolando", lote: "Lactacao 1", data_nascimento: "2024-02-01", noMissing: true } },
+  { phrase: "cadastrar touro T-01", expected: { tipo: "CADASTRO_ANIMAL", categoria: "touro", animal: "T-01" } },
+  { phrase: "registrar bezerro brinco B-123", expected: { tipo: "CADASTRO_ANIMAL", categoria: "bezerro", animal: "B-123" } },
+  { phrase: "cadastrar boi Todaro brinco TD-01 macho", expected: { tipo: "CADASTRO_ANIMAL", categoria: "boi", animal: "TD-01", nome: "Todaro", sexo: "macho" } },
+  { phrase: "adicionar vaca Mimosa brinco B-043 femea gestante raca Girolando lote Lactacao 1 nascimento 01/02/2024", expected: { tipo: "CADASTRO_ANIMAL", categoria: "vaca", animal: "B-043", nome: "Mimosa", sexo: "femea", fase: "gestante", raca: "Girolando", lote: "Lactacao 1", data_nascimento: "2024-02-01" } },
   { phrase: "a vaca do fundo morreu", expected: { tipo: "MORTE", local: "fundo", missing: ["animal_codigo"] } },
   { phrase: "bota 20kg de racao de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
   { phrase: "lança 20kg de ração de boi no estoque", expected: { tipo: "ESTOQUE_ENTRADA", quantidade: 20, unidade: "kg", item: "Ração de boi" } },
@@ -1681,14 +1681,14 @@ const animalConsultationAndUpdateTests = [
   { phrase: "nasceu bezerro da vaca B-002", expected: { tipo: "PARTO", exactTipo: true, animal: "B-002" } },
   { phrase: "adicionar vaca com nome Mimosa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosa", missing: ["animal_codigo"] } },
   { phrase: "criar vaca Amanda", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", missing: ["animal_codigo"] } },
-  { phrase: "criar vaca Amanda B-902", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-902", noMissing: true } },
-  { phrase: "adiciona boi Anderson 320kg B-100", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "boi", nome: "Anderson", animal: "B-100", peso: 320, noMissing: true } },
+  { phrase: "criar vaca Amanda B-902", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-902" } },
+  { phrase: "adiciona boi Anderson 320kg B-100", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "boi", nome: "Anderson", animal: "B-100", peso: 320 } },
   { phrase: "nova novilha Estrela", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "novilha", nome: "Estrela", missing: ["animal_codigo"] } },
   { phrase: "cadatra vaca Mimosaa", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Mimosaa", missing: ["animal_codigo"] } },
   { phrase: "cadastra reprodutor Touro Rei", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Touro Rei", missing: ["animal_codigo"] } },
   { phrase: "cadastrar animal Todaro", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, nome: "Todaro", missing: ["animal_codigo"] } },
-  { phrase: "cadastrar vaca Amanda B-903 femea", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-903", sexo: "femea", noMissing: true } },
-  { phrase: "cadastrar touro Brutus T-904 macho", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Brutus", animal: "T-904", sexo: "macho", noMissing: true } }
+  { phrase: "cadastrar vaca Amanda B-903 femea", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "vaca", nome: "Amanda", animal: "B-903", sexo: "femea" } },
+  { phrase: "cadastrar touro Brutus T-904 macho", expected: { tipo: "CADASTRO_ANIMAL", exactTipo: true, categoria: "touro", nome: "Brutus", animal: "T-904", sexo: "macho" } }
 ];
 
 const eventHumanParserTests = [
@@ -2339,7 +2339,7 @@ const botConversationTests = [
     ]
   },
   {
-    name: "cadastro de animal pergunta so brinco obrigatorio e confirma",
+    name: "cadastro de animal pergunta opcionais antes de confirmar",
     phone: BOT_TEST_ADMIN_PHONE,
     expectNoBusinessWrites: true,
     messages: [
@@ -2354,6 +2354,22 @@ const botConversationTests = [
       },
       {
         text: "B-777",
+        expected: {
+          intent: "CADASTRO_ANIMAL",
+          estadoAnterior: "aguardando_dado",
+          estadoNovo: "aguardando_dado",
+          dados: { animal_codigo: "B-777", categoria: "vaca" },
+          responseIncludes: "nome"
+        }
+      },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "peso" } },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "fase" } },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "raça" } },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "lote" } },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "nascimento" } },
+      { text: "2", expected: { intent: "CADASTRO_ANIMAL", estadoNovo: "aguardando_dado", responseIncludes: "observacoes" } },
+      {
+        text: "2",
         expected: {
           intent: "CADASTRO_ANIMAL",
           estadoAnterior: "aguardando_dado",
@@ -2824,12 +2840,16 @@ const animalFrameworkCases = [
   }
 ];
 
+function animalRegistrationMessages(messages, optionalCount = 6, confirmation = "sim") {
+  return [...messages, ...Array.from({ length: optionalCount }, () => "2"), confirmation];
+}
+
 const animalRegistrationNaturalCases = [
   {
     name: "cadastro animal por comando inicial nao usa novo como nome",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["novo animal", "021", "vaca", "sim"],
+    messages: animalRegistrationMessages(["novo animal", "021", "vaca"], 7),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { animal_codigo: "021", categoria: "vaca" },
@@ -2859,6 +2879,32 @@ const animalRegistrationNaturalCases = [
     }
   },
   {
+    name: "adicionar animal sem nome mantem nome ausente",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["adicionar animal"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      absentEntities: ["nome"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastrar novo animal nao usa comandos como nome",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar novo animal"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      absentEntities: ["nome"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "novo animal com nome preserva nome real",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -2866,6 +2912,33 @@ const animalRegistrationNaturalCases = [
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Anderson" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastrar novo animal com nome preserva nome real",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar novo animal Anderson"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Anderson" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "nova vaca sem nome mantem nome ausente",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["nova vaca"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "vaca" },
+      absentEntities: ["nome"],
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -2885,6 +2958,19 @@ const animalRegistrationNaturalCases = [
     }
   },
   {
+    name: "cadastrar vaca com nome preserva categoria e nome real",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar vaca Mimosa"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "vaca", nome: "Mimosa" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cadastrar boi com nome e peso preserva dados reais",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
@@ -2898,10 +2984,38 @@ const animalRegistrationNaturalCases = [
     }
   },
   {
+    name: "cadastro completo nao pergunta novamente dados informados",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["nova vaca Estrela brinco 021 peso 400kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "vaca", nome: "Estrela", animal_codigo: "021", peso: 400 },
+      allResponsesNotInclude: ["nome ou apelido", "peso do animal"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "campo obrigatorio nao pode ser pulado com 2",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["novo animal", "2"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      absentEntities: ["animal_codigo"],
+      responseIncludes: "obrigatório",
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
     name: "cadastro natural com nome pergunta somente brinco",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda", "B-900", "sim"],
+    messages: animalRegistrationMessages(["criar vaca Amanda", "B-900"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-900" },
@@ -2921,7 +3035,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro animal sem sexo nao inventa macho nem femea",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar animal Todaro", "TD-01", "vaca", "sim"],
+    messages: animalRegistrationMessages(["cadastrar animal Todaro", "TD-01", "vaca"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Todaro", animal_codigo: "TD-01" },
@@ -2940,7 +3054,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro animal com sexo explicito salva sexo informado",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar vaca Aurora B-905 femea", "sim"],
+    messages: animalRegistrationMessages(["cadastrar vaca Aurora B-905 femea"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Aurora", categoria: "vaca", animal_codigo: "B-905", sexo: "femea" },
@@ -2957,7 +3071,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro natural com peso nao pergunta nome nem peso",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar boi Anderson 320kg", "B-901", "sim"],
+    messages: animalRegistrationMessages(["cadastrar boi Anderson 320kg", "B-901"], 5),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Anderson", categoria: "boi", animal_codigo: "B-901", peso: 320 },
@@ -2975,7 +3089,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro com nome e brinco vai direto para confirmacao",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda B-902", "sim"],
+    messages: animalRegistrationMessages(["criar vaca Amanda B-902"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-902" },
@@ -2992,7 +3106,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro com raca preserva raca e pede so brinco",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar novilha Estrela raca Jersey", "N-935", "sim"],
+    messages: animalRegistrationMessages(["cadastrar novilha Estrela raca Jersey", "N-935"], 5),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Estrela", categoria: "novilha", animal_codigo: "N-935", raca: "Jersey" },
@@ -3010,7 +3124,7 @@ const animalRegistrationNaturalCases = [
     name: "correcao antes de salvar troca nome do animal",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda B-936", "nao, o nome e Amora", "sim"],
+    messages: animalRegistrationMessages(["criar vaca Amanda B-936", "nao, o nome e Amora"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Amora", categoria: "vaca", animal_codigo: "B-936" },
@@ -3021,6 +3135,7 @@ const animalRegistrationNaturalCases = [
       savedTables: [BOT_TEST_TABLES.animais],
       shouldSaveValues: { brinco: "B-936", nome: "Amora" },
       shouldNotSaveValues: { nome: "Amanda" },
+      detectStuck: false,
       shouldNotWriteBusiness: true
     }
   },
@@ -3028,7 +3143,7 @@ const animalRegistrationNaturalCases = [
     name: "correcao antes de salvar troca categoria para touro",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar boi Brutus A912", "nao, e touro", "sim"],
+    messages: animalRegistrationMessages(["cadastrar boi Brutus A912", "nao, e touro"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Brutus", categoria: "touro", animal_codigo: "A912" },
@@ -3038,6 +3153,7 @@ const animalRegistrationNaturalCases = [
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
       shouldSaveValues: { brinco: "A912", nome: "Brutus", categoria: "touro" },
+      detectStuck: false,
       shouldNotWriteBusiness: true
     }
   },
@@ -3045,7 +3161,7 @@ const animalRegistrationNaturalCases = [
     name: "correcao antes de salvar troca brinco",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar vaca Amanda B-937", "nao, brinco e B-938", "sim"],
+    messages: animalRegistrationMessages(["cadastrar vaca Amanda B-937", "nao, brinco e B-938"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-938" },
@@ -3056,6 +3172,7 @@ const animalRegistrationNaturalCases = [
       savedTables: [BOT_TEST_TABLES.animais],
       shouldSaveValues: { brinco: "B-938", nome: "Amanda" },
       shouldNotSaveValues: { brinco: "B-937" },
+      detectStuck: false,
       shouldNotWriteBusiness: true
     }
   },
@@ -3063,7 +3180,7 @@ const animalRegistrationNaturalCases = [
     name: "correcao antes de salvar troca peso",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cadastrar boi Anderson 320kg", "B-939", "nao, peso e 350kg", "sim"],
+    messages: animalRegistrationMessages(["cadastrar boi Anderson 320kg", "B-939", "nao, peso e 350kg"], 5),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Anderson", categoria: "boi", animal_codigo: "B-939", peso: 350 },
@@ -3074,6 +3191,7 @@ const animalRegistrationNaturalCases = [
       savedTables: [BOT_TEST_TABLES.animais],
       shouldSaveValues: { brinco: "B-939", nome: "Anderson", peso: 350 },
       shouldNotSaveValues: { peso: 320 },
+      detectStuck: false,
       shouldNotWriteBusiness: true
     }
   },
@@ -3094,7 +3212,7 @@ const animalRegistrationNaturalCases = [
     name: "confirmacao duplicada nao duplica cadastro animal",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda B-940", "sim", "sim"],
+    messages: [...animalRegistrationMessages(["criar vaca Amanda B-940"], 6), "sim"],
     expected: {
       shouldAskConfirmation: true,
       shouldSaveBeforeConfirmation: false,
@@ -3110,7 +3228,7 @@ const animalRegistrationNaturalCases = [
     name: "erro pequeno vca ainda cadastra vaca",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["cria vca Amanda", "B-941", "sim"],
+    messages: animalRegistrationMessages(["cria vca Amanda", "B-941"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       entities: { nome: "Amanda", categoria: "vaca", animal_codigo: "B-941" },
@@ -3140,7 +3258,7 @@ const animalRegistrationNaturalCases = [
     name: "brinco duplicado bloqueia cadastro animal",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda B-002"],
+    messages: ["criar vaca Amanda B-002", ...Array.from({ length: 6 }, () => "2")],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       responseIncludes: "existe",
@@ -3164,7 +3282,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro animal no rancho a usa fazenda correta",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE,
-    messages: ["criar vaca Amanda B-950", "sim"],
+    messages: animalRegistrationMessages(["criar vaca Amanda B-950"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       shouldAskConfirmation: true,
@@ -3180,7 +3298,7 @@ const animalRegistrationNaturalCases = [
     name: "cadastro animal no rancho b usa fazenda correta",
     module: "cadastro-animal",
     phone: BOT_TEST_ADMIN_PHONE_B,
-    messages: ["criar vaca Amanda B-950", "sim"],
+    messages: animalRegistrationMessages(["criar vaca Amanda B-950"], 6),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
       shouldAskConfirmation: true,
@@ -7449,7 +7567,9 @@ function simulatedSaveActionsForResult(result, phone) {
           sexo: dados.sexo || null,
           peso: dados.peso !== undefined && dados.peso !== null && dados.peso !== "" ? Number(dados.peso) : null,
           raca: dados.raca || null,
-          lote_id: dados.lote_id || null
+          lote_id: dados.lote_id || null,
+          data_nascimento: dados.data_nascimento || null,
+          observacoes: dados.observacoes || null
         }
       }];
   }

@@ -47,10 +47,15 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const dados = { ...current.dados };
   const expectedFields = buildMissing(current.tipo, dados);
   const expectedField = expectedFields[0];
+  const correctionLike = /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
 
   if (current.tipo === "CADASTRO_ANIMAL" && isAnimalOptionalField(expectedField) && isSkipOptionalAnswer(original)) {
     const nextDados = markAnimalOptionalFieldSkipped(dados, expectedField as string);
     return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+  }
+
+  if (current.tipo === "CADASTRO_ANIMAL" && ["animal_codigo", "categoria_animal"].includes(String(expectedField || "")) && isSkipOptionalAnswer(original)) {
+    return finalize(current.tipo, { ...dados, campo_obrigatorio_pulado: expectedField }, buildMissing(current.tipo, dados), current.confianca);
   }
 
   if (parsedAnswer.tipo === current.tipo) {
@@ -86,6 +91,9 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "periodo_pagamento" && original) dados.periodo_pagamento = normalized === "1" ? "mes_atual" : normalized === "2" ? "mes_anterior" : extractEmployeePaymentPeriod(normalized);
     if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);
     if (expectedField === "horario") dados.horario = extractPointTime(normalized) || original;
+    if (expectedField === "nome" && current.tipo === "CADASTRO_ANIMAL" && original && !correctionLike) dados.nome = extractAnimalRegistrationName(original) || original;
+    if (expectedField === "peso" && current.tipo === "CADASTRO_ANIMAL" && !correctionLike) dados.peso = extractAnimalWeight(original) ?? contextualNumber;
+    if (expectedField === "observacoes" && current.tipo === "CADASTRO_ANIMAL" && original && !correctionLike) dados.observacoes = original;
     if (expectedField === "campo_alterado" && original) {
       if (/\b(?:salario|salário|slario|ganha)\b/.test(normalized)) dados.campo_alterado = "salario_base";
       else if (/\b(?:whatsapp|telefone|zap|celular)\b/.test(normalized)) dados.campo_alterado = "contato_whatsapp";
@@ -136,7 +144,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const pointTime = extractPointTime(normalized);
   const dateReference = extractDateReference(normalized);
   const turno = extractTurno(normalized);
-  const isCorrection = !expectedField && /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
+  const isCorrection = (!expectedField || (current.tipo === "CADASTRO_ANIMAL" && isAnimalOptionalField(expectedField))) && correctionLike;
 
   if (current.tipo === "CRIAR_LOTE" && original && (!dados.lote_nome || expectedField === "lote_nome" || isCorrection)) {
     dados.lote_nome = original.replace(/^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era)\b\s*,?\s*/i, "").trim() || original;
@@ -208,8 +216,14 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     const correctionText = original.replace(/^(?:nao|nÃ£o|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b\s*,?\s*/i, "").trim();
     const nameCorrection = correctionText.replace(/^(?:o\s+|a\s+)?nome\s+(?:e|eh|Ã©|era|foi|para|pra)?\s*/i, "").trim();
 
-    if (registrationCode && (!dados.animal_codigo || expectedField === "animal_codigo" || isCorrection)) dados.animal_codigo = registrationCode;
-    if (animalCategory && (!dados.categoria || expectedField === "categoria_animal" || isCorrection)) dados.categoria = animalCategory;
+    if (registrationCode && (!dados.animal_codigo || expectedField === "animal_codigo" || isCorrection)) {
+      dados.animal_codigo = registrationCode;
+      if (dados.campo_obrigatorio_pulado === "animal_codigo") dados.campo_obrigatorio_pulado = undefined;
+    }
+    if (animalCategory && (!dados.categoria || expectedField === "categoria_animal" || isCorrection)) {
+      dados.categoria = animalCategory;
+      if (dados.campo_obrigatorio_pulado === "categoria_animal") dados.campo_obrigatorio_pulado = undefined;
+    }
     if (animalSex && (!dados.sexo || expectedField === "sexo" || isCorrection || animalCategory)) dados.sexo = animalSex;
     if (registrationName && (!dados.nome || expectedField === "nome")) dados.nome = registrationName;
     if (isCorrection && nameCorrection && nameCorrection !== correctionText && !animalCategory && !registrationCode && animalWeight === undefined) {

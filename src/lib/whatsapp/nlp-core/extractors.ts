@@ -790,15 +790,23 @@ export function markAnimalOptionalFieldSkipped(dados: AnyRecord, field: string) 
   };
 }
 
+export function inferAnimalSexFromCategory(category: string | number | null | undefined) {
+  const normalized = normalizeRanchoText(String(category || ""));
+  if (["vaca", "novilha"].includes(normalized)) return "femea";
+  if (["boi", "touro"].includes(normalized)) return "macho";
+  return undefined;
+}
+
 export function hasAnimalOptionalValue(dados: AnyRecord, field: string) {
   if (field === "lote_animal") return hasValue(dados.lote_id) || hasValue(dados.lote_nome);
+  if (field === "sexo" && inferAnimalSexFromCategory(dados.categoria)) return true;
   return hasValue(dados[field]);
 }
 
 export function isSkipOptionalAnswer(text: string) {
   const normalized = normalizeRanchoText(text);
   return normalized === "2"
-    || /^(?:pular|pula|nao|não|sem|deixar sem|deixa sem|ignorar|nao informar|não informar)$/.test(normalized);
+    || /^(?:pular|pula|nao|não|nao sei|não sei|depois|sem|deixar sem|deixa sem|deixar em branco|ignorar|nao informar|não informar)$/.test(normalized);
 }
 
 export function extractAnimalSex(text: string) {
