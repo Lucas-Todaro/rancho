@@ -42,6 +42,11 @@ type Draft = {
   notes: string;
 };
 
+function eventDateForPayload(value: string) {
+  const date = value ? new Date(value) : new Date();
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
 const ANIMAL_SELECT = [
   "id",
   "fazenda_id",
@@ -66,18 +71,21 @@ const EVENT_SELECT = [
   "medicamento",
   "dose",
   "custo",
-  "responsavel_usuario_id",
   "created_at"
 ].join(",");
 
 const LOT_SELECT = "id,nome,ativo";
 
 const reproductiveKeywords = [
+  "reprodução",
   "reproducao",
   "reprodutivo",
+  "inseminação",
   "inseminacao",
   "cobertura",
+  "sêmen",
   "semen",
+  "gestação",
   "prenhez",
   "prenhe",
   "gestacao",
@@ -90,12 +98,12 @@ const reproductiveKeywords = [
 ];
 
 const kindOptions: Array<{ value: ReproductionKind; label: string; helper: string }> = [
-  { value: "inseminacao", label: "Inseminacao", helper: "Semen, touro ou cobertura" },
-  { value: "prenhez", label: "Prenhez", helper: "Confirmacao positiva" },
+  { value: "inseminacao", label: "Inseminação", helper: "Sêmen, touro ou cobertura" },
+  { value: "prenhez", label: "Prenhez", helper: "Confirmação positiva" },
   { value: "pre_parto", label: "Pre-parto", helper: "Acompanhamento final" },
   { value: "parto", label: "Parto", helper: "Nascimento registrado" },
   { value: "protocolo", label: "Protocolo", helper: "Hormonal ou manejo" },
-  { value: "observacao", label: "Observacao", helper: "Nota reprodutiva" }
+  { value: "observacao", label: "Observação", helper: "Nota reprodutiva" }
 ];
 
 const statusFilters: Array<{ value: ReproductionFilter; label: string }> = [
@@ -108,12 +116,12 @@ const statusFilters: Array<{ value: ReproductionFilter; label: string }> = [
 ];
 
 const kindLabels: Record<ReproductionKind, string> = {
-  inseminacao: "Inseminacao",
+  inseminacao: "Inseminação",
   prenhez: "Prenhez",
   pre_parto: "Pre-parto",
   parto: "Parto",
   protocolo: "Protocolo",
-  observacao: "Observacao"
+  observacao: "Observação"
 };
 
 const categoryLabels: Record<string, string> = {
@@ -251,7 +259,7 @@ function defaultDraft(): Draft {
 
 function buildDescription(draft: Draft) {
   const label = kindLabels[draft.type];
-  const parts = [`[Reproducao Animal] ${label}`];
+  const parts = [`[Reprodução Animal] ${label}`];
   if (draft.origin.trim()) parts.push(`Origem: ${draft.origin.trim()}`);
   if (draft.notes.trim()) parts.push(draft.notes.trim());
   return parts.join(" - ");
@@ -260,7 +268,7 @@ function buildDescription(draft: Draft) {
 function buildEventPayload(draft: Draft) {
   return {
     tipo: draft.type === "parto" || draft.type === "inseminacao" ? draft.type : "observacao",
-    data_evento: draft.date,
+    data_evento: eventDateForPayload(draft.date),
     descricao: buildDescription(draft),
     medicamento: null,
     dose: null,
@@ -322,7 +330,7 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
     return {
       key: "prenhe" as ReproductionFilter,
       label: phase === "gestante" && !prenhezDate ? "Gestante" : "Prenhe",
-      detail: estimatedBirth ? `Previsao ${formatDate(estimatedBirth.toISOString())}` : "Prenhez confirmada",
+      detail: estimatedBirth ? `Previsão ${formatDate(estimatedBirth.toISOString())}` : "Prenhez confirmada",
       tone: "success" as const,
       lastEvent: lastPrenhez || lastInseminacao || sorted[0] || null,
       estimatedBirth
@@ -334,7 +342,7 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
     return {
       key: "inseminada" as ReproductionFilter,
       label: "Inseminada",
-      detail: `${daysBetween(inseminacaoDate)} dias desde a inseminacao`,
+      detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
       tone: "default" as const,
       lastEvent: lastInseminacao,
       estimatedBirth
@@ -430,7 +438,7 @@ function ReproductionAnimalCard({
 
       <div className="mt-4 grid gap-2 text-sm">
         <div className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
-          <span className="text-slate-500 dark:text-slate-400">Ultimo registro</span>
+          <span className="text-slate-500 dark:text-slate-400">Último registro</span>
           <strong className="truncate text-right text-slate-900 dark:text-slate-100">
             {lastEvent ? formatDate(lastEvent.data_evento) : "-"}
           </strong>
@@ -475,7 +483,7 @@ function EventTimelineItem({
             {cost > 0 ? <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{formatCurrency(cost)}</span> : null}
           </div>
           <p className="mt-2 break-words text-sm font-semibold text-slate-700 dark:text-slate-200">
-            {event.descricao || "Sem descricao"}
+            {event.descricao || "Sem descrição"}
           </p>
         </div>
 
@@ -527,9 +535,17 @@ function ReproductionDetailDrawer({
   const status = animalReproductionStatus(animal, sortedEvents);
   const nextBirth = status.estimatedBirth;
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/55 p-0 backdrop-blur-sm sm:p-4">
-      <section className="flex h-full w-full max-w-5xl flex-col overflow-hidden bg-slate-50 shadow-2xl dark:bg-slate-950 sm:rounded-lg sm:border sm:border-slate-200 sm:dark:border-slate-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:p-4">
+      <section className="flex h-full w-full max-w-6xl flex-col overflow-hidden bg-slate-50 shadow-2xl dark:bg-slate-950 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:border sm:border-slate-200 sm:dark:border-slate-800">
         <header className="border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -558,10 +574,10 @@ function ReproductionDetailDrawer({
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Fase</p>
-                    <p className="mt-2 font-black text-slate-950 dark:text-slate-50">{String(animal.fase || "Nao informado")}</p>
+                    <p className="mt-2 font-black text-slate-950 dark:text-slate-50">{String(animal.fase || "Não informado")}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Proximo parto</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Próximo parto</p>
                     <p className="mt-2 font-black text-slate-950 dark:text-slate-50">{nextBirth ? formatDate(nextBirth.toISOString()) : "-"}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
@@ -569,7 +585,7 @@ function ReproductionDetailDrawer({
                     <p className="mt-2 font-black text-slate-950 dark:text-slate-50">{sortedEvents.length}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Ultima atualizacao</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Última atualização</p>
                     <p className="mt-2 font-black text-slate-950 dark:text-slate-50">{sortedEvents[0] ? formatDate(sortedEvents[0].data_evento) : "-"}</p>
                   </div>
                 </div>
@@ -579,7 +595,7 @@ function ReproductionDetailDrawer({
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Novo registro</p>
-                    <h3 className="mt-1 text-lg font-black">{editingEvent ? "Editando evento" : "Lancamento reprodutivo"}</h3>
+                    <h3 className="mt-1 text-lg font-black">{editingEvent ? "Editando evento" : "Lançamento reprodutivo"}</h3>
                   </div>
                   {editingEvent ? (
                     <button className="btn btn-secondary h-9 min-h-9 px-3 py-2 text-xs" type="button" onClick={onCancelEdit}>
@@ -632,32 +648,32 @@ function ReproductionDetailDrawer({
                     </div>
 
                     <label className="block space-y-2">
-                      <span className="text-sm font-bold">Origem / touro / semen / protocolo</span>
+                      <span className="text-sm font-bold">Origem / touro / sêmen / protocolo</span>
                       <input
                         className="input"
-                        placeholder="Ex: Touro T-003, semen Angus, protocolo IATF..."
+                        placeholder="Ex: Touro T-003, sêmen Angus, protocolo IATF..."
                         value={draft.origin}
                         onChange={(event) => onDraftChange({ ...draft, origin: event.target.value })}
                       />
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="text-sm font-bold">Observacoes</span>
+                      <span className="text-sm font-bold">Observações</span>
                       <textarea
                         className="input min-h-28 resize-y"
-                        placeholder="Registre sinais, resultado, responsavel ou cuidado necessario."
+                        placeholder="Registre sinais, resultado, responsável ou cuidado necessário."
                         value={draft.notes}
                         onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
                       />
                     </label>
 
                     <button className="btn btn-primary w-full" type="button" onClick={onSubmit} disabled={busy}>
-                      <Save className="h-4 w-4" /> {busy ? "Salvando..." : editingEvent ? "Salvar alteracoes" : "Salvar registro"}
+                      <Save className="h-4 w-4" /> {busy ? "Salvando..." : editingEvent ? "Salvar alterações" : "Salvar registro"}
                     </button>
                   </div>
                 ) : (
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-                    Seu perfil pode consultar reproducao, mas nao pode criar, editar ou remover registros.
+                    Seu perfil pode consultar reprodução, mas não pode criar, editar ou remover registros.
                   </div>
                 )}
               </div>
@@ -666,7 +682,7 @@ function ReproductionDetailDrawer({
             <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Historico</p>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Histórico</p>
                   <h3 className="mt-1 text-lg font-black">Linha do tempo</h3>
                 </div>
                 <Badge tone="default">{sortedEvents.length} eventos</Badge>
@@ -685,7 +701,7 @@ function ReproductionDetailDrawer({
                   ))}
                 </ol>
               ) : (
-                <EmptyState className="mt-4" title="Nenhum evento reprodutivo." message="Registre inseminacao, prenhez, pre-parto, parto ou observacao para montar o historico." />
+                <EmptyState className="mt-4" title="Nenhum evento reprodutivo." message="Registre inseminação, prenhez, pre-parto, parto ou observação para montar o histórico." />
               )}
             </section>
           </div>
@@ -749,7 +765,7 @@ export function ReproductionScreen() {
           cache: true,
           forceRefresh
         })
-      ]), "A aba de reproducao demorou para carregar. Tente novamente.");
+      ]), "A aba de reprodução demorou para carregar. Tente novamente.");
 
       if (loadRequestRef.current !== requestId) return;
       setAnimals(animalRows);
@@ -758,7 +774,7 @@ export function ReproductionScreen() {
       setSelectedAnimalId((current) => current && !animalRows.some((animal) => String(animal.id) === current) ? "" : current);
     } catch (err) {
       if (loadRequestRef.current === requestId) {
-        setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar a reproducao animal agora."));
+        setError(getFriendlyErrorMessage(err, "Não foi possível carregar a reprodução animal agora."));
       }
     } finally {
       if (loadRequestRef.current === requestId) setLoading(false);
@@ -896,7 +912,7 @@ export function ReproductionScreen() {
       setDraft(defaultDraft());
       await load(true);
     } catch (err) {
-      setError(getFriendlyErrorMessage(err, "Nao foi possivel salvar o registro reprodutivo."));
+      setError(getFriendlyErrorMessage(err, "Não foi possível salvar o registro reprodutivo."));
     } finally {
       setBusy(false);
     }
@@ -920,7 +936,7 @@ export function ReproductionScreen() {
       if (editingEvent?.id === event.id) cancelEdit();
       await load(true);
     } catch (err) {
-      setError(getFriendlyErrorMessage(err, "Nao foi possivel remover o registro reprodutivo."));
+      setError(getFriendlyErrorMessage(err, "Não foi possível remover o registro reprodutivo."));
     } finally {
       setBusy(false);
     }
@@ -933,11 +949,11 @@ export function ReproductionScreen() {
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-            <HeartPulse className="h-4 w-4" /> Reproducao Animal
+            <HeartPulse className="h-4 w-4" /> Reprodução Animal
           </div>
-          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Reproducao Animal</h1>
+          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Reprodução Animal</h1>
           <p className="mt-3 max-w-2xl text-slate-500 dark:text-slate-400">
-            Acompanhe inseminacoes, prenhez, pre-parto, partos e observacoes reprodutivas usando o historico real dos animais.
+            Acompanhe inseminações, prenhez, pre-parto, partos e observações reprodutivas usando o histórico real dos animais.
           </p>
         </div>
         <button className="btn btn-secondary" type="button" onClick={() => load(true)} disabled={loading}>
@@ -947,8 +963,8 @@ export function ReproductionScreen() {
 
       {error ? (
         <ErrorState
-          title={animals.length ? "Nao consegui atualizar a reproducao agora." : "Nao consegui carregar a reproducao."}
-          message={animals.length ? "Os ultimos dados carregados continuam visiveis." : error}
+          title={animals.length ? "Não consegui atualizar a reprodução agora." : "Não consegui carregar a reprodução."}
+          message={animals.length ? "Os últimos dados carregados continuam visíveis." : error}
           onRetry={() => load(true)}
         />
       ) : null}
@@ -1016,7 +1032,7 @@ export function ReproductionScreen() {
 
         {!canManage ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-            Seu perfil pode consultar reproducao, mas nao pode criar, editar ou remover registros.
+            Seu perfil pode consultar reprodução, mas não pode criar, editar ou remover registros.
           </div>
         ) : null}
 
@@ -1045,7 +1061,7 @@ export function ReproductionScreen() {
             <EmptyState
               className="sm:col-span-2 xl:col-span-3 2xl:col-span-4"
               title={search || reproductionFilter !== "todos" || statusFilter !== "todos" || categoryFilter !== "todos" || lotFilter !== "todos" ? "Nenhum animal encontrado." : "Nenhum animal cadastrado."}
-              message={search || reproductionFilter !== "todos" || statusFilter !== "todos" || categoryFilter !== "todos" || lotFilter !== "todos" ? "Ajuste os filtros ou pesquise outro termo." : "Cadastre animais no rebanho para acompanhar a reproducao."}
+              message={search || reproductionFilter !== "todos" || statusFilter !== "todos" || categoryFilter !== "todos" || lotFilter !== "todos" ? "Ajuste os filtros ou pesquise outro termo." : "Cadastre animais no rebanho para acompanhar a reprodução."}
             />
           )}
         </div>

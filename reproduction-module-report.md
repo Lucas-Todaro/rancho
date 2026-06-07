@@ -1,34 +1,34 @@
-# Reproduction Module Report
+# Relatório do Módulo de Reprodução
 
-## What was added
+## O que foi adicionado
 
-- New site route: `/reproducao`.
-- New frontend screen: `src/components/modules/ReproductionScreen.tsx`.
-- New sidebar/global-search entry: `Reproducao`.
-- Employee view permission updated so common users can open the page in read-only mode.
+- Nova rota do site: `/reproducao`.
+- Nova tela de frontend: `src/components/modules/ReproductionScreen.tsx`.
+- Nova entrada no menu lateral e na busca global: `Reprodução`.
+- Permissão de visualização atualizada para usuários comuns abrirem a página em modo somente leitura.
 
-## Data structure
+## Estrutura de dados
 
-- No migration was created.
-- No table was added.
-- The module reads animals from `animais`.
-- The module reads and writes reproductive history in the existing `eventos_animal` table.
-- Insemination and birth are stored with existing event types:
+- Nenhuma migration foi criada.
+- Nenhuma tabela foi adicionada.
+- O módulo lê animais de `animais`.
+- O módulo lê e grava o histórico reprodutivo na tabela existente `eventos_animal`.
+- Inseminação e parto são salvos com tipos de evento já existentes:
   - `tipo = "inseminacao"`
   - `tipo = "parto"`
-- Prenhez, pre-parto, protocolo and observacao are stored as `tipo = "observacao"` with a `[Reproducao Animal]` prefix in `descricao`.
+- Prenhez, pre-parto, protocolo e observação são salvos como `tipo = "observacao"` com o prefixo `[Reprodução Animal]` em `descricao`.
 
-## Permissions and safety
+## Permissões e segurança
 
-- Queries and writes use the existing CRUD services with `fazenda_id` context.
-- Users with manager roles can create, edit and remove reproductive events.
-- Common users can view the page but cannot create, edit or remove records.
-- No Supabase schema, authentication, dashboard, login, deploy, Twilio or WhatsApp parser file was changed.
+- Consultas e gravações usam os serviços de CRUD existentes com contexto de `fazenda_id`.
+- Usuários com perfil de gestão podem criar, editar e remover eventos reprodutivos.
+- Usuários comuns podem consultar a página, mas não podem criar, editar ou remover registros.
+- Nenhum arquivo de schema do Supabase, autenticação, dashboard, login, deploy, Twilio ou parser do WhatsApp foi alterado.
 
-## Screen behavior
+## Comportamento da tela
 
-- Animal cards show reproductive status, last event, event count and lot.
-- Filters include reproductive status, animal status, category and lot.
-- The detail drawer shows summary, form and timeline for the selected animal.
-- Event cost still uses the existing event-finance synchronization.
-- Birth events still use the existing animal lifecycle synchronization.
+- Os cards dos animais mostram status reprodutivo, último evento, quantidade de eventos e lote.
+- Os filtros incluem status reprodutivo, status do animal, categoria e lote.
+- A ficha centralizada mostra resumo, formulário e linha do tempo do animal selecionado.
+- Custos de eventos continuam usando a sincronização financeira existente.
+- Eventos de parto continuam usando a sincronização de ciclo de vida do animal.

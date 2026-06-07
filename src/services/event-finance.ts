@@ -11,11 +11,11 @@ const EVENT_FINANCE_LEGACY_ORIGIN_PREFIX = "evento_animal:";
 const eventTypeLabels: Record<string, string> = {
   parto: "Parto",
   vacina: "Vacina",
-  doenca: "Doenca",
+  doenca: "Doença",
   tratamento: "Tratamento",
-  inseminacao: "Inseminacao",
+  inseminacao: "Inseminação",
   pesagem: "Pesagem",
-  observacao: "Observacao",
+  observacao: "Observação",
   outro: "Outro"
 };
 
@@ -50,11 +50,28 @@ function financePayload(eventRecord: AnyRecord, animalOptions?: RelationOption[]
       eventRecord.descricao,
       eventRecord.medicamento ? `Medicamento: ${eventRecord.medicamento}` : null
     ].filter(Boolean).join(" - "),
-    metodo_pagamento: "Lancamento de evento",
+    metodo_pagamento: "Lançamento de evento",
     origem: "web",
     source_type: EVENT_FINANCE_SOURCE_TYPE,
     source_id: eventId
   };
+}
+
+function legacyFinancePayload(eventRecord: AnyRecord, animalOptions?: RelationOption[]) {
+  const payload = financePayload(eventRecord, animalOptions);
+  const eventId = String(eventRecord.id || "");
+  const { source_type, source_id, ...legacyPayload } = payload;
+  void source_type;
+  void source_id;
+  return {
+    ...legacyPayload,
+    origem: legacyEventFinanceOrigin(eventId)
+  };
+}
+
+function isMissingSourceColumn(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
+  return /source_type|source_id|schema cache|column|atualiza[cç][aã]o no banco de dados/i.test(message);
 }
 
 function sourceFilters(eventId: string) {
@@ -69,12 +86,17 @@ function scopedFilters(filters: Array<{ column: string; value: string }>, contex
 }
 
 async function findEventFinanceRecords(eventId: string, context: DataContext) {
-  const sourceRows = await listRecords(TABLES.transacoesFinanceiras, {
-    fazendaId: context.fazendaId,
-    usuarioId: context.usuarioId,
-    select: "id",
-    filters: sourceFilters(eventId)
-  });
+  let sourceRows: AnyRecord[] = [];
+  try {
+    sourceRows = await listRecords(TABLES.transacoesFinanceiras, {
+      fazendaId: context.fazendaId,
+      usuarioId: context.usuarioId,
+      select: "id",
+      filters: sourceFilters(eventId)
+    });
+  } catch (error) {
+    if (!isMissingSourceColumn(error)) throw error;
+  }
 
   const legacyRows = await listRecords(TABLES.transacoesFinanceiras, {
     fazendaId: context.fazendaId,
@@ -105,16 +127,30 @@ export async function syncEventCostToFinance(eventRecord: AnyRecord, context: Da
 
   const payload = financePayload(eventRecord, animalOptions);
   if (existing[0]?.id) {
-    await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, payload, context);
+    try {
+      await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, payload, context);
+    } catch (error) {
+      if (!isMissingSourceColumn(error)) throw error;
+      await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, legacyFinancePayload(eventRecord, animalOptions), context);
+    }
     await Promise.all(existing.slice(1).map((record) => deleteRecord(TABLES.transacoesFinanceiras, record.id, context)));
     return;
   }
 
-  await createRecord(TABLES.transacoesFinanceiras, payload, context);
+  try {
+    await createRecord(TABLES.transacoesFinanceiras, payload, context);
+  } catch (error) {
+    if (!isMissingSourceColumn(error)) throw error;
+    await createRecord(TABLES.transacoesFinanceiras, legacyFinancePayload(eventRecord, animalOptions), context);
+  }
 }
 
 export async function removeEventCostFromFinance(eventId: string, context?: DataContext) {
   if (!eventId) return;
-  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context), context);
+  try {
+    await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context), context);
+  } catch (error) {
+    if (!isMissingSourceColumn(error)) throw error;
+  }
   await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters([{ column: "origem", value: legacyEventFinanceOrigin(eventId) }], context), context);
 }
