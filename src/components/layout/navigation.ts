@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Droplets,
   GitBranch,
+  HeartPulse,
   Home,
   Layers3,
   LifeBuoy,
@@ -41,6 +42,7 @@ export const navGroups: NavGroup[] = [
       { href: "/lotes", label: "Lotes", icon: Layers3 },
       { href: "/rebanho", label: "Rebanho", icon: PawPrint },
       { href: "/genealogia", label: "Genealogia", icon: GitBranch },
+      { href: "/reproducao", label: "Reproducao", icon: HeartPulse },
       { href: "/eventos", label: "Eventos", icon: ClipboardList },
       { href: "/producao", label: "Produção", icon: Droplets }
     ]

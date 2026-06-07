@@ -15,6 +15,7 @@ const globalDestinations = [
   { href: "/dashboard", label: "Dashboard", helper: "Visão geral da fazenda", keywords: ["inicio", "painel", "resumo", "geral"] },
   { href: "/lotes", label: "Lotes", helper: "Grupos e manejo do rebanho", keywords: ["lote", "piquete", "manejo", "grupo"] },
   { href: "/rebanho", label: "Rebanho", helper: "Animais, brincos e fases", keywords: ["animal", "animais", "brinco", "vaca", "boi", "rebanho"] },
+  { href: "/reproducao", label: "Reproducao", helper: "Inseminacao, prenhez e partos", keywords: ["reproducao", "inseminacao", "prenhez", "prenhe", "pre-parto", "parto", "cio"] },
   { href: "/genealogia", label: "Genealogia", helper: "Árvore familiar dos animais", keywords: ["genealogia", "familia", "pai", "mae", "filhos", "arvore"] },
   { href: "/eventos", label: "Eventos", helper: "Vacinas, partos e tratamentos", keywords: ["evento", "vacina", "parto", "doenca", "tratamento", "pesagem"] },
   { href: "/producao", label: "Produção", helper: "Ordenhas e litros de leite", keywords: ["leite", "ordenha", "litros", "producao"] },

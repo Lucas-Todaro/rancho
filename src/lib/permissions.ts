@@ -7,6 +7,7 @@ const EMPLOYEE_VIEW_PATHS = new Set([
   "/rebanho",
   "/lotes",
   "/genealogia",
+  "/reproducao",
   "/eventos",
   "/producao",
   "/estoque",
