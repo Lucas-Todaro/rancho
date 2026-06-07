@@ -840,6 +840,7 @@ module.exports = function loadBotTestSection(context) {
       ...financeFrameworkCases,
       ...employeePointPayrollFrameworkCases,
       ...genealogyFrameworkCases,
+      ...(typeof tabularImportFrameworkCases !== "undefined" ? tabularImportFrameworkCases : []),
       ...permissionMultiFarmWhatsappSecurityCases,
       ...schemaCompatibilityCases,
       {

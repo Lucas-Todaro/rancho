@@ -184,6 +184,19 @@ module.exports = function loadBotTestSection(context) {
           created_at: row.created_at || `${row.data_transacao || localDateOnly()}T12:00:00.000Z`
         })));
       }
+      if (test.animalEvents) {
+        supabase.tables[BOT_TEST_TABLES.eventosAnimal].push(...test.animalEvents.map((row, index) => ({
+          id: row.id || `evento-extra-${index + 1}`,
+          fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+          animal_id: row.animal_id,
+          tipo: row.tipo || "observacao",
+          data_evento: row.data_evento || `${localDateOnly()}T12:00:00.000Z`,
+          descricao: row.descricao || "evento teste",
+          medicamento: row.medicamento || null,
+          dose: row.dose || null,
+          custo: row.custo ?? 0
+        })));
+      }
       if (test.employees) {
         supabase.tables[BOT_TEST_TABLES.funcionarios] = test.employees.map((row, index) => ({
           id: row.id || `func-custom-${index + 1}`,
@@ -361,6 +374,25 @@ module.exports = function loadBotTestSection(context) {
           });
         }
         return actions;
+      }
+
+      if (tipo === "IMPORTACAO_EVENTOS_TABELA") {
+        const rows = Array.isArray(dados.linhas_validadas) ? dados.linhas_validadas : [];
+        return rows
+          .filter((row) => row.status_validacao === "pronto")
+          .map((row) => ({
+            ...base,
+            table: BOT_TEST_TABLES.eventosAnimal,
+            payload: {
+              fazenda_id: fazendaId,
+              animal_id: row.animal_id || null,
+              animal_codigo: row.animal_codigo,
+              evento_tipo: row.evento_tipo || row.db_tipo || null,
+              data_evento: row.data_referencia || null,
+              descricao: row.descricao_salvar || row.observacoes || null,
+              origem: "whatsapp"
+            }
+          }));
       }
 
       if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {
@@ -972,7 +1004,8 @@ module.exports = function loadBotTestSection(context) {
       ...animalConsultationAndUpdateTests,
       ...eventHumanParserTests,
       ...genealogyParserTests,
-      ...employeePointPayrollParserTests
+      ...employeePointPayrollParserTests,
+      ...(typeof tabularImportParserTests !== "undefined" ? tabularImportParserTests : [])
     ];
 
     if (allTests.length < 90) {

@@ -127,6 +127,7 @@ function loadBotTestSection(name) {
   "cases-finance-framework",
   "cases-employee-framework",
   "cases-genealogy-framework",
+  "cases-tabular-import",
   "cases-regressions",
   "runner",
   "report"

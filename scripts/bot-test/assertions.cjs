@@ -218,6 +218,23 @@ module.exports = function loadBotTestSection(context) {
         const missingTipos = expected.registroTipos.filter((tipo) => !tipos.includes(tipo));
         if (missingTipos.length) failures.push(`tipos de lote faltando: ${missingTipos.join(", ")}`);
       }
+      if ("total_linhas" in expected && Number(dados.total_linhas) !== Number(expected.total_linhas)) failures.push(`total_linhas esperado ${expected.total_linhas}, recebido ${dados.total_linhas}`);
+      if ("total_linhas_parse_validas" in expected && Number(dados.total_linhas_parse_validas) !== Number(expected.total_linhas_parse_validas)) failures.push(`total_linhas_parse_validas esperado ${expected.total_linhas_parse_validas}, recebido ${dados.total_linhas_parse_validas}`);
+      if ("total_linhas_parse_invalidas" in expected && Number(dados.total_linhas_parse_invalidas) !== Number(expected.total_linhas_parse_invalidas)) failures.push(`total_linhas_parse_invalidas esperado ${expected.total_linhas_parse_invalidas}, recebido ${dados.total_linhas_parse_invalidas}`);
+      if (expected.tableRow) {
+        const rows = Array.isArray(dados.linhas) ? dados.linhas : [];
+        const row = rows.find((item) => Number(item.lineNumber) === Number(expected.tableRow.lineNumber))
+          || rows[Number(expected.tableRow.index || 0)];
+        if (!row) {
+          failures.push(`linha de tabela esperada nao encontrada: ${JSON.stringify(expected.tableRow)}`);
+        } else {
+          if (expected.tableRow.animal && normalize(row.animal_codigo) !== normalize(expected.tableRow.animal)) failures.push(`linha tabela animal esperado ${expected.tableRow.animal}, recebido ${row.animal_codigo}`);
+          if (expected.tableRow.evento_tipo && normalize(row.evento_tipo) !== normalize(expected.tableRow.evento_tipo)) failures.push(`linha tabela evento esperado ${expected.tableRow.evento_tipo}, recebido ${row.evento_tipo}`);
+          if (expected.tableRow.data_referencia && row.data_referencia !== expected.tableRow.data_referencia) failures.push(`linha tabela data esperada ${expected.tableRow.data_referencia}, recebida ${row.data_referencia}`);
+          if (expected.tableRow.observacoes && !normalize(row.observacoes).includes(normalize(expected.tableRow.observacoes))) failures.push(`linha tabela observacao esperada ${expected.tableRow.observacoes}, recebida ${row.observacoes}`);
+          if (expected.tableRow.problem && !(Array.isArray(row.problemas) && row.problemas.includes(expected.tableRow.problem))) failures.push(`linha tabela deveria conter problema ${expected.tableRow.problem}, recebeu ${row.problemas}`);
+        }
+      }
       if (expected.registroDetalhes) {
         const registros = Array.isArray(dados.registros) ? dados.registros : [];
         expected.registroDetalhes.forEach((detail, index) => {

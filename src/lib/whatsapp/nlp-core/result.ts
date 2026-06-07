@@ -204,6 +204,9 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
     const registros = Array.isArray(dados.registros) ?dados.registros : [];
     return `registrar ${registros.length || dados.total_registros || 0} registros em lote`;
   }
+  if (tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    return `importar ${dados.total_linhas || 0} eventos do rebanho por tabela`;
+  }
   if (tipo === "AJUDA") return "mostrar ajuda do bot";
 
   return `Não consegui entender certinho. Você pode tentar assim:\n${BOT_EXAMPLES.join("\n")}`;

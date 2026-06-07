@@ -99,6 +99,7 @@ export type RanchoIntent =
   | "CONSULTA_REGISTROS_HOJE"
   | "ORDEM_SERVICO"
   | "LOTE_REGISTROS"
+  | "IMPORTACAO_EVENTOS_TABELA"
   | "AJUDA"
   | "DESCONHECIDO";
 
