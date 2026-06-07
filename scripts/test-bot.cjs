@@ -2852,7 +2852,7 @@ const animalRegistrationNaturalCases = [
     messages: animalRegistrationMessages(["novo animal", "021", "vaca"], 7),
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { animal_codigo: "021", categoria: "vaca" },
+      entities: { animal_codigo: "021", categoria: "vaca", sexo: "femea" },
       absentEntities: ["nome"],
       shouldAskFollowUp: true,
       shouldAskConfirmation: true,
@@ -2860,7 +2860,7 @@ const animalRegistrationNaturalCases = [
       savedAfterConfirmation: true,
       simulatedSaveCount: 1,
       savedTables: [BOT_TEST_TABLES.animais],
-      shouldSaveValues: { brinco: "021", categoria: "vaca" },
+      shouldSaveValues: { brinco: "021", categoria: "vaca", sexo: "femea" },
       shouldNotSaveValues: { nome: "novo" },
       shouldNotWriteBusiness: true
     }
@@ -2937,7 +2937,7 @@ const animalRegistrationNaturalCases = [
     messages: ["nova vaca"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { categoria: "vaca" },
+      entities: { categoria: "vaca", sexo: "femea" },
       absentEntities: ["nome"],
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
@@ -2951,7 +2951,7 @@ const animalRegistrationNaturalCases = [
     messages: ["nova vaca Estrela"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { categoria: "vaca", nome: "Estrela" },
+      entities: { categoria: "vaca", nome: "Estrela", sexo: "femea" },
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -2964,7 +2964,7 @@ const animalRegistrationNaturalCases = [
     messages: ["cadastrar vaca Mimosa"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { categoria: "vaca", nome: "Mimosa" },
+      entities: { categoria: "vaca", nome: "Mimosa", sexo: "femea" },
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -2977,7 +2977,104 @@ const animalRegistrationNaturalCases = [
     messages: ["cadastrar boi Anderson 320kg"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { categoria: "boi", nome: "Anderson", peso: 320 },
+      entities: { categoria: "boi", nome: "Anderson", peso: 320, sexo: "macho" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "cadastrar animal generico com peso pergunta sexo",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar animal Anderson 320kg", "A-320", "animal"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Anderson", peso: 320, animal_codigo: "A-320", categoria: "animal" },
+      absentEntities: ["sexo"],
+      responseIncludes: "sexo",
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "sexo perguntado aceita 1 como macho",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["novo animal", "S-001", "animal", "1"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { animal_codigo: "S-001", categoria: "animal", sexo: "macho" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "sexo perguntado aceita 2 como femea",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["novo animal", "S-002", "animal", "2"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { animal_codigo: "S-002", categoria: "animal", sexo: "femea" },
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "sexo explicito macho nao pergunta sexo de novo",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar animal Anderson macho 320kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Anderson", peso: 320, sexo: "macho" },
+      allResponsesNotInclude: ["sexo do animal"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "sexo explicito femea nao pergunta sexo de novo",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar animal Estrela femea 400kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { nome: "Estrela", peso: 400, sexo: "femea" },
+      allResponsesNotInclude: ["sexo do animal"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "bezerro infere macho",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar bezerro macho 120kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "bezerro", peso: 120, sexo: "macho" },
+      allResponsesNotInclude: ["sexo do animal"],
+      shouldAskFollowUp: true,
+      savedAfterConfirmation: false,
+      shouldNotWriteBusiness: true
+    }
+  },
+  {
+    name: "bezerra infere femea",
+    module: "cadastro-animal",
+    phone: BOT_TEST_ADMIN_PHONE,
+    messages: ["cadastrar bezerra femea 110kg"],
+    expected: {
+      finalIntent: "CADASTRO_ANIMAL",
+      entities: { categoria: "bezerro", peso: 110, sexo: "femea" },
+      allResponsesNotInclude: ["sexo do animal"],
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true
@@ -2990,8 +3087,8 @@ const animalRegistrationNaturalCases = [
     messages: ["nova vaca Estrela brinco 021 peso 400kg"],
     expected: {
       finalIntent: "CADASTRO_ANIMAL",
-      entities: { categoria: "vaca", nome: "Estrela", animal_codigo: "021", peso: 400 },
-      allResponsesNotInclude: ["nome ou apelido", "peso do animal"],
+      entities: { categoria: "vaca", nome: "Estrela", animal_codigo: "021", peso: 400, sexo: "femea" },
+      allResponsesNotInclude: ["nome ou apelido", "peso do animal", "sexo do animal"],
       shouldAskFollowUp: true,
       savedAfterConfirmation: false,
       shouldNotWriteBusiness: true

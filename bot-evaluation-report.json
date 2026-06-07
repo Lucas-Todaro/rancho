@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-07T12:02:20.448Z",
+  "generatedAt": "2026-06-07T16:02:49.888Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1149,
-    "passed": 1149,
+    "total": 1156,
+    "passed": 1156,
     "failed": 0,
     "successRate": 100
   },
@@ -196,8 +196,8 @@
   },
   "animalRegistrationCoverage": {
     "addedTestsThisRun": 22,
-    "totalRelatedTests": 30,
-    "passed": 30,
+    "totalRelatedTests": 37,
+    "passed": 37,
     "failed": 0,
     "coveredFlows": [
       "frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela",

@@ -37,7 +37,7 @@ export const questionByField: Record<string, string> = {
   categoria_animal: "Qual é a categoria do animal?Ex: vaca, bezerro ou touro.",
   nome: "Qual e o nome ou apelido do animal? Responda 2 para pular.",
   peso: "Qual e o peso do animal? Responda 2 para pular.",
-  sexo: "Quer informar o sexo do animal?Envie fêmea, macho ou 2 para pular.",
+  sexo: "Qual e o sexo do animal? 1 - Macho 2 - Femea 3 - Pular.",
   fase: "Quer informar a fase?Ex: lactação, seca, gestante, vazia, crescimento, engorda ou 2 para pular.",
   raca: "Quer informar a raça?Envie o nome da raça ou 2 para pular.",
   lote_animal: "Quer informar o lote?Envie o nome do lote já cadastrado ou 2 para pular.",
@@ -47,7 +47,7 @@ export const questionByField: Record<string, string> = {
 };
 
 export const animalWords = "(?:vacas?|vca|animais|animal|animau|gado|bois?|boii|touros?|bezerros?|bezero|bezerras?|novilhas?|novila|matriz|matrizes|reprodutor(?:es)?|femeas?|machos?|maxos?|brinco)";
-export const animalOptionalFields = ["nome", "peso", "sexo", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
+export const animalOptionalFields = ["sexo", "nome", "peso", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
 export const animalCategories = new Set(["vaca", "vacas", "vca", "boi", "bois", "boii", "bezerro", "bezerros", "bezero", "bezerra", "bezerras", "novilha", "novilhas", "novila", "touro", "touros", "matriz", "matrizes", "reprodutor", "reprodutores", "animal", "animais", "animau"]);
 export const animalCategoryMap: Record<string, string | undefined> = {
   vaca: "vaca",

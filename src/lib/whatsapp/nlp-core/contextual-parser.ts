@@ -34,6 +34,7 @@ import {
   extractTurno,
   extractWhatsappPhone,
   isAnimalOptionalField,
+  isSkipAnimalSexOptionalAnswer,
   isSkipOptionalAnswer,
   markAnimalOptionalFieldSkipped,
   normalizeAnimalCandidate,
@@ -48,6 +49,17 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const expectedFields = buildMissing(current.tipo, dados);
   const expectedField = expectedFields[0];
   const correctionLike = /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
+
+  if (current.tipo === "CADASTRO_ANIMAL" && expectedField === "sexo") {
+    const sexAnswer = extractAnimalSex(normalized);
+    if (sexAnswer) {
+      return finalize(current.tipo, { ...dados, sexo: sexAnswer }, buildMissing(current.tipo, { ...dados, sexo: sexAnswer }), current.confianca);
+    }
+    if (isSkipAnimalSexOptionalAnswer(original)) {
+      const nextDados = markAnimalOptionalFieldSkipped(dados, expectedField);
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+  }
 
   if (current.tipo === "CADASTRO_ANIMAL" && isAnimalOptionalField(expectedField) && isSkipOptionalAnswer(original)) {
     const nextDados = markAnimalOptionalFieldSkipped(dados, expectedField as string);

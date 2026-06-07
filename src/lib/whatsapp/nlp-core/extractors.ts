@@ -792,14 +792,13 @@ export function markAnimalOptionalFieldSkipped(dados: AnyRecord, field: string) 
 
 export function inferAnimalSexFromCategory(category: string | number | null | undefined) {
   const normalized = normalizeRanchoText(String(category || ""));
-  if (["vaca", "novilha"].includes(normalized)) return "femea";
-  if (["boi", "touro"].includes(normalized)) return "macho";
+  if (["vaca", "vca", "novilha", "novila", "bezerra", "matriz", "matrizes"].includes(normalized)) return "femea";
+  if (["boi", "boii", "touro", "bezerro", "bezero", "reprodutor", "reprodutores"].includes(normalized)) return "macho";
   return undefined;
 }
 
 export function hasAnimalOptionalValue(dados: AnyRecord, field: string) {
   if (field === "lote_animal") return hasValue(dados.lote_id) || hasValue(dados.lote_nome);
-  if (field === "sexo" && inferAnimalSexFromCategory(dados.categoria)) return true;
   return hasValue(dados[field]);
 }
 
@@ -809,10 +808,16 @@ export function isSkipOptionalAnswer(text: string) {
     || /^(?:pular|pula|nao|não|nao sei|não sei|depois|sem|deixar sem|deixa sem|deixar em branco|ignorar|nao informar|não informar)$/.test(normalized);
 }
 
+export function isSkipAnimalSexOptionalAnswer(text: string) {
+  const normalized = normalizeRanchoText(text);
+  return normalized === "3"
+    || /^(?:pular|pula|nao|não|nao sei|não sei|depois|sem|deixar sem|deixa sem|deixar em branco|ignorar|nao informar|não informar)$/.test(normalized);
+}
+
 export function extractAnimalSex(text: string) {
   const normalized = normalizeRanchoText(text);
-  if (/\b(?:femea|femeas|feme|feminino)\b/.test(normalized) || /\bsexo\s+f\b/.test(normalized)) return "femea";
-  if (/\b(?:macho|machos|maxo|maxos|masculino)\b/.test(normalized) || /\bsexo\s+m\b/.test(normalized)) return "macho";
+  if (normalized === "2" || /\b(?:femea|femeas|feme|feminino|vaca|vca|novilha|novila|bezerra|matriz|matrizes)\b/.test(normalized) || /\bsexo\s+f\b/.test(normalized)) return "femea";
+  if (normalized === "1" || /\b(?:macho|machos|maxo|maxos|masculino|boi|boii|touro|bezerro|bezero|reprodutor|reprodutores)\b/.test(normalized) || /\bsexo\s+m\b/.test(normalized)) return "macho";
   return undefined;
 }
 
