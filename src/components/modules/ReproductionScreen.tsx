@@ -19,6 +19,7 @@ import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { getAnimalSexInfo } from "@/lib/animal-sex";
 import { useAuth } from "@/lib/auth-context";
 import { withAsyncTimeout } from "@/lib/async";
 import { getFriendlyErrorMessage } from "@/lib/errors";
@@ -415,16 +416,19 @@ function ReproductionAnimalCard({
 }) {
   const status = animalReproductionStatus(animal, events);
   const lastEvent = status.lastEvent;
+  const sex = getAnimalSexInfo(animal);
 
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-lg border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft dark:bg-slate-950 dark:hover:border-emerald-800",
-        selected ? "border-emerald-400 ring-2 ring-emerald-200 dark:border-emerald-700 dark:ring-emerald-950" : "border-slate-200 dark:border-slate-800"
+        "relative overflow-hidden rounded-lg border p-4 pl-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft",
+        sex.accentClassName,
+        selected && "ring-2 ring-emerald-400/80 dark:ring-emerald-500/70"
       )}
     >
+      <span className={cn("absolute inset-y-0 left-0 w-1", sex.stripeClassName)} aria-hidden="true" />
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border", sex.iconClassName)}>
           <HeartPulse className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -433,7 +437,12 @@ function ReproductionAnimalCard({
             {categoryLabel(animal.categoria)} - {lotName}
           </p>
         </div>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge tone={status.tone}>{status.label}</Badge>
+          <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", sex.className)}>
+            {sex.label}
+          </span>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-2 text-sm">

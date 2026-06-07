@@ -6,7 +6,6 @@ import type { AnyRecord, DataContext, RelationOption } from "@/lib/types";
 import { toDateOnlyString } from "@/lib/utils";
 
 const EVENT_FINANCE_SOURCE_TYPE = "evento_animal";
-const EVENT_FINANCE_LEGACY_ORIGIN_PREFIX = "evento_animal:";
 
 const eventTypeLabels: Record<string, string> = {
   parto: "Parto",
@@ -18,10 +17,6 @@ const eventTypeLabels: Record<string, string> = {
   observacao: "Observação",
   outro: "Outro"
 };
-
-function legacyEventFinanceOrigin(eventId: string) {
-  return `${EVENT_FINANCE_LEGACY_ORIGIN_PREFIX}${eventId}`;
-}
 
 function eventCost(eventRecord: AnyRecord) {
   const raw = eventRecord.custo;
@@ -52,26 +47,34 @@ function financePayload(eventRecord: AnyRecord, animalOptions?: RelationOption[]
     ].filter(Boolean).join(" - "),
     metodo_pagamento: "Lançamento de evento",
     origem: "web",
+    origem_tabela: TABLES.eventosAnimal,
+    origem_id: eventId,
     source_type: EVENT_FINANCE_SOURCE_TYPE,
     source_id: eventId
   };
 }
 
-function legacyFinancePayload(eventRecord: AnyRecord, animalOptions?: RelationOption[]) {
-  const payload = financePayload(eventRecord, animalOptions);
-  const eventId = String(eventRecord.id || "");
-  const { source_type, source_id, ...legacyPayload } = payload;
+function withoutSourceFields(payload: AnyRecord) {
+  const { source_type, source_id, ...nextPayload } = payload;
   void source_type;
   void source_id;
-  return {
-    ...legacyPayload,
-    origem: legacyEventFinanceOrigin(eventId)
-  };
+  return nextPayload;
 }
 
-function isMissingSourceColumn(error: unknown) {
+function withoutOriginLinkFields(payload: AnyRecord) {
+  const { origem_tabela, origem_id, ...nextPayload } = payload;
+  void origem_tabela;
+  void origem_id;
+  return nextPayload;
+}
+
+function withoutAnyLinkFields(payload: AnyRecord) {
+  return withoutOriginLinkFields(withoutSourceFields(payload));
+}
+
+function isMissingOptionalLinkColumn(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
-  return /source_type|source_id|schema cache|column|atualiza[cç][aã]o no banco de dados/i.test(message);
+  return /source_type|source_id|origem_tabela|origem_id|schema cache|column|atualizacao no banco de dados|atualiza[cç][aã]o no banco de dados/i.test(message);
 }
 
 function sourceFilters(eventId: string) {
@@ -81,37 +84,88 @@ function sourceFilters(eventId: string) {
   ];
 }
 
+function originLinkFilters(eventId: string) {
+  return [
+    { column: "origem_tabela", value: TABLES.eventosAnimal },
+    { column: "origem_id", value: eventId }
+  ];
+}
+
 function scopedFilters(filters: Array<{ column: string; value: string }>, context?: DataContext) {
   return context?.fazendaId ? [...filters, { column: "fazenda_id", value: context.fazendaId }] : filters;
 }
 
-async function findEventFinanceRecords(eventId: string, context: DataContext) {
-  let sourceRows: AnyRecord[] = [];
+async function findRowsByFilters(filters: Array<{ column: string; value: string }>, context: DataContext) {
   try {
-    sourceRows = await listRecords(TABLES.transacoesFinanceiras, {
+    return await listRecords(TABLES.transacoesFinanceiras, {
       fazendaId: context.fazendaId,
       usuarioId: context.usuarioId,
       select: "id",
-      filters: sourceFilters(eventId)
+      filters
     });
   } catch (error) {
-    if (!isMissingSourceColumn(error)) throw error;
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+    return [];
   }
+}
 
-  const legacyRows = await listRecords(TABLES.transacoesFinanceiras, {
-    fazendaId: context.fazendaId,
-    usuarioId: context.usuarioId,
-    select: "id",
-    filters: [{ column: "origem", value: legacyEventFinanceOrigin(eventId) }]
-  });
+async function findEventFinanceRecords(eventId: string, context: DataContext) {
+  const [sourceRows, originLinkRows] = await Promise.all([
+    findRowsByFilters(sourceFilters(eventId), context),
+    findRowsByFilters(originLinkFilters(eventId), context)
+  ]);
 
   const seen = new Set<string>();
-  return [...sourceRows, ...legacyRows].filter((record) => {
+  return [...sourceRows, ...originLinkRows].filter((record) => {
     const id = String(record.id || "");
     if (!id || seen.has(id)) return false;
     seen.add(id);
     return true;
   });
+}
+
+async function createFinanceRecord(payload: AnyRecord, context: DataContext) {
+  try {
+    return await createRecord(TABLES.transacoesFinanceiras, payload, context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  try {
+    return await createRecord(TABLES.transacoesFinanceiras, withoutSourceFields(payload), context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  try {
+    return await createRecord(TABLES.transacoesFinanceiras, withoutOriginLinkFields(payload), context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  return createRecord(TABLES.transacoesFinanceiras, withoutAnyLinkFields(payload), context);
+}
+
+async function updateFinanceRecord(id: string, payload: AnyRecord, context: DataContext) {
+  try {
+    return await updateRecord(TABLES.transacoesFinanceiras, id, payload, context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  try {
+    return await updateRecord(TABLES.transacoesFinanceiras, id, withoutSourceFields(payload), context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  try {
+    return await updateRecord(TABLES.transacoesFinanceiras, id, withoutOriginLinkFields(payload), context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
+
+  return updateRecord(TABLES.transacoesFinanceiras, id, withoutAnyLinkFields(payload), context);
 }
 
 export async function syncEventCostToFinance(eventRecord: AnyRecord, context: DataContext, animalOptions?: RelationOption[]) {
@@ -127,30 +181,26 @@ export async function syncEventCostToFinance(eventRecord: AnyRecord, context: Da
 
   const payload = financePayload(eventRecord, animalOptions);
   if (existing[0]?.id) {
-    try {
-      await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, payload, context);
-    } catch (error) {
-      if (!isMissingSourceColumn(error)) throw error;
-      await updateRecord(TABLES.transacoesFinanceiras, existing[0].id, legacyFinancePayload(eventRecord, animalOptions), context);
-    }
+    await updateFinanceRecord(existing[0].id, payload, context);
     await Promise.all(existing.slice(1).map((record) => deleteRecord(TABLES.transacoesFinanceiras, record.id, context)));
     return;
   }
 
-  try {
-    await createRecord(TABLES.transacoesFinanceiras, payload, context);
-  } catch (error) {
-    if (!isMissingSourceColumn(error)) throw error;
-    await createRecord(TABLES.transacoesFinanceiras, legacyFinancePayload(eventRecord, animalOptions), context);
-  }
+  await createFinanceRecord(payload, context);
 }
 
 export async function removeEventCostFromFinance(eventId: string, context?: DataContext) {
   if (!eventId) return;
+
   try {
     await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(sourceFilters(eventId), context), context);
   } catch (error) {
-    if (!isMissingSourceColumn(error)) throw error;
+    if (!isMissingOptionalLinkColumn(error)) throw error;
   }
-  await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters([{ column: "origem", value: legacyEventFinanceOrigin(eventId) }], context), context);
+
+  try {
+    await deleteRecords(TABLES.transacoesFinanceiras, scopedFilters(originLinkFilters(eventId), context), context);
+  } catch (error) {
+    if (!isMissingOptionalLinkColumn(error)) throw error;
+  }
 }
