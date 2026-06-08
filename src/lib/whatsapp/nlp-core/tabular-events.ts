@@ -17,11 +17,40 @@ export type ParsedTabularAnimalEventRow = {
   problemas: string[];
 };
 
+export type ParsedTabularAnimalImportRow = {
+  lineNumber: number;
+  rawText: string;
+  animal_codigo_original: string;
+  animal_codigo: string;
+  nome: string | null;
+  categoria_original: string;
+  categoria: "vaca" | "boi" | "bezerro" | "novilha" | "touro" | "outro" | null;
+  sexo_original: string;
+  sexo: "macho" | "femea" | "nao_informado" | null;
+  raca: string | null;
+  lote_nome: string | null;
+  status_original: string;
+  status: "ativo" | "inativo" | "morto" | "vendido" | null;
+  peso: number | null;
+  data_nascimento: string | null;
+  observacoes: string;
+  problemas: string[];
+};
+
 type EventTypeResolution = {
   evento_tipo: ParsedTabularAnimalEventRow["evento_tipo"];
   evento_label: string;
   db_tipo: ParsedTabularAnimalEventRow["db_tipo"];
 };
+
+type TableKind = "animal_events" | "animals_import" | "ambiguous" | null;
+
+type ParsedLine = {
+  text: string;
+  lineNumber: number;
+};
+
+type HeaderMap = Record<string, number | undefined>;
 
 function normalizeAnimalTableCode(value: string) {
   return value
@@ -30,12 +59,69 @@ function normalizeAnimalTableCode(value: string) {
     .toUpperCase();
 }
 
+function compactHeader(value: string) {
+  return normalizeRanchoText(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function splitHeaderCells(line: string) {
+  return line.split(";").map((cell) => compactHeader(cell));
+}
+
+function hasAnyHeader(cells: string[], patterns: RegExp[]) {
+  return cells.some((cell) => patterns.some((pattern) => pattern.test(cell)));
+}
+
+function headerIndex(cells: string[], patterns: RegExp[]) {
+  const index = cells.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+  return index >= 0 ? index : undefined;
+}
+
+function buildHeaderMap(headerLine: string): HeaderMap {
+  const cells = splitHeaderCells(headerLine);
+  return {
+    code: headerIndex(cells, [/^(?:codigo|cod|brinco|animal)(?:\s+animal)?$/, /^codigo\s+animal$/]),
+    eventType: headerIndex(cells, [/^(?:status\s+tipo|status|tipo|evento)$/]),
+    date: headerIndex(cells, [/^data$/, /^data\s+evento$/]),
+    notes: headerIndex(cells, [/^(?:observacoes|observacao|obs|nota|notas)$/]),
+    name: headerIndex(cells, [/^nome$/]),
+    category: headerIndex(cells, [/^(?:categoria|tipo|classe)$/]),
+    sex: headerIndex(cells, [/^sexo$/]),
+    breed: headerIndex(cells, [/^raca$/]),
+    lot: headerIndex(cells, [/^(?:lote|piquete|pasto)$/]),
+    status: headerIndex(cells, [/^(?:status|situacao)$/]),
+    weight: headerIndex(cells, [/^(?:peso|kg)$/]),
+    birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/])
+  };
+}
+
+function detectTableKindFromHeader(headerLine: string): TableKind {
+  if (!headerLine.includes(";")) return null;
+
+  const cells = splitHeaderCells(headerLine);
+  const hasCode = hasAnyHeader(cells, [/^(?:codigo|cod|brinco|animal)(?:\s+animal)?$/, /^codigo\s+animal$/]);
+  if (!hasCode) return null;
+
+  const hasDate = hasAnyHeader(cells, [/^data$/, /^data\s+evento$/]);
+  const hasEvent = hasAnyHeader(cells, [/^(?:status\s+tipo|evento)$/]);
+  const hasTypeOrStatus = hasAnyHeader(cells, [/^(?:status|tipo)$/]);
+  const hasAnimalField = hasAnyHeader(cells, [/^nome$/, /^categoria$/, /^sexo$/, /^raca$/, /^lote$/, /^piquete$/, /^pasto$/, /^peso$/, /^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]);
+
+  const eventScore = (hasDate ? 2 : 0) + (hasEvent ? 2 : 0) + (hasTypeOrStatus ? 1 : 0);
+  const animalScore = (hasAnimalField ? 2 : 0)
+    + (hasAnyHeader(cells, [/^nome$/]) ? 2 : 0)
+    + (hasAnyHeader(cells, [/^categoria$/, /^sexo$/, /^raca$/, /^lote$/]) ? 1 : 0);
+
+  if (eventScore >= 3 && eventScore > animalScore) return "animal_events";
+  if (animalScore >= 3 && animalScore > eventScore) return "animals_import";
+  if (eventScore >= 3 && animalScore >= 3) return "ambiguous";
+  if (hasDate && hasTypeOrStatus) return "animal_events";
+  if (hasAnimalField) return "animals_import";
+  return null;
+}
+
 function isHeaderLine(line: string) {
   if (!line.includes(";")) return false;
-  const normalized = normalizeRanchoText(line);
-  return /\b(?:codigo|brinco|animal)\b/.test(normalized)
-    && /\b(?:status|tipo|evento)\b/.test(normalized)
-    && /\bdata\b/.test(normalized);
+  return detectTableKindFromHeader(line) === "animal_events";
 }
 
 function splitTableRow(line: string) {
@@ -103,6 +189,54 @@ function resolveEventType(value: string): EventTypeResolution | null {
   return null;
 }
 
+function normalizeAnimalCategory(value: string): ParsedTabularAnimalImportRow["categoria"] {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return null;
+  if (/\b(?:vaca|matriz|matrizes)\b/.test(normalized)) return "vaca";
+  if (/\b(?:touro|reprodutor|reprodutores)\b/.test(normalized)) return "touro";
+  if (/\b(?:boi|garrote)\b/.test(normalized)) return "boi";
+  if (/\b(?:bezerro|bezerra|terneiro|terneira)\b/.test(normalized)) return "bezerro";
+  if (/\b(?:novilha|novilho)\b/.test(normalized)) return "novilha";
+  if (/\b(?:animal|outro|outra|nao informado|sem categoria)\b/.test(normalized)) return "outro";
+  return null;
+}
+
+function normalizeAnimalSex(value: string): ParsedTabularAnimalImportRow["sexo"] {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return "nao_informado";
+  if (/^(?:m|macho|masculino)$/.test(normalized)) return "macho";
+  if (/^(?:f|femea|feminino)$/.test(normalized)) return "femea";
+  if (/\b(?:nao informado|sem sexo|desconhecido|ignorado)\b/.test(normalized)) return "nao_informado";
+  return null;
+}
+
+function normalizeAnimalStatus(value: string): ParsedTabularAnimalImportRow["status"] {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return "ativo";
+  if (/^(?:ativo|ativa|em atividade)$/.test(normalized)) return "ativo";
+  if (/^(?:inativo|inativa)$/.test(normalized)) return "inativo";
+  if (/^(?:morto|morta|obito|obito registrado)$/.test(normalized)) return "morto";
+  if (/^(?:vendido|vendida)$/.test(normalized)) return "vendido";
+  return null;
+}
+
+function parseAnimalWeight(value: string) {
+  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  if (!normalized) return null;
+  const match = normalized.match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const number = Number(match[0]);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function parseOptionalDate(value: string) {
+  return parseTableDate(value);
+}
+
+function cellAt(cells: string[], index?: number) {
+  return index === undefined ? "" : (cells[index] || "").trim();
+}
+
 function parseDataLine(line: string, lineNumber: number): ParsedTabularAnimalEventRow | null {
   const cells = splitTableRow(line);
   if (!cells) return null;
@@ -134,9 +268,65 @@ function parseDataLine(line: string, lineNumber: number): ParsedTabularAnimalEve
   };
 }
 
+function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularAnimalImportRow | null {
+  const cells = line.split(";").map((cell) => cell.trim());
+  if (cells.length < 2) return null;
+  if (cells.every((cell) => !cell)) return null;
+
+  const codeOriginal = cellAt(cells, header.code ?? 0);
+  const categoryOriginal = cellAt(cells, header.category);
+  const sexOriginal = cellAt(cells, header.sex);
+  const statusOriginal = cellAt(cells, header.status);
+  const birthDateOriginal = cellAt(cells, header.birthDate);
+  const category = normalizeAnimalCategory(categoryOriginal);
+  const sex = normalizeAnimalSex(sexOriginal);
+  const status = normalizeAnimalStatus(statusOriginal);
+  const birthDate = birthDateOriginal ?parseOptionalDate(birthDateOriginal) : null;
+  const weightText = cellAt(cells, header.weight);
+  const weight = weightText ?parseAnimalWeight(weightText) : null;
+  const problemas: string[] = [];
+  const animalCode = normalizeAnimalTableCode(codeOriginal);
+
+  if (!animalCode) problemas.push("animal_sem_codigo");
+  if (!categoryOriginal.trim()) problemas.push("categoria_ausente");
+  else if (!category) problemas.push("categoria_invalida");
+  if (sexOriginal.trim() && !sex) problemas.push("sexo_invalido");
+  if (statusOriginal.trim() && !status) problemas.push("status_invalido");
+  if (birthDateOriginal.trim() && !birthDate) problemas.push("data_nascimento_invalida");
+  if (weightText.trim() && weight === null) problemas.push("peso_invalido");
+
+  return {
+    lineNumber,
+    rawText: line,
+    animal_codigo_original: codeOriginal,
+    animal_codigo: animalCode,
+    nome: cellAt(cells, header.name) || null,
+    categoria_original: categoryOriginal,
+    categoria: category,
+    sexo_original: sexOriginal,
+    sexo: sex,
+    raca: cellAt(cells, header.breed) || null,
+    lote_nome: cellAt(cells, header.lot) || null,
+    status_original: statusOriginal,
+    status,
+    peso: weight,
+    data_nascimento: birthDate,
+    observacoes: cellAt(cells, header.notes),
+    problemas
+  };
+}
+
 function eventCounts(rows: ParsedTabularAnimalEventRow[]) {
   return rows.reduce<Record<string, number>>((counts, row) => {
     const key = row.evento_tipo || "desconhecido";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function animalImportCounts(rows: ParsedTabularAnimalImportRow[]) {
+  return rows.reduce<Record<string, number>>((counts, row) => {
+    const key = row.categoria || "desconhecido";
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
@@ -159,15 +349,14 @@ export function normalizeTabularAnimalEventsText(text: string) {
   return normalized;
 }
 
-export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
-  const lines = normalizeTabularAnimalEventsText(text)
+function parsedTableLines(text: string): ParsedLine[] {
+  return normalizeTabularAnimalEventsText(text)
     .split("\n")
     .map((line, index) => ({ text: line.trim(), lineNumber: index + 1 }))
     .filter((line) => line.text);
+}
 
-  const headerIndex = lines.findIndex((line) => isHeaderLine(line.text));
-  if (headerIndex < 0) return null;
-
+function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const rows: ParsedTabularAnimalEventRow[] = [];
   for (const line of lines.slice(headerIndex + 1)) {
     if (isHeaderLine(line.text)) continue;
@@ -183,6 +372,7 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
 
   return finalize("IMPORTACAO_EVENTOS_TABELA", {
     origem_parser: "tabela_local",
+    tipo_tabela: "animal_events",
     importacao_tabela_eventos: true,
     tabela_destino: "eventos_animal",
     total_linhas: rows.length,
@@ -193,4 +383,70 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
     linhas_parse_invalidas: invalidParseRows,
     instrucoes_confirmacao: "confirmar_para_importar_linhas_validas"
   }, [], 0.96);
+}
+
+function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const header = buildHeaderMap(lines[headerIndex].text);
+  const rows: ParsedTabularAnimalImportRow[] = [];
+
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (detectTableKindFromHeader(line.text)) continue;
+    if (!line.text.includes(";")) continue;
+    const row = parseAnimalImportLine(line.text, line.lineNumber, header);
+    if (row) rows.push(row);
+  }
+
+  if (!rows.length) return null;
+
+  const validParseRows = rows.filter((row) => row.problemas.length === 0);
+  const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+
+  return finalize("IMPORTACAO_ANIMAIS_TABELA", {
+    origem_parser: "tabela_local",
+    tipo_tabela: "animals_import",
+    importacao_tabela_animais: true,
+    tabela_destino: "animais",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: validParseRows.length,
+    total_linhas_parse_invalidas: invalidParseRows.length,
+    contagem_animais_parse: animalImportCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidParseRows,
+    instrucoes_confirmacao: "confirmar_para_cadastrar_animais_validos"
+  }, [], 0.96);
+}
+
+function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const dataLines = lines.slice(headerIndex + 1).filter((line) => line.text.includes(";"));
+  if (!dataLines.length) return null;
+
+  return finalize("IMPORTACAO_TABELA_AMBIGUA", {
+    origem_parser: "tabela_local",
+    tipo_tabela: "ambiguous",
+    texto_tabela_original: normalizeTabularAnimalEventsText(text),
+    cabecalho: lines[headerIndex].text,
+    total_linhas: dataLines.length,
+    instrucoes_confirmacao: "perguntar_tipo_tabela"
+  }, [], 0.74);
+}
+
+export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
+  const lines = parsedTableLines(text);
+  const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
+  if (headerIndex < 0) return null;
+
+  const kind = detectTableKindFromHeader(lines[headerIndex].text);
+  if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
+  if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
+  if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
+  return null;
+}
+
+export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import"): ParsedRanchoMessage | null {
+  const lines = parsedTableLines(text);
+  const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
+  if (headerIndex < 0) return null;
+  return kind === "animal_events"
+    ? parseAnimalEventsTable(text, lines, headerIndex)
+    : parseAnimalsImportTable(text, lines, headerIndex);
 }

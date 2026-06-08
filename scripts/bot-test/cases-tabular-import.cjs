@@ -37,6 +37,32 @@ module.exports = function loadBotTestSection(context) {
     const escapedTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\\n");
     const routeSanitizedTabularAnimalEventsMessage = sanitizeWhatsappMessageText(realTabularAnimalEventsMessage);
     const crlfTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\r\n");
+    const animalRegistrationTableMessage = [
+      "Codigo;Nome;Categoria;Sexo;Raca;Lote;Nascimento;Peso;Status;Observacoes",
+      "IMP-101;Aurora;vaca;femea;Girolando;Lactacao 1;10/03/2022;480;ativo;linha completa",
+      "IMP-102;;bezerro;macho;;;15/01/2026;;ativo;",
+      "B-002;Duplicada;vaca;femea;;;;;ativo;",
+      "IMP-103;Lua;novilha;femea;Jersey;Lote Novo;01/02/2025;300;ativo;"
+    ].join("\n");
+    const minimalAnimalRegistrationTableMessage = [
+      "Codigo;Categoria;Sexo",
+      "IMP-201;boi;macho",
+      "IMP-202;vaca;"
+    ].join("\n");
+    const exactCodeAnimalRegistrationTableMessage = [
+      "Codigo;Categoria;Sexo",
+      "001;vaca;femea"
+    ].join("\n");
+    const ambiguousTabularMessage = [
+      "Codigo;Tipo;Data;Sexo",
+      "AMB-1;Parto;01/06/2026;femea"
+    ].join("\n");
+    const missingAnimalEventsMessage = [
+      "Animal;Tipo;Data;Obs",
+      "B-002;Parto;01/06/26;animal encontrado",
+      "MISSING-777;Inseminacao;02/06/26;animal faltante",
+      "MISSING-778;Protocolo;03/06/26;animal faltante"
+    ].join("\n");
 
     const tabularAnimalCodes = [
       "001", "204", "143", "177", "397", "387", "249", "062", "195", "398",
@@ -151,6 +177,40 @@ module.exports = function loadBotTestSection(context) {
           tipo: "PRODUCAO_LEITE",
           animal: "B-002",
           litros: 32
+        }
+      },
+      {
+        name: "tabela de cadastro de animais detecta linhas e campos",
+        module: "tabela-animais",
+        phrase: animalRegistrationTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_validas: 4,
+          tableRow: { lineNumber: 2, animal: "IMP-101", nome: "Aurora", categoria: "vaca", sexo: "femea", raca: "Girolando", lote_nome: "Lactacao 1", status: "ativo" }
+        }
+      },
+      {
+        name: "tabela minima de animais aceita codigo categoria e sexo",
+        module: "tabela-animais",
+        phrase: minimalAnimalRegistrationTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          tableRow: { lineNumber: 3, animal: "IMP-202", categoria: "vaca", sexo: "nao_informado" }
+        }
+      },
+      {
+        name: "tabela ambigua pergunta tipo antes de importar",
+        module: "tabela-animais",
+        phrase: ambiguousTabularMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_AMBIGUA",
+          total_linhas: 1
         }
       }
     ];
@@ -333,6 +393,167 @@ module.exports = function loadBotTestSection(context) {
           shouldSaveValues: { animal_id: "animal-b-tab-001" },
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID_B
+        }
+      },
+      {
+        name: "tabela de animais pede confirmacao e nao salva antes",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [animalRegistrationTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "Prontos para cadastrar: 2",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de animais cadastra apenas validos em dry-run",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [animalRegistrationTableMessage, "1"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "2 animal",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "IMP-101", categoria: "vaca" },
+          shouldNotSaveValues: { brinco: "B-002" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela de animais cria lote faltante quando solicitado",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [animalRegistrationTableMessage, "2"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "3 animal",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 4,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { brinco: "IMP-103", nome: "Lote Novo" },
+          shouldNotSaveValues: { brinco: "B-002" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela minima de animais cadastra sem nome",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [minimalAnimalRegistrationTableMessage, "sim"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "2 animal",
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "IMP-202", sexo: "nao_informado" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "cadastro tabular usa codigo exato e permite 001 mesmo existindo 1",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [exactCodeAnimalRegistrationTableMessage, "sim"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "1 animal",
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "001" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "funcionario comum nao importa cadastro de animais",
+        module: "tabela-animais",
+        phone: BOT_TEST_WORKER_PHONE,
+        messages: [minimalAnimalRegistrationTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "cadastrar animais",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "eventos com animais faltantes oferecem cadastro em massa",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingAnimalEventsMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "Cadastrar animais faltantes",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "eventos com faltantes importam apenas encontrados quando solicitado",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingAnimalEventsMessage, "2"],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "1 evento",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "B-002" },
+          shouldNotSaveValues: { animal_codigo: "MISSING-777" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "eventos com faltantes geram cadastro tabular de animais",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingAnimalEventsMessage, "1", "sim"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "2 animal",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "MISSING-777", categoria: "outro" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela ambigua aceita escolha de cadastro de animais",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [ambiguousTabularMessage, "1"],
+        expected: {
+          responseIncludes: "tabela de cadastro de animais",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "modelo de tabela retorna exemplos sem salvar",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["modelo de tabela de animais"],
+        expected: {
+          responseIncludes: "Codigo;Nome;Categoria;Sexo",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
         }
       }
     ];

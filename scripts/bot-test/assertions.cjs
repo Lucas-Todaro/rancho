@@ -232,6 +232,12 @@ module.exports = function loadBotTestSection(context) {
           if (expected.tableRow.evento_tipo && normalize(row.evento_tipo) !== normalize(expected.tableRow.evento_tipo)) failures.push(`linha tabela evento esperado ${expected.tableRow.evento_tipo}, recebido ${row.evento_tipo}`);
           if (expected.tableRow.data_referencia && row.data_referencia !== expected.tableRow.data_referencia) failures.push(`linha tabela data esperada ${expected.tableRow.data_referencia}, recebida ${row.data_referencia}`);
           if (expected.tableRow.observacoes && !normalize(row.observacoes).includes(normalize(expected.tableRow.observacoes))) failures.push(`linha tabela observacao esperada ${expected.tableRow.observacoes}, recebida ${row.observacoes}`);
+          if (expected.tableRow.nome && normalize(row.nome) !== normalize(expected.tableRow.nome)) failures.push(`linha tabela nome esperado ${expected.tableRow.nome}, recebido ${row.nome}`);
+          if (expected.tableRow.categoria && normalize(row.categoria) !== normalize(expected.tableRow.categoria)) failures.push(`linha tabela categoria esperada ${expected.tableRow.categoria}, recebida ${row.categoria}`);
+          if (expected.tableRow.sexo && normalize(row.sexo) !== normalize(expected.tableRow.sexo)) failures.push(`linha tabela sexo esperado ${expected.tableRow.sexo}, recebido ${row.sexo}`);
+          if (expected.tableRow.raca && normalize(row.raca) !== normalize(expected.tableRow.raca)) failures.push(`linha tabela raca esperada ${expected.tableRow.raca}, recebida ${row.raca}`);
+          if (expected.tableRow.lote_nome && normalize(row.lote_nome) !== normalize(expected.tableRow.lote_nome)) failures.push(`linha tabela lote esperado ${expected.tableRow.lote_nome}, recebido ${row.lote_nome}`);
+          if (expected.tableRow.status && normalize(row.status) !== normalize(expected.tableRow.status)) failures.push(`linha tabela status esperado ${expected.tableRow.status}, recebido ${row.status}`);
           if (expected.tableRow.problem && !(Array.isArray(row.problemas) && row.problemas.includes(expected.tableRow.problem))) failures.push(`linha tabela deveria conter problema ${expected.tableRow.problem}, recebeu ${row.problemas}`);
         }
       }
@@ -272,14 +278,14 @@ module.exports = function loadBotTestSection(context) {
     function adminActionDenied(test, parsed) {
       const actor = mockUsers.find((user) => user.nome === test.actor);
       if (!actor || actor.admin) return null;
-      if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA", "CRIAR_LOTE", "CADASTRO_ANIMAL"].includes(parsed.tipo)) {
+      if (["CRIAR_ITEM_ESTOQUE", "CRIAR_FUNCIONARIO", "ATUALIZAR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "EXCLUIR_FUNCIONARIO", "ATUALIZACAO_GENEALOGIA", "CRIAR_LOTE", "CADASTRO_ANIMAL", "IMPORTACAO_ANIMAIS_TABELA"].includes(parsed.tipo)) {
         if (parsed.tipo === "ATUALIZACAO_GENEALOGIA") {
           return "Você não tem permissão para alterar genealogia pelo bot. Peça para um administrador fazer essa alteração.";
         }
         if (parsed.tipo === "CRIAR_LOTE") {
           return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
         }
-        if (parsed.tipo === "CADASTRO_ANIMAL") {
+        if (parsed.tipo === "CADASTRO_ANIMAL" || parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
           return "Você não tem permissão para cadastrar animais.";
         }
         return parsed.tipo === "CRIAR_ITEM_ESTOQUE"

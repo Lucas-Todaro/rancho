@@ -395,6 +395,51 @@ module.exports = function loadBotTestSection(context) {
           }));
       }
 
+      if (tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+        const rows = Array.isArray(dados.linhas_validadas) ? dados.linhas_validadas : [];
+        const actions = [];
+        if (dados.criar_lotes_faltantes) {
+          const lots = Array.from(new Set(rows
+            .filter((row) => row.status_validacao === "pronto" && Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
+            .map((row) => String(row.lote_nome || "").trim())
+            .filter(Boolean)));
+          for (const lotName of lots) {
+            actions.push({
+              ...base,
+              table: BOT_TEST_TABLES.lotes,
+              payload: {
+                fazenda_id: fazendaId,
+                nome: lotName,
+                ativo: true,
+                origem: "whatsapp"
+              }
+            });
+          }
+        }
+
+        for (const row of rows.filter((item) => item.status_validacao === "pronto")) {
+          actions.push({
+            ...base,
+            table: BOT_TEST_TABLES.animais,
+            payload: {
+              fazenda_id: fazendaId,
+              brinco: row.animal_codigo,
+              nome: row.nome || null,
+              categoria: row.categoria || "outro",
+              sexo: row.sexo || "nao_informado",
+              raca: row.raca || null,
+              lote_id: row.lote_id || null,
+              lote_nome: row.lote_nome || null,
+              data_nascimento: row.data_nascimento || null,
+              peso: row.peso !== undefined && row.peso !== null && row.peso !== "" ? Number(row.peso) : null,
+              status: row.status || "ativo",
+              origem: "whatsapp"
+            }
+          });
+        }
+        return actions;
+      }
+
       if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {
         return [{
           ...base,

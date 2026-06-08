@@ -22,6 +22,7 @@ import {
   mergeRanchoMessageData,
   normalizeRanchoText,
   parseRanchoMessage,
+  parseTabularAnimalEventsMessageAs,
   refreshRanchoMessage,
   type ParsedRanchoMessage
 } from "@/lib/whatsapp/nlp";
@@ -100,7 +101,7 @@ type MilkStockResolution = {
   reason: string;
 };
 
-const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "importar", "importar validas", "importar linhas validas", "salvar validas", "salvar linhas validas", "importa validas", "pode importar", "so as validas", "so validas", "somente validas", "apenas validas", "1"]);
+const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "importar", "importar validas", "importar linhas validas", "importar encontrados", "importar so encontrados", "salvar validas", "salvar linhas validas", "importa validas", "pode importar", "cadastrar", "cadastrar validos", "cadastrar animais", "so as validas", "so validas", "somente validas", "apenas validas", "1"]);
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao e isso", "refazer", "refaz", "incorreto", "negativo", "na verdade", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
@@ -153,7 +154,8 @@ const LOT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CRIAR_LOTE"
 ]);
 const ANIMAL_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
-  "CADASTRO_ANIMAL"
+  "CADASTRO_ANIMAL",
+  "IMPORTACAO_ANIMAIS_TABELA"
 ]);
 const ANIMAL_EVENT_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "IMPORTACAO_EVENTOS_TABELA"
@@ -461,7 +463,7 @@ function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
 }
 
 function isConfirmCommand(command: string) {
-  return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|salvar validas|so as validas|so validas|somente validas|apenas validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
+  return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|importar encontrados|importar so encontrados|salvar validas|cadastrar validos|cadastrar animais|so as validas|so validas|somente validas|apenas validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|cadastrar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
 }
 
 function isRejectCommand(command: string) {
@@ -481,8 +483,29 @@ function isRepeatCommand(command: string) {
 }
 
 function isTabularImportIssueCommand(command: string) {
-  return /^(?:mostrar?|ver|lista|listar|quais?)\s+(?:erros?|alertas?|problemas?|invalidas?|linhas invalidas?)\b/.test(command)
-    || /^(?:erros?|alertas?|problemas?|invalidas?)$/.test(command);
+  return /^(?:mostrar?|ver|lista|listar|quais?)\s+(?:erros?|alertas?|problemas?|invalidas?|pendencias?|linhas invalidas?|faltam|animais nao existem|animais faltantes)\b/.test(command)
+    || /^(?:erros?|alertas?|problemas?|invalidas?|pendencias?|quais faltam)$/.test(command);
+}
+
+function isTabularMissingAnimalRegisterCommand(command: string) {
+  return /^(?:1|cadastrar faltantes|cadastrar animais faltantes|cria(?:r)? esses animais|cadastrar todos|cadastrar em massa|cadastra(?:r)? eles|pode cadastrar)\b/.test(command);
+}
+
+function isTabularImportFoundOnlyCommand(command: string) {
+  return /^(?:2|importar encontrados|importar so encontrados|importar somente encontrados|importar apenas encontrados|importar validas|so as validas|so validas|somente validas|apenas validas)\b/.test(command);
+}
+
+function isTabularCreateLotsAndRegisterCommand(command: string) {
+  return /^(?:2)\b/.test(command)
+    || /\b(?:criar lotes e cadastrar|criar lotes|cria os lotes|cadastrar com lotes|pode criar os lotes)\b/.test(command);
+}
+
+function isTableTypeAnimalsCommand(command: string) {
+  return /^(?:animais|cadastro de animais|cadastrar animais|importar animais|modelo animais|tabela de animais)\b/.test(command);
+}
+
+function isTableTypeEventsCommand(command: string) {
+  return /^(?:eventos|reproducao|reprodução|eventos reprodutivos|registrar eventos|importar eventos|tabela de eventos)\b/.test(command);
 }
 
 function isStockPaginationCommand(command: string) {
@@ -608,6 +631,22 @@ function tabularImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
   return `${lines.join("\n")}${extra}`;
 }
 
+function tabularMissingAnimalCodes(parsed: ParsedRanchoMessage, maxRows = 8) {
+  const codes = new Set<string>();
+  for (const row of tabularImportRows(parsed)) {
+    const issues = Array.isArray(row.problemas_validacao)
+      ?row.problemas_validacao
+      : Array.isArray(row.problemas)
+        ?row.problemas
+        : [];
+    if (issues.includes("animal_nao_encontrado")) {
+      const code = String(row.animal_codigo_original || row.animal_codigo || "").trim();
+      if (code) codes.add(code);
+    }
+  }
+  return Array.from(codes).slice(0, maxRows);
+}
+
 function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   const summary = tabularImportSummary(parsed);
   const counts = tabularImportCountText(summary.eventCounts);
@@ -615,8 +654,31 @@ function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   const issueBlock = issueText ?`\n\nLinhas que nao vou importar agora:\n${issueText}` : "";
   const duplicateText = summary.duplicates ?`Duplicadas ignoradas: ${summary.duplicates}.` : "";
   const notFoundText = summary.notFound ?`Animais nao encontrados: ${summary.notFound}.` : "";
+  const missingCodes = summary.notFound ?tabularMissingAnimalCodes(parsed, 8) : [];
+  const missingCodesText = missingCodes.length ?`Codigos faltantes: ${missingCodes.join(", ")}.` : "";
   const dateText = summary.missingDate || summary.invalidDate ?`Datas com problema: ${summary.missingDate + summary.invalidDate}.` : "";
   const typeText = summary.unknownType ?`Tipos nao reconhecidos: ${summary.unknownType}.` : "";
+
+  if (summary.notFound) {
+    return [
+      "Li a tabela de eventos do rebanho.",
+      `Linhas lidas: ${summary.total}.`,
+      `Prontas para importar agora: ${summary.ready}.`,
+      counts ?`Tipos: ${counts}.` : "",
+      duplicateText,
+      notFoundText,
+      missingCodesText,
+      dateText,
+      typeText,
+      issueBlock,
+      "",
+      "O que deseja fazer?",
+      "1 - Cadastrar animais faltantes",
+      summary.ready ? "2 - Importar somente eventos dos animais encontrados" : "2 - Ver pendencias",
+      summary.ready ? "3 - Ver pendencias" : "3 - Cancelar",
+      summary.ready ? "4 - Cancelar" : ""
+    ].filter((line) => line !== "").join("\n");
+  }
 
   if (!summary.ready) {
     return `Li a tabela, mas nenhuma linha esta pronta para importar.\nLinhas lidas: ${summary.total}.${issueBlock}\n\nNada foi salvo. Envie a tabela corrigida.`;
@@ -639,8 +701,170 @@ function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   ].filter((line) => line !== "").join("\n");
 }
 
+function animalImportRows(parsed: ParsedRanchoMessage) {
+  const rows = parsed.dados?.linhas_validadas || parsed.dados?.linhas || [];
+  return Array.isArray(rows) ?rows as AnyRecord[] : [];
+}
+
+function animalImportSummary(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const summary = (dados.resumo_validacao || {}) as AnyRecord;
+  const rows = animalImportRows(parsed);
+  const ready = rows.filter((row) => row.status_validacao === "pronto");
+  const invalid = rows.filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  return {
+    total: Number(summary.total || dados.total_linhas || rows.length || 0),
+    ready: Number(summary.prontas ?? ready.length ?? 0),
+    invalid: Number(summary.invalidas ?? invalid.length ?? 0),
+    duplicates: Number(summary.duplicadas || 0),
+    missingLots: Number(summary.lotes_nao_encontrados || 0),
+    lotsFound: Number(summary.lotes_encontrados || 0),
+    parseInvalid: Number(summary.parse_invalidas || dados.total_linhas_parse_invalidas || 0),
+    missingCategory: Number(summary.categorias_ausentes || 0),
+    invalidCategory: Number(summary.categorias_invalidas || 0),
+    createMissingLots: Boolean(dados.criar_lotes_faltantes),
+    missingLotNames: Array.isArray(summary.nomes_lotes_nao_encontrados) ?summary.nomes_lotes_nao_encontrados as string[] : []
+  };
+}
+
+function animalImportIssueLabel(issue: string) {
+  const labels: Record<string, string> = {
+    animal_sem_codigo: "sem codigo",
+    categoria_ausente: "sem categoria",
+    categoria_invalida: "categoria invalida",
+    sexo_invalido: "sexo invalido",
+    status_invalido: "status invalido",
+    peso_invalido: "peso invalido",
+    data_nascimento_invalida: "nascimento invalido",
+    animal_duplicado: "animal ja existe",
+    duplicado_na_tabela: "codigo repetido na tabela",
+    lote_nao_encontrado: "lote nao encontrado"
+  };
+  return labels[issue] || issue;
+}
+
+function animalImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
+  const issueRows = animalImportRows(parsed).filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  const rows = issueRows.slice(0, maxRows);
+  if (!rows.length) return "";
+
+  const lines = rows.map((row) => {
+    const issues = Array.isArray(row.problemas_validacao)
+      ?row.problemas_validacao
+      : Array.isArray(row.problemas)
+        ?row.problemas
+        : [];
+    return `- linha ${row.lineNumber || "?"} (${row.animal_codigo || row.animal_codigo_original || "sem codigo"}): ${issues.map((issue) => animalImportIssueLabel(String(issue))).join(", ") || "nao cadastravel"}`;
+  });
+
+  const extra = issueRows.length > rows.length ?`\n...e mais ${issueRows.length - rows.length} linha(s) com pendencia.` : "";
+  return `${lines.join("\n")}${extra}`;
+}
+
+function animalImportConfirmationText(parsed: ParsedRanchoMessage) {
+  const summary = animalImportSummary(parsed);
+  const issueText = animalImportIssueDetails(parsed, 6);
+  const issueBlock = issueText ?`\n\nLinhas que nao vou cadastrar agora:\n${issueText}` : "";
+  const duplicateText = summary.duplicates ?`Ja existem no rebanho ou repetidos: ${summary.duplicates}.` : "";
+  const lotText = summary.missingLots ?`Lotes nao encontrados: ${summary.missingLotNames.slice(0, 5).join(", ")}.` : "";
+  const lotFoundText = summary.lotsFound ?`Lotes encontrados: ${summary.lotsFound}.` : "";
+  const categoryText = summary.missingCategory || summary.invalidCategory ?`Categorias com problema: ${summary.missingCategory + summary.invalidCategory}.` : "";
+
+  if (!summary.ready && !summary.missingLots) {
+    return `Li a tabela de cadastro de animais, mas nenhuma linha esta pronta para cadastrar.\nLinhas lidas: ${summary.total}.${issueBlock}\n\nNada foi salvo. Envie a tabela corrigida.`;
+  }
+
+  return [
+    "Recebi uma tabela de cadastro de animais.",
+    `Animais lidos: ${summary.total}.`,
+    `Prontos para cadastrar: ${summary.ready}.`,
+    duplicateText,
+    lotFoundText,
+    lotText,
+    categoryText,
+    issueBlock,
+    "",
+    summary.missingLots ? "O que deseja fazer?" : "Deseja cadastrar os animais validos?",
+    summary.missingLots ? "1 - Cadastrar apenas os validos" : "1 - Cadastrar",
+    summary.missingLots ? "2 - Criar lotes e cadastrar" : "",
+    summary.missingLots ? "3 - Ver pendencias" : "2 - Ver pendencias",
+    summary.missingLots ? "4 - Cancelar" : "3 - Cancelar"
+  ].filter((line) => line !== "").join("\n");
+}
+
+function ambiguousTableQuestion(parsed: ParsedRanchoMessage) {
+  return [
+    "Li uma tabela, mas preciso confirmar o tipo antes de continuar.",
+    "Essa tabela e para cadastrar animais ou registrar eventos?",
+    "",
+    "1 - Cadastrar animais",
+    "2 - Registrar eventos",
+    "3 - Cancelar"
+  ].join("\n");
+}
+
+function animalImportPendingFromMissingEventAnimals(parsed: ParsedRanchoMessage) {
+  const unique = new Map<string, AnyRecord>();
+  for (const row of tabularImportRows(parsed)) {
+    const issues = Array.isArray(row.problemas_validacao)
+      ?row.problemas_validacao
+      : Array.isArray(row.problemas)
+        ?row.problemas
+        : [];
+    if (!issues.includes("animal_nao_encontrado")) continue;
+    const code = exactAnimalImportCodeKey(row.animal_codigo || row.animal_codigo_original);
+    if (!code || unique.has(code)) continue;
+    unique.set(code, {
+      lineNumber: row.lineNumber,
+      rawText: row.rawText || String(row.animal_codigo_original || row.animal_codigo || ""),
+      animal_codigo_original: row.animal_codigo_original || row.animal_codigo || code,
+      animal_codigo: code,
+      nome: null,
+      categoria_original: "outro",
+      categoria: "outro",
+      sexo_original: "",
+      sexo: "nao_informado",
+      raca: null,
+      lote_nome: null,
+      status_original: "ativo",
+      status: "ativo",
+      peso: null,
+      data_nascimento: null,
+      observacoes: "Cadastrado a partir de tabela de eventos enviada pelo WhatsApp",
+      problemas: []
+    });
+  }
+
+  const rows = Array.from(unique.values());
+  const dados = {
+    origem_parser: "tabela_local",
+    tipo_tabela: "animals_import",
+    importacao_tabela_animais: true,
+    tabela_destino: "animais",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: rows.length,
+    total_linhas_parse_invalidas: 0,
+    contagem_animais_parse: { outro: rows.length },
+    linhas: rows,
+    linhas_parse_invalidas: [],
+    instrucoes_confirmacao: "confirmar_para_cadastrar_animais_faltantes",
+    origem_animais_faltantes_eventos: true,
+    eventos_apos_cadastro: parsed
+  };
+
+  return refreshRanchoMessage({
+    tipo: "IMPORTACAO_ANIMAIS_TABELA",
+    confianca: 0.94,
+    dados,
+    resumo: "",
+    perguntas_faltantes: []
+  }, dados);
+}
+
 function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") return tabularImportConfirmationText(parsed);
+  if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") return animalImportConfirmationText(parsed);
+  if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") return ambiguousTableQuestion(parsed);
 
   if (parsed.tipo === "LOTE_REGISTROS") {
     const registros = Array.isArray(parsed.dados?.registros) ?parsed.dados.registros as ParsedRanchoMessage[] : [];
@@ -684,6 +908,12 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
     return `Simulacao concluida: ${summary.ready} evento(s) do rebanho seriam importados. Nenhum registro real foi salvo.`;
   }
 
+  if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    const summary = animalImportSummary(parsed);
+    const lotText = summary.createMissingLots && summary.missingLots ?` e ${summary.missingLots} lote(s) seriam criados` : "";
+    return `Simulacao concluida: ${summary.ready} animal(is) seriam cadastrados${lotText}. Nenhum registro real foi salvo.`;
+  }
+
   return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.${stockDebug}`;
 }
 
@@ -697,6 +927,31 @@ function unknownText() {
 
 function helpText() {
   return `Pode mandar do seu jeito. Eu entendo frases como:\n${BOT_EXAMPLES.join("\n")}\n\nAntes de salvar qualquer coisa, eu sempre vou pedir confirmação.`;
+}
+
+function tabularTableExamplesText(text: string) {
+  const command = normalizeRanchoText(text);
+  const asksTableModel = /\b(?:modelo|exemplo|formato|tabela)\b/.test(command)
+    && /\b(?:tabela|planilha|colunas|importar|cadastro|eventos?|animais?|reproducao)\b/.test(command);
+  if (!asksTableModel) return "";
+
+  const animalModel = [
+    "Cadastro de animais:",
+    "Codigo;Nome;Categoria;Sexo;Raca;Lote;Nascimento;Peso;Status;Observacoes",
+    "B-101;Estrela;vaca;femea;Girolando;Lactacao 1;10/03/2022;480;ativo;",
+    "B-102;;bezerro;macho;;;15/01/2026;;ativo;"
+  ].join("\n");
+
+  const eventModel = [
+    "Eventos do rebanho:",
+    "Codigo / Animal;Status / Tipo;Data;Observacoes",
+    "B-101;Inseminacao;01/06/2026;IA com touro Nelore",
+    "B-102;Protocolo;02/06/2026;Inicio IATF"
+  ].join("\n");
+
+  if (/\b(?:animal|animais|cadastro)\b/.test(command) && !/\b(?:evento|eventos|reproducao)\b/.test(command)) return animalModel;
+  if (/\b(?:evento|eventos|reproducao|reprodutivo)\b/.test(command) && !/\b(?:animal|animais|cadastro)\b/.test(command)) return eventModel;
+  return `${animalModel}\n\n${eventModel}`;
 }
 
 function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
@@ -739,6 +994,8 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     ORDEM_SERVICO: "ordem de serviço",
     LOTE_REGISTROS: "registros em lote",
     IMPORTACAO_EVENTOS_TABELA: "importação de eventos por tabela",
+    IMPORTACAO_ANIMAIS_TABELA: "cadastro de animais por tabela",
+    IMPORTACAO_TABELA_AMBIGUA: "tabela enviada",
     AJUDA: "ajuda",
     DESCONHECIDO: "uma mensagem"
   };
@@ -977,6 +1234,8 @@ function safeBotPayload(table: string, payload: AnyRecord) {
 function validatePendingForSave(pending: ParsedRanchoMessage) {
   const dados = pending.dados || {};
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que você confirme se a tabela é de animais ou eventos antes de continuar.";
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
   if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
   if (pending.tipo === "PAGAMENTO_FUNCIONARIO" && invalidPositiveNumber(dados.valor)) return "Informe um valor de pagamento válido antes de salvar.";
@@ -1010,6 +1269,10 @@ function matchKey(value: unknown) {
 function numericKey(value: unknown) {
   const digits = String(value || "").replace(/\D/g, "");
   return digits ?digits.replace(/^0+/, "") || "0" : "";
+}
+
+function exactAnimalImportCodeKey(value: unknown) {
+  return String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
 }
 
 function levenshtein(left: string, right: string) {
@@ -1734,12 +1997,113 @@ async function enrichTabularAnimalEventImport(supabase: SupabaseAdmin, owner: Wh
   return refreshRanchoMessage(parsed, dados);
 }
 
+async function enrichTabularAnimalImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = { ...(parsed.dados || {}) };
+  const rows = Array.isArray(dados.linhas) ?dados.linhas as AnyRecord[] : [];
+  const animals = await listAnimals(supabase, owner);
+  const lots = await listLots(supabase, owner);
+  const existingAnimalCodes = new Set(
+    animals
+      .map((animal) => exactAnimalImportCodeKey(animal.brinco))
+      .filter(Boolean)
+  );
+  const seenTableCodes = new Set<string>();
+  const validatedRows: AnyRecord[] = [];
+  const createMissingLots = Boolean(dados.criar_lotes_faltantes);
+
+  for (const row of rows) {
+    const problems = Array.isArray(row.problemas) ?row.problemas.map(String) : [];
+    const next: AnyRecord = {
+      ...row,
+      problemas_validacao: [...problems],
+      status_validacao: "invalido"
+    };
+    const codeKey = exactAnimalImportCodeKey(row.animal_codigo);
+
+    if (codeKey) {
+      if (seenTableCodes.has(codeKey)) {
+        next.problemas_validacao.push("duplicado_na_tabela");
+        next.status_validacao = "duplicado";
+      } else {
+        seenTableCodes.add(codeKey);
+      }
+
+      if (existingAnimalCodes.has(codeKey)) {
+        next.problemas_validacao.push("animal_duplicado");
+        next.status_validacao = "duplicado";
+      }
+    }
+
+    const lotName = String(row.lote_nome || "").trim();
+    if (lotName) {
+      const lot = bestMatch(lots, lotName, (item) => [item.nome, item.descricao]);
+      if (lot?.row && (lot.exact || lot.score >= 0.86)) {
+        next.lote_id = lot.row.id;
+        next.lote_nome_resolvido = lot.row.nome;
+        next.lote_resolvido = {
+          id: lot.row.id,
+          nome: lot.row.nome
+        };
+      } else {
+        next.problemas_validacao.push("lote_nao_encontrado");
+      }
+    }
+
+    const uniqueProblems = Array.from(new Set(next.problemas_validacao.map(String)));
+    next.problemas_validacao = uniqueProblems;
+    const onlyMissingLot = uniqueProblems.length === 1 && uniqueProblems[0] === "lote_nao_encontrado";
+    const noProblems = uniqueProblems.length === 0 || (createMissingLots && onlyMissingLot);
+    if (noProblems) next.status_validacao = "pronto";
+    else if (uniqueProblems.includes("animal_duplicado") || uniqueProblems.includes("duplicado_na_tabela")) next.status_validacao = "duplicado";
+    else next.status_validacao = "invalido";
+    validatedRows.push(next);
+  }
+
+  const readyRows = validatedRows.filter((row) => row.status_validacao === "pronto");
+  const invalidRows = validatedRows.filter((row) => row.status_validacao !== "pronto");
+  const countIssue = (issue: string) => validatedRows.filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes(issue)).length;
+  const missingLotNames = Array.from(new Set(
+    validatedRows
+      .filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
+      .map((row) => String(row.lote_nome || "").trim())
+      .filter(Boolean)
+  ));
+
+  dados.linhas_validadas = validatedRows;
+  dados.linhas_prontas = readyRows;
+  dados.linhas_invalidas = invalidRows;
+  dados.criar_lotes_faltantes = createMissingLots;
+  dados.resumo_validacao = {
+    total: validatedRows.length,
+    prontas: readyRows.length,
+    invalidas: invalidRows.length,
+    duplicadas: countIssue("animal_duplicado") + countIssue("duplicado_na_tabela"),
+    lotes_nao_encontrados: countIssue("lote_nao_encontrado"),
+    lotes_encontrados: validatedRows.filter((row) => row.lote_id).length,
+    parse_invalidas: Number(dados.total_linhas_parse_invalidas || 0),
+    categorias_ausentes: countIssue("categoria_ausente"),
+    categorias_invalidas: countIssue("categoria_invalida"),
+    nomes_lotes_nao_encontrados: missingLotNames,
+    por_categoria: validatedRows.reduce<Record<string, number>>((counts, row) => {
+      const key = String(row.categoria || "desconhecido");
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {})
+  };
+
+  return refreshRanchoMessage(parsed, dados);
+}
+
 async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   const dados = { ...(parsed.dados || {}) };
   let changed = false;
 
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") {
     return enrichTabularAnimalEventImport(supabase, owner, parsed);
+  }
+
+  if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    return enrichTabularAnimalImport(supabase, owner, parsed);
   }
 
   if (parsed.tipo === "LOTE_REGISTROS") {
@@ -2008,6 +2372,103 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
 
     const duplicateText = skippedDuplicates ?`\nDuplicadas ignoradas no salvamento: ${skippedDuplicates}.` : "";
     return realSaveResult(`Pronto, ${saved} evento(s) do rebanho importados com sucesso.${duplicateText}`, [TABLES.eventosAnimal]);
+  }
+
+  if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    const rows = animalImportRows(pending).filter((row) => row.status_validacao === "pronto");
+    if (!rows.length) return { response: "Não encontrei animais válidos para cadastrar. Nada foi salvo." };
+
+    const animals = await listAnimals(supabase, owner);
+    const existingAnimalCodes = new Set(
+      animals
+        .map((animal) => exactAnimalImportCodeKey(animal.brinco))
+        .filter(Boolean)
+    );
+    const createMissingLots = Boolean(dados.criar_lotes_faltantes);
+    const createdLots = new Map<string, string>();
+    const savedTables = new Set<string>();
+    let saved = 0;
+    let skippedDuplicates = 0;
+    let createdLotCount = 0;
+
+    if (createMissingLots) {
+      const missingLotNames = Array.from(new Set(
+        rows
+          .filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
+          .map((row) => String(row.lote_nome || "").trim())
+          .filter(Boolean)
+      ));
+
+      for (const lotName of missingLotNames) {
+        const existingLot = await findLot(supabase, owner, lotName);
+        if (existingLot?.row && (existingLot.exact || existingLot.score >= 0.86)) {
+          createdLots.set(exactAnimalImportCodeKey(lotName), String(existingLot.row.id || ""));
+          continue;
+        }
+
+        const lot = await insertRealRecord(supabase, owner, TABLES.lotes, {
+          fazenda_id: owner.fazenda_id,
+          nome: lotName,
+          descricao: "Criado via importacao tabular do WhatsApp",
+          ativo: true
+        });
+        if (lot?.id) createdLots.set(exactAnimalImportCodeKey(lotName), String(lot.id));
+        savedTables.add(TABLES.lotes);
+        createdLotCount += 1;
+      }
+    }
+
+    for (const row of rows) {
+      const code = exactAnimalImportCodeKey(row.animal_codigo);
+      if (!code || existingAnimalCodes.has(code)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+
+      let lotId = row.lote_id || null;
+      if (!lotId && createMissingLots && row.lote_nome) {
+        lotId = createdLots.get(exactAnimalImportCodeKey(row.lote_nome)) || null;
+      }
+
+      await insertRealRecord(supabase, owner, TABLES.animais, {
+        fazenda_id: owner.fazenda_id,
+        brinco: code,
+        nome: row.nome || null,
+        categoria: row.categoria || "outro",
+        sexo: row.sexo || "nao_informado",
+        fase: row.fase || "nao_aplicavel",
+        raca: row.raca || null,
+        peso: row.peso !== undefined && row.peso !== null && row.peso !== "" ?Number(row.peso) : null,
+        lote_id: lotId,
+        data_nascimento: row.data_nascimento || null,
+        status: row.status || "ativo",
+        created_by: owner.usuario_id || null,
+        observacoes: row.observacoes || "Cadastrado via importacao tabular do WhatsApp"
+      });
+      existingAnimalCodes.add(code);
+      savedTables.add(TABLES.animais);
+      saved += 1;
+    }
+
+    if (!saved) {
+      return { response: `Nada novo foi cadastrado. ${skippedDuplicates} animal(is) ja existiam no rebanho.` };
+    }
+
+    const duplicateText = skippedDuplicates ?`\nDuplicados ignorados no salvamento: ${skippedDuplicates}.` : "";
+    const lotText = createdLotCount ?`\nLotes criados: ${createdLotCount}.` : "";
+    const baseResponse = `Pronto, ${saved} animal(is) cadastrados com sucesso.${lotText}${duplicateText}`;
+    const sourceEvents = dados.eventos_apos_cadastro as ParsedRanchoMessage | undefined;
+    if (sourceEvents?.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+      const nextEvents = await enrichTabularAnimalEventImport(supabase, owner, sourceEvents);
+      return {
+        response: `${baseResponse}\n\nAgora posso importar os eventos dessa tabela.\n${confirmationText(nextEvents)}`,
+        nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextEvents } },
+        savedReal: true,
+        savedTables: Array.from(savedTables)
+      };
+    }
+
+    return realSaveResult(baseResponse, Array.from(savedTables));
   }
 
   if (pending.tipo === "LOTE_REGISTROS") {
@@ -4286,6 +4747,12 @@ async function handlePostConfirmationConsultations(supabase: SupabaseAdmin, owne
 }
 
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
+  const tableExamples = tabularTableExamplesText(text);
+  if (tableExamples) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return tableExamples;
+  }
+
   const parsed = await enrichWithCatalog(supabase, owner, parsedMessage || parseRanchoMessage(text));
   botLog("nlp_general", owner, {
     currentIntent: parsed.tipo,
@@ -4295,6 +4762,14 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   });
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") {
     botTabularImportLog("validation_summary", owner, tabularImportSummary(parsed));
+  }
+  if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    botTabularImportLog("animal_import_validation_summary", owner, animalImportSummary(parsed));
+  }
+
+  if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed, acao_pendente: "tipo_tabela_ambigua" } });
+    return confirmationText(parsed);
   }
 
   const criticalLocalFallback = parsed.dados?.origem_parser !== "gemini"
@@ -4332,8 +4807,21 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   }
 
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(parsed).ready <= 0) {
+    const summary = tabularImportSummary(parsed);
+    if (summary.notFound > 0) {
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: parsed } });
+      return confirmationText(parsed);
+    }
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return confirmationText(parsed);
+  }
+
+  if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    const summary = animalImportSummary(parsed);
+    if (summary.ready <= 0 && summary.missingLots <= 0) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return confirmationText(parsed);
+    }
   }
 
   const lotPreflight = await lotCreationPreflight(supabase, owner, parsed);
@@ -4747,6 +5235,42 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) return handleFreeText(supabase, owner, text);
 
+  if (session.dados?.acao_pendente === "tipo_tabela_ambigua") {
+    const command = normalizeRanchoText(text);
+    if (command === "3" || isCancelCommand(command)) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return "Cancelado. Nao registrei essa tabela. Nada foi salvo.";
+    }
+
+    const kind = command === "1" || isTableTypeAnimalsCommand(command)
+      ? "animals_import"
+      : command === "2" || isTableTypeEventsCommand(command)
+        ? "animal_events"
+        : null;
+
+    if (!kind) {
+      await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending, acao_pendente: "tipo_tabela_ambigua" } });
+      return ambiguousTableQuestion(pending);
+    }
+
+    const originalTable = String(pending.dados?.texto_tabela_original || "");
+    const parsedTable = parseTabularAnimalEventsMessageAs(originalTable, kind);
+    if (!parsedTable) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return "Nao consegui reler essa tabela com segurança. Envie a tabela novamente no formato correto.";
+    }
+
+    const next = await enrichWithCatalog(supabase, owner, parsedTable);
+    const denied = permissionDeniedMessage(owner, next);
+    if (denied) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return denied;
+    }
+
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+    return confirmationText(next);
+  }
+
   if (session.dados?.acao_pendente === "compra_item_nao_encontrado") {
     const command = normalizeRanchoText(text);
     if (command === "1" || /\b(?:criar|item|estoque)\b/.test(command)) {
@@ -4877,34 +5401,80 @@ async function handleConfirmation(
     return "Não encontrei uma confirmação pendente. Envie um novo registro.";
   }
 
-  if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && isTabularImportIssueCommand(command)) {
-    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending } });
-    const details = tabularImportIssueDetails(pending, 15);
-    return details
-      ?`Linhas que nao vou importar agora:\n${details}\n\nResponda 1 para importar as linhas validas ou 2 para cancelar.`
-      : "Nao encontrei erros na importacao pendente. Responda 1 para importar ou 2 para cancelar.";
+  const pendingEventSummary = pending.tipo === "IMPORTACAO_EVENTOS_TABELA" ?tabularImportSummary(pending) : null;
+  const pendingAnimalSummary = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" ?animalImportSummary(pending) : null;
+  const eventIssueNumber = pendingEventSummary?.notFound ?(pendingEventSummary.ready ? "3" : "2") : "";
+  const eventCancelNumber = pendingEventSummary?.notFound ?(pendingEventSummary.ready ? "4" : "3") : "";
+  const animalIssueNumber = pendingAnimalSummary ?(pendingAnimalSummary.missingLots ? "3" : "2") : "";
+  const animalCancelNumber = pendingAnimalSummary ?(pendingAnimalSummary.missingLots ? "4" : "3") : "";
+
+  if ((eventCancelNumber && command === eventCancelNumber) || (animalCancelNumber && command === animalCancelNumber)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Cancelado. Nao registrei essa tabela. Nada foi salvo.";
   }
 
-  if (isConfirmCommand(command)) {
-    const denied = permissionDeniedMessage(owner, pending);
+  if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && pendingEventSummary?.notFound && isTabularMissingAnimalRegisterCommand(command)) {
+    const animalPending = await enrichWithCatalog(supabase, owner, animalImportPendingFromMissingEventAnimals(pending));
+    const denied = permissionDeniedMessage(owner, animalPending);
+    if (denied) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return denied;
+    }
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: animalPending } });
+    return confirmationText(animalPending);
+  }
+
+  const wantsIssueDetails = (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && (isTabularImportIssueCommand(command) || command === eventIssueNumber))
+    || (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && (isTabularImportIssueCommand(command) || command === animalIssueNumber));
+  if (wantsIssueDetails) {
+    await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending } });
+    const details = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA"
+      ?animalImportIssueDetails(pending, 15)
+      : tabularImportIssueDetails(pending, 15);
+    const label = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" ?"cadastrar" : "importar";
+    return details
+      ?`Linhas que nao vou ${label} agora:\n${details}\n\nResponda 1 para continuar com as linhas validas ou cancelar para sair.`
+      : `Nao encontrei pendencias nessa tabela. Responda 1 para ${label} ou cancelar para sair.`;
+  }
+
+  const shouldCreateMissingLots = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA"
+    && Boolean(pendingAnimalSummary?.missingLots)
+    && isTabularCreateLotsAndRegisterCommand(command);
+  const shouldImportFoundOnly = pending.tipo === "IMPORTACAO_EVENTOS_TABELA"
+    && Boolean(pendingEventSummary?.notFound && pendingEventSummary.ready)
+    && isTabularImportFoundOnlyCommand(command);
+  let pendingToSave = pending;
+
+  if (shouldCreateMissingLots) {
+    pendingToSave = await enrichWithCatalog(supabase, owner, refreshRanchoMessage(pending, {
+      ...(pending.dados || {}),
+      criar_lotes_faltantes: true
+    }));
+  }
+
+  if (isConfirmCommand(command) || shouldCreateMissingLots || shouldImportFoundOnly) {
+    const denied = permissionDeniedMessage(owner, pendingToSave);
     if (denied) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return denied;
     }
 
     botLog("confirmation", owner, {
-      pending,
+      pending: pendingToSave,
       status: "aguardando_confirmacao",
       nextStep: "salvar"
     });
-    if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
-      botTabularImportLog("confirm_command", owner, tabularImportSummary(pending));
+    if (pendingToSave.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+      botTabularImportLog("confirm_command", owner, tabularImportSummary(pendingToSave));
     }
-    const result = await saveConfirmedRecord(supabase, owner, pending);
+    if (pendingToSave.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+      botTabularImportLog("animal_import_confirm_command", owner, animalImportSummary(pendingToSave));
+    }
+    const result = await saveConfirmedRecord(supabase, owner, pendingToSave);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
-    const postConfirmationText = result.savedReal ?await handlePostConfirmationConsultations(supabase, owner, pending) : "";
+    const postConfirmationText = result.savedReal ?await handlePostConfirmationConsultations(supabase, owner, pendingToSave) : "";
     const resultResponse = postConfirmationText ?`${result.response}\n\n${postConfirmationText}` : result.response;
-    if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    if (pendingToSave.tipo === "IMPORTACAO_EVENTOS_TABELA") {
       botTabularImportLog("save_result", owner, {
         saved_real: Boolean(result.savedReal),
         saved_tables: result.savedTables || [],
@@ -4914,7 +5484,7 @@ async function handleConfirmation(
 
     if (options.modoTesteSalvarReal && result.savedReal) {
       console.log("[BOT TEST REAL SAVE]", {
-        tipo_registro: pending.tipo,
+        tipo_registro: pendingToSave.tipo,
         service: "saveConfirmedRecord",
         tabelas: result.savedTables || [],
         fazenda_id: owner.fazenda_id,
@@ -5013,6 +5583,24 @@ function ownerBlockedMessage(reason: Awaited<ReturnType<typeof resolveWhatsAppOw
 
 function pendingFromSession(session?: BotSession | null) {
   return session?.dados?.pending as ParsedRanchoMessage | undefined;
+}
+
+function isDryRunConfirmationCommand(session: BotSession, command: string) {
+  const pending = pendingFromSession(session);
+  if (!pending) return isConfirmCommand(command);
+
+  if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    const summary = tabularImportSummary(pending);
+    if (summary.notFound && isTabularMissingAnimalRegisterCommand(command)) return false;
+    if (summary.notFound && summary.ready && isTabularImportFoundOnlyCommand(command)) return true;
+  }
+
+  if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+    const summary = animalImportSummary(pending);
+    if (summary.missingLots && isTabularCreateLotsAndRegisterCommand(command)) return true;
+  }
+
+  return isConfirmCommand(command);
 }
 
 function buildProcessResult(input: {
@@ -5115,7 +5703,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else {
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const localParsedPreview = parseRanchoMessage(parserMessage);
-    const tableParsedPreview = localParsedPreview.tipo === "IMPORTACAO_EVENTOS_TABELA" ?localParsedPreview : null;
+    const tableParsedPreview = ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
+      ?localParsedPreview
+      : null;
     if (originalMessage.includes(";")) {
       botTabularImportLog("parser_preview", owner, {
         chars_original: originalMessage.length,
@@ -5132,7 +5722,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     }
     const conversationAct: ConversationAct = tableParsedPreview ?{
       messageType: "new_action",
-      intent: "IMPORTACAO_EVENTOS_TABELA",
+      intent: tableParsedPreview.tipo,
       confidence: tableParsedPreview.confianca,
       targetPreviousActionId: null,
       targetPreviousAction: null,
@@ -5174,8 +5764,14 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         await saveSession(supabase, owner, { etapa: "livre", dados: {} });
         response = "Não há operação pendente para repetir. Envie um novo registro.";
       }
-    } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isConfirmCommand(command)) {
+    } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isDryRunConfirmationCommand(previousSession, command)) {
       parsed = pendingFromSession(previousSession);
+      if (parsed?.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(parsed).missingLots && isTabularCreateLotsAndRegisterCommand(command)) {
+        parsed = await enrichWithCatalog(supabase, owner, refreshRanchoMessage(parsed, {
+          ...(parsed.dados || {}),
+          criar_lotes_faltantes: true
+        }));
+      }
       const denied = permissionDeniedMessage(owner, parsed);
       const invalidReason = parsed ?validatePendingForSave(parsed) : null;
       if (denied) {
@@ -5204,6 +5800,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           response_chars: response.length
         });
       }
+      if (parsed?.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
+        botTabularImportLog("animal_import_dry_run_confirmed", owner, {
+          ...animalImportSummary(parsed),
+          response_chars: response.length
+        });
+      }
       }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
@@ -5214,7 +5816,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         eventConfirmed = false;
         response = handled.response || "";
       } else {
-        eventConfirmed = isConfirmCommand(command);
+        const summary = parsed?.tipo === "IMPORTACAO_EVENTOS_TABELA" ?tabularImportSummary(parsed) : null;
+        const isMissingAnimalDecision = Boolean(summary?.notFound && isTabularMissingAnimalRegisterCommand(command));
+        eventConfirmed = isConfirmCommand(command) && !isMissingAnimalDecision;
         response = await handleConfirmation(supabase, owner, previousSession, message, command, {
           modoTesteSalvarReal: salvarRealNoTeste
         });

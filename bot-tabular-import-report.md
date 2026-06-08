@@ -1,75 +1,126 @@
-# Relatorio tecnico - importacao tabular de eventos do rebanho
+# Relatorio tecnico - importacao tabular pelo WhatsApp
 
 ## Escopo
 
 - Parser local para mensagens coladas em formato de tabela com separador `;`.
-- Fluxo seguro no WhatsApp: parse, validacao por fazenda, resumo, confirmacao e importacao apenas das linhas validas.
+- Fluxo seguro no WhatsApp: parse, validacao por fazenda, resumo, confirmacao e salvamento apenas das linhas validas.
+- Suporte a tabelas de eventos do rebanho e cadastro de animais.
+- Suporte a tabela ambigua com pergunta antes de continuar.
 - Sem alteracao de schema, RLS, autenticacao, dashboard, landing page ou Twilio.
 - Sem envio real de WhatsApp nos testes.
 - Sem escrita real de dados nos testes destrutivos: `modoTeste=true` e `salvarReal=false`.
 
-## Tabela real testada
+## Tipos de tabela suportados
 
-- Linhas de dados: 31.
-- Linhas parseadas como validas: 30.
-- Linhas com pendencia: 1.
-- Pendencia encontrada: linha 31/32 do texto, animal `090`, tipo `protocolo`, data ausente.
-- Codigos preservados: zeros a esquerda (`001`, `06`, `062`, `090`) e codigo com espaco (`5714 CF`).
-- Observacoes preservadas: `Reteste` e `Nao passou`.
+### Eventos do rebanho
 
-## Tipos reconhecidos
+Modelo aceito:
 
-- `Inseminacao`: 18.
-- `Parto`: 12.
-- `Protocolo`: 1.
+```text
+Codigo / Animal;Status / Tipo;Data;Observacoes
+B-101;Inseminacao;01/06/2026;IA com touro Nelore
+B-102;Protocolo;02/06/2026;Inicio IATF
+```
 
-## Regras de salvamento
+Tambem aceita cabecalho simples:
 
-- Nenhum evento e salvo antes da confirmacao.
-- Confirmacao positiva em tabela com pendencias importa apenas linhas validas.
-- Linhas sem animal, sem data, com data invalida, tipo desconhecido, animal inativo/ambiguo ou duplicidade ficam fora da importacao.
-- Duplicidade simples verificada por animal, tipo, data e descricao.
-- Importacao em massa exige admin; funcionario comum recebe bloqueio de permissao.
-- Validacao de animais usa `fazenda_id` do numero autorizado, evitando cruzamento entre fazendas.
+```text
+Animal;Tipo;Data;Obs
+B-002;Parto;01/06/2026;animal encontrado
+```
 
-## Reproducao do erro real
+Tipos reconhecidos:
 
-- O parser isolado aceitava a tabela com quebras de linha reais.
-- O fluxo real do simulador/webhook passava o corpo por `sanitizeFreeText`, que achatava as quebras em espacos antes de chegar ao parser.
-- Quando a tabela chegava como `\n` literal, o parser tambem nao separava linhas.
-- Nesses dois formatos, a mensagem deixava de ser reconhecida como `IMPORTACAO_EVENTOS_TABELA` e podia cair no parser comum.
+- `Inseminacao`.
+- `Parto`.
+- `Protocolo`.
 
-## Ajuste aplicado
+### Cadastro de animais
 
-- O corpo das mensagens do simulador, webhook Twilio e webhook WhatsApp agora usa `sanitizeWhatsappMessageText`, preservando quebras de linha sem liberar caracteres de controle.
-- O parser tabular normaliza CRLF, LF, CR, `\n` literal e quebras URL/HTML escapadas antes de procurar cabecalho e linhas.
-- A deteccao tabular continua antes do parser comum.
-- Confirmacoes humanas como `so as validas`, `somente validas` e `apenas validas` passam a confirmar a importacao parcial.
-- Logs opcionais com `RANCHO_BOT_DEBUG_TABULAR=1` mostram etapa, formato de quebra, intent selecionada, totais de linhas e resultado de salvamento sem expor chave ou texto integral.
+Modelo completo aceito:
 
-## Testes adicionados
+```text
+Codigo;Nome;Categoria;Sexo;Raca;Lote;Nascimento;Peso;Status;Observacoes
+B-101;Estrela;vaca;femea;Girolando;Lactacao 1;10/03/2022;480;ativo;
+B-102;;bezerro;macho;;;15/01/2026;;ativo;
+```
 
-- Testes diretos do parser: 8.
-- Casos estruturados no fluxo real do bot: 10.
-- Total adicionado: 18.
+Modelo minimo aceito:
 
-## Cobertura nova
+```text
+Codigo;Categoria;Sexo
+B-201;boi;macho
+B-202;vaca;
+```
 
-- Tabela real completa.
-- Cabecalhos com e sem acento.
-- Cabecalho simples (`Animal;Tipo;Data;Obs`).
-- Espacos ao redor do separador.
-- Linhas vazias.
-- Datas com ponto, barra, hifen e ano completo.
-- Observacao com `;` extra.
-- Mensagem sanitizada como a rota do simulador/webhook.
-- Quebras reais, CRLF e `\n` literal.
-- Mensagem normal nao ativa parser tabular.
-- Confirmacao, `so as validas`, cancelamento, `ver erros`, permissao, duplicidade e multi-fazenda.
+Campos aceitos:
+
+- Codigo/brinco.
+- Nome opcional.
+- Categoria: `vaca`, `boi`, `bezerro`, `novilha`, `touro`, `outro`.
+- Sexo: `macho`, `femea`, `nao_informado`.
+- Raca, lote, nascimento, peso, status e observacoes.
+
+## Deteccao
+
+- Cabecalhos com `Data` e `Tipo/Evento/Status` sao tratados como eventos.
+- Cabecalhos com `Nome`, `Categoria`, `Sexo`, `Raca`, `Lote`, `Nascimento` ou `Peso` sao tratados como cadastro de animais.
+- Cabecalho que pode ser dos dois tipos vira `IMPORTACAO_TABELA_AMBIGUA`; o bot pergunta se e cadastro de animais ou eventos antes de continuar.
+- O parser normaliza CRLF, LF, CR, `\n` literal e quebras URL/HTML escapadas.
+
+## Fluxo com animais faltantes
+
+- Em tabela de eventos, animais nao encontrados ficam fora da importacao imediata.
+- O bot mostra os codigos faltantes e oferece:
+  - cadastrar animais faltantes;
+  - importar somente eventos dos animais encontrados;
+  - ver pendencias;
+  - cancelar.
+- Ao cadastrar faltantes, o bot cria uma tabela interna de cadastro de animais com:
+  - codigo preservado;
+  - categoria `outro`;
+  - sexo `nao_informado`;
+  - status `ativo`;
+  - observacao indicando origem da tabela de eventos.
+- Depois do cadastro real, o bot volta a oferecer a importacao dos eventos originais.
+
+## Duplicados e lotes
+
+- Cadastro tabular de animais usa comparacao exata de brinco dentro da fazenda.
+- `001` e `1` sao tratados como codigos diferentes no cadastro de animais.
+- Codigos repetidos na propria tabela sao ignorados.
+- Animais ja existentes no mesmo rancho sao ignorados.
+- Lote existente e resolvido pelo nome.
+- Lote nao encontrado bloqueia aquela linha, a menos que o dono escolha `criar lotes e cadastrar`.
+- Criacao de lote por tabela continua exigindo usuario admin.
+
+## Permissoes e seguranca
+
+- Funcionario comum nao pode importar eventos do rebanho nem cadastrar animais em massa.
+- Admin pode importar eventos e cadastrar animais.
+- Nenhuma tabela salva antes da confirmacao.
+- Consultas/modelos de tabela nao salvam dados.
+- Testes usam Supabase mockado e nao enviam WhatsApp real.
+
+## Testes adicionados nesta etapa
+
+- Parser de cadastro de animais completo.
+- Parser de cadastro minimo sem nome.
+- Parser de tabela ambigua.
+- Confirmacao de cadastro tabular sem salvar antes.
+- Cadastro tabular apenas de linhas validas.
+- Criacao opcional de lote faltante.
+- Cadastro com codigo `001` mesmo existindo `1`.
+- Bloqueio de funcionario comum.
+- Eventos com animais faltantes oferecendo cadastro em massa.
+- Eventos com faltantes importando somente encontrados.
+- Cadastro em massa dos animais faltantes.
+- Escolha de tipo para tabela ambigua.
+- Pedido de modelo de tabela sem salvar.
 
 ## Validacao executada
 
-- `npm run test:bot`: aprovado, 1174/1174.
+- `npm run test:bot`: aprovado, 1188/1188.
 - `npm run lint`: aprovado, sem warnings ou erros.
 - `npm run build`: aprovado.
 
