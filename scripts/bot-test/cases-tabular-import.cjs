@@ -37,6 +37,7 @@ module.exports = function loadBotTestSection(context) {
     const escapedTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\\n");
     const routeSanitizedTabularAnimalEventsMessage = sanitizeWhatsappMessageText(realTabularAnimalEventsMessage);
     const crlfTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\r\n");
+    const flatSingleLineTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, " ");
     const animalRegistrationTableMessage = [
       "Codigo;Nome;Categoria;Sexo;Raca;Lote;Nascimento;Peso;Status;Observacoes",
       "IMP-101;Aurora;vaca;femea;Girolando;Lactacao 1;10/03/2022;480;ativo;linha completa",
@@ -146,6 +147,19 @@ module.exports = function loadBotTestSection(context) {
           total_linhas_parse_validas: 30,
           total_linhas_parse_invalidas: 1,
           tableRow: { lineNumber: 2, animal: "001", evento_tipo: "inseminacao", data_referencia: "2026-01-01" }
+        }
+      },
+      {
+        name: "tabela real colada em uma linha nao vira atualizacao de animal",
+        module: "tabela-eventos",
+        phrase: flatSingleLineTabularAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 31,
+          total_linhas_parse_validas: 30,
+          total_linhas_parse_invalidas: 1,
+          tableRow: { lineNumber: 19, animal: "5714 CF", evento_tipo: "inseminacao", data_referencia: "2026-05-06", observacoes: "passou" }
         }
       },
       {

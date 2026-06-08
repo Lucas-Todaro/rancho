@@ -468,6 +468,96 @@ function stockImportCounts(rows: ParsedTabularStockImportRow[]) {
   }, {});
 }
 
+function splitNotesHeaderAndFirstCode(value: string) {
+  const text = value.trim();
+  if (!text) return { notesHeader: "Observacoes", firstCode: "" };
+
+  const parts = text.split(/\s+/);
+  const firstWord = normalizeRanchoText(parts[0] || "");
+  if (/^(?:observacoes|observacao|obs|nota|notas)$/.test(firstWord) && parts.length > 1) {
+    return {
+      notesHeader: parts[0],
+      firstCode: parts.slice(1).join(" ").trim()
+    };
+  }
+
+  return { notesHeader: text, firstCode: "" };
+}
+
+function looksLikeFlatAnimalCode(value: string) {
+  const normalized = normalizeAnimalTableCode(value).replace(/\s+/g, " ");
+  if (!normalized) return false;
+  if (/\b(?:NAO|NÃO|RET|RETESTE|PASSOU|PROTOCOLO|OBS|OBSERVACAO|OBSERVACOES)\b/.test(normalized)) return false;
+  return /^(?:[A-Z]{1,6}[- ]?)?\d+[A-Z0-9-]*(?:\s+[A-Z]{1,6})?$/.test(normalized);
+}
+
+function splitObservationAndNextCode(value: string) {
+  const text = value.trim();
+  if (!text) return { observacoes: "", nextCode: "" };
+  if (looksLikeFlatAnimalCode(text)) return { observacoes: "", nextCode: text };
+
+  const match = text.match(/^(.*\S)\s+((?:[A-Za-z]{1,6}[- ]?)?\d+[A-Za-z0-9-]*(?:\s+[A-Za-z]{1,6})?)$/);
+  const nextCode = match?.[2]?.trim() || "";
+  if (nextCode && looksLikeFlatAnimalCode(nextCode)) {
+    return {
+      observacoes: (match?.[1] || "").trim(),
+      nextCode
+    };
+  }
+
+  return { observacoes: text, nextCode: "" };
+}
+
+function isFlatAnimalEventStart(cells: string[], index: number) {
+  if (!cells[index]?.trim()) return false;
+  if (!resolveEventType(cells[index + 1] || "")) return false;
+
+  const date = (cells[index + 2] || "").trim();
+  return !date || Boolean(parseTableDate(date));
+}
+
+function unfoldSingleLineAnimalEventsTable(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.includes("\n") || !trimmed.includes(";")) return text;
+
+  const cells = trimmed.split(";").map((cell) => cell.trim());
+  if (cells.length < 6) return text;
+
+  const headerLine = [cells[0], cells[1], cells[2]].join(";");
+  if (detectTableKindFromHeader(headerLine) !== "animal_events") return text;
+
+  const { notesHeader, firstCode } = splitNotesHeaderAndFirstCode(cells[3] || "");
+  const lines = [[cells[0], cells[1], cells[2], notesHeader || "Observacoes"].join(";")];
+  let index = 4;
+  let pendingCode = firstCode;
+
+  while (pendingCode || index < cells.length) {
+    const code = pendingCode || cells[index++] || "";
+    pendingCode = "";
+    if (!code.trim() && index >= cells.length) break;
+
+    const status = cells[index++] || "";
+    const date = cells[index++] || "";
+    let notes = "";
+
+    if (index < cells.length) {
+      if (isFlatAnimalEventStart(cells, index)) {
+        const split = splitObservationAndNextCode(cells[index] || "");
+        notes = split.observacoes;
+        pendingCode = split.nextCode;
+        index += 1;
+      } else {
+        notes = cells.slice(index).join(";").trim();
+        index = cells.length;
+      }
+    }
+
+    lines.push([code, status, date, notes].join(";"));
+  }
+
+  return lines.length > 1 ? lines.join("\n") : text;
+}
+
 export function normalizeTabularAnimalEventsText(text: string) {
   let normalized = String(text || "")
     .replace(/\r\n/g, "\n")
@@ -480,6 +570,10 @@ export function normalizeTabularAnimalEventsText(text: string) {
       .replace(/\\r/g, "\n")
       .replace(/%0D%0A|%0A|%0D/gi, "\n")
       .replace(/&#10;|&#x0a;/gi, "\n");
+  }
+
+  if (!normalized.includes("\n") && normalized.includes(";")) {
+    normalized = unfoldSingleLineAnimalEventsTable(normalized);
   }
 
   return normalized;
