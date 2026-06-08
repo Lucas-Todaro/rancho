@@ -440,6 +440,47 @@ module.exports = function loadBotTestSection(context) {
         return actions;
       }
 
+      if (tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+        const rows = Array.isArray(dados.linhas_validadas) ? dados.linhas_validadas : [];
+        const actions = [];
+        if (dados.criar_itens_faltantes) {
+          const items = Array.from(new Set(rows
+            .filter((row) => row.status_validacao === "pronto" && row.criar_item_estoque)
+            .map((row) => String(row.item_nome || row.item_original || "").trim())
+            .filter(Boolean)));
+          for (const itemName of items) {
+            actions.push({
+              ...base,
+              table: BOT_TEST_TABLES.estoqueItens,
+              payload: {
+                fazenda_id: fazendaId,
+                nome: itemName,
+                unidade_medida: "kg",
+                ativo: true,
+                origem: "whatsapp"
+              }
+            });
+          }
+        }
+
+        for (const row of rows.filter((item) => item.status_validacao === "pronto")) {
+          actions.push({
+            ...base,
+            table: BOT_TEST_TABLES.estoqueMovimentacoes,
+            payload: {
+              fazenda_id: fazendaId,
+              item_id: row.item_id || null,
+              item_nome: row.item_resolvido || row.item_nome || row.item_original,
+              tipo: row.tipo_movimento,
+              quantidade: Number(row.quantidade || 0),
+              unidade: row.unidade,
+              origem: "whatsapp"
+            }
+          });
+        }
+        return actions;
+      }
+
       if (tipo === "DESPESA" || tipo === "RECEITA_VENDA") {
         return [{
           ...base,

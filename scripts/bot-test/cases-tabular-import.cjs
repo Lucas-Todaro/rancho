@@ -63,6 +63,23 @@ module.exports = function loadBotTestSection(context) {
       "MISSING-777;Inseminacao;02/06/26;animal faltante",
       "MISSING-778;Protocolo;03/06/26;animal faltante"
     ].join("\n");
+    const stockImportTableMessage = [
+      "Item;Quantidade;Unidade;Tipo;Data;Observacoes",
+      "Racao de boi;10;kg;Entrada;01.06.26;",
+      "Aftosa;5;doses;Entrada;02.06.26;",
+      "Sal Mineral;;kg;Entrada;03.06.26;Quantidade ausente",
+      "Arroz;7;kg;Saida;32.06.26;Item faltante e data invalida"
+    ].join("\n");
+    const cleanStockImportTableMessage = [
+      "Item;Quantidade;Unidade;Tipo;Data;Observacoes",
+      "Racao de boi;10;kg;Entrada;01.06.26;",
+      "Aftosa;5;doses;Entrada;02.06.26;"
+    ].join("\n");
+    const missingStockItemTableMessage = [
+      "Item;Quantidade;Unidade;Tipo;Data;Observacoes",
+      "Racao de boi;10;kg;Entrada;01.06.26;",
+      "Arroz;7;kg;Entrada;02.06.26;Item novo"
+    ].join("\n");
 
     const tabularAnimalCodes = [
       "001", "204", "143", "177", "397", "387", "249", "062", "195", "398",
@@ -211,6 +228,31 @@ module.exports = function loadBotTestSection(context) {
           exactTipo: true,
           tipo: "IMPORTACAO_TABELA_AMBIGUA",
           total_linhas: 1
+        }
+      },
+      {
+        name: "tabela de estoque detecta item quantidade unidade e tipo",
+        module: "tabela-estoque",
+        phrase: cleanStockImportTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ESTOQUE_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          tableRow: { lineNumber: 2, item_nome: "Racao de boi", quantidade: 10, unidade: "kg", tipo_movimento: "entrada" }
+        }
+      },
+      {
+        name: "tabela de estoque marca quantidade ausente e data invalida",
+        module: "tabela-estoque",
+        phrase: stockImportTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ESTOQUE_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_validas: 2,
+          total_linhas_parse_invalidas: 2,
+          tableRow: { lineNumber: 4, item_nome: "Sal Mineral", problem: "quantidade_ausente" }
         }
       }
     ];
@@ -553,6 +595,97 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           responseIncludes: "Codigo;Nome;Categoria;Sexo",
           savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque sem erros pede confirmacao",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [cleanStockImportTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Pre-validacao",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque importa apenas linhas validas",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [stockImportTableMessage, "2"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "2 movimentacao",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { item_nome: "Aftosa", quantidade: 5 },
+          shouldNotSaveValues: { item_nome: "Arroz" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque com item faltante oferece criacao",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingStockItemTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Itens de estoque nao cadastrados",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque cria item faltante quando solicitado",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingStockItemTableMessage, "1"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "2 movimentacao",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 3,
+          savedTables: [BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { nome: "Arroz" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque mostra pendencias mantendo sessao",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [stockImportTableMessage, "ver pendencias"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "linha 4",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque cancela sem salvar",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingStockItemTableMessage, "4"],
+        expected: {
+          responseIncludes: "Nada foi salvo",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldClearSession: true,
           shouldNotWriteBusiness: true
         }
       }

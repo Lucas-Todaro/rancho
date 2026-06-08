@@ -238,6 +238,10 @@ module.exports = function loadBotTestSection(context) {
           if (expected.tableRow.raca && normalize(row.raca) !== normalize(expected.tableRow.raca)) failures.push(`linha tabela raca esperada ${expected.tableRow.raca}, recebida ${row.raca}`);
           if (expected.tableRow.lote_nome && normalize(row.lote_nome) !== normalize(expected.tableRow.lote_nome)) failures.push(`linha tabela lote esperado ${expected.tableRow.lote_nome}, recebido ${row.lote_nome}`);
           if (expected.tableRow.status && normalize(row.status) !== normalize(expected.tableRow.status)) failures.push(`linha tabela status esperado ${expected.tableRow.status}, recebido ${row.status}`);
+          if (expected.tableRow.item_nome && normalize(row.item_nome) !== normalize(expected.tableRow.item_nome)) failures.push(`linha tabela item esperado ${expected.tableRow.item_nome}, recebido ${row.item_nome}`);
+          if ("quantidade" in expected.tableRow && Number(row.quantidade) !== Number(expected.tableRow.quantidade)) failures.push(`linha tabela quantidade esperada ${expected.tableRow.quantidade}, recebida ${row.quantidade}`);
+          if (expected.tableRow.unidade && normalize(row.unidade) !== normalize(expected.tableRow.unidade)) failures.push(`linha tabela unidade esperada ${expected.tableRow.unidade}, recebida ${row.unidade}`);
+          if (expected.tableRow.tipo_movimento && normalize(row.tipo_movimento) !== normalize(expected.tableRow.tipo_movimento)) failures.push(`linha tabela movimento esperado ${expected.tableRow.tipo_movimento}, recebido ${row.tipo_movimento}`);
           if (expected.tableRow.problem && !(Array.isArray(row.problemas) && row.problemas.includes(expected.tableRow.problem))) failures.push(`linha tabela deveria conter problema ${expected.tableRow.problem}, recebeu ${row.problemas}`);
         }
       }

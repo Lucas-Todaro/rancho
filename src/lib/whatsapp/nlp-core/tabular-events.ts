@@ -37,13 +37,32 @@ export type ParsedTabularAnimalImportRow = {
   problemas: string[];
 };
 
+export type ParsedTabularStockImportRow = {
+  lineNumber: number;
+  rawText: string;
+  item_original: string;
+  item_nome: string;
+  quantidade_original: string;
+  quantidade: number | null;
+  unidade_original: string;
+  unidade: string | null;
+  tipo_original: string;
+  tipo_movimento: "entrada" | "saida" | null;
+  data_original: string;
+  data_referencia: string | null;
+  valor_original: string;
+  valor: number | null;
+  observacoes: string;
+  problemas: string[];
+};
+
 type EventTypeResolution = {
   evento_tipo: ParsedTabularAnimalEventRow["evento_tipo"];
   evento_label: string;
   db_tipo: ParsedTabularAnimalEventRow["db_tipo"];
 };
 
-type TableKind = "animal_events" | "animals_import" | "ambiguous" | null;
+type TableKind = "animal_events" | "animals_import" | "stock_import" | "ambiguous" | null;
 
 type ParsedLine = {
   text: string;
@@ -90,7 +109,11 @@ function buildHeaderMap(headerLine: string): HeaderMap {
     lot: headerIndex(cells, [/^(?:lote|piquete|pasto)$/]),
     status: headerIndex(cells, [/^(?:status|situacao)$/]),
     weight: headerIndex(cells, [/^(?:peso|kg)$/]),
-    birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/])
+    birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]),
+    item: headerIndex(cells, [/^(?:item|produto|insumo|material)$/]),
+    quantity: headerIndex(cells, [/^(?:quantidade|qtd|qtde)$/]),
+    unit: headerIndex(cells, [/^(?:unidade|un|medida)$/]),
+    value: headerIndex(cells, [/^(?:valor|preco|preco\s+unitario|valor\s+unitario|custo)$/])
   };
 }
 
@@ -99,18 +122,23 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
 
   const cells = splitHeaderCells(headerLine);
   const hasCode = hasAnyHeader(cells, [/^(?:codigo|cod|brinco|animal)(?:\s+animal)?$/, /^codigo\s+animal$/]);
-  if (!hasCode) return null;
-
   const hasDate = hasAnyHeader(cells, [/^data$/, /^data\s+evento$/]);
   const hasEvent = hasAnyHeader(cells, [/^(?:status\s+tipo|evento)$/]);
   const hasTypeOrStatus = hasAnyHeader(cells, [/^(?:status|tipo)$/]);
   const hasAnimalField = hasAnyHeader(cells, [/^nome$/, /^categoria$/, /^sexo$/, /^raca$/, /^lote$/, /^piquete$/, /^pasto$/, /^peso$/, /^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]);
+  const hasStockField = hasAnyHeader(cells, [/^(?:item|produto|insumo|material)$/, /^(?:quantidade|qtd|qtde)$/, /^(?:unidade|un|medida)$/]);
 
   const eventScore = (hasDate ? 2 : 0) + (hasEvent ? 2 : 0) + (hasTypeOrStatus ? 1 : 0);
   const animalScore = (hasAnimalField ? 2 : 0)
     + (hasAnyHeader(cells, [/^nome$/]) ? 2 : 0)
     + (hasAnyHeader(cells, [/^categoria$/, /^sexo$/, /^raca$/, /^lote$/]) ? 1 : 0);
+  const stockScore = (hasStockField ? 3 : 0)
+    + (hasAnyHeader(cells, [/^(?:item|produto|insumo|material)$/]) ? 2 : 0)
+    + (hasAnyHeader(cells, [/^(?:quantidade|qtd|qtde)$/]) ? 2 : 0)
+    + (hasAnyHeader(cells, [/^(?:unidade|un|medida)$/]) ? 1 : 0);
 
+  if (stockScore >= 5 && stockScore > eventScore && stockScore > animalScore) return "stock_import";
+  if (!hasCode) return null;
   if (eventScore >= 3 && eventScore > animalScore) return "animal_events";
   if (animalScore >= 3 && animalScore > eventScore) return "animals_import";
   if (eventScore >= 3 && animalScore >= 3) return "ambiguous";
@@ -229,6 +257,94 @@ function parseAnimalWeight(value: string) {
   return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
+function parsePositiveTableNumber(value: string) {
+  const normalized = value.trim().replace(/\s+/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+  if (!normalized) return null;
+  const number = Number(normalized);
+  return Number.isFinite(number) && number > 0 ?number : null;
+}
+
+function parseOptionalMoney(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+  const normalized = text
+    .replace(/r\$/gi, "")
+    .replace(/\s+/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) && number >= 0 ?number : null;
+}
+
+function normalizeStockUnit(value: string) {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return null;
+  if (/^(?:kg|quilo|quilos|kilograma|kilogramas)$/.test(normalized)) return "kg";
+  if (/^(?:saco|sacos)$/.test(normalized)) return "saco";
+  if (/^(?:dose|doses)$/.test(normalized)) return "dose";
+  if (/^(?:unidade|unidades|un|und)$/.test(normalized)) return "unidade";
+  if (/^(?:litro|litros|l)$/.test(normalized)) return "litro";
+  if (/^(?:caixa|caixas)$/.test(normalized)) return "caixa";
+  if (/^(?:fardo|fardos)$/.test(normalized)) return "fardo";
+  return null;
+}
+
+function normalizeStockMovementType(value: string): ParsedTabularStockImportRow["tipo_movimento"] {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return null;
+  if (/^(?:entrada|compra|comprado|adicao|adicionar|recebido|recebimento)$/.test(normalized)) return "entrada";
+  if (/^(?:saida|saída|uso|usado|baixa|retirada|consumo|venda|vendido)$/.test(normalized)) return "saida";
+  return null;
+}
+
+function parseStockImportLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularStockImportRow | null {
+  const cells = line.split(";").map((cell) => cell.trim());
+  if (cells.length < 3) return null;
+  if (cells.every((cell) => !cell)) return null;
+
+  const itemOriginal = cellAt(cells, header.item ?? 0);
+  const quantityOriginal = cellAt(cells, header.quantity);
+  const unitOriginal = cellAt(cells, header.unit);
+  const typeOriginal = cellAt(cells, header.eventType ?? header.status);
+  const dateOriginal = cellAt(cells, header.date);
+  const valueOriginal = cellAt(cells, header.value);
+  const quantity = parsePositiveTableNumber(quantityOriginal);
+  const unit = normalizeStockUnit(unitOriginal);
+  const movementType = normalizeStockMovementType(typeOriginal);
+  const parsedDate = dateOriginal ?parseTableDate(dateOriginal) : null;
+  const value = parseOptionalMoney(valueOriginal);
+  const problemas: string[] = [];
+
+  if (!itemOriginal.trim()) problemas.push("item_ausente");
+  if (!quantityOriginal.trim()) problemas.push("quantidade_ausente");
+  else if (quantity === null) problemas.push("quantidade_invalida");
+  if (!unitOriginal.trim()) problemas.push("unidade_ausente");
+  else if (!unit) problemas.push("unidade_invalida");
+  if (!typeOriginal.trim()) problemas.push("tipo_movimento_ausente");
+  else if (!movementType) problemas.push("tipo_movimento_desconhecido");
+  if (dateOriginal.trim() && !parsedDate) problemas.push("data_invalida");
+  if (valueOriginal.trim() && value === null) problemas.push("valor_invalido");
+
+  return {
+    lineNumber,
+    rawText: line,
+    item_original: itemOriginal,
+    item_nome: itemOriginal.trim(),
+    quantidade_original: quantityOriginal,
+    quantidade: quantity,
+    unidade_original: unitOriginal,
+    unidade: unit,
+    tipo_original: typeOriginal,
+    tipo_movimento: movementType,
+    data_original: dateOriginal,
+    data_referencia: parsedDate,
+    valor_original: valueOriginal,
+    valor: value,
+    observacoes: cellAt(cells, header.notes),
+    problemas
+  };
+}
+
 function parseOptionalDate(value: string) {
   return parseTableDate(value);
 }
@@ -332,6 +448,14 @@ function animalImportCounts(rows: ParsedTabularAnimalImportRow[]) {
   }, {});
 }
 
+function stockImportCounts(rows: ParsedTabularStockImportRow[]) {
+  return rows.reduce<Record<string, number>>((counts, row) => {
+    const key = row.tipo_movimento || "desconhecido";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 export function normalizeTabularAnimalEventsText(text: string) {
   let normalized = String(text || "")
     .replace(/\r\n/g, "\n")
@@ -416,6 +540,37 @@ function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex:
   }, [], 0.96);
 }
 
+function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const header = buildHeaderMap(lines[headerIndex].text);
+  const rows: ParsedTabularStockImportRow[] = [];
+
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (detectTableKindFromHeader(line.text)) continue;
+    if (!line.text.includes(";")) continue;
+    const row = parseStockImportLine(line.text, line.lineNumber, header);
+    if (row) rows.push(row);
+  }
+
+  if (!rows.length) return null;
+
+  const validParseRows = rows.filter((row) => row.problemas.length === 0);
+  const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+
+  return finalize("IMPORTACAO_ESTOQUE_TABELA", {
+    origem_parser: "tabela_local",
+    tipo_tabela: "stock_import",
+    importacao_tabela_estoque: true,
+    tabela_destino: "estoque_movimentacoes",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: validParseRows.length,
+    total_linhas_parse_invalidas: invalidParseRows.length,
+    contagem_estoque_parse: stockImportCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidParseRows,
+    instrucoes_confirmacao: "confirmar_para_importar_estoque_valido"
+  }, [], 0.96);
+}
+
 function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const dataLines = lines.slice(headerIndex + 1).filter((line) => line.text.includes(";"));
   if (!dataLines.length) return null;
@@ -438,15 +593,16 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
   const kind = detectTableKindFromHeader(lines[headerIndex].text);
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
+  if (kind === "stock_import") return parseStockImportTable(text, lines, headerIndex);
   if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
   return null;
 }
 
-export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import"): ParsedRanchoMessage | null {
+export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import"): ParsedRanchoMessage | null {
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
   if (headerIndex < 0) return null;
-  return kind === "animal_events"
-    ? parseAnimalEventsTable(text, lines, headerIndex)
-    : parseAnimalsImportTable(text, lines, headerIndex);
+  if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
+  if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
+  return parseStockImportTable(text, lines, headerIndex);
 }

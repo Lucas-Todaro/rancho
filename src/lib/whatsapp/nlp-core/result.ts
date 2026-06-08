@@ -210,6 +210,9 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "IMPORTACAO_ANIMAIS_TABELA") {
     return `cadastrar ${dados.total_linhas || 0} animais por tabela`;
   }
+  if (tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    return `importar ${dados.total_linhas || 0} movimentacoes de estoque por tabela`;
+  }
   if (tipo === "IMPORTACAO_TABELA_AMBIGUA") {
     return "identificar tipo de tabela enviada";
   }

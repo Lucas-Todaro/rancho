@@ -160,6 +160,9 @@ const ANIMAL_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const ANIMAL_EVENT_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "IMPORTACAO_EVENTOS_TABELA"
 ]);
+const STOCK_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "IMPORTACAO_ESTOQUE_TABELA"
+]);
 
 const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.ordenhas]: new Set(["fazenda_id", "animal_id", "litros", "ordenhado_em", "turno", "destino", "origem", "registrado_por", "observacoes"]),
@@ -365,7 +368,10 @@ function permissionDeniedMessage(owner: WhatsAppOwner, parsed?: ParsedRanchoMess
     return "Você não tem permissão para criar lotes pelo bot. Peça para um administrador fazer esse cadastro.";
   }
   if (ANIMAL_EVENT_IMPORT_ADMIN_INTENTS.has(parsed.tipo)) {
-    return "VocÃª nÃ£o tem permissÃ£o para importar eventos do rebanho.";
+    return "Você não tem permissão para importar eventos do rebanho.";
+  }
+  if (STOCK_IMPORT_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Você não tem permissão para importar movimentações de estoque.";
   }
   if (ANIMAL_ADMIN_INTENTS.has(parsed.tipo)) {
     return "Você não tem permissão para cadastrar animais.";
@@ -498,6 +504,11 @@ function isTabularImportFoundOnlyCommand(command: string) {
 function isTabularCreateLotsAndRegisterCommand(command: string) {
   return /^(?:2)\b/.test(command)
     || /\b(?:criar lotes e cadastrar|criar lotes|cria os lotes|cadastrar com lotes|pode criar os lotes)\b/.test(command);
+}
+
+function isTabularCreateStockItemsCommand(command: string) {
+  return /^(?:1|criar itens?|criar item|criar estoque|criar faltantes|criar itens faltantes|cadastrar itens?|cadastrar faltantes)\b/.test(command)
+    || /\b(?:criar itens?|criar item|criar estoque|criar faltantes|criar itens faltantes|cadastrar itens?|cadastrar faltantes)\b/.test(command);
 }
 
 function isTableTypeAnimalsCommand(command: string) {
@@ -792,6 +803,106 @@ function animalImportConfirmationText(parsed: ParsedRanchoMessage) {
   ].filter((line) => line !== "").join("\n");
 }
 
+function stockImportRows(parsed: ParsedRanchoMessage) {
+  const rows = parsed.dados?.linhas_validadas || parsed.dados?.linhas || [];
+  return Array.isArray(rows) ?rows as AnyRecord[] : [];
+}
+
+function stockImportSummary(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const summary = (dados.resumo_validacao || {}) as AnyRecord;
+  const rows = stockImportRows(parsed);
+  const ready = rows.filter((row) => row.status_validacao === "pronto");
+  const invalid = rows.filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  return {
+    total: Number(summary.total || dados.total_linhas || rows.length || 0),
+    ready: Number(summary.prontas ?? ready.length ?? 0),
+    invalid: Number(summary.invalidas ?? invalid.length ?? 0),
+    missingItems: Number(summary.itens_nao_encontrados || 0),
+    duplicates: Number(summary.duplicadas || 0),
+    invalidDates: Number(summary.datas_invalidas || 0),
+    invalidQuantities: Number(summary.quantidades_invalidas || 0),
+    invalidUnits: Number(summary.unidades_invalidas || 0),
+    unknownTypes: Number(summary.tipos_desconhecidos || 0),
+    createMissingItems: Boolean(dados.criar_itens_faltantes),
+    missingItemNames: Array.isArray(summary.nomes_itens_nao_encontrados) ?summary.nomes_itens_nao_encontrados as string[] : [],
+    movementCounts: (summary.por_tipo || dados.contagem_estoque_parse || {}) as Record<string, number>
+  };
+}
+
+function stockImportIssueLabel(issue: string) {
+  const labels: Record<string, string> = {
+    item_ausente: "item não informado",
+    item_nao_encontrado: "item de estoque não cadastrado",
+    quantidade_ausente: "quantidade ausente",
+    quantidade_invalida: "quantidade inválida",
+    unidade_ausente: "unidade ausente",
+    unidade_invalida: "unidade inválida",
+    tipo_movimento_ausente: "tipo de movimento ausente",
+    tipo_movimento_desconhecido: "tipo de movimento desconhecido",
+    data_invalida: "data inválida",
+    valor_invalido: "valor inválido",
+    duplicado_na_tabela: "linha repetida na tabela"
+  };
+  return labels[issue] || issue;
+}
+
+function stockImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
+  const issueRows = stockImportRows(parsed).filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  const rows = issueRows.slice(0, maxRows);
+  if (!rows.length) return "";
+
+  const lines = rows.map((row) => {
+    const issues = Array.isArray(row.problemas_validacao)
+      ?row.problemas_validacao
+      : Array.isArray(row.problemas)
+        ?row.problemas
+        : [];
+    return `- linha ${row.lineNumber || "?"} (${row.item_nome || row.item_original || "sem item"}): ${issues.map((issue) => stockImportIssueLabel(String(issue))).join(", ") || "não importável"}`;
+  });
+
+  const extra = issueRows.length > rows.length ?`\n...e mais ${issueRows.length - rows.length} linha(s) com pendência.` : "";
+  return `${lines.join("\n")}${extra}`;
+}
+
+function stockImportConfirmationText(parsed: ParsedRanchoMessage) {
+  const summary = stockImportSummary(parsed);
+  const issueText = stockImportIssueDetails(parsed, 6);
+  const issueBlock = issueText ?`\n\nPendências:\n${issueText}` : "";
+  const missingText = summary.missingItems ?`Itens de estoque não cadastrados: ${summary.missingItemNames.slice(0, 5).join(", ")}.` : "";
+  const invalidText = summary.invalidDates || summary.invalidQuantities || summary.invalidUnits || summary.unknownTypes
+    ?`Problemas de formato: ${summary.invalidDates + summary.invalidQuantities + summary.invalidUnits + summary.unknownTypes}.`
+    : "";
+  const duplicateText = summary.duplicates ?`Possíveis duplicidades: ${summary.duplicates}.` : "";
+  const options = summary.missingItems
+    ?[
+      "O que deseja fazer?",
+      "1 - Criar itens faltantes",
+      summary.ready ? "2 - Importar somente linhas válidas" : "",
+      "3 - Ver pendências",
+      "4 - Cancelar importação"
+    ]
+    : [
+      summary.invalid || summary.duplicates ? "O que deseja fazer?" : "Deseja importar as linhas válidas?",
+      "1 - Importar linhas válidas",
+      summary.invalid || summary.duplicates ? "2 - Ver pendências" : "",
+      summary.invalid || summary.duplicates ? "3 - Cancelar importação" : "2 - Cancelar importação"
+    ];
+
+  return [
+    "Recebi uma tabela de estoque.",
+    "Pré-validação concluída. Nenhum dado foi salvo ainda.",
+    `Linhas lidas: ${summary.total}.`,
+    `Linhas prontas: ${summary.ready}.`,
+    missingText,
+    invalidText,
+    duplicateText,
+    issueBlock,
+    "",
+    ...options
+  ].filter((line) => line !== "").join("\n");
+}
+
 function ambiguousTableQuestion(parsed: ParsedRanchoMessage) {
   return [
     "Li uma tabela, mas preciso confirmar o tipo antes de continuar.",
@@ -864,6 +975,7 @@ function animalImportPendingFromMissingEventAnimals(parsed: ParsedRanchoMessage)
 function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") return tabularImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") return animalImportConfirmationText(parsed);
+  if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") return stockImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") return ambiguousTableQuestion(parsed);
 
   if (parsed.tipo === "LOTE_REGISTROS") {
@@ -912,6 +1024,12 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
     const summary = animalImportSummary(parsed);
     const lotText = summary.createMissingLots && summary.missingLots ?` e ${summary.missingLots} lote(s) seriam criados` : "";
     return `Simulacao concluida: ${summary.ready} animal(is) seriam cadastrados${lotText}. Nenhum registro real foi salvo.`;
+  }
+
+  if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    const summary = stockImportSummary(parsed);
+    const itemText = summary.createMissingItems && summary.missingItems ?` e ${summary.missingItems} item(ns) seriam criados` : "";
+    return `Simulacao concluida: ${summary.ready} movimentacao(oes) de estoque seriam importadas${itemText}. Nenhum registro real foi salvo.`;
   }
 
   return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.${stockDebug}`;
@@ -995,6 +1113,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     LOTE_REGISTROS: "registros em lote",
     IMPORTACAO_EVENTOS_TABELA: "importação de eventos por tabela",
     IMPORTACAO_ANIMAIS_TABELA: "cadastro de animais por tabela",
+    IMPORTACAO_ESTOQUE_TABELA: "importação de estoque por tabela",
     IMPORTACAO_TABELA_AMBIGUA: "tabela enviada",
     AJUDA: "ajuda",
     DESCONHECIDO: "uma mensagem"
@@ -1235,6 +1354,7 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   const dados = pending.dados || {};
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que você confirme se a tabela é de animais ou eventos antes de continuar.";
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
   if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
@@ -2094,6 +2214,100 @@ async function enrichTabularAnimalImport(supabase: SupabaseAdmin, owner: WhatsAp
   return refreshRanchoMessage(parsed, dados);
 }
 
+async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = { ...(parsed.dados || {}) };
+  const rows = Array.isArray(dados.linhas) ?dados.linhas as AnyRecord[] : [];
+  const stockItems = await listStockItems(supabase, owner);
+  const seenKeys = new Set<string>();
+  const validatedRows: AnyRecord[] = [];
+  const createMissingItems = Boolean(dados.criar_itens_faltantes);
+
+  for (const row of rows) {
+    const problems = Array.isArray(row.problemas) ?row.problemas.map(String) : [];
+    const next: AnyRecord = {
+      ...row,
+      problemas_validacao: [...problems],
+      status_validacao: "invalido"
+    };
+    const itemName = String(row.item_nome || row.item_original || "").trim();
+    const duplicateKey = [
+      normalizeCatalogText(itemName),
+      row.tipo_movimento || "",
+      row.quantidade ?? "",
+      row.unidade || "",
+      row.data_referencia || row.data_original || ""
+    ].join("|");
+
+    if (duplicateKey && seenKeys.has(duplicateKey)) {
+      next.problemas_validacao.push("duplicado_na_tabela");
+      next.status_validacao = "duplicado";
+    } else {
+      seenKeys.add(duplicateKey);
+    }
+
+    if (itemName && !problems.includes("item_ausente")) {
+      const resolved = resolveStockItem(itemName, stockItems);
+      if (resolved.row && resolved.status === "matched") {
+        next.item_id = resolved.row.id;
+        next.item_resolvido = resolved.row.nome;
+        next.unidade_resolvida = resolved.row.unidade_medida || row.unidade || null;
+      } else if (createMissingItems) {
+        next.criar_item_estoque = true;
+      } else {
+        next.problemas_validacao.push("item_nao_encontrado");
+        next.itens_parecidos = (resolved.rows || [])
+          .slice(0, 5)
+          .map((item) => String(item.nome || ""))
+          .filter(Boolean);
+      }
+    }
+
+    const uniqueProblems = Array.from(new Set(next.problemas_validacao.map(String)));
+    next.problemas_validacao = uniqueProblems;
+    const onlyMissingItem = uniqueProblems.length === 1 && uniqueProblems[0] === "item_nao_encontrado";
+    const noProblems = uniqueProblems.length === 0 || (createMissingItems && onlyMissingItem);
+    if (noProblems) next.status_validacao = "pronto";
+    else if (uniqueProblems.includes("duplicado_na_tabela")) next.status_validacao = "duplicado";
+    else next.status_validacao = "invalido";
+    validatedRows.push(next);
+  }
+
+  const readyRows = validatedRows.filter((row) => row.status_validacao === "pronto");
+  const invalidRows = validatedRows.filter((row) => row.status_validacao !== "pronto");
+  const countIssue = (issue: string) => validatedRows.filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes(issue)).length;
+  const missingItemNames = Array.from(new Set(
+    validatedRows
+      .filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("item_nao_encontrado"))
+      .map((row) => String(row.item_nome || row.item_original || "").trim())
+      .filter(Boolean)
+  ));
+
+  dados.linhas_validadas = validatedRows;
+  dados.linhas_prontas = readyRows;
+  dados.linhas_invalidas = invalidRows;
+  dados.criar_itens_faltantes = createMissingItems;
+  dados.resumo_validacao = {
+    total: validatedRows.length,
+    prontas: readyRows.length,
+    invalidas: invalidRows.length,
+    duplicadas: countIssue("duplicado_na_tabela"),
+    itens_nao_encontrados: countIssue("item_nao_encontrado"),
+    nomes_itens_nao_encontrados: missingItemNames,
+    datas_invalidas: countIssue("data_invalida"),
+    quantidades_invalidas: countIssue("quantidade_ausente") + countIssue("quantidade_invalida"),
+    unidades_invalidas: countIssue("unidade_ausente") + countIssue("unidade_invalida"),
+    tipos_desconhecidos: countIssue("tipo_movimento_ausente") + countIssue("tipo_movimento_desconhecido"),
+    valores_invalidos: countIssue("valor_invalido"),
+    por_tipo: validatedRows.reduce<Record<string, number>>((counts, row) => {
+      const key = String(row.tipo_movimento || "desconhecido");
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {})
+  };
+
+  return refreshRanchoMessage(parsed, dados);
+}
+
 async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   const dados = { ...(parsed.dados || {}) };
   let changed = false;
@@ -2104,6 +2318,10 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
     return enrichTabularAnimalImport(supabase, owner, parsed);
+  }
+
+  if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    return enrichTabularStockImport(supabase, owner, parsed);
   }
 
   if (parsed.tipo === "LOTE_REGISTROS") {
@@ -2469,6 +2687,84 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     return realSaveResult(baseResponse, Array.from(savedTables));
+  }
+
+  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    const rows = stockImportRows(pending).filter((row) => row.status_validacao === "pronto");
+    if (!rows.length) return { response: "Não encontrei linhas válidas de estoque para importar. Nada foi salvo." };
+
+    const createMissingItems = Boolean(dados.criar_itens_faltantes);
+    const createdItems = new Map<string, AnyRecord>();
+    const savedTables = new Set<string>();
+    let saved = 0;
+    let createdItemCount = 0;
+
+    if (createMissingItems) {
+      const missingItemRows = rows.filter((row) => row.criar_item_estoque);
+      const missingItemNames = Array.from(new Set(
+        missingItemRows
+          .map((row) => String(row.item_nome || row.item_original || "").trim())
+          .filter(Boolean)
+      ));
+
+      for (const itemName of missingItemNames) {
+        const existingItem = await findStockItem(supabase, owner, itemName);
+        if (existingItem?.row && (existingItem.exact || existingItem.score >= 0.86)) {
+          createdItems.set(normalizeCatalogText(itemName), existingItem.row);
+          continue;
+        }
+
+        const firstRow = missingItemRows.find((row) => normalizeCatalogText(row.item_nome || row.item_original) === normalizeCatalogText(itemName));
+        const item = await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
+          fazenda_id: owner.fazenda_id,
+          nome: itemName,
+          categoria: stockCategoryFromName(itemName),
+          unidade_medida: firstRow?.unidade || "unidade",
+          quantidade_atual: 0,
+          quantidade_minima: 0,
+          valor_unitario: firstRow?.valor ?Number(firstRow.valor) / Math.max(1, Number(firstRow.quantidade || 1)) : 0,
+          fornecedor: null,
+          ativo: true,
+          created_by: owner.usuario_id || null
+        });
+        if (item?.id) createdItems.set(normalizeCatalogText(itemName), item as AnyRecord);
+        savedTables.add(TABLES.estoqueItens);
+        createdItemCount += 1;
+      }
+    }
+
+    for (const row of rows) {
+      let itemId = row.item_id || null;
+      let itemName = row.item_resolvido || row.item_nome || row.item_original || "item";
+      let unit = row.unidade_resolvida || row.unidade || "unidade";
+
+      if (!itemId && createMissingItems && row.criar_item_estoque) {
+        const createdItem = createdItems.get(normalizeCatalogText(row.item_nome || row.item_original));
+        itemId = createdItem?.id || null;
+        itemName = createdItem?.nome || itemName;
+        unit = createdItem?.unidade_medida || unit;
+      }
+
+      if (!itemId) continue;
+
+      await insertRealRecord(supabase, owner, TABLES.estoqueMovimentacoes, {
+        fazenda_id: owner.fazenda_id,
+        item_id: itemId,
+        tipo: row.tipo_movimento === "saida" ?"saida" : "entrada",
+        quantidade: Number(row.quantidade),
+        valor_unitario: row.valor ?Number(row.valor) / Math.max(1, Number(row.quantidade || 1)) : null,
+        motivo: `Importado por tabela via WhatsApp: ${itemName} (${unit})`,
+        responsavel_usuario_id: owner.usuario_id || null,
+        origem: "whatsapp"
+      });
+      savedTables.add(TABLES.estoqueMovimentacoes);
+      saved += 1;
+    }
+
+    if (!saved) return { response: "Nenhuma movimentação de estoque foi importada. Nada foi salvo." };
+
+    const itemText = createdItemCount ?`\nItens criados: ${createdItemCount}.` : "";
+    return realSaveResult(`Importação de estoque concluída:\n- ${saved} linha(s) importada(s).${itemText}`, Array.from(savedTables));
   }
 
   if (pending.tipo === "LOTE_REGISTROS") {
@@ -4766,6 +5062,9 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
     botTabularImportLog("animal_import_validation_summary", owner, animalImportSummary(parsed));
   }
+  if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    botTabularImportLog("stock_import_validation_summary", owner, stockImportSummary(parsed));
+  }
 
   if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed, acao_pendente: "tipo_tabela_ambigua" } });
@@ -4819,6 +5118,14 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
     const summary = animalImportSummary(parsed);
     if (summary.ready <= 0 && summary.missingLots <= 0) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return confirmationText(parsed);
+    }
+  }
+
+  if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    const summary = stockImportSummary(parsed);
+    if (summary.ready <= 0 && summary.missingItems <= 0) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return confirmationText(parsed);
     }
@@ -5403,14 +5710,25 @@ async function handleConfirmation(
 
   const pendingEventSummary = pending.tipo === "IMPORTACAO_EVENTOS_TABELA" ?tabularImportSummary(pending) : null;
   const pendingAnimalSummary = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" ?animalImportSummary(pending) : null;
+  const pendingStockSummary = pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" ?stockImportSummary(pending) : null;
   const eventIssueNumber = pendingEventSummary?.notFound ?(pendingEventSummary.ready ? "3" : "2") : "";
   const eventCancelNumber = pendingEventSummary?.notFound ?(pendingEventSummary.ready ? "4" : "3") : "";
   const animalIssueNumber = pendingAnimalSummary ?(pendingAnimalSummary.missingLots ? "3" : "2") : "";
   const animalCancelNumber = pendingAnimalSummary ?(pendingAnimalSummary.missingLots ? "4" : "3") : "";
+  const stockIssueNumber = pendingStockSummary
+    ?pendingStockSummary.missingItems
+      ?"3"
+      : (pendingStockSummary.invalid || pendingStockSummary.duplicates) ? "2" : ""
+    : "";
+  const stockCancelNumber = pendingStockSummary
+    ?pendingStockSummary.missingItems
+      ?"4"
+      : (pendingStockSummary.invalid || pendingStockSummary.duplicates) ? "3" : "2"
+    : "";
 
-  if ((eventCancelNumber && command === eventCancelNumber) || (animalCancelNumber && command === animalCancelNumber)) {
+  if ((eventCancelNumber && command === eventCancelNumber) || (animalCancelNumber && command === animalCancelNumber) || (stockCancelNumber && command === stockCancelNumber)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Cancelado. Nao registrei essa tabela. Nada foi salvo.";
+    return "Importação cancelada. Nada foi salvo.";
   }
 
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && pendingEventSummary?.notFound && isTabularMissingAnimalRegisterCommand(command)) {
@@ -5425,12 +5743,15 @@ async function handleConfirmation(
   }
 
   const wantsIssueDetails = (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && (isTabularImportIssueCommand(command) || command === eventIssueNumber))
-    || (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && (isTabularImportIssueCommand(command) || command === animalIssueNumber));
+    || (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && (isTabularImportIssueCommand(command) || command === animalIssueNumber))
+    || (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && (isTabularImportIssueCommand(command) || command === stockIssueNumber));
   if (wantsIssueDetails) {
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending } });
     const details = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA"
       ?animalImportIssueDetails(pending, 15)
-      : tabularImportIssueDetails(pending, 15);
+      : pending.tipo === "IMPORTACAO_ESTOQUE_TABELA"
+        ?stockImportIssueDetails(pending, 15)
+        : tabularImportIssueDetails(pending, 15);
     const label = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" ?"cadastrar" : "importar";
     return details
       ?`Linhas que nao vou ${label} agora:\n${details}\n\nResponda 1 para continuar com as linhas validas ou cancelar para sair.`
@@ -5443,6 +5764,13 @@ async function handleConfirmation(
   const shouldImportFoundOnly = pending.tipo === "IMPORTACAO_EVENTOS_TABELA"
     && Boolean(pendingEventSummary?.notFound && pendingEventSummary.ready)
     && isTabularImportFoundOnlyCommand(command);
+  const shouldCreateMissingStockItems = pending.tipo === "IMPORTACAO_ESTOQUE_TABELA"
+    && Boolean(pendingStockSummary?.missingItems)
+    && isTabularCreateStockItemsCommand(command);
+  const shouldImportValidStockOnly = pending.tipo === "IMPORTACAO_ESTOQUE_TABELA"
+    && Boolean(pendingStockSummary?.ready)
+    && (isTabularImportFoundOnlyCommand(command) || command === "2")
+    && !(command === "2" && !pendingStockSummary?.missingItems && Boolean(pendingStockSummary?.invalid || pendingStockSummary?.duplicates));
   let pendingToSave = pending;
 
   if (shouldCreateMissingLots) {
@@ -5452,7 +5780,14 @@ async function handleConfirmation(
     }));
   }
 
-  if (isConfirmCommand(command) || shouldCreateMissingLots || shouldImportFoundOnly) {
+  if (shouldCreateMissingStockItems) {
+    pendingToSave = await enrichWithCatalog(supabase, owner, refreshRanchoMessage(pending, {
+      ...(pending.dados || {}),
+      criar_itens_faltantes: true
+    }));
+  }
+
+  if (isConfirmCommand(command) || shouldCreateMissingLots || shouldImportFoundOnly || shouldCreateMissingStockItems || shouldImportValidStockOnly) {
     const denied = permissionDeniedMessage(owner, pendingToSave);
     if (denied) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -5470,12 +5805,22 @@ async function handleConfirmation(
     if (pendingToSave.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
       botTabularImportLog("animal_import_confirm_command", owner, animalImportSummary(pendingToSave));
     }
+    if (pendingToSave.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+      botTabularImportLog("stock_import_confirm_command", owner, stockImportSummary(pendingToSave));
+    }
     const result = await saveConfirmedRecord(supabase, owner, pendingToSave);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
     const postConfirmationText = result.savedReal ?await handlePostConfirmationConsultations(supabase, owner, pendingToSave) : "";
     const resultResponse = postConfirmationText ?`${result.response}\n\n${postConfirmationText}` : result.response;
     if (pendingToSave.tipo === "IMPORTACAO_EVENTOS_TABELA") {
       botTabularImportLog("save_result", owner, {
+        saved_real: Boolean(result.savedReal),
+        saved_tables: result.savedTables || [],
+        response_chars: resultResponse.length
+      });
+    }
+    if (pendingToSave.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+      botTabularImportLog("stock_import_save_result", owner, {
         saved_real: Boolean(result.savedReal),
         saved_tables: result.savedTables || [],
         response_chars: resultResponse.length
@@ -5600,6 +5945,16 @@ function isDryRunConfirmationCommand(session: BotSession, command: string) {
     if (summary.missingLots && isTabularCreateLotsAndRegisterCommand(command)) return true;
   }
 
+  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+    const summary = stockImportSummary(pending);
+    if (summary.missingItems && isTabularCreateStockItemsCommand(command)) return true;
+    if (
+      summary.ready
+      && (isTabularImportFoundOnlyCommand(command) || command === "2")
+      && !(command === "2" && !summary.missingItems && Boolean(summary.invalid || summary.duplicates))
+    ) return true;
+  }
+
   return isConfirmCommand(command);
 }
 
@@ -5703,7 +6058,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else {
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const localParsedPreview = parseRanchoMessage(parserMessage);
-    const tableParsedPreview = ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
+    const tableParsedPreview = ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;
     if (originalMessage.includes(";")) {
@@ -5772,6 +6127,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           criar_lotes_faltantes: true
         }));
       }
+      if (parsed?.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(parsed).missingItems && isTabularCreateStockItemsCommand(command)) {
+        parsed = await enrichWithCatalog(supabase, owner, refreshRanchoMessage(parsed, {
+          ...(parsed.dados || {}),
+          criar_itens_faltantes: true
+        }));
+      }
       const denied = permissionDeniedMessage(owner, parsed);
       const invalidReason = parsed ?validatePendingForSave(parsed) : null;
       if (denied) {
@@ -5806,6 +6167,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           response_chars: response.length
         });
       }
+      if (parsed?.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
+        botTabularImportLog("stock_import_dry_run_confirmed", owner, {
+          ...stockImportSummary(parsed),
+          response_chars: response.length
+        });
+      }
       }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);
@@ -5818,7 +6185,16 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       } else {
         const summary = parsed?.tipo === "IMPORTACAO_EVENTOS_TABELA" ?tabularImportSummary(parsed) : null;
         const isMissingAnimalDecision = Boolean(summary?.notFound && isTabularMissingAnimalRegisterCommand(command));
-        eventConfirmed = isConfirmCommand(command) && !isMissingAnimalDecision;
+        const stockSummary = parsed?.tipo === "IMPORTACAO_ESTOQUE_TABELA" ?stockImportSummary(parsed) : null;
+        const isStockImportDecision = Boolean(stockSummary && (
+          (stockSummary.missingItems && isTabularCreateStockItemsCommand(command))
+          || (
+            stockSummary.ready
+            && (isTabularImportFoundOnlyCommand(command) || command === "2")
+            && !(command === "2" && !stockSummary.missingItems && Boolean(stockSummary.invalid || stockSummary.duplicates))
+          )
+        ));
+        eventConfirmed = (isConfirmCommand(command) || isStockImportDecision) && !isMissingAnimalDecision;
         response = await handleConfirmation(supabase, owner, previousSession, message, command, {
           modoTesteSalvarReal: salvarRealNoTeste
         });
