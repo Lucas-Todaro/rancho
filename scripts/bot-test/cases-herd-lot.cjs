@@ -1,5 +1,65 @@
 module.exports = function loadBotTestSection(context) {
   with (context) {
+    const animalIndividualReportAnimals = [
+      {
+        id: "animal-report-19",
+        brinco: "19",
+        nome: "Amanda",
+        categoria: "vaca",
+        sexo: "femea",
+        fase: "nao_aplicavel",
+        status: "ativo",
+        raca: "Girolando",
+        data_nascimento: "2021-02-10",
+        peso: 480,
+        mae_id: "animal-b-001",
+        pai_id: "animal-t-001",
+        genealogia_observacoes: "linhagem leiteira"
+      },
+      {
+        id: "animal-report-20",
+        brinco: "20",
+        nome: "Clara",
+        categoria: "outro",
+        sexo: "femea",
+        fase: "nao_aplicavel",
+        status: "ativo"
+      },
+      {
+        id: "animal-report-21",
+        brinco: "21",
+        nome: "Nina",
+        categoria: "vaca",
+        sexo: "femea",
+        fase: "lactacao",
+        status: "ativo"
+      },
+      {
+        id: "animal-report-5714",
+        brinco: "5714 CF",
+        nome: "CF 5714",
+        categoria: "vaca",
+        sexo: "femea",
+        fase: "lactacao",
+        status: "ativo"
+      }
+    ];
+
+    const animalIndividualReportEvents = [
+      { animal_id: "animal-report-19", tipo: "parto", descricao: "Parto registrado", data_evento: "2026-01-10T09:00:00.000Z" },
+      { animal_id: "animal-report-19", tipo: "inseminacao", medicamento: "Touro Rei", descricao: "Reteste", data_evento: "2026-02-18T09:00:00.000Z" },
+      { animal_id: "animal-report-19", tipo: "observacao", descricao: "Prenhez confirmada", data_evento: "2026-03-15T09:00:00.000Z" },
+      { animal_id: "animal-report-19", tipo: "observacao", descricao: "Pre-parto registrado", data_evento: "2026-06-01T09:00:00.000Z" },
+      { animal_id: "animal-report-19", tipo: "observacao", descricao: "mastite leve", data_evento: "2026-06-04T09:00:00.000Z" },
+      { animal_id: "animal-report-21", tipo: "inseminacao", medicamento: "Semen X", descricao: "Inseminacao registrada", data_evento: "2026-04-01T09:00:00.000Z" },
+      { animal_id: "animal-report-21", tipo: "observacao", descricao: "Nao passou no protocolo", data_evento: "2026-04-25T09:00:00.000Z" }
+    ];
+
+    const animalIndividualReportProductions = [
+      { animal_id: "animal-report-19", litros: 18, ordenhado_em: "2026-06-02T07:00:00.000Z" },
+      { animal_id: "animal-report-19", litros: 22, ordenhado_em: "2026-06-03T07:00:00.000Z" }
+    ];
+
     const herdLotFrameworkCases = [
       {
         name: "consulta de rebanho nao pede confirmacao",
@@ -151,6 +211,252 @@ module.exports = function loadBotTestSection(context) {
           finalIntent: "CONSULTA_ANIMAL",
           entities: { animal_codigo: "B-002" },
           responseIncludes: "Lote:",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual por codigo inclui reproducao completa",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["como que ta a vaca 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          entities: { animal_codigo: "19" },
+          responseIncludes: "Reprodução:",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual por nome resolve animal e mostra dados gerais",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["como esta a Amanda?"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          entities: { animal_codigo: "19" },
+          responseIncludes: "Nome: Amanda",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual mostra prenhez e data",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["relatorio da vaca 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Prenhez confirmada em: 15/03/2026",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual mostra ultima inseminacao e origem",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["me fala da vaca 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Origem da inseminação: Touro Rei",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual mostra pre-parto e parto",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["ficha da 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Pré-parto: 01/06/2026",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual mostra observacao reteste sem perder status atual",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["resumo da vaca 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Observação: Reteste",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual com nao passou vira alerta reprodutivo",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        messages: ["status da vaca 21"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Status: Não passou",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual sem reproducao informa ausencia",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["ficha da vaca 20"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Não encontrei registros reprodutivos",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual traduz enums crus",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["dados da vaca 20"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Fase: Não se aplica",
+          allResponsesNotInclude: ["nao_aplicavel", "Categoria: outro", "undefined", "null"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual mostra producao recente",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        animalEvents: animalIndividualReportEvents,
+        animalProductions: animalIndividualReportProductions,
+        messages: ["situacao da Amanda"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Último registro: 22 litros em 03/06/2026",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual por codigo composto consulta animal certo",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["relatorio do animal 5714 CF"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Nome: CF 5714",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual animal nao encontrado",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["ficha da vaca 99999"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Não encontrei esse animal no rebanho",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual nome ambiguo pede escolha",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          ...animalIndividualReportAnimals,
+          { id: "animal-report-22", brinco: "22", nome: "Amanda", categoria: "vaca", sexo: "femea" }
+        ],
+        messages: ["como esta a Amanda?"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Encontrei mais de um animal parecido",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio individual respeita multi fazenda",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE_B,
+        extraAnimals: [
+          ...animalIndividualReportAnimals,
+          { id: "animal-report-19-b", fazenda_id: BOT_TEST_FARM_ID_B, brinco: "19", nome: "Amanda B", categoria: "vaca", sexo: "femea", fase: "lactacao" }
+        ],
+        animalEvents: animalIndividualReportEvents,
+        messages: ["relatorio da vaca 19"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Nome: Amanda B",
+          responseNotIncludes: "Touro Rei",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "usuario nao autorizado nao acessa relatorio individual",
+        module: "animal-relatorio-individual",
+        phone: "5583000000000",
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["relatorio da vaca 19"],
+        expected: {
+          responseIncludes: "autorizado",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta individual nao vira cadastro reprodutivo",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["como esta a Amanda?"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          avoidIntents: ["ATUALIZACAO_ANIMAL"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "registro reprodutivo nao vira consulta individual",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: animalIndividualReportAnimals,
+        messages: ["Amanda esta prenha"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "19", evento_reprodutivo_tipo: "prenhez" },
+          shouldAskConfirmation: true,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
         }

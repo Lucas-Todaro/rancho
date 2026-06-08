@@ -502,7 +502,7 @@ module.exports = function loadBotTestSection(context) {
               intent: "CONSULTA_ANIMAL",
               estadoNovo: "livre",
               dados: { animal_codigo: "B-002" },
-              responseIncludes: "Fase: gestante"
+              responseIncludes: "Fase: Prenha"
             }
           }
         ]

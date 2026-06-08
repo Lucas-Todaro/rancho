@@ -253,7 +253,8 @@ function isAmbiguousReportQuery(normalized: string) {
 
 function isReportPeriodTokenAsAnimalCode(code?: string | null) {
   if (!code) return false;
-  return /^(?:HOJE|HJ|ONTEM|NTEM|ANTEONTEM|SEMANA|SEMANAL|MES|MEZ|MENSAL|JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)$/i.test(code);
+  const normalized = normalizeRanchoText(code).replace(/[_-]+/g, " ").trim();
+  return /^(?:hoje|hj|dia|ontem|ntem|anteontem|semana|semanal|semana passada|mes|mez|mensal|mes passado|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)$/.test(normalized);
 }
 
 function milkProductionDestination(normalized: string) {
@@ -839,8 +840,49 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     || (/\b(?:rancho|fazenda)\b/.test(normalized) && /\b(?:foi|bem|mal|indo|geral|resumo|relatorio)\b/.test(normalized));
   if (directOperationalReport) return finalize("CONSULTA_REGISTROS_HOJE", reportQueryData(normalized), [], 0.9);
 
-  const reportAnimalCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
-  const reportAnimalSpecific = Boolean(reportAnimalCode && !financeNamedMonthPeriod(normalized) && !isReportPeriodTokenAsAnimalCode(reportAnimalCode));
+  const exactDashboardSummaryQuery = /^(?:dashboard|resumo do dia|como foi o rancho hoje|como foi a fazenda hoje|como esta a fazenda hoje|como está a fazenda hoje|como ta a fazenda hoje|como tá a fazenda hoje|me manda o fechamento de hoje|fechamento de hoje|o que aconteceu hoje|me da um resumo|me dá um resumo|resumo da fazenda|relatorio do dia|relatório do dia)$/.test(normalized);
+  if (exactDashboardSummaryQuery) {
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      data_referencia: "hoje",
+      periodo: "hoje",
+      consulta: true,
+      consulta_registros: "relatorio",
+      relatorio_modo: "resumo"
+    }, [], 0.9);
+  }
+
+  const explicitOperationalReportPeriod = (
+    /\b(?:relatorio|relatirio|resumo|resumao|fechamento|balanco)\b/.test(normalized)
+    && /\b(?:hoje|hj|ontem|anteontem|dia|semana|semanal|semana passada|ultima semana|mes|mensal|mes passado|ultimos|ultimas)\b/.test(normalized)
+    && !/\b(?:financeiro|finaceiro|financeirro|caixa|saldo|lucro|receitas?|despesas?|despezas?|transacoes?|extrato)\b/.test(normalized)
+    && !/\b(?:ponto|funcionarios?|funcionario|equipe|folha|producao|leite|ordenha|ordenhado|ordenhados|litros?)\b/.test(normalized)
+    && !/\b(?:vaca|animal|boi|touro|bezerra|bezerro|novilha|brinco)\b/.test(normalized)
+  );
+  if (explicitOperationalReportPeriod) {
+    return finalize("CONSULTA_REGISTROS_HOJE", reportQueryData(normalized), [], 0.9);
+  }
+
+  const looseAnimalReportCandidate = compactAnimalReference(
+    normalized.match(/\b(?:resumo|relatorio|relatirio|ficha|dados|situacao|status)\s+(?:da|do|de)\s+(?:vaca|animal|boi|touro|bezerra|bezerro|novilha)?\s*([a-z0-9][a-z0-9-]*(?:\s+[a-z]{1,4})?)/i)?.[1]
+  );
+  const looseAnimalReportCode = looseAnimalReportCandidate
+    && !/^(?:fazenda|rancho|rebanho|gado|estoque|financeiro)$/i.test(looseAnimalReportCandidate)
+    && !isReportPeriodTokenAsAnimalCode(looseAnimalReportCandidate)
+    ?looseAnimalReportCandidate
+    : undefined;
+  const reportAnimalCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL") || looseAnimalReportCode;
+  const reportAnimalSpecific = Boolean(
+    reportAnimalCode
+    && !financeNamedMonthPeriod(normalized)
+    && !isReportPeriodTokenAsAnimalCode(reportAnimalCode)
+    && (/\d/.test(reportAnimalCode) || Boolean(looseAnimalReportCode) || /\b(?:vaca|animal|boi|touro|bezerra|bezerro|novilha|brinco)\b/.test(normalized))
+  );
+
+  if (herdReproductionQueryCue(normalized, original)) {
+    const dados = herdQueryData(original, normalized);
+    return finalize("CONSULTA_REBANHO", dados, [], 0.88);
+  }
+
   const eventQueryCue = /\b(?:quais|qual|teve|foram|foi|mostra|mostrar|ver|historico|ultimos|ultimas|registrados?|registradas?|ocorreram|aconteceu|acontecimentos?|ocorrencias?|rebanho|do mes|da semana|de hoje|de ontem)\b/.test(normalized);
   const reportCue = /\b(?:relatorio|relatirio|resumo|resumao|geral|mez|panorama|visao geral|fechamento|balanco|status do dia|status do mes|como foi|como esta indo|esta indo|ta indo|principais|alertas?|atencao|preocupante|preoculpante|critico|problemas?|eventos?|ocorrencias?|aconteceu|acontecimentos?)\b/.test(normalized)
     || /\btudo\s+que\s+aconteceu\b/.test(normalized)
@@ -868,7 +910,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (isHelp) return finalize("AJUDA", {}, [], 0.95);
 
   const isDashboardSummaryQuery = /\b(?:resumo do dia|dashboard|como foi o rancho hoje|como foi a fazenda hoje|como esta a fazenda hoje|como está a fazenda hoje|como ta a fazenda hoje|como tá a fazenda hoje|me manda o fechamento de hoje|fechamento de hoje|o que aconteceu hoje|me da um resumo|me dá um resumo|resumo da fazenda|relatorio do dia|relatório do dia)\b/.test(normalized);
-  if (isDashboardSummaryQuery) {
+  if (isDashboardSummaryQuery && !reportAnimalSpecific) {
     return finalize("CONSULTA_REGISTROS_HOJE", {
       data_referencia: "hoje",
       periodo: "hoje",
@@ -976,11 +1018,6 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   if (/\b(?:sem lote|sem piquete|sem pasto|fora de lote)\b/.test(normalized)) {
-    const dados = herdQueryData(original, normalized);
-    return finalize("CONSULTA_REBANHO", dados, [], 0.88);
-  }
-
-  if (herdReproductionQueryCue(normalized, original)) {
     const dados = herdQueryData(original, normalized);
     return finalize("CONSULTA_REBANHO", dados, [], 0.88);
   }
@@ -1270,7 +1307,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isStockQuery = !hasStockAction && /\b(?:consultar|ver|quanto|saldo|tem|estoque)\b/.test(normalized) && /\b(?:estoque|racao|ração|medicamento|insumo|sacos?)\b/.test(normalized);
   if (isStockQuery) return finalize("CONSULTA_ESTOQUE", { item_nome: stockItemName }, [], 0.85);
 
-  const animalQueryCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
+  const animalQueryCode = extractAnimalCode(normalized, "CONSULTA_ANIMAL") || looseAnimalReportCode;
   const animalUpdateVerb = /\b(?:mudar|atualizar|alterar|trocar|corrigir|agora|ficou|esta|ta|em|marcar|marca|para|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|peso|pesou|nome|vendida|vendido|saiu do rebanho)\b/.test(normalized)
     || hasClinicalObservationCue(normalized)
     || reproductiveObservationCue.test(normalized);
@@ -1298,11 +1335,12 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     };
     return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados));
   }
+  const animalReportCue = /\b(?:como\s+(?:que\s+)?(?:ta|t[aá]|esta|est[aá])|me\s+(?:fala|mostra|mostre|manda|d[aá])|relatorio|relat[oó]rio|resumo|ficha|dados|situa[cç][aã]o|status|panorama)\b/.test(normalized);
   const isAnimalConsultation = Boolean(animalQueryCode)
     && !animalCreationCue
     && !animalEventCue
-    && (!animalUpdateVerb || isQuestion)
-    && (/\b(?:consultar|consulta|ver|mostra|mostrar|dados|informacoes|informações|ficha|historico|histórico|eventos|vacinas|medicamentos|tratamentos|partos|clinico|reprodutivo|ultima vacina|quando|status|idade|nasceu|nascimento|raca|raça|lote)\b/.test(normalized) || /\?/.test(original));
+    && (!animalUpdateVerb || isQuestion || animalReportCue)
+    && (animalReportCue || /\b(?:consultar|consulta|ver|mostra|mostrar|dados|informacoes|informações|ficha|historico|histórico|eventos|vacinas|medicamentos|tratamentos|partos|clinico|reprodutivo|ultima vacina|quando|status|idade|nasceu|nascimento|raca|raça|lote)\b/.test(normalized) || /\?/.test(original));
   if (isAnimalConsultation) {
     return finalize("CONSULTA_ANIMAL", { animal_codigo: animalQueryCode, consulta: true }, [], 0.88);
   }

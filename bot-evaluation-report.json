@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T15:45:04.411Z",
+  "generatedAt": "2026-06-08T16:29:03.113Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1233,
-    "passed": 1233,
+    "total": 1258,
+    "passed": 1258,
     "failed": 0,
     "successRate": 100
   },
@@ -49,8 +49,8 @@
     },
     "animais": {
       "label": "Animais",
-      "total": 40,
-      "passed": 40,
+      "total": 48,
+      "passed": 48,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []

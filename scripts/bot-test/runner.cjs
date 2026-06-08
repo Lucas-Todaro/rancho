@@ -197,6 +197,20 @@ module.exports = function loadBotTestSection(context) {
           custo: row.custo ?? 0
         })));
       }
+      if (test.animalProductions) {
+        supabase.tables[BOT_TEST_TABLES.ordenhas].push(...test.animalProductions.map((row, index) => ({
+          id: row.id || `ordenha-extra-${index + 1}`,
+          fazenda_id: row.fazenda_id || BOT_TEST_FARM_ID,
+          animal_id: row.animal_id,
+          litros: row.litros,
+          ordenhado_em: row.ordenhado_em || new Date().toISOString(),
+          turno: row.turno || null,
+          destino: row.destino || null,
+          origem: row.origem || "whatsapp",
+          registrado_por: row.registrado_por || null,
+          observacoes: row.observacoes || null
+        })));
+      }
       if (test.employees) {
         supabase.tables[BOT_TEST_TABLES.funcionarios] = test.employees.map((row, index) => ({
           id: row.id || `func-custom-${index + 1}`,
