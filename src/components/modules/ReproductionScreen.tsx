@@ -202,7 +202,7 @@ function kindBadgeTone(kind: ReproductionKind): "default" | "success" | "warning
   if (kind === "prenhez") return "success";
   if (kind === "pre_parto") return "warning";
   if (kind === "parto") return "info";
-  if (kind === "inseminacao") return "default";
+  if (kind === "inseminacao") return "info";
   return "default";
 }
 
@@ -291,6 +291,11 @@ function latestOfKind(events: AnyRecord[], kind: ReproductionKind) {
   return sortEventsDescending(events).find((event) => eventKind(event) === kind) || null;
 }
 
+function isLatestReproductiveStatus(candidateDate: Date | null, dates: Array<Date | null>): candidateDate is Date {
+  if (!candidateDate) return false;
+  return dates.every((date) => !date || candidateDate.getTime() >= date.getTime());
+}
+
 function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
   const sorted = sortEventsDescending(events);
   const lastParto = latestOfKind(sorted, "parto");
@@ -303,6 +308,18 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
   const prePartoDate = dateFromEvent(lastPreParto);
   const prenhezDate = dateFromEvent(lastPrenhez);
   const inseminacaoDate = dateFromEvent(lastInseminacao);
+
+  if (isLatestReproductiveStatus(inseminacaoDate, [partoDate, prePartoDate, prenhezDate])) {
+    const estimatedBirth = addDays(inseminacaoDate, 283);
+    return {
+      key: "inseminada" as ReproductionFilter,
+      label: "Inseminada",
+      detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
+      tone: "info" as const,
+      lastEvent: lastInseminacao,
+      estimatedBirth
+    };
+  }
 
   if (partoDate && daysBetween(partoDate) <= 45) {
     return {
@@ -344,7 +361,7 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
       key: "inseminada" as ReproductionFilter,
       label: "Inseminada",
       detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
-      tone: "default" as const,
+      tone: "info" as const,
       lastEvent: lastInseminacao,
       estimatedBirth
     };
