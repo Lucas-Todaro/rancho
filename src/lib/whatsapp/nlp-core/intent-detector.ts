@@ -21,6 +21,7 @@ import {
   extractAnimalRegistrationName,
   extractAnimalSex,
   extractAnimalWeight,
+  inferAnimalSexFromCategory,
   extractConsultationPeriod,
   extractDateReference,
   extractEmployeeCreationName,
@@ -1333,11 +1334,16 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const clearAnimalRegistrationDetails = Boolean(extractAnimalRegistrationCode(normalized))
     || /\b(?:peso|pesou|brinco|codigo|cod|numero|número|nome|chamado|chamada|raca|raça|lote|nascimento|nasceu)\b/.test(normalized);
   if (!earlyHasProductionCue && !animalEventCue && !earlyMedicineCue && animalCreationCue && (!hasStockItemHint || clearAnimalRegistrationDetails)) {
+    const categoria = extractAnimalCategory(normalized);
+    const sexo = extractAnimalSex(normalized);
+    const sexoInferidoCategoria = categoria && sexo === inferAnimalSexFromCategory(categoria) ?categoria : undefined;
     const dados = {
       animal_codigo: extractAnimalRegistrationCode(normalized),
       nome: extractAnimalRegistrationName(original),
-      categoria: extractAnimalCategory(normalized),
-      sexo: extractAnimalSex(normalized),
+      categoria,
+      sexo,
+      sexo_inferido_categoria: sexoInferidoCategoria,
+      sexo_origem: sexoInferidoCategoria ?"inferido_categoria" : sexo ?"informado" : undefined,
       peso: extractAnimalWeight(original),
       fase: extractAnimalPhase(normalized),
       raca: extractAnimalBreed(original),
@@ -1565,11 +1571,16 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     && /\b(?:cadastrar|cadastre|cadastro|cadatra|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lança|lancar|lançar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova)\b/.test(normalized)
     && new RegExp(`\\b${animalWords}\\b`).test(normalized);
   if (isAnimalCreation) {
+    const categoria = extractAnimalCategory(normalized);
+    const sexo = extractAnimalSex(normalized);
+    const sexoInferidoCategoria = categoria && sexo === inferAnimalSexFromCategory(categoria) ?categoria : undefined;
     const dados = {
       animal_codigo: extractAnimalRegistrationCode(normalized),
       nome: extractAnimalRegistrationName(original),
-      categoria: extractAnimalCategory(normalized),
-      sexo: extractAnimalSex(normalized),
+      categoria,
+      sexo,
+      sexo_inferido_categoria: sexoInferidoCategoria,
+      sexo_origem: sexoInferidoCategoria ?"inferido_categoria" : sexo ?"informado" : undefined,
       peso: extractAnimalWeight(original),
       fase: extractAnimalPhase(normalized),
       raca: extractAnimalBreed(original),

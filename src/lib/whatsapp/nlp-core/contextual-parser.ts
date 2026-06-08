@@ -14,6 +14,7 @@ import {
   extractAnimalRegistrationName,
   extractAnimalSex,
   extractAnimalWeight,
+  inferAnimalSexFromCategory,
   extractDateReference,
   extractEmployeeCreationName,
   extractEmployeeAccessMode,
@@ -53,7 +54,8 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (current.tipo === "CADASTRO_ANIMAL" && expectedField === "sexo") {
     const sexAnswer = extractAnimalSex(normalized);
     if (sexAnswer) {
-      return finalize(current.tipo, { ...dados, sexo: sexAnswer }, buildMissing(current.tipo, { ...dados, sexo: sexAnswer }), current.confianca);
+      const nextDados = { ...dados, sexo: sexAnswer, sexo_origem: "informado", sexo_inferido_categoria: undefined };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
     }
     if (isSkipAnimalSexOptionalAnswer(original)) {
       const nextDados = markAnimalOptionalFieldSkipped(dados, expectedField);
@@ -117,8 +119,22 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "novo_valor" && original) {
       dados.novo_valor = contextualPhone || extractEmployeeCpf(original) || extractEmployeeSalary(original, normalized) || original;
     }
-    if (expectedField === "categoria_animal") dados.categoria = extractAnimalCategory(normalized) || original.toLowerCase();
-    if (expectedField === "sexo") dados.sexo = extractAnimalSex(normalized);
+    if (expectedField === "categoria_animal") {
+      dados.categoria = extractAnimalCategory(normalized) || original.toLowerCase();
+      const inferredSex = inferAnimalSexFromCategory(dados.categoria);
+      if (inferredSex && !dados.sexo) {
+        dados.sexo = inferredSex;
+        dados.sexo_origem = "inferido_categoria";
+        dados.sexo_inferido_categoria = dados.categoria;
+      }
+    }
+    if (expectedField === "sexo") {
+      dados.sexo = extractAnimalSex(normalized);
+      if (dados.sexo) {
+        dados.sexo_origem = "informado";
+        dados.sexo_inferido_categoria = undefined;
+      }
+    }
     if (expectedField === "fase") dados.fase = extractAnimalPhase(normalized);
     if (expectedField === "raca" && original) dados.raca = extractAnimalBreed(original) || original;
     if (expectedField === "lote_animal" && original) {
@@ -236,7 +252,17 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
       dados.categoria = animalCategory;
       if (dados.campo_obrigatorio_pulado === "categoria_animal") dados.campo_obrigatorio_pulado = undefined;
     }
-    if (animalSex && (!dados.sexo || expectedField === "sexo" || isCorrection || animalCategory)) dados.sexo = animalSex;
+    if (animalSex && (!dados.sexo || expectedField === "sexo" || isCorrection || animalCategory)) {
+      dados.sexo = animalSex;
+      const inferredSex = animalCategory ?inferAnimalSexFromCategory(animalCategory) : undefined;
+      if (inferredSex && inferredSex === animalSex && expectedField !== "sexo") {
+        dados.sexo_origem = "inferido_categoria";
+        dados.sexo_inferido_categoria = animalCategory;
+      } else {
+        dados.sexo_origem = "informado";
+        dados.sexo_inferido_categoria = undefined;
+      }
+    }
     if (registrationName && (!dados.nome || expectedField === "nome")) dados.nome = registrationName;
     if (isCorrection && nameCorrection && nameCorrection !== correctionText && !animalCategory && !registrationCode && animalWeight === undefined) {
       dados.nome = extractAnimalRegistrationName(nameCorrection) || nameCorrection;

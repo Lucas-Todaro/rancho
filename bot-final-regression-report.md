@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-08T16:49:19.138Z
+Gerado em: 2026-06-08T18:24:12.969Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1276
-- Aprovados: 1276
+- Total geral de testes: 1283
+- Aprovados: 1283
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -54,8 +54,8 @@ Gerado em: 2026-06-08T16:49:19.138Z
 ## Cadastro De Animal
 
 - Testes adicionados nesta rodada: 22
-- Fluxos estruturados cobertos: 37
-- Aprovados: 37
+- Fluxos estruturados cobertos: 40
+- Aprovados: 40
 - Falhos: 0
 - Coberturas:
   - frases naturais com nome: criar vaca Amanda, cadastrar boi Brutus, nova novilha Estrela

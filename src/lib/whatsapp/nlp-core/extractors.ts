@@ -803,8 +803,9 @@ export function markAnimalOptionalFieldSkipped(dados: AnyRecord, field: string) 
 
 export function inferAnimalSexFromCategory(category: string | number | null | undefined) {
   const normalized = normalizeRanchoText(String(category || ""));
-  if (["vaca", "vca", "novilha", "novila", "bezerra", "matriz", "matrizes"].includes(normalized)) return "femea";
-  if (["boi", "boii", "touro", "bezerro", "bezero", "reprodutor", "reprodutores"].includes(normalized)) return "macho";
+  if (!normalized || /^(?:animal|animais|bovino|bovinos|gado|cria|bezerro\/a|indefinido|indefinida|outro|outros|outra|outras|nao informado|nao informada)$/.test(normalized)) return undefined;
+  if (["f", "femea", "femeas", "feminino", "vaca", "vca", "novilha", "novila", "bezerra", "matriz", "matrizes"].includes(normalized)) return "femea";
+  if (["m", "macho", "machos", "masculino", "boi", "boii", "touro", "bezerro", "bezero", "reprodutor", "reprodutores"].includes(normalized)) return "macho";
   return undefined;
 }
 
@@ -827,8 +828,11 @@ export function isSkipAnimalSexOptionalAnswer(text: string) {
 
 export function extractAnimalSex(text: string) {
   const normalized = normalizeRanchoText(text);
-  if (normalized === "2" || /\b(?:femea|femeas|feme|feminino|vaca|vca|novilha|novila|bezerra|matriz|matrizes)\b/.test(normalized) || /\bsexo\s+f\b/.test(normalized)) return "femea";
-  if (normalized === "1" || /\b(?:macho|machos|maxo|maxos|masculino|boi|boii|touro|bezerro|bezero|reprodutor|reprodutores)\b/.test(normalized) || /\bsexo\s+m\b/.test(normalized)) return "macho";
+  if (normalized === "2" || /\b(?:femea|femeas|feme|feminino)\b/.test(normalized) || /\bsexo\s+f\b/.test(normalized)) return "femea";
+  if (normalized === "1" || /\b(?:macho|machos|maxo|maxos|masculino)\b/.test(normalized) || /\bsexo\s+m\b/.test(normalized)) return "macho";
+  const categoryCue = normalized.match(/\b(?:vaca|vca|novilha|novila|bezerra|matriz|matrizes|boi|boii|touro|bezerro|bezero|reprodutor|reprodutores)\b/)?.[0];
+  const inferred = inferAnimalSexFromCategory(categoryCue || normalized);
+  if (inferred) return inferred;
   return undefined;
 }
 

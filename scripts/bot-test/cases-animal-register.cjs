@@ -165,6 +165,20 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "nova novilha infere femea pelo tipo",
+        module: "cadastro-animal",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["nova novilha Estrela"],
+        expected: {
+          finalIntent: "CADASTRO_ANIMAL",
+          entities: { categoria: "novilha", nome: "Estrela", sexo: "femea" },
+          allResponsesNotInclude: ["sexo do animal"],
+          shouldAskFollowUp: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "cadastrar vaca com nome preserva categoria e nome real",
         module: "cadastro-animal",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -178,6 +192,20 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "novo touro infere macho pelo tipo",
+        module: "cadastro-animal",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["novo touro Brutus"],
+        expected: {
+          finalIntent: "CADASTRO_ANIMAL",
+          entities: { categoria: "touro", nome: "Brutus", sexo: "macho" },
+          allResponsesNotInclude: ["sexo do animal"],
+          shouldAskFollowUp: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "cadastrar boi com nome e peso preserva dados reais",
         module: "cadastro-animal",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -185,6 +213,21 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "CADASTRO_ANIMAL",
           entities: { categoria: "boi", nome: "Anderson", peso: 320, sexo: "macho" },
+          shouldAskFollowUp: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "cadastrar animal com codigo nao infere sexo",
+        module: "cadastro-animal",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["cadastrar animal 021"],
+        expected: {
+          finalIntent: "CADASTRO_ANIMAL",
+          entities: { animal_codigo: "021" },
+          absentEntities: ["sexo"],
+          responseIncludes: "categoria",
           shouldAskFollowUp: true,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true

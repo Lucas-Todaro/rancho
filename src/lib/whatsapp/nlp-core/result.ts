@@ -132,8 +132,13 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "EXCLUIR_FUNCIONARIO") return `excluir funcionário ${dados.funcionario_nome || "informado"}`;
 
   if (tipo === "CADASTRO_ANIMAL") {
+    const sexDetail = dados.sexo
+      ?dados.sexo_origem === "inferido_categoria" && dados.sexo_inferido_categoria
+        ?`sexo ${dados.sexo} (inferido pela categoria ${dados.sexo_inferido_categoria})`
+        : `sexo ${dados.sexo}`
+      : "";
     const details = [
-      dados.sexo ?`sexo ${dados.sexo}` : "",
+      sexDetail,
       dados.fase ?`fase ${dados.fase}` : "",
       dados.peso ?`peso ${dados.peso} kg` : "",
       dados.raca ?`raça ${dados.raca}` : "",

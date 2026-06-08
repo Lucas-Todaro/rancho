@@ -1,4 +1,5 @@
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import { inferAnimalSexFromCategory } from "./extractors";
 import { finalize } from "./result";
 import type { ParsedRanchoMessage } from "./types";
 
@@ -27,6 +28,8 @@ export type ParsedTabularAnimalImportRow = {
   categoria: "vaca" | "boi" | "bezerro" | "novilha" | "touro" | "outro" | null;
   sexo_original: string;
   sexo: "macho" | "femea" | "nao_informado" | null;
+  sexo_inferido_categoria?: string | null;
+  sexo_origem?: "informado" | "inferido_categoria" | "nao_informado";
   raca: string | null;
   lote_nome: string | null;
   status_original: string;
@@ -225,7 +228,7 @@ function normalizeAnimalCategory(value: string): ParsedTabularAnimalImportRow["c
   if (/\b(?:boi|garrote)\b/.test(normalized)) return "boi";
   if (/\b(?:bezerro|bezerra|terneiro|terneira)\b/.test(normalized)) return "bezerro";
   if (/\b(?:novilha|novilho)\b/.test(normalized)) return "novilha";
-  if (/\b(?:animal|outro|outra|nao informado|sem categoria)\b/.test(normalized)) return "outro";
+  if (/\b(?:animal|animais|bovino|bovinos|gado|cria|indefinido|indefinida|outro|outros|outra|outras|nao informado|sem categoria)\b/.test(normalized)) return "outro";
   return null;
 }
 
@@ -395,7 +398,14 @@ function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderM
   const statusOriginal = cellAt(cells, header.status);
   const birthDateOriginal = cellAt(cells, header.birthDate);
   const category = normalizeAnimalCategory(categoryOriginal);
-  const sex = normalizeAnimalSex(sexOriginal);
+  const explicitSex = sexOriginal.trim() ?normalizeAnimalSex(sexOriginal) : null;
+  const inferredSex = !sexOriginal.trim() ?inferAnimalSexFromCategory(categoryOriginal || category) : undefined;
+  const sex = explicitSex || inferredSex || "nao_informado";
+  const sexOrigin: ParsedTabularAnimalImportRow["sexo_origem"] = explicitSex
+    ?"informado"
+    : inferredSex
+      ?"inferido_categoria"
+      : "nao_informado";
   const status = normalizeAnimalStatus(statusOriginal);
   const birthDate = birthDateOriginal ?parseOptionalDate(birthDateOriginal) : null;
   const weightText = cellAt(cells, header.weight);
@@ -406,7 +416,7 @@ function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderM
   if (!animalCode) problemas.push("animal_sem_codigo");
   if (!categoryOriginal.trim()) problemas.push("categoria_ausente");
   else if (!category) problemas.push("categoria_invalida");
-  if (sexOriginal.trim() && !sex) problemas.push("sexo_invalido");
+  if (sexOriginal.trim() && !explicitSex) problemas.push("sexo_invalido");
   if (statusOriginal.trim() && !status) problemas.push("status_invalido");
   if (birthDateOriginal.trim() && !birthDate) problemas.push("data_nascimento_invalida");
   if (weightText.trim() && weight === null) problemas.push("peso_invalido");
@@ -421,6 +431,8 @@ function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderM
     categoria: category,
     sexo_original: sexOriginal,
     sexo: sex,
+    sexo_inferido_categoria: inferredSex ?categoryOriginal || category : null,
+    sexo_origem: sexOrigin,
     raca: cellAt(cells, header.breed) || null,
     lote_nome: cellAt(cells, header.lot) || null,
     status_original: statusOriginal,
@@ -540,6 +552,44 @@ function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex:
   }, [], 0.96);
 }
 
+function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): ParsedRanchoMessage | null {
+  const candidateLines = lines.filter((line) => {
+    if (!line.text.includes(";")) return false;
+    if (detectTableKindFromHeader(line.text)) return false;
+    const cells = line.text.split(";").map((cell) => cell.trim());
+    if (cells.length < 2 || cells.length > 3) return false;
+    if (!cells[0] || !cells[1]) return false;
+    const category = normalizeAnimalCategory(cells[1]);
+    const sex = cells[2] ?normalizeAnimalSex(cells[2]) : "nao_informado";
+    return Boolean(category && sex);
+  });
+  if (candidateLines.length < 2) return null;
+
+  const header: HeaderMap = { code: 0, category: 1, sex: 2 };
+  const rows = candidateLines
+    .map((line) => parseAnimalImportLine(line.text, line.lineNumber, header))
+    .filter(Boolean) as ParsedTabularAnimalImportRow[];
+  if (!rows.length) return null;
+
+  const validParseRows = rows.filter((row) => row.problemas.length === 0);
+  const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+
+  return finalize("IMPORTACAO_ANIMAIS_TABELA", {
+    origem_parser: "tabela_local",
+    tipo_tabela: "animals_import",
+    importacao_tabela_animais: true,
+    tabela_destino: "animais",
+    cabecalho_inferido: "Codigo;Categoria;Sexo",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: validParseRows.length,
+    total_linhas_parse_invalidas: invalidParseRows.length,
+    contagem_animais_parse: animalImportCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidParseRows,
+    instrucoes_confirmacao: "confirmar_para_cadastrar_animais_validos"
+  }, [], 0.92);
+}
+
 function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const header = buildHeaderMap(lines[headerIndex].text);
   const rows: ParsedTabularStockImportRow[] = [];
@@ -588,7 +638,7 @@ function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: num
 export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
-  if (headerIndex < 0) return null;
+  if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines);
 
   const kind = detectTableKindFromHeader(lines[headerIndex].text);
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
@@ -601,6 +651,7 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
 export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import"): ParsedRanchoMessage | null {
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
+  if (headerIndex < 0 && kind === "animals_import") return parseHeaderlessAnimalsImportTable(text, lines);
   if (headerIndex < 0) return null;
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);

@@ -49,6 +49,22 @@ module.exports = function loadBotTestSection(context) {
       "IMP-201;boi;macho",
       "IMP-202;vaca;"
     ].join("\n");
+    const inferredSexAnimalRegistrationTableMessage = [
+      "INF-001;vaca",
+      "INF-002;boi",
+      "INF-003;novilha",
+      "INF-004;touro",
+      "INF-005;bezerra",
+      "INF-006;bezerro"
+    ].join("\n");
+    const manualSexAnimalRegistrationTableMessage = [
+      "007;animal;macho",
+      "008;bovino;femea"
+    ].join("\n");
+    const ambiguousSexAnimalRegistrationTableMessage = [
+      "009;animal",
+      "010;bovino"
+    ].join("\n");
     const exactCodeAnimalRegistrationTableMessage = [
       "Codigo;Categoria;Sexo",
       "001;vaca;femea"
@@ -209,7 +225,7 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "tabela minima de animais aceita codigo categoria e sexo",
+        name: "tabela minima de animais infere sexo pela categoria",
         module: "tabela-animais",
         phrase: minimalAnimalRegistrationTableMessage,
         expected: {
@@ -217,7 +233,43 @@ module.exports = function loadBotTestSection(context) {
           tipo: "IMPORTACAO_ANIMAIS_TABELA",
           total_linhas: 2,
           total_linhas_parse_validas: 2,
-          tableRow: { lineNumber: 3, animal: "IMP-202", categoria: "vaca", sexo: "nao_informado" }
+          tableRow: { lineNumber: 3, animal: "IMP-202", categoria: "vaca", sexo: "femea" }
+        }
+      },
+      {
+        name: "tabela de animais sem cabecalho infere sexo por categoria",
+        module: "tabela-animais",
+        phrase: inferredSexAnimalRegistrationTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 6,
+          total_linhas_parse_validas: 6,
+          tableRow: { lineNumber: 4, animal: "INF-004", categoria: "touro", sexo: "macho" }
+        }
+      },
+      {
+        name: "tabela de animais respeita sexo manual em categoria ambigua",
+        module: "tabela-animais",
+        phrase: manualSexAnimalRegistrationTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          tableRow: { lineNumber: 2, animal: "008", categoria: "outro", sexo: "femea" }
+        }
+      },
+      {
+        name: "tabela de animais nao infere sexo para categorias ambiguas",
+        module: "tabela-animais",
+        phrase: ambiguousSexAnimalRegistrationTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          tableRow: { lineNumber: 1, animal: "009", categoria: "outro", sexo: "nao_informado" }
         }
       },
       {
@@ -498,7 +550,22 @@ module.exports = function loadBotTestSection(context) {
           savedAfterConfirmation: true,
           simulatedSaveCount: 2,
           savedTables: [BOT_TEST_TABLES.animais],
-          shouldSaveValues: { brinco: "IMP-202", sexo: "nao_informado" },
+          shouldSaveValues: { brinco: "IMP-202", sexo: "femea" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela sem cabecalho cadastra animais com sexo inferido",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [inferredSexAnimalRegistrationTableMessage, "sim"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "6 animal",
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 6,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "INF-005", sexo: "femea" },
           shouldNotWriteBusiness: true
         }
       },
