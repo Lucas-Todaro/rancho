@@ -1495,12 +1495,103 @@ function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, inde
   return `${index + 1}. ${animalLabel(animal)} - ${details}`;
 }
 
+type HerdReproductionFilter = "prenhe" | "pre_parto" | "inseminada" | "sem_evento" | "com_evento";
+type ReproductiveEventKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo";
+
+function herdReproductionFilter(value: unknown): HerdReproductionFilter | undefined {
+  const normalized = normalizeRanchoText(String(value || ""));
+  if (["prenhe", "pre_parto", "inseminada", "sem_evento", "com_evento"].includes(normalized)) return normalized as HerdReproductionFilter;
+  return undefined;
+}
+
+function reproductiveFilterLabel(filter?: HerdReproductionFilter) {
+  if (filter === "prenhe") return "prenhas/gestantes";
+  if (filter === "pre_parto") return "em pre-parto";
+  if (filter === "inseminada") return "inseminadas";
+  if (filter === "sem_evento") return "sem eventos";
+  if (filter === "com_evento") return "com eventos";
+  return "";
+}
+
+function eventDateMs(event: AnyRecord) {
+  const value = String(event.data_evento || event.created_at || "");
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ?ms : 0;
+}
+
+function reproductiveEventKind(event: AnyRecord): ReproductiveEventKind | undefined {
+  const type = normalizeRanchoText(String(event.tipo || ""));
+  const text = normalizeRanchoText([event.tipo, event.descricao, event.medicamento, event.dose].filter(Boolean).join(" "));
+  if (/\b(?:pre\s*parto|pre-parto|preparto|perto de parir|quase parindo)\b/.test(text)) return "pre_parto";
+  if (type === "parto" || /\b(?:parto|pariu|nasceu|nascimento|deu cria)\b/.test(text)) return "parto";
+  if (type === "inseminacao" || /\b(?:inseminacao|inseminada|inseminado|cobertura|coberta|coberto|semen|ia|iatf)\b/.test(text)) return "inseminacao";
+  if (/\b(?:prenhez|prenhe|prenha|gestacao|gestante|gravida|gravido)\b/.test(text)) return "prenhez";
+  if (/\bprotocolo\b/.test(text)) return "protocolo";
+  return undefined;
+}
+
+function sortedEventsForAnimal(eventsByAnimal: Map<string, AnyRecord[]>, animal: AnyRecord) {
+  return [...(eventsByAnimal.get(String(animal.id || "")) || [])].sort((left, right) => eventDateMs(right) - eventDateMs(left));
+}
+
+function latestReproductiveKind(events: AnyRecord[]) {
+  for (const event of events) {
+    const kind = reproductiveEventKind(event);
+    if (kind) return kind;
+  }
+  return undefined;
+}
+
+function animalPhaseIsPregnant(animal: AnyRecord) {
+  return /\b(?:gestante|prenhe|prenha|prenhez|gravida)\b/.test(normalizeRanchoText(String(animal.fase || "")));
+}
+
+function animalMatchesReproductiveFilter(animal: AnyRecord, eventsByAnimal: Map<string, AnyRecord[]>, filter?: HerdReproductionFilter) {
+  if (!filter) return true;
+  const events = sortedEventsForAnimal(eventsByAnimal, animal);
+  if (filter === "sem_evento") return events.length === 0;
+  if (filter === "com_evento") return events.length > 0;
+
+  const latestKind = latestReproductiveKind(events);
+  if (filter === "pre_parto") return latestKind === "pre_parto";
+  if (filter === "inseminada") return latestKind === "inseminacao";
+  if (filter === "prenhe") {
+    if (latestKind === "parto") return false;
+    return latestKind === "prenhez" || latestKind === "pre_parto" || animalPhaseIsPregnant(animal);
+  }
+  return true;
+}
+
+async function listAnimalEventsForHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.eventosAnimal)
+    .select("id,animal_id,tipo,data_evento,descricao,medicamento,dose,created_at")
+    .eq("fazenda_id", owner.fazenda_id)
+    .order("data_evento", { ascending: false })
+    .limit(5000);
+
+  if (error) throw new Error(error.message);
+  return (data || []) as AnyRecord[];
+}
+
+function eventsByAnimalId(events: AnyRecord[]) {
+  const grouped = new Map<string, AnyRecord[]>();
+  for (const event of events) {
+    const animalId = String(event.animal_id || "");
+    if (!animalId) continue;
+    grouped.set(animalId, [...(grouped.get(animalId) || []), event]);
+  }
+  return grouped;
+}
+
 function filterLabel(dados: AnyRecord, lotName?: string) {
+  const reproduction = herdReproductionFilter(dados.reproducao || dados.filtro_reprodutivo);
   const labels = [
     dados.categoria ?String(dados.categoria) : "animais",
     dados.sexo && dados.sexo !== "nao_informado" ?`sexo ${dados.sexo}` : "",
     dados.sexo === "nao_informado" ?"sem sexo informado" : "",
     dados.status ?`status ${dados.status}` : "",
+    reproduction ?reproductiveFilterLabel(reproduction) : "",
     dados.sem_lote ?"sem lote" : "",
     lotName ?`no lote ${lotName}` : ""
   ].filter(Boolean);
@@ -3872,12 +3963,16 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
   }
 
   const animals = await listAnimals(supabase, owner);
+  const reproduction = herdReproductionFilter(dados.reproducao || dados.filtro_reprodutivo);
+  const animalEvents = reproduction ?await listAnimalEventsForHerdConsultation(supabase, owner) : [];
+  const eventMap = eventsByAnimalId(animalEvents);
   const filtered = animals.filter((animal) => {
     if (dados.categoria && normalizeRanchoText(animal.categoria || "") !== normalizeRanchoText(String(dados.categoria))) return false;
     if (dados.sexo && normalizeRanchoText(animal.sexo || "nao_informado") !== normalizeRanchoText(String(dados.sexo))) return false;
     if (dados.status && normalizeRanchoText(animalStatusLabel(animal)) !== normalizeRanchoText(String(dados.status))) return false;
     if (dados.sem_lote && animal.lote_id) return false;
     if (lotFilter && String(animal.lote_id || "") !== String(lotFilter.id || "")) return false;
+    if (!animalMatchesReproductiveFilter(animal, eventMap, reproduction)) return false;
     return true;
   });
 
@@ -3900,6 +3995,7 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
       categoria: dados.categoria || null,
       sexo: dados.sexo || null,
       status: dados.status || null,
+      reproducao: reproduction || null,
       lote_id: lotFilter?.id || null,
       lote_nome: lotFilter ?lotLabel(lotFilter) : null,
       sem_lote: Boolean(dados.sem_lote)

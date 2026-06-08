@@ -41,6 +41,77 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "consulta animais gravidos lista somente prenhas",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["quais animais estao gravidos?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { reproducao: "prenhe" },
+          responseIncludes: "B-002",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta prenhas com frase curta",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["me mostra as prenhas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { reproducao: "prenhe" },
+          responseIncludes: "B-002",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta pre parto usa eventos do animal",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: [
+          { animal_id: "animal-b-003", tipo: "observacao", descricao: "Pre-parto registrado" }
+        ],
+        messages: ["me mostre animais em pre parto"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { reproducao: "pre_parto" },
+          responseIncludes: "B-003",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta inseminadas usa eventos de cobertura",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: [
+          { animal_id: "animal-b-001", tipo: "inseminacao", descricao: "Cobertura registrada" }
+        ],
+        messages: ["quais vacas foram inseminadas?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", reproducao: "inseminada" },
+          responseIncludes: "B-001",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta animais sem evento nao salva nada",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["quantos animais sem evento?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { reproducao: "sem_evento" },
+          responseIncludes: "sem eventos",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "consulta detalhe de animal mostra lote",
         module: "rebanho-lotes",
         phone: BOT_TEST_ADMIN_PHONE,

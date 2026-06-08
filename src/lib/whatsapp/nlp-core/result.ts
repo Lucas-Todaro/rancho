@@ -148,6 +148,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
       dados.categoria ?`categoria ${dados.categoria}` : "",
       dados.sexo ?`sexo ${dados.sexo}` : "",
       dados.status ?`status ${dados.status}` : "",
+      dados.reproducao ?`reproduÃ§Ã£o ${dados.reproducao}` : "",
       dados.lote_nome ?`lote ${dados.lote_nome}` : "",
       dados.sem_lote ?"sem lote" : ""
     ].filter(Boolean);

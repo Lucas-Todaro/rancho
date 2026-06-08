@@ -454,6 +454,33 @@ function herdStatusFromText(normalized: string) {
   return undefined;
 }
 
+function herdReproductionFilterFromText(normalized: string) {
+  if (/\b(?:sem\s+(?:evento|eventos|registro|registros|historico|ocorrencia|ocorrencias)|sem\s+(?:informacao|info)\s+reprodutiva|sem\s+nada\s+(?:lancado|registrado)|nao\s+tem\s+(?:evento|eventos|registro|registros))\b/.test(normalized)) return "sem_evento";
+  if (/\b(?:pre\s*parto|pre-parto|preparto|perto\s+de\s+parir|quase\s+parindo|para\s+parir|final\s+da\s+gestacao|fim\s+da\s+gestacao)\b/.test(normalized)) return "pre_parto";
+  if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|cobert[ao]s?|cobertura|cobertas?|cobertos?|ia|iatf|semen)\b/.test(normalized)) return "inseminada";
+  if (/\b(?:gravid[ao]s?|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao|gestando)\b/.test(normalized)) return "prenhe";
+  if (/\b(?:com\s+(?:evento|eventos|registro|registros|historico|ocorrencia|ocorrencias))\b/.test(normalized)) return "com_evento";
+  return undefined;
+}
+
+function hasExplicitAnimalCodeForHerdQuery(normalized: string) {
+  return /\b[a-z]+-\d[a-z0-9-]*\b/.test(normalized)
+    || /\b[a-z]+\d[a-z0-9-]*\b/.test(normalized)
+    || /\b(?:brinco|codigo|cod|numero|n)\s+[a-z]*\d[a-z0-9-]*\b/.test(normalized)
+    || /\b(?:vaca|animal|boi|touro|bezerro|bezerra|novilha)\s+\d[a-z0-9-]*\b/.test(normalized);
+}
+
+function herdReproductionQueryCue(normalized: string, original: string) {
+  const filter = herdReproductionFilterFromText(normalized);
+  if (!filter) return false;
+  if (hasExplicitAnimalCodeForHerdQuery(normalized)) return false;
+  if (/\b(?:cadastra|cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lançar|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova|mudar|atualizar|alterar|trocar|corrigir|confirmar|diagnostico|positivo|negativo|vendi|vendeu|morreu|pariu|ficou|esta|ta|foi|marcar|marca|coberta|coberto)\b/.test(normalized)) return false;
+  if (/\b(?:prenhez|inseminacao|cobertura)\s+(?:da|do|de|na|no)\b/.test(normalized)) return false;
+  const groupCue = /\b(?:quais|quantos|quantas|total|lista|listar|liste|mostra|mostrar|mostre|me\s+mostra|me\s+mostre|ver|consulta|consultar|tenho|tem|existem|existe|rebanho|gado|animais|animal|vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?)\b/.test(normalized)
+    || (/\?/.test(original) && /\b(?:rebanho|gado|animais|animal|vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?)\b/.test(normalized));
+  return groupCue;
+}
+
 function consultationModeFromText(normalized: string) {
   if (/\b(?:quantos|quantas|total|contagem|numero)\b/.test(normalized)) return "contagem";
   if (/\b(?:resumo|relatorio|como esta|como ta)\b/.test(normalized)) return "resumo";
@@ -467,6 +494,7 @@ function herdQueryData(original: string, normalized: string) {
     categoria: herdCategoryFromText(normalized),
     sexo: herdSexFromText(normalized),
     status: herdStatusFromText(normalized),
+    reproducao: herdReproductionFilterFromText(normalized),
     lote_nome: extractLotNameForQuery(original) || extractLotNameForQuery(normalized),
     sem_lote: /\b(?:sem lote|sem piquete|sem pasto|fora de lote)\b/.test(normalized) || undefined,
     pagina: extractQueryPage(normalized)
@@ -864,6 +892,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
 
   const productionAnimalReport = /\b(?:producao|produção|historico|histórico|ultima|última|media|média)\b/.test(normalized)
     && Boolean(extractAnimalCode(normalized, "CONSULTA_PRODUCAO_ANIMAL"))
+    && !herdReproductionFilterFromText(normalized)
     && !hasValue(extractLiters(normalized))
     && !hasClinicalObservationCue(normalized)
     && !/\b(?:vacina|vacinas|evento|eventos|medicamento|medicamentos|tratamento|tratamentos|parto|partos|clinico|reprodutivo)\b/.test(normalized);
@@ -904,6 +933,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CONSULTA_REBANHO", dados, [], 0.88);
   }
 
+  if (herdReproductionQueryCue(normalized, original)) {
+    const dados = herdQueryData(original, normalized);
+    return finalize("CONSULTA_REBANHO", dados, [], 0.88);
+  }
+
   const lotQueryCue = !/\b(?:cria|criar|cadastra|cadastrar|cadastre|novo|nova|adiciona|adicionar|mudar|move|mover|coloca|colocar|troca|trocar)\b/.test(normalized)
     && /\b(?:lotes?|piquetes?|pastos?)\b/.test(normalized)
     && (
@@ -920,17 +954,21 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   }
 
   const herdActionCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lançar|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova|mudar|atualizar|alterar|trocar|corrigir|vendi|vendeu|morreu|pariu)\b/.test(normalized);
+  const herdReproductiveMutationCue = /\b(?:confirmar|diagnostico|positivo|negativo|ficou|esta|ta|foi|marcar|marca|coberta|coberto)\b/.test(normalized)
+    || /\b(?:prenhez|inseminacao|cobertura)\s+(?:da|do|de|na|no)\b/.test(normalized);
   const herdQueryCue = !herdActionCue
+    && !herdReproductiveMutationCue
     && (
       /\b(?:quais|quantos|quantas|total|lista|listar|mostra|mostrar|ver|consulta|consultar|tenho|cadastrados|cadastradas|resumo|relatorio|relatório|como esta|como ta|pagina|pg)\b/.test(normalized)
       || /\?/.test(original)
     )
     && (
       /\b(?:rebanho|gado|animais|animal|vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?|machos?|femeas?|ativos?|ativas?|mortos?|mortas?|vendidos?|vendidas?|inativos?|inativas?)\b/.test(normalized)
-      || Boolean(herdCategoryFromText(normalized) || herdSexFromText(normalized) || herdStatusFromText(normalized))
+      || Boolean(herdCategoryFromText(normalized) || herdSexFromText(normalized) || herdStatusFromText(normalized) || herdReproductionFilterFromText(normalized))
     )
     && !/\b(?:genealogia|geneologia|genelogia|arvore|arvori|linhagem|linhage|familia|familiar|pais|mae|pai|filhos|filhas|descendentes|avos|avo)\b/.test(normalized)
-    && !/\b(?:funcionario|funcionarios|colaborador|equipe|estoque|financeiro|ponto|leite|litros|ordenha|producao|produção)\b/.test(normalized);
+    && !/\b(?:funcionario|funcionarios|colaborador|equipe|estoque|financeiro|ponto|leite|litros|ordenha|producao|produção)\b/.test(normalized)
+    && !hasExplicitAnimalCodeForHerdQuery(normalized);
   if (herdQueryCue) {
     const dados = herdQueryData(original, normalized);
     return finalize("CONSULTA_REBANHO", dados, [], 0.88);
@@ -1375,7 +1413,8 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("DESPESA", dados, buildMissing("DESPESA", dados));
   }
 
-  const isParto = /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|deu cria|teve bezerro|teve bezerra|teve cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
+  const isParto = !herdReproductionFilterFromText(normalized)
+    && /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|deu cria|teve bezerro|teve bezerra|teve cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
   if (isParto) {
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PARTO"),

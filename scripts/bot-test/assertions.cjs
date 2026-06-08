@@ -152,6 +152,7 @@ module.exports = function loadBotTestSection(context) {
       if (expected.modo && normalize(dados.modo) !== normalize(expected.modo)) failures.push(`modo esperado ${expected.modo}, recebido ${dados.modo}`);
       if (expected.sexo && normalize(dados.sexo) !== normalize(expected.sexo)) failures.push(`sexo esperado ${expected.sexo}, recebido ${dados.sexo}`);
       if (expected.status && normalize(dados.status) !== normalize(expected.status)) failures.push(`status esperado ${expected.status}, recebido ${dados.status}`);
+      if (expected.reproducao && normalize(dados.reproducao) !== normalize(expected.reproducao)) failures.push(`reproducao esperada ${expected.reproducao}, recebida ${dados.reproducao}`);
       if ("sem_lote" in expected && Boolean(dados.sem_lote) !== Boolean(expected.sem_lote)) failures.push(`sem_lote esperado ${expected.sem_lote}, recebido ${dados.sem_lote}`);
       if ("pagina" in expected && Number(dados.pagina) !== Number(expected.pagina)) failures.push(`pagina esperada ${expected.pagina}, recebida ${dados.pagina}`);
       if (expected.fase && normalize(dados.fase) !== normalize(expected.fase)) failures.push(`fase esperada ${expected.fase}, recebida ${dados.fase}`);
