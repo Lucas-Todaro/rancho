@@ -1445,6 +1445,68 @@ async function deleteFarmRowsByIds(supabase: SupabaseAdmin, table: string, colum
   if (error) throw new Error(error.message);
 }
 
+async function deleteFarmRowsByValues(supabase: SupabaseAdmin, table: string, column: string, values: string[], farmId: string) {
+  const safeValues = values.filter(Boolean);
+  if (!safeValues.length) return;
+  const { error } = await supabase.from(table).delete().eq("fazenda_id", farmId).in(column, safeValues);
+  if (error) throw new Error(error.message);
+}
+
+function isOptionalRelationColumnError(error: unknown) {
+  const message = safeErrorText(error);
+  return /42703|schema cache|column|does not exist|nao existe|não existe|source_id|producao_id|animal_id|entidade_id|registro_id|referencia_id|mae_id|pai_id/i.test(message);
+}
+
+async function tryDeleteFarmRowsByIds(supabase: SupabaseAdmin, table: string, column: string, ids: string[], farmId: string) {
+  try {
+    await deleteFarmRowsByIds(supabase, table, column, ids, farmId);
+  } catch (error) {
+    if (!isOptionalRelationColumnError(error)) throw error;
+    console.warn("[BOT DELETE HERD] vínculo opcional ignorado", {
+      table,
+      column,
+      fazenda_id: farmId,
+      message: safeErrorText(error)
+    });
+  }
+}
+
+async function tryDeleteFarmRowsByValues(supabase: SupabaseAdmin, table: string, column: string, values: string[], farmId: string) {
+  try {
+    await deleteFarmRowsByValues(supabase, table, column, values, farmId);
+  } catch (error) {
+    if (!isOptionalRelationColumnError(error)) throw error;
+    console.warn("[BOT DELETE HERD] vínculo opcional ignorado", {
+      table,
+      column,
+      fazenda_id: farmId,
+      message: safeErrorText(error)
+    });
+  }
+}
+
+async function tryClearAnimalSelfReferences(supabase: SupabaseAdmin, animalIds: string[], farmId: string) {
+  if (!animalIds.length) return;
+
+  for (const column of ["mae_id", "pai_id"]) {
+    try {
+      const { error } = await supabase
+        .from(TABLES.animais)
+        .update({ [column]: null })
+        .eq("fazenda_id", farmId)
+        .in(column, animalIds);
+      if (error) throw new Error(error.message);
+    } catch (error) {
+      if (!isOptionalRelationColumnError(error)) throw error;
+      console.warn("[BOT DELETE HERD] genealogia opcional ignorada", {
+        column,
+        fazenda_id: farmId,
+        message: safeErrorText(error)
+      });
+    }
+  }
+}
+
 async function farmRowIds(supabase: SupabaseAdmin, table: string, farmId: string) {
   const { data, error } = await supabase.from(table).select("id").eq("fazenda_id", farmId);
   if (error) throw new Error(error.message);
@@ -3196,18 +3258,21 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     const eventIds = await farmRowIds(supabase, TABLES.eventosAnimal, owner.fazenda_id);
     const milkingIds = await farmRowIds(supabase, TABLES.ordenhas, owner.fazenda_id);
     const linkedIds = [...animalIds, ...eventIds, ...milkingIds];
+    const legacyEventOrigins = eventIds.map((id) => `${TABLES.eventosAnimal}:${id}`);
 
-    await deleteFarmRowsByIds(supabase, TABLES.transacoesFinanceiras, "source_id", eventIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "source_id", milkingIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "producao_id", milkingIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "animal_id", animalIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.alertas, "animal_id", animalIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "entidade_id", linkedIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "registro_id", linkedIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "referencia_id", linkedIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.alertas, "entidade_id", linkedIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.alertas, "registro_id", linkedIds, owner.fazenda_id);
-    await deleteFarmRowsByIds(supabase, TABLES.alertas, "referencia_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.transacoesFinanceiras, "source_id", eventIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByValues(supabase, TABLES.transacoesFinanceiras, "origem", legacyEventOrigins, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "source_id", milkingIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "producao_id", milkingIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "animal_id", animalIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "animal_id", animalIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "entidade_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "registro_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "referencia_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "entidade_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "registro_id", linkedIds, owner.fazenda_id);
+    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "referencia_id", linkedIds, owner.fazenda_id);
+    await tryClearAnimalSelfReferences(supabase, animalIds, owner.fazenda_id);
     await deleteFarmRows(supabase, TABLES.ordenhas, owner.fazenda_id);
     await deleteFarmRows(supabase, TABLES.eventosAnimal, owner.fazenda_id);
     await deleteFarmRows(supabase, TABLES.animais, owner.fazenda_id);

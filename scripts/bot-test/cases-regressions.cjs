@@ -783,6 +783,23 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "schema: exclusao real do rebanho limpa vinculos sem erro interno",
+        module: "schema-whatsapp",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["excluir todos os animais", { text: "sim, quero excluir meu rebanho", salvarReal: true }],
+        expected: {
+          finalIntent: "EXCLUIR_REBANHO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          responseNotIncludes: "Erro interno",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldNotWriteBusiness: false
+        }
+      },
+      {
         name: "schema: logger real de whatsapp nao grava body top-level",
         module: "schema-whatsapp",
         phone: BOT_TEST_ADMIN_PHONE,

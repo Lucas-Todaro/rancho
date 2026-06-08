@@ -564,6 +564,12 @@ module.exports = function loadBotTestSection(context) {
         return this;
       }
 
+      in(field, values) {
+        const options = Array.isArray(values) ? values : [];
+        this.filters.push((row) => options.some((value) => row?.[field] === value || String(row?.[field]) === String(value)));
+        return this;
+      }
+
       is(field, value) {
         this.filters.push((row) => row?.[field] === value);
         return this;
