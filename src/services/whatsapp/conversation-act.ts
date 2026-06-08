@@ -95,6 +95,10 @@ const CORRECTION_PATTERN = /\b(?:errei|corrige|corrigir|corrija|quero corrigir|n
 const REPLACEMENT_PATTERN = /\b(?:nao\s+(?:era|foi|e).+\b(?:era|foi|e)\b|foi\s+(?:na|no|a|o)?\s*\w+|era\s+(?:a|o)?\s*\w+|foram?\s+\d|era\s+\d|uso|saida|baixa|cio)\b/;
 const CONTEXT_REFERENCE_PATTERN = /\b(?:isso|essa|esse|dessa|desse|ultimo|ultima|anterior|lancamento|registro|entendeu|quis dizer)\b/;
 const HEALTH_OBSERVATION_PATTERN = /\b(?:nao comeu|nao levantou|sem comer|mancando|doente|fraco|fraca|ruim|febre|diarreia|mastite|tossindo|ferida)\b/;
+function isReproductiveProtocolResult(normalized: string) {
+  return /\bnao passou\b/.test(normalized)
+    && /\b(?:protocolo|reteste|\d[a-z0-9]*(?:\s+[a-z]{1,4})?)\b/.test(normalized);
+}
 
 function uniqueFlags(values: ParserRiskFlag[]) {
   return Array.from(new Set(values));
@@ -187,6 +191,18 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
       flags: uniqueFlags(flags),
       decision: "new_action",
       reason: "Mensagem com observacao sanitaria tratada como nova acao."
+    };
+  }
+
+  if (!base.hasPendingAction && isReproductiveProtocolResult(normalized)) {
+    return {
+      ...base,
+      messageType: "new_action",
+      confidence: 0.82,
+      correction: null,
+      flags: uniqueFlags(flags),
+      decision: "new_action",
+      reason: "Resultado de protocolo reprodutivo tratado como nova acao."
     };
   }
 

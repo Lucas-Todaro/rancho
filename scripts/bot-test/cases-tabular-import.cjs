@@ -394,7 +394,7 @@ module.exports = function loadBotTestSection(context) {
         animalEvents: [
           {
             animal_id: "animal-tab-001",
-            tipo: "observacao",
+            tipo: "inseminacao",
             data_evento: "2026-01-01T12:00:00.000Z",
             descricao: "Inseminacao importado via WhatsApp para o animal 001"
           }

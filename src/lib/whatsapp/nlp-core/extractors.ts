@@ -101,8 +101,8 @@ const monthNumbers: Record<string, number> = {
 
 function stripDateFragments(text: string) {
   return normalizeRanchoText(text)
-    .replace(/\b(?:19|20)\d{2}[/-]\d{1,2}[/-]\d{1,2}\b/g, " ")
-    .replace(/\b\d{1,2}[/-]\d{1,2}(?:[/-](?:19|20)?\d{2})?\b/g, " ")
+    .replace(/\b(?:19|20)\d{2}[./-]\d{1,2}[./-]\d{1,2}\b/g, " ")
+    .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-](?:19|20)?\d{2})?\b/g, " ")
     .replace(/\b(?:dia|em|no dia)?\s*\d{1,2}\s+de\s+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+(?:19|20)\d{2})?\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -117,10 +117,10 @@ export function extractTurno(text: string) {
 
 export function extractDateReference(text: string) {
   const normalized = normalizeRanchoText(text);
-  const isoDate = normalized.match(/\b((?:19|20)\d{2})[/-](\d{1,2})[/-](\d{1,2})\b/);
+  const isoDate = normalized.match(/\b((?:19|20)\d{2})[./-](\d{1,2})[./-](\d{1,2})\b/);
   if (isoDate) return validDateParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
 
-  const brDate = normalized.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-]((?:19|20)?\d{2}))?\b/);
+  const brDate = normalized.match(/\b(\d{1,2})[./-](\d{1,2})(?:[./-]((?:19|20)?\d{2}))?\b/);
   if (brDate) {
     const rawYear = brDate[3] ? Number(brDate[3]) : new Date().getFullYear();
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
@@ -243,11 +243,22 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const standalone = normalizeAnimalCandidate(searchable);
   if (standalone && !/\s/.test(searchable.trim())) return standalone;
 
+  const leadingSpacedCode = searchable.match(/^\s*(?:a|o)?\s*(\d[a-z0-9-]*(?:\s+[a-z]{1,4})?)\b/);
+  const leadingSpacedCodeCandidateRaw = leadingSpacedCode?.[1]?.trim();
+  const leadingSpacedParts = leadingSpacedCodeCandidateRaw?.split(/\s+/) || [];
+  const leadingSpacedSuffix = leadingSpacedParts[1] || "";
+  const leadingSpacedCodeCandidate = leadingSpacedSuffix && /^(?:esta|ta|foi|nao|dia|em|com)$/i.test(leadingSpacedSuffix)
+    ? leadingSpacedParts[0]?.toUpperCase()
+    : leadingSpacedCodeCandidateRaw?.toUpperCase();
+  if (leadingSpacedCodeCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) {
+    return normalizeAnimalCandidate(leadingSpacedCodeCandidate) || leadingSpacedCodeCandidate;
+  }
+
   const leadingCandidateMatch = searchable.match(/^\s*(?:a|o)?\s*([a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*)\b/);
   const leadingCandidate = normalizeAnimalCandidate(leadingCandidateMatch?.[1]);
   if (leadingCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) return leadingCandidate;
 
-  const earlyNamedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:a|o)?\s*([a-z][a-z0-9-]*)\b/);
+  const earlyNamedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:(?:a|o)\s+)?([a-z][a-z0-9-]*)\b/);
   const earlyNamedReferenceCandidate = candidateFromMatch(earlyNamedReference?.[1]);
   if (earlyNamedReferenceCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) {
     return normalizeAnimalCandidate(earlyNamedReferenceCandidate) || earlyNamedReferenceCandidate.toUpperCase();
@@ -274,7 +285,7 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   const directCandidate = candidateFromMatch(direct?.[1]);
   if (directCandidate) return normalizeAnimalCandidate(directCandidate) || directCandidate.toUpperCase();
 
-  const namedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:a|o)?\s*([a-z][a-z0-9-]*)\b/);
+  const namedReference = searchable.match(/\b(?:da|do|de|na|no|em|para|pra|a|o)\s+(?:(?:a|o)\s+)?([a-z][a-z0-9-]*)\b/);
   const namedReferenceCandidate = candidateFromMatch(namedReference?.[1]);
   if (namedReferenceCandidate && intent && ["PARTO", "VACINA_MEDICAMENTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL"].includes(intent)) {
     return normalizeAnimalCandidate(namedReferenceCandidate) || namedReferenceCandidate.toUpperCase();

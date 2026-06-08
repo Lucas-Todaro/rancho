@@ -1,6 +1,11 @@
 import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { firstNumber } from "@/lib/whatsapp/nlp-numbers";
 import { animalCategoryMap, animalSexMap, animalWords, stockItemHintPattern } from "./constants";
+import {
+  detectReproductiveEventKind,
+  extractInseminationOrigin,
+  hasReproductiveEventCue
+} from "./reproductive-events";
 import { buildMissing, finalize } from "./result";
 import {
   cleanStockQueryItem,
@@ -59,7 +64,7 @@ function cleanUpdateValue(value?: string | null) {
 }
 
 const clinicalObservationCue = /\b(?:mancando|doente|doenca|doença|recuperou|febre|diarreia|sem comer|nao comeu|nao levantou|mastite|carrapato|triste|fraco|fraca|ruim|tossindo|ferida|veterinario|queda de producao|problema no casco|casco)\b/;
-const reproductiveObservationCue = /\b(?:cio|ia|inseminada|inseminado|inseminacao|inseminar|cobertura|coberta|coberto|aborto)\b/;
+const reproductiveObservationCue = /\b(?:cio|ia|iatf|inseminad[ao]s?|inseminacao|inseminar|inseminaram|cobertura|coberta|coberto|semen|prenhas?|prenhe|prenha|prenhez|gestante|gestacao|pegou cria|diagnostico positivo|pre\s*parto|pre-parto|preparto|protocolo|reteste|nao passou|aborto)\b/;
 const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
 const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
 
@@ -73,13 +78,21 @@ function hasClinicalObservationCue(normalized: string) {
 
 function animalObservationEventType(normalized: string) {
   if (hasClinicalObservationCue(normalized)) return "clinico";
-  if (reproductiveObservationCue.test(normalized)) return "reprodutivo";
+  if (hasReproductiveEventCue(normalized) || reproductiveObservationCue.test(normalized)) return "reprodutivo";
   return "observacao";
 }
 
+function hasAnimalEventCostCue(normalized: string) {
+  return hasExplicitMoney(normalized)
+    || /\b(?:paguei|gastei|custou|custo|cobrou|despesa|ficou|deu)\s+(?:r\$\s*)?\d+(?:[,.]\d+)?\b/.test(normalized);
+}
+
 function withAnimalObservationEventData(dados: Record<string, unknown>, original: string, normalized: string) {
-  const cost = extractMoneyValue(normalized);
-  const descricao = cleanUpdateValue(String(dados.novo_valor || original));
+  const cost = hasAnimalEventCostCue(normalized) ?extractMoneyValue(normalized) : undefined;
+  const reproductiveKind = detectReproductiveEventKind(normalized);
+  const descriptionSource = dados.descricao || (dados.campo_alterado === "observacoes" ? dados.novo_valor : undefined) || original;
+  const descricao = cleanUpdateValue(String(descriptionSource));
+  const inseminationOrigin = reproductiveKind === "inseminacao" ? extractInseminationOrigin(original) : undefined;
   return {
     ...dados,
     campo_alterado: dados.campo_alterado || "observacoes",
@@ -87,6 +100,8 @@ function withAnimalObservationEventData(dados: Record<string, unknown>, original
     descricao: descricao || original,
     registro_evento_animal: true,
     evento_tipo: animalObservationEventType(normalized),
+    ...(reproductiveKind ? { evento_reprodutivo_tipo: reproductiveKind } : {}),
+    ...(inseminationOrigin ? { origem_inseminacao: inseminationOrigin } : {}),
     data_referencia: dados.data_referencia || extractDateReference(normalized) || "hoje",
     ...(hasValue(cost) && Number(cost) > 0 ?{ custo: cost, valor: cost } : {})
   };
@@ -515,6 +530,7 @@ function lotQueryData(original: string, normalized: string) {
 function extractAnimalUpdateData(original: string, normalized: string) {
   const animal_codigo = extractAnimalCode(normalized, "ATUALIZACAO_ANIMAL");
   const data_referencia = extractDateReference(normalized);
+  const reproductiveKind = detectReproductiveEventKind(normalized);
   const phase = extractAnimalPhase(normalized);
   const birthDate = extractAnimalBirthDate(original);
   const breedForUpdate = original.match(/\b(?:raca|raça)\b.*?\bpara\s+(.+)$/i)?.[1];
@@ -556,11 +572,42 @@ function extractAnimalUpdateData(original: string, normalized: string) {
   }
 
   if (/\b(?:confirmar prenhez|prenhez positiva|diagnostico positivo de prenhez|esta gestante|esta prenha)\b/.test(normalized)) {
-    return { animal_codigo, campo_alterado: "fase", novo_valor: "gestante" };
+    return withAnimalObservationEventData({
+      animal_codigo,
+      campo_alterado: "fase",
+      novo_valor: "gestante",
+      descricao: original,
+      data_referencia
+    }, original, normalized);
   }
 
   if (/\bprenhez\b/.test(normalized)) {
-    return { animal_codigo, campo_alterado: "fase", novo_valor: "gestante" };
+    return withAnimalObservationEventData({
+      animal_codigo,
+      campo_alterado: "fase",
+      novo_valor: "gestante",
+      descricao: original,
+      data_referencia
+    }, original, normalized);
+  }
+
+  if (reproductiveKind === "prenhez") {
+    return withAnimalObservationEventData({
+      animal_codigo,
+      campo_alterado: "fase",
+      novo_valor: "gestante",
+      descricao: original,
+      data_referencia
+    }, original, normalized);
+  }
+
+  if (reproductiveKind && reproductiveKind !== "parto") {
+    return withAnimalObservationEventData({
+      animal_codigo,
+      campo_alterado: "observacoes",
+      novo_valor: cleanUpdateValue(observation || original),
+      data_referencia
+    }, original, normalized);
   }
 
   if (phase && /\b(?:ficou|esta|ta|marcar|marca|alterar|status|prenhe|prenha|prenhez|gestante|vazia|seca|lactante|lactacao)\b/.test(normalized)) {

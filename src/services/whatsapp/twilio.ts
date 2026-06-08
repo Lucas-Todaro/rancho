@@ -23,7 +23,12 @@ import {
   normalizeRanchoText,
   parseRanchoMessage,
   parseTabularAnimalEventsMessageAs,
+  detectReproductiveEventKind,
   refreshRanchoMessage,
+  reproductiveEventDbType,
+  reproductiveEventDescription,
+  reproductiveEventLabel,
+  type ReproductiveEventKind as NlpReproductiveEventKind,
   type ParsedRanchoMessage
 } from "@/lib/whatsapp/nlp";
 
@@ -653,6 +658,15 @@ function tabularImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
 
   const extra = issueRows.length > rows.length ?`\n...e mais ${issueRows.length - rows.length} linha(s) com alerta.` : "";
   return `${lines.join("\n")}${extra}`;
+}
+
+function normalizedReproductiveEventKind(dados: AnyRecord, description: string): NlpReproductiveEventKind | undefined {
+  const explicitKind = String(dados.evento_reprodutivo_tipo || "");
+  if (["inseminacao", "prenhez", "pre_parto", "parto", "protocolo", "reteste", "observacao"].includes(explicitKind)) {
+    return explicitKind as NlpReproductiveEventKind;
+  }
+  if (dados.evento_tipo === "reprodutivo") return detectReproductiveEventKind(description) || "observacao";
+  return undefined;
 }
 
 function tabularMissingAnimalCodes(parsed: ParsedRanchoMessage, maxRows = 8) {
@@ -1539,7 +1553,7 @@ function reproductiveEventKind(event: AnyRecord): ReproductiveEventKind | undefi
   if (type === "parto" || /\b(?:parto|pariu|nasceu|nascimento|deu cria)\b/.test(text)) return "parto";
   if (type === "inseminacao" || /\b(?:inseminacao|inseminada|inseminado|cobertura|coberta|coberto|semen|ia|iatf)\b/.test(text)) return "inseminacao";
   if (/\b(?:prenhez|prenhe|prenha|gestacao|gestante|gravida|gravido)\b/.test(text)) return "prenhez";
-  if (/\bprotocolo\b/.test(text)) return "protocolo";
+  if (/\b(?:protocolo|reteste|nao passou)\b/.test(text)) return "protocolo";
   return undefined;
 }
 
@@ -3205,20 +3219,41 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     if (dados.registro_evento_animal) {
       const custo = hasBotValue(dados.custo ?? dados.valor) ?Number(dados.custo ?? dados.valor) : 0;
       const descricao = String(dados.descricao || dados.novo_valor || pending.resumo || "Ocorrência registrada via WhatsApp");
-      const eventoLabel = dados.evento_tipo === "reprodutivo" ?"Ocorrência reprodutiva" : "Ocorrência clínica";
+      const reproductiveKind = normalizedReproductiveEventKind(dados, descricao);
+      const eventType = reproductiveKind ?reproductiveEventDbType(reproductiveKind) : "observacao";
+      const eventoLabel = reproductiveKind
+        ? reproductiveEventLabel(reproductiveKind)
+        : dados.evento_tipo === "reprodutivo" ?"Ocorrência reprodutiva" : "Ocorrência clínica";
+      const origemInseminacao = String(dados.origem_inseminacao || "").trim();
+      const eventDescription = reproductiveKind
+        ? reproductiveEventDescription(reproductiveKind, descricao, origemInseminacao)
+        : `${eventoLabel} registrada via WhatsApp: ${descricao}`;
       const savedTables: string[] = [TABLES.eventosAnimal];
 
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
-        tipo: "observacao",
+        tipo: eventType,
         data_evento: isoFromReference(dados.data_referencia),
-        descricao: `${eventoLabel} registrada via WhatsApp: ${descricao}`,
-        medicamento: null,
+        descricao: eventDescription,
+        medicamento: reproductiveKind === "inseminacao" && origemInseminacao ?origemInseminacao : null,
         dose: null,
         custo,
         responsavel_usuario_id: owner.usuario_id || null
       });
+
+      if (reproductiveKind === "prenhez" && String(dados.campo_alterado || "") === "fase" && hasBotValue(dados.novo_valor)) {
+        const { data, error } = await supabase
+          .from(TABLES.animais)
+          .update({ fase: String(dados.novo_valor) })
+          .eq("id", animal.id)
+          .eq("fazenda_id", owner.fazenda_id)
+          .select("*")
+          .single();
+        if (error) throw new Error(error.message);
+        await logAudit(supabase, owner, TABLES.animais, "update", data || { ...animal, fase: String(dados.novo_valor) });
+        savedTables.push(TABLES.animais);
+      }
 
       let financeText = "";
       if (custo > 0 && isBotAdmin(owner)) {
@@ -3227,7 +3262,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           tipo: "saida",
           data_transacao: dateOnlyFromReference(dados.data_referencia),
           valor: custo,
-          categoria: "Saúde animal",
+          categoria: reproductiveKind ?"Reprodução animal" : "Saúde animal",
           descricao: `${eventoLabel} de ${animal.brinco}: ${descricao}`,
           metodo_pagamento: "whatsapp",
           origem: "whatsapp",
@@ -4513,15 +4548,17 @@ function eventTypeMatches(row: AnyRecord, requested?: string) {
   if (!requested) return true;
   const text = normalizeRanchoText([row.tipo, row.descricao, row.medicamento].filter(Boolean).join(" "));
   if (requested === "clinico") return /\b(?:doenca|doente|observacao|clinico|clinica|apetite|mastite|problema)\b/.test(text);
-  if (requested === "reprodutivo") return /\b(?:cio|prenhez|inseminacao|cobertura|reprodutivo)\b/.test(text);
+  if (requested === "reprodutivo") return Boolean(detectReproductiveEventKind(text)) || /\b(?:cio|prenhez|inseminacao|cobertura|reprodutivo|pre\s*parto|pre-parto|protocolo|reteste|parto)\b/.test(text);
   return text.includes(requested);
 }
 
 function eventTypeLabel(row: AnyRecord) {
   const tipo = normalizeRanchoText(row.tipo || "");
+  const reproductiveKind = detectReproductiveEventKind([row.tipo, row.descricao, row.medicamento].filter(Boolean).join(" "));
   if (tipo === "vacina") return `Vacina${row.medicamento ?` ${row.medicamento}` : ""}`;
   if (tipo === "tratamento") return `Tratamento${row.medicamento ?` ${row.medicamento}` : ""}`;
   if (tipo === "parto") return "Parto registrado";
+  if (reproductiveKind) return `${reproductiveEventLabel(reproductiveKind)} registrado`;
   if (tipo === "observacao") return "Observação clínica";
   if (tipo === "doenca") return "Ocorrência clínica";
   if (tipo === "cio") return "Cio registrado";

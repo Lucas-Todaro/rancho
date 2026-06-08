@@ -10,3 +10,12 @@ export { parseRanchoMessage } from "@/lib/whatsapp/nlp-core/parser";
 export { parseTabularAnimalEventsMessage, parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
 export { evaluateRanchoParseConfidence, parserDecisionForParsed, shouldUseGeminiFallback } from "@/lib/whatsapp/nlp-core/confidence-evaluator";
 export { mergeRanchoMessageData } from "@/lib/whatsapp/nlp-core/contextual-parser";
+export {
+  detectReproductiveEventKind,
+  extractInseminationOrigin,
+  hasReproductiveEventCue,
+  reproductiveEventDbType,
+  reproductiveEventDescription,
+  reproductiveEventLabel,
+  type ReproductiveEventKind
+} from "@/lib/whatsapp/nlp-core/reproductive-events";

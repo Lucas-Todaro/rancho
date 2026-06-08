@@ -10,7 +10,7 @@ export type ParsedTabularAnimalEventRow = {
   status_original: string;
   evento_tipo: "inseminacao" | "parto" | "protocolo" | null;
   evento_label: string | null;
-  db_tipo: "observacao" | "parto" | null;
+  db_tipo: "observacao" | "parto" | "inseminacao" | null;
   data_original: string;
   data_referencia: string | null;
   observacoes: string;
@@ -210,7 +210,7 @@ function resolveEventType(value: string): EventTypeResolution | null {
     return {
       evento_tipo: "inseminacao",
       evento_label: "Inseminacao",
-      db_tipo: "observacao"
+      db_tipo: "inseminacao"
     };
   }
 

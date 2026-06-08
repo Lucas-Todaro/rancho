@@ -143,6 +143,8 @@ module.exports = function loadBotTestSection(context) {
       if (expected.venda && !dados.venda) failures.push("esperava venda=true");
       if ("registro_evento_animal" in expected && Boolean(dados.registro_evento_animal) !== Boolean(expected.registro_evento_animal)) failures.push(`registro_evento_animal esperado ${expected.registro_evento_animal}, recebido ${dados.registro_evento_animal}`);
       if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
+      if (expected.evento_reprodutivo_tipo && normalize(dados.evento_reprodutivo_tipo) !== normalize(expected.evento_reprodutivo_tipo)) failures.push(`evento_reprodutivo_tipo esperado ${expected.evento_reprodutivo_tipo}, recebido ${dados.evento_reprodutivo_tipo}`);
+      if (expected.origem_inseminacao && normalize(dados.origem_inseminacao) !== normalize(expected.origem_inseminacao)) failures.push(`origem_inseminacao esperada ${expected.origem_inseminacao}, recebida ${dados.origem_inseminacao}`);
       if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
       if (expected.animalAny && !expected.animalAny.map(normalize).includes(normalize(dados.animal_codigo))) failures.push(`animal esperado um de ${expected.animalAny.join(", ")}, recebido ${dados.animal_codigo}`);
       if (expected.notAnimal && normalize(dados.animal_codigo) === normalize(expected.notAnimal)) failures.push(`animal nao deveria ser ${expected.notAnimal}`);

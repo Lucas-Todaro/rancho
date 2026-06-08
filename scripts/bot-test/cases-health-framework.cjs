@@ -161,38 +161,197 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "prenhez positiva altera fase somente apos confirmar",
+        name: "prenhez positiva cria evento reprodutivo e altera fase apos confirmar",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: ["confirmar prenhez da estrela", "isso mesmo"],
         expected: {
           finalIntent: "ATUALIZACAO_ANIMAL",
-          entities: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante" },
+          entities: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "prenhez" },
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
-          simulatedSaveCount: 1,
-          savedTables: [BOT_TEST_TABLES.animais],
-          shouldSaveValues: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante" },
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { animal_codigo: "B-002", campo_alterado: "fase", novo_valor: "gestante", evento_reprodutivo_tipo: "prenhez", tipo: "observacao" },
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID
         }
       },
       {
-        name: "inseminacao vira observacao e confirma antes de salvar",
+        name: "inseminacao vira evento real e confirma antes de salvar",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: ["B-002 inseminada com semen do touro T-01", "certo"],
         expected: {
           finalIntent: "ATUALIZACAO_ANIMAL",
-          entities: { animal_codigo: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo" },
+          entities: { animal_codigo: "B-002", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "inseminacao", origem_inseminacao: "T-01" },
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           simulatedSaveCount: 1,
           savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "B-002", evento_reprodutivo_tipo: "inseminacao", tipo: "inseminacao", medicamento: "T-01" },
+          shouldNotSaveValues: { tipo: "observacao" },
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "Thais foi inseminada cria evento de inseminacao real",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Thais foi inseminada", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "THAIS", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "inseminacao" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "THAIS", evento_reprodutivo_tipo: "inseminacao", tipo: "inseminacao" },
+          shouldNotSaveValues: { tipo: "observacao" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "inseminacao por codigo com data preserva evento real",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-19", brinco: "19", nome: "Animal 19" }],
+        messages: ["inseminacao da 19 dia 01.06.26", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "19", data_referencia: "2026-06-01", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "inseminacao" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "19", tipo: "inseminacao", evento_reprodutivo_tipo: "inseminacao" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "pre parto vira evento reprodutivo visivel na reproducao",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Mimosa entrou em pre-parto", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "B-001", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "pre_parto" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "B-001", tipo: "observacao", evento_reprodutivo_tipo: "pre_parto" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "protocolo nao passou vira evento reprodutivo",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090", brinco: "090", nome: "Animal 090" }],
+        messages: ["ultimo protocolo da 090 nao passou", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "090", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "protocolo" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "090", tipo: "observacao", evento_reprodutivo_tipo: "protocolo" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "codigo com espaco nao passou preserva animal do rancho atual",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-5714-cf", brinco: "5714 CF", nome: "Animal 5714 CF" }],
+        messages: ["5714 CF nao passou", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "5714 CF", campo_alterado: "observacoes", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "protocolo" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "5714 CF", tipo: "observacao", evento_reprodutivo_tipo: "protocolo" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "animal nao encontrado nao salva evento reprodutivo solto",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Fantasma foi inseminada"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_referencia_nao_encontrada: "FANTASMA", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "inseminacao" },
+          responseIncludes: "Não encontrei",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "cancelamento de inseminacao nao salva evento",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Thais foi inseminada", "cancelar", "sim"],
+        expected: {
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldClearSession: true,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "confirmacao duplicada de inseminacao nao duplica evento",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Thais foi inseminada", "sim", "sim"],
+        expected: {
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "THAIS", tipo: "inseminacao" },
+          shouldNotDuplicate: true,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "inseminacao respeita multi fazenda do telefone",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE_B,
+        extraAnimals: [{ id: "animal-thais-b", brinco: "THAIS", nome: "Thais", fazenda_id: BOT_TEST_FARM_ID_B }],
+        messages: ["Thais foi inseminada", "sim"],
+        expected: {
+          finalIntent: "ATUALIZACAO_ANIMAL",
+          entities: { animal_codigo: "THAIS", registro_evento_animal: true, evento_tipo: "reprodutivo", evento_reprodutivo_tipo: "inseminacao" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "THAIS", tipo: "inseminacao" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID_B
         }
       },
       {

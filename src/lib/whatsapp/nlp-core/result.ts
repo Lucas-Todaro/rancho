@@ -4,6 +4,7 @@ import { formatBotNumber, formatStockQuantity, moneyText } from "@/lib/whatsapp/
 import { BOT_EXAMPLES, animalOptionalFields, questionByField } from "./constants";
 import type { ParsedRanchoMessage, RanchoIntent } from "./types";
 import { hasAnimalOptionalValue, hasSkippedAnimalOptionalField, isValidBotPhone } from "./extractors";
+import { reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
 
 function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord) {
   return fields.map((field) => {
@@ -179,7 +180,10 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "ATUALIZACAO_ANIMAL") {
     if (dados.registro_evento_animal) {
-      const evento = dados.evento_tipo === "reprodutivo" ?"ocorrência reprodutiva" : "ocorrência clínica";
+      const reproductiveKind = dados.evento_reprodutivo_tipo as ReproductiveEventKind | undefined;
+      const evento = dados.evento_tipo === "reprodutivo"
+        ? (reproductiveKind ? reproductiveEventLabel(reproductiveKind).toLowerCase() : "ocorrência reprodutiva")
+        : "ocorrência clínica";
       const custo = hasValue(dados.custo || dados.valor) ?` com custo de ${moneyText(dados.custo || dados.valor)}` : "";
       return `registrar ${evento}${dados.animal_codigo ?` para ${dados.animal_codigo}` : ""}${custo}${dados.descricao ?`: ${dados.descricao}` : ""}`;
     }

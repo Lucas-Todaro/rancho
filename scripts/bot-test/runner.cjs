@@ -300,6 +300,26 @@ module.exports = function loadBotTestSection(context) {
       });
     }
 
+    function simulatedReproductiveDbType(kind) {
+      if (kind === "inseminacao") return "inseminacao";
+      if (kind === "parto") return "parto";
+      return "observacao";
+    }
+
+    function simulatedReproductiveDescription(dados) {
+      const labels = {
+        inseminacao: "Inseminacao",
+        prenhez: "Prenhez",
+        pre_parto: "Pre-parto",
+        parto: "Parto",
+        protocolo: "Protocolo",
+        reteste: "Reteste de protocolo",
+        observacao: "Observacao reprodutiva"
+      };
+      const kind = dados.evento_reprodutivo_tipo || "observacao";
+      return `[Reproducao Animal] ${labels[kind] || labels.observacao} registrada via WhatsApp`;
+    }
+
     function simulatedSaveActionsForResult(result, phone) {
       if (!result.eventoConfirmado) return [];
       const tipo = result.intencaoDetectada;
@@ -719,6 +739,7 @@ module.exports = function loadBotTestSection(context) {
 
       if (tipo === "ATUALIZACAO_ANIMAL") {
         if (dados.registro_evento_animal) {
+          const reproductiveKind = dados.evento_tipo === "reprodutivo" ? (dados.evento_reprodutivo_tipo || "observacao") : null;
           const actions = [{
             ...base,
             table: BOT_TEST_TABLES.eventosAnimal,
@@ -727,11 +748,29 @@ module.exports = function loadBotTestSection(context) {
               animal_id: dados.animal_id || null,
               animal_codigo: dados.animal_codigo,
               evento_tipo: dados.evento_tipo || "observacao",
+              evento_reprodutivo_tipo: dados.evento_reprodutivo_tipo || null,
+              tipo: reproductiveKind ? simulatedReproductiveDbType(reproductiveKind) : "observacao",
               descricao: dados.descricao || dados.novo_valor || null,
+              descricao_salvar: reproductiveKind ? simulatedReproductiveDescription(dados) : dados.descricao || dados.novo_valor || null,
+              medicamento: reproductiveKind === "inseminacao" ? dados.origem_inseminacao || null : null,
               custo: Number(dados.custo || dados.valor || 0),
               origem: "whatsapp"
             }
           }];
+
+          if (reproductiveKind === "prenhez" && dados.campo_alterado === "fase") {
+            actions.push({
+              ...base,
+              type: "update",
+              table: BOT_TEST_TABLES.animais,
+              payload: {
+                fazenda_id: fazendaId,
+                animal_codigo: dados.animal_codigo,
+                campo_alterado: "fase",
+                novo_valor: dados.novo_valor
+              }
+            });
+          }
 
           if (Number(dados.custo || dados.valor || 0) > 0) {
             actions.push({
