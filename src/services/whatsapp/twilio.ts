@@ -1454,7 +1454,7 @@ async function deleteFarmRowsByValues(supabase: SupabaseAdmin, table: string, co
 
 function isOptionalRelationColumnError(error: unknown) {
   const message = safeErrorText(error);
-  return /42703|schema cache|column|does not exist|nao existe|não existe|source_id|producao_id|animal_id|entidade_id|registro_id|referencia_id|mae_id|pai_id/i.test(message);
+  return /42703|22P02|schema cache|column|does not exist|nao existe|não existe|invalid input syntax|invalid input value|source_id|source_type|producao_id|animal_id|entidade_id|registro_id|referencia_id|mae_id|pai_id|origem_tabela|origem_id/i.test(message);
 }
 
 async function tryDeleteFarmRowsByIds(supabase: SupabaseAdmin, table: string, column: string, ids: string[], farmId: string) {
@@ -1479,6 +1479,28 @@ async function tryDeleteFarmRowsByValues(supabase: SupabaseAdmin, table: string,
     console.warn("[BOT DELETE HERD] vínculo opcional ignorado", {
       table,
       column,
+      fazenda_id: farmId,
+      message: safeErrorText(error)
+    });
+  }
+}
+
+async function tryDeleteEventFinanceOriginLinks(supabase: SupabaseAdmin, eventIds: string[], farmId: string) {
+  if (!eventIds.length) return;
+
+  try {
+    const { error } = await supabase
+      .from(TABLES.transacoesFinanceiras)
+      .delete()
+      .eq("fazenda_id", farmId)
+      .eq("origem_tabela", TABLES.eventosAnimal)
+      .in("origem_id", eventIds);
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    if (!isOptionalRelationColumnError(error)) throw error;
+    console.warn("[BOT DELETE HERD] vínculo opcional ignorado", {
+      table: TABLES.transacoesFinanceiras,
+      column: "origem_tabela/origem_id",
       fazenda_id: farmId,
       message: safeErrorText(error)
     });
@@ -3258,9 +3280,10 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     const eventIds = await farmRowIds(supabase, TABLES.eventosAnimal, owner.fazenda_id);
     const milkingIds = await farmRowIds(supabase, TABLES.ordenhas, owner.fazenda_id);
     const linkedIds = [...animalIds, ...eventIds, ...milkingIds];
-    const legacyEventOrigins = eventIds.map((id) => `${TABLES.eventosAnimal}:${id}`);
+    const legacyEventOrigins = eventIds.flatMap((id) => [`evento_animal:${id}`, `${TABLES.eventosAnimal}:${id}`]);
 
     await tryDeleteFarmRowsByIds(supabase, TABLES.transacoesFinanceiras, "source_id", eventIds, owner.fazenda_id);
+    await tryDeleteEventFinanceOriginLinks(supabase, eventIds, owner.fazenda_id);
     await tryDeleteFarmRowsByValues(supabase, TABLES.transacoesFinanceiras, "origem", legacyEventOrigins, owner.fazenda_id);
     await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "source_id", milkingIds, owner.fazenda_id);
     await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "producao_id", milkingIds, owner.fazenda_id);
