@@ -751,6 +751,18 @@ module.exports = function loadBotTestSection(context) {
           }];
       }
 
+      if (tipo === "EXCLUIR_REBANHO") {
+        return [{
+          ...base,
+          type: "delete",
+          table: BOT_TEST_TABLES.animais,
+          payload: {
+            fazenda_id: fazendaId,
+            alvo: "rebanho"
+          }
+        }];
+      }
+
       if (tipo === "ATUALIZACAO_ANIMAL") {
         if (dados.registro_evento_animal) {
           const reproductiveKind = dados.evento_tipo === "reprodutivo" ? (dados.evento_reprodutivo_tipo || "observacao") : null;

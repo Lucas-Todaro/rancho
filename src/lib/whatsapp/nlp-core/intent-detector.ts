@@ -88,6 +88,15 @@ function hasAnimalEventCostCue(normalized: string) {
     || /\b(?:paguei|gastei|custou|custo|cobrou|despesa|ficou|deu)\s+(?:r\$\s*)?\d+(?:[,.]\d+)?\b/.test(normalized);
 }
 
+function isExplicitHerdDeleteCommand(normalized: string) {
+  return /\b(?:exclui|excluir|apaga|apagar|remove|remover|deleta|deletar|limpa|limpar|zera|zerar)\b/.test(normalized)
+    && (
+      /\b(?:todos?|todas?|inteiro|inteira|completo|completa|todo o|toda a)\b/.test(normalized)
+      || /\b(?:rebanho inteiro|rebanho completo|todo rebanho|toda boiada)\b/.test(normalized)
+    )
+    && /\b(?:rebanho|animais|animal|gado|vacas?|bois?|touros?|bezerr[oa]s?|novilhas?|boiada)\b/.test(normalized);
+}
+
 function withAnimalObservationEventData(dados: Record<string, unknown>, original: string, normalized: string) {
   const cost = hasAnimalEventCostCue(normalized) ?extractMoneyValue(normalized) : undefined;
   const reproductiveKind = detectReproductiveEventKind(normalized);
@@ -838,6 +847,10 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const original = cleanAnswer(text);
   const normalized = normalizeRanchoText(original);
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
+
+  if (isExplicitHerdDeleteCommand(normalized)) {
+    return finalize("EXCLUIR_REBANHO", { alvo: "rebanho", confirmar_exclusao_total: true }, [], 0.96);
+  }
 
   if (isAmbiguousReportQuery(normalized)) {
     return finalize("CONSULTA_REGISTROS_HOJE", { consulta: true, precisa_periodo: true, consulta_registros: "relatorio" }, [], 0.75);

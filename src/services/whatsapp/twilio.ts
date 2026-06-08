@@ -163,6 +163,7 @@ const LOT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 ]);
 const ANIMAL_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CADASTRO_ANIMAL",
+  "EXCLUIR_REBANHO",
   "IMPORTACAO_ANIMAIS_TABELA"
 ]);
 const ANIMAL_EVENT_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
@@ -478,6 +479,13 @@ function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
 
 function isConfirmCommand(command: string) {
   return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|importar encontrados|importar so encontrados|salvar validas|cadastrar validos|cadastrar animais|so as validas|so validas|somente validas|apenas validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|cadastrar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
+}
+
+function isHerdDeleteConfirmationCommand(pending: ParsedRanchoMessage | undefined, command: string) {
+  if (pending?.tipo !== "EXCLUIR_REBANHO") return false;
+  return /\b(?:sim|ss|confirmo|confirma|confirmado|pode|quero|autorizo|manda|vai)\b/.test(command)
+    && /\b(?:exclui|excluir|apaga|apagar|remove|remover|deleta|deletar|limpa|limpar|zera|zerar)\b/.test(command)
+    && /\b(?:rebanho|animais|animal|gado|vacas?|bois?)\b/.test(command);
 }
 
 function isRejectCommand(command: string) {
@@ -1001,6 +1009,17 @@ function animalImportPendingFromMissingEventAnimals(parsed: ParsedRanchoMessage)
 }
 
 function confirmationText(parsed: ParsedRanchoMessage) {
+  if (parsed.tipo === "EXCLUIR_REBANHO") {
+    return [
+      "Entendi que você quer excluir todos os animais do rebanho.",
+      "Essa ação também remove os vínculos dos animais no bot e não pode ser desfeita.",
+      "",
+      "Está correto?",
+      "1 - Confirmar",
+      "2 - Corrigir"
+    ].join("\n");
+  }
+
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") return tabularImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") return animalImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") return stockImportConfirmationText(parsed);
@@ -1058,6 +1077,10 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
     const summary = stockImportSummary(parsed);
     const itemText = summary.createMissingItems && summary.missingItems ?` e ${summary.missingItems} item(ns) seriam criados` : "";
     return `Simulacao concluida: ${summary.ready} movimentacao(oes) de estoque seriam importadas${itemText}. Nenhum registro real foi salvo.`;
+  }
+
+  if (parsed.tipo === "EXCLUIR_REBANHO") {
+    return "Simulação concluída: todos os animais do rebanho seriam excluídos. Nenhum registro real foi salvo.";
   }
 
   return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.${stockDebug}`;
@@ -1119,6 +1142,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     PAGAMENTO_FUNCIONARIO: "pagamento de funcionário",
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
+    EXCLUIR_REBANHO: "exclusão do rebanho",
     ATUALIZACAO_ANIMAL: "atualização de animal",
     CONSULTA_ANIMAL: "consulta de animal",
     CRIAR_LOTE: "cadastro de lote",
@@ -1408,6 +1432,23 @@ async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, t
 
 function realSaveResult(response: string, savedTables: string[]): SaveResult {
   return { response, savedReal: true, savedTables };
+}
+
+async function deleteFarmRows(supabase: SupabaseAdmin, table: string, farmId: string) {
+  const { error } = await supabase.from(table).delete().eq("fazenda_id", farmId);
+  if (error) throw new Error(error.message);
+}
+
+async function deleteFarmRowsByIds(supabase: SupabaseAdmin, table: string, column: string, ids: string[], farmId: string) {
+  if (!ids.length) return;
+  const { error } = await supabase.from(table).delete().eq("fazenda_id", farmId).in(column, ids);
+  if (error) throw new Error(error.message);
+}
+
+async function farmRowIds(supabase: SupabaseAdmin, table: string, farmId: string) {
+  const { data, error } = await supabase.from(table).select("id").eq("fazenda_id", farmId);
+  if (error) throw new Error(error.message);
+  return (data || []).map((row: AnyRecord) => String(row.id || "")).filter(Boolean);
 }
 
 function matchKey(value: unknown) {
@@ -3143,6 +3184,41 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   const dados = pending.dados || {};
   const invalidReason = validatePendingForSave(pending);
   if (invalidReason) return { response: invalidReason };
+
+  if (pending.tipo === "EXCLUIR_REBANHO") {
+    if (!isBotAdmin(owner)) {
+      return { response: "Você não tem permissão para excluir o rebanho pelo bot. Peça para um administrador fazer essa alteração." };
+    }
+
+    const animalIds = await farmRowIds(supabase, TABLES.animais, owner.fazenda_id);
+    if (!animalIds.length) return { response: "Não encontrei animais para excluir neste rancho." };
+
+    const eventIds = await farmRowIds(supabase, TABLES.eventosAnimal, owner.fazenda_id);
+    const milkingIds = await farmRowIds(supabase, TABLES.ordenhas, owner.fazenda_id);
+    const linkedIds = [...animalIds, ...eventIds, ...milkingIds];
+
+    await deleteFarmRowsByIds(supabase, TABLES.transacoesFinanceiras, "source_id", eventIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "source_id", milkingIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "producao_id", milkingIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "animal_id", animalIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.alertas, "animal_id", animalIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "entidade_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "registro_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.notificacoes, "referencia_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.alertas, "entidade_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.alertas, "registro_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRowsByIds(supabase, TABLES.alertas, "referencia_id", linkedIds, owner.fazenda_id);
+    await deleteFarmRows(supabase, TABLES.ordenhas, owner.fazenda_id);
+    await deleteFarmRows(supabase, TABLES.eventosAnimal, owner.fazenda_id);
+    await deleteFarmRows(supabase, TABLES.animais, owner.fazenda_id);
+    await logAudit(supabase, owner, TABLES.animais, "delete_all", {
+      total_animais: animalIds.length,
+      total_eventos: eventIds.length,
+      total_ordenhas: milkingIds.length
+    });
+
+    return realSaveResult(`Pronto, ${animalIds.length} animal(is) foram excluídos do rebanho.`, [TABLES.animais, TABLES.eventosAnimal, TABLES.ordenhas]);
+  }
 
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
     const rows = tabularImportRows(pending).filter((row) => row.status_validacao === "pronto");
@@ -6489,7 +6565,7 @@ async function handleConfirmation(
     }));
   }
 
-  if (isConfirmCommand(command) || shouldCreateMissingLots || shouldImportFoundOnly || shouldCreateMissingStockItems || shouldImportValidStockOnly) {
+  if (isConfirmCommand(command) || isHerdDeleteConfirmationCommand(pendingToSave, command) || shouldCreateMissingLots || shouldImportFoundOnly || shouldCreateMissingStockItems || shouldImportValidStockOnly) {
     const denied = permissionDeniedMessage(owner, pendingToSave);
     if (denied) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -6657,7 +6733,7 @@ function isDryRunConfirmationCommand(session: BotSession, command: string) {
     ) return true;
   }
 
-  return isConfirmCommand(command);
+  return isConfirmCommand(command) || isHerdDeleteConfirmationCommand(pending, command);
 }
 
 function buildProcessResult(input: {
@@ -6902,7 +6978,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
             && !(command === "2" && !stockSummary.missingItems && Boolean(stockSummary.invalid || stockSummary.duplicates))
           )
         ));
-        eventConfirmed = (isConfirmCommand(command) || isStockImportDecision) && !isMissingAnimalDecision;
+        eventConfirmed = (isConfirmCommand(command) || isHerdDeleteConfirmationCommand(parsed, command) || isStockImportDecision) && !isMissingAnimalDecision;
         response = await handleConfirmation(supabase, owner, previousSession, message, command, {
           modoTesteSalvarReal: salvarRealNoTeste
         });

@@ -805,7 +805,31 @@ module.exports = function loadBotTestSection(context) {
       }
     }));
 
+    const herdDeleteConfirmationCases = [
+      "sim, quero excluir meu rebanho",
+      "confirmo, pode excluir",
+      "pode apagar todos os animais"
+    ].map((confirmation) => ({
+      name: `exclusao do rebanho aceita confirmacao longa: ${confirmation}`,
+      module: "confirmacao",
+      phone: BOT_TEST_ADMIN_PHONE,
+      messages: ["excluir todos os animais", confirmation],
+      expected: {
+        finalIntent: "EXCLUIR_REBANHO",
+        shouldAskConfirmation: true,
+        shouldSaveBeforeConfirmation: false,
+        savedAfterConfirmation: true,
+        simulatedSaveCount: 1,
+        savedTables: [BOT_TEST_TABLES.animais],
+        shouldNotWriteBusiness: true
+      }
+    }));
 
-    return { botConversationTests, positiveConfirmationFrameworkCases, negativeConfirmationFrameworkCases };
+    return {
+      botConversationTests: [...botConversationTests, ...herdDeleteConfirmationCases],
+      positiveConfirmationFrameworkCases,
+      negativeConfirmationFrameworkCases,
+      herdDeleteConfirmationCases
+    };
   }
 };

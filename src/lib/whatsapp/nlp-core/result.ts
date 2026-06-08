@@ -130,6 +130,7 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "DESLIGAR_FUNCIONARIO") return `desligar funcionário ${dados.funcionario_nome || "informado"}`;
   if (tipo === "EXCLUIR_FUNCIONARIO") return `excluir funcionário ${dados.funcionario_nome || "informado"}`;
+  if (tipo === "EXCLUIR_REBANHO") return "excluir todos os animais do rebanho";
 
   if (tipo === "CADASTRO_ANIMAL") {
     const sexDetail = dados.sexo

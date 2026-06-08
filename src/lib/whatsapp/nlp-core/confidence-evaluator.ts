@@ -244,8 +244,9 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   const isNegation = NEGATION_PATTERN.test(normalized);
   const isCancellation = CANCELLATION_PATTERN.test(normalized);
   const isConfirmationResponse = CONFIRMATION_PATTERN.test(normalized);
-  const isDestructive = DESTRUCTIVE_PATTERN.test(normalized);
-  const isSensitive = isDestructive || SENSITIVE_PATTERN.test(normalized) || ["EXCLUIR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "MORTE", "ATUALIZACAO_GENEALOGIA", "ATUALIZACAO_ANIMAL"].includes(parsed.tipo);
+  const isHerdDeleteIntent = parsed.tipo === "EXCLUIR_REBANHO";
+  const isDestructive = DESTRUCTIVE_PATTERN.test(normalized) && !isHerdDeleteIntent;
+  const isSensitive = isHerdDeleteIntent || isDestructive || SENSITIVE_PATTERN.test(normalized) || ["EXCLUIR_FUNCIONARIO", "DESLIGAR_FUNCIONARIO", "MORTE", "ATUALIZACAO_GENEALOGIA", "ATUALIZACAO_ANIMAL"].includes(parsed.tipo);
   const isAmbiguousVerb = AMBIGUOUS_VERB_PATTERN.test(normalized);
   const isGenericCommand = GENERIC_COMMAND_PATTERN.test(normalized);
   const milkWithoutQuantity = /\bleite\b/.test(normalized) && !detectedEntities.quantities.length && ["PRODUCAO_LEITE", "CONSULTA_ANIMAL", "DESCONHECIDO"].includes(parsed.tipo);

@@ -242,6 +242,12 @@ function convertAction(action: GeminiAction, interpretation: GeminiInterpretatio
         nome: notes
       };
       break;
+    case "EXCLUIR_REBANHO":
+      dados = {
+        alvo: "rebanho",
+        confirmar_exclusao_total: true
+      };
+      break;
     case "ATUALIZACAO_GENEALOGIA":
       dados = {
         animal_codigo: entity,
