@@ -109,6 +109,8 @@ const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "
 const STOCK_PAGINATION_WORDS = new Set(["mais", "ver mais", "proximos", "proximo", "continuar", "continua"]);
 const STOCK_PAGE_SIZE = 8;
 const FINANCE_PAGE_SIZE = 5;
+const HERD_PAGE_SIZE = 8;
+const LOT_PAGE_SIZE = 10;
 const BOT_TABULAR_IMPORT_DEBUG = process.env.RANCHO_BOT_DEBUG_TABULAR === "1";
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
@@ -521,6 +523,17 @@ function isTableTypeEventsCommand(command: string) {
 
 function isStockPaginationCommand(command: string) {
   return STOCK_PAGINATION_WORDS.has(command) || /^(?:mais|ver mais|proximos?|continuar|continua)\b/.test(command);
+}
+
+function pageNumberFromCommand(command: string) {
+  const match = command.match(/\b(?:pagina|pg)\s*(\d+)\b/);
+  const page = Number(match?.[1]);
+  return Number.isFinite(page) && page > 0 ?page : undefined;
+}
+
+function isHerdPaginationCommand(command: string) {
+  return isStockPaginationCommand(command)
+    || /\b(?:pagina|pg)\s*\d+\s+(?:do|da|de|dos|das)?\s*(?:rebanho|gado|animais|animal|vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?|lotes?|piquetes?|pastos?)\b/.test(command);
 }
 
 function milkStockStatusText(parsed: ParsedRanchoMessage) {
@@ -1582,6 +1595,77 @@ function eventsByAnimalId(events: AnyRecord[]) {
     grouped.set(animalId, [...(grouped.get(animalId) || []), event]);
   }
   return grouped;
+}
+
+function herdPaginationData(dados: AnyRecord, page?: number) {
+  return {
+    consulta: true,
+    modo: "lista",
+    categoria: dados.categoria || undefined,
+    sexo: dados.sexo || undefined,
+    status: dados.status || undefined,
+    reproducao: herdReproductionFilter(dados.reproducao || dados.filtro_reprodutivo) || undefined,
+    lote_nome: dados.lote_nome || undefined,
+    sem_lote: Boolean(dados.sem_lote) || undefined,
+    pagina: page
+  };
+}
+
+async function saveHerdPagination(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  dados: AnyRecord,
+  nextPage: number,
+  pageSize: number,
+  lotName?: string
+) {
+  await saveSession(supabase, owner, {
+    etapa: "livre",
+    dados: {
+      rebanho_paginacao: {
+        tipo: "rebanho_lista",
+        ...herdPaginationData({ ...dados, lote_nome: lotName || dados.lote_nome }),
+        nextPage,
+        pageSize
+      }
+    }
+  });
+}
+
+async function saveLotPagination(supabase: SupabaseAdmin, owner: WhatsAppOwner, nextPage: number, pageSize: number) {
+  await saveSession(supabase, owner, {
+    etapa: "livre",
+    dados: {
+      rebanho_paginacao: {
+        tipo: "lotes_lista",
+        nextPage,
+        pageSize
+      }
+    }
+  });
+}
+
+function parsedHerdPaginationMessage(pagination: AnyRecord, page: number): ParsedRanchoMessage {
+  return refreshRanchoMessage({
+    tipo: "CONSULTA_REBANHO",
+    confianca: 0.88,
+    dados: {},
+    resumo: "consultar rebanho",
+    perguntas_faltantes: []
+  }, herdPaginationData(pagination, page));
+}
+
+function parsedLotPaginationMessage(page: number): ParsedRanchoMessage {
+  return refreshRanchoMessage({
+    tipo: "CONSULTA_LOTES",
+    confianca: 0.88,
+    dados: {},
+    resumo: "consultar lotes",
+    perguntas_faltantes: []
+  }, {
+    consulta: true,
+    pagina: page
+  });
 }
 
 function filterLabel(dados: AnyRecord, lotName?: string) {
@@ -3958,7 +4042,10 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
 
   if (dados.lote_nome) {
     const foundLot = await findLot(supabase, owner, String(dados.lote_nome));
-    if (!foundLot?.row) return `Não encontrei o lote "${dados.lote_nome}".`;
+    if (!foundLot?.row) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      return `Não encontrei o lote "${dados.lote_nome}".`;
+    }
     lotFilter = foundLot.row;
   }
 
@@ -4004,23 +4091,34 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
     categorias: categoryCounts
   };
 
-  if (!filtered.length) return `Não encontrei ${label} cadastrados.`;
+  if (!filtered.length) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return `Não encontrei ${label} cadastrados.`;
+  }
 
   const mode = String(dados.modo || "lista");
   if (mode === "contagem") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return `Encontrei ${filtered.length} ${label} cadastrados.`;
   }
 
   if (mode === "resumo") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     const categories = Object.entries(categoryCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
     const statuses = Object.entries(statusCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
     return `Resumo do rebanho (${label}): ${filtered.length} animais.\nCategorias: ${categories || "sem dados"}.\nStatus: ${statuses || "sem dados"}.`;
   }
 
-  const page = paginateRows(filtered, dados.pagina);
+  const page = paginateRows(filtered, dados.pagina, HERD_PAGE_SIZE);
   const lines = page.rows.map((animal, index) => animalListLine(animal, lotById, page.start + index)).join("\n");
-  const pageText = page.end < filtered.length
-    ?`\nMostrando ${page.start + 1}-${page.end} de ${filtered.length}. Para continuar, peça "pagina ${Math.min(page.currentPage + 1, page.totalPages)} do rebanho".`
+  const hasMore = page.end < filtered.length;
+  if (hasMore) {
+    await saveHerdPagination(supabase, owner, dados, Math.min(page.currentPage + 1, page.totalPages), HERD_PAGE_SIZE, lotFilter ?lotLabel(lotFilter) : undefined);
+  } else {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+  const pageText = hasMore
+    ?`\nMostrando ${page.start + 1}-${page.end} de ${filtered.length}. Para continuar esta consulta, peça "ver mais" ou "pagina ${Math.min(page.currentPage + 1, page.totalPages)} do rebanho".`
     : "";
   return `Encontrei ${filtered.length} ${label} cadastrados:\n${lines}${pageText}`;
 }
@@ -4048,15 +4146,42 @@ async function handleLotConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwn
     sem_lote: countsByLot[""] || 0
   };
 
-  if (!lots.length) return "Não há lotes cadastrados nesse rancho.";
+  if (!lots.length) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há lotes cadastrados nesse rancho.";
+  }
 
-  const page = paginateRows(lots, dados.pagina, 10);
+  const page = paginateRows(lots, dados.pagina, LOT_PAGE_SIZE);
   const lines = page.rows.map((lot) => `- ${lotLabel(lot)}: ${countsByLot[String(lot.id)] || 0} animais`).join("\n");
   const semLoteText = countsByLot[""] ?`\nSem lote: ${countsByLot[""]} animais.` : "";
-  const pageText = page.end < lots.length
-    ?`\nMostrando ${page.start + 1}-${page.end} de ${lots.length}. Para continuar, peça "pagina ${Math.min(page.currentPage + 1, page.totalPages)} dos lotes".`
+  const hasMore = page.end < lots.length;
+  if (hasMore) {
+    await saveLotPagination(supabase, owner, Math.min(page.currentPage + 1, page.totalPages), LOT_PAGE_SIZE);
+  } else {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+  const pageText = hasMore
+    ?`\nMostrando ${page.start + 1}-${page.end} de ${lots.length}. Para continuar esta consulta, peça "ver mais" ou "pagina ${Math.min(page.currentPage + 1, page.totalPages)} dos lotes".`
     : "";
   return `Você tem ${lots.length} lotes cadastrados:\n${lines}${semLoteText}${pageText}`;
+}
+
+async function handleHerdPagination(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, command: string) {
+  const pagination = session.dados?.rebanho_paginacao as AnyRecord | undefined;
+  if (!pagination || !["rebanho_lista", "lotes_lista"].includes(String(pagination.tipo || ""))) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return { response: "Não há mais animais para mostrar agora." };
+  }
+
+  const page = pageNumberFromCommand(command) || Math.max(1, Number(pagination.nextPage || 1) || 1);
+  const parsed = pagination.tipo === "lotes_lista"
+    ? parsedLotPaginationMessage(page)
+    : parsedHerdPaginationMessage(pagination, page);
+  const response = parsed.tipo === "CONSULTA_LOTES"
+    ? await handleLotConsultation(supabase, owner, parsed)
+    : await handleHerdConsultation(supabase, owner, parsed);
+
+  return { response, parsed };
 }
 
 async function lotCreationPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
@@ -6202,6 +6327,10 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       parsed = handled.parsed;
       suppressPreviousPending = Boolean(handled.suppressPreviousPending);
       response = handled.response || "Cancelado. Nada foi salvo. Envie um novo registro quando quiser.";
+    } else if (isHerdPaginationCommand(command) && previousSession.dados?.rebanho_paginacao) {
+      const handled = await handleHerdPagination(supabase, owner, previousSession, command);
+      parsed = handled.parsed;
+      response = handled.response;
     } else if (isStockPaginationCommand(command) && previousSession.dados?.estoque_paginacao) {
       response = await handleStockPagination(supabase, owner, previousSession);
     } else if (isStockPaginationCommand(command) && previousSession.dados?.financeiro_paginacao) {

@@ -99,6 +99,37 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "paginacao de rebanho preserva filtro reprodutivo",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: Array.from({ length: 12 }, (_, index) => ({
+          id: `animal-ins-${index + 1}`,
+          brinco: `INS-${String(index + 1).padStart(2, "0")}`,
+          nome: `Inseminada ${index + 1}`,
+          categoria: "vaca",
+          sexo: "femea",
+          lote_id: "lote-lactacao-1"
+        })),
+        animalEvents: [
+          { animal_id: "animal-b-001", tipo: "inseminacao", descricao: "Cobertura registrada" },
+          ...Array.from({ length: 12 }, (_, index) => ({
+            animal_id: `animal-ins-${index + 1}`,
+            tipo: "inseminacao",
+            descricao: "Inseminacao registrada"
+          }))
+        ],
+        messages: ["quais animais estao inseminados?", "pagina 2 do rebanho"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { reproducao: "inseminada", pagina: 2 },
+          responseIncludes: "INS-08",
+          responseNotIncludes: "B-002",
+          shouldClearSession: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "consulta animais sem evento nao salva nada",
         module: "rebanho-lotes",
         phone: BOT_TEST_ADMIN_PHONE,
