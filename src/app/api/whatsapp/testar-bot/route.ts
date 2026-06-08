@@ -3,7 +3,7 @@ import { INTERNAL_TOOLS_FORBIDDEN_MESSAGE } from "@/lib/internal-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import { whatsappNumbersMatch } from "@/lib/phone";
-import { isOversizedText, safeErrorText, sanitizeFreeText } from "@/lib/security";
+import { isOversizedText, safeErrorText, sanitizeFreeText, sanitizeWhatsappMessageText } from "@/lib/security";
 import { requireInternalWhatsappTester } from "@/lib/server/internal-whatsapp-tools";
 import { processWhatsappMessage } from "@/services/whatsapp/twilio";
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const { telefone, mensagem, salvarReal } = await request.json();
     const phone = sanitizeFreeText(telefone || "", 80);
-    const text = sanitizeFreeText(mensagem || "");
+    const text = sanitizeWhatsappMessageText(mensagem || "");
 
     if (!phone) return jsonError("Informe o telefone simulado.", 400);
     if (!text) return jsonError("Informe a mensagem para simular.", 400);

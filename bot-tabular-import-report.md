@@ -32,11 +32,26 @@
 - Importacao em massa exige admin; funcionario comum recebe bloqueio de permissao.
 - Validacao de animais usa `fazenda_id` do numero autorizado, evitando cruzamento entre fazendas.
 
+## Reproducao do erro real
+
+- O parser isolado aceitava a tabela com quebras de linha reais.
+- O fluxo real do simulador/webhook passava o corpo por `sanitizeFreeText`, que achatava as quebras em espacos antes de chegar ao parser.
+- Quando a tabela chegava como `\n` literal, o parser tambem nao separava linhas.
+- Nesses dois formatos, a mensagem deixava de ser reconhecida como `IMPORTACAO_EVENTOS_TABELA` e podia cair no parser comum.
+
+## Ajuste aplicado
+
+- O corpo das mensagens do simulador, webhook Twilio e webhook WhatsApp agora usa `sanitizeWhatsappMessageText`, preservando quebras de linha sem liberar caracteres de controle.
+- O parser tabular normaliza CRLF, LF, CR, `\n` literal e quebras URL/HTML escapadas antes de procurar cabecalho e linhas.
+- A deteccao tabular continua antes do parser comum.
+- Confirmacoes humanas como `so as validas`, `somente validas` e `apenas validas` passam a confirmar a importacao parcial.
+- Logs opcionais com `RANCHO_BOT_DEBUG_TABULAR=1` mostram etapa, formato de quebra, intent selecionada, totais de linhas e resultado de salvamento sem expor chave ou texto integral.
+
 ## Testes adicionados
 
-- Testes diretos do parser: 5.
-- Casos estruturados no fluxo real do bot: 6.
-- Total adicionado: 11.
+- Testes diretos do parser: 8.
+- Casos estruturados no fluxo real do bot: 10.
+- Total adicionado: 18.
 
 ## Cobertura nova
 
@@ -47,12 +62,14 @@
 - Linhas vazias.
 - Datas com ponto, barra, hifen e ano completo.
 - Observacao com `;` extra.
+- Mensagem sanitizada como a rota do simulador/webhook.
+- Quebras reais, CRLF e `\n` literal.
 - Mensagem normal nao ativa parser tabular.
-- Confirmacao, cancelamento indireto por ausencia de confirmacao, ver erros, permissao, duplicidade e multi-fazenda.
+- Confirmacao, `so as validas`, cancelamento, `ver erros`, permissao, duplicidade e multi-fazenda.
 
 ## Validacao executada
 
-- `npm run test:bot`: aprovado, 1167/1167.
+- `npm run test:bot`: aprovado, 1174/1174.
 - `npm run lint`: aprovado, sem warnings ou erros.
 - `npm run build`: aprovado.
 

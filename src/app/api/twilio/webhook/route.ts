@@ -1,5 +1,5 @@
 import { handleTwilioRanchoMessage } from "@/services/whatsapp/twilio";
-import { isOversizedText, maskSensitivePhone, safeErrorText, sanitizeFreeText } from "@/lib/security";
+import { isOversizedText, maskSensitivePhone, safeErrorText, sanitizeFreeText, sanitizeWhatsappMessageText } from "@/lib/security";
 
 function escapeXml(value: string) {
   return value
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     const params = new URLSearchParams(rawBody);
 
-    const Body = sanitizeFreeText(params.get("Body") || "");
+    const Body = sanitizeWhatsappMessageText(params.get("Body") || "");
     const From = sanitizeFreeText(params.get("From") || "", 80);
     const To = sanitizeFreeText(params.get("To") || "", 80);
     const MessageSid = sanitizeFreeText(params.get("MessageSid") || "", 120);

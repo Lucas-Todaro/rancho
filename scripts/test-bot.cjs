@@ -66,7 +66,8 @@ const {
 const {
   maskSensitivePhone,
   redactSensitiveText,
-  safeErrorText
+  safeErrorText,
+  sanitizeWhatsappMessageText
 } = require("../src/lib/security.ts");
 const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
 
@@ -92,6 +93,7 @@ const context = {
   maskSensitivePhone,
   redactSensitiveText,
   safeErrorText,
+  sanitizeWhatsappMessageText,
   processWhatsappMessage
 };
 

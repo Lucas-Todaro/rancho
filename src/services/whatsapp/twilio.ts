@@ -100,7 +100,7 @@ type MilkStockResolution = {
   reason: string;
 };
 
-const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "importar", "importar validas", "importar linhas validas", "salvar validas", "salvar linhas validas", "importa validas", "pode importar", "1"]);
+const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "importar", "importar validas", "importar linhas validas", "salvar validas", "salvar linhas validas", "importa validas", "pode importar", "so as validas", "so validas", "somente validas", "apenas validas", "1"]);
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao e isso", "refazer", "refaz", "incorreto", "negativo", "na verdade", "2"]);
 const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
@@ -108,6 +108,7 @@ const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "
 const STOCK_PAGINATION_WORDS = new Set(["mais", "ver mais", "proximos", "proximo", "continuar", "continua"]);
 const STOCK_PAGE_SIZE = 8;
 const FINANCE_PAGE_SIZE = 5;
+const BOT_TABULAR_IMPORT_DEBUG = process.env.RANCHO_BOT_DEBUG_TABULAR === "1";
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
   "CONSULTA_PRODUCAO_HOJE",
@@ -392,6 +393,16 @@ function botLog(event: string, owner: WhatsAppOwner, details: AnyRecord) {
   });
 }
 
+function botTabularImportLog(event: string, owner: WhatsAppOwner, details: AnyRecord) {
+  if (!BOT_TABULAR_IMPORT_DEBUG) return;
+  console.log("[BOT TABULAR IMPORT]", {
+    event,
+    phone: maskPhone(owner.telefone_e164),
+    fazenda_id: owner.fazenda_id,
+    ...details
+  });
+}
+
 function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
   return {
     item_extraido: String(input || ""),
@@ -450,7 +461,7 @@ function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
 }
 
 function isConfirmCommand(command: string) {
-  return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|salvar validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
+  return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|salvar validas|so as validas|so validas|somente validas|apenas validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
 }
 
 function isRejectCommand(command: string) {
@@ -4282,6 +4293,9 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     missingFields: parsed.perguntas_faltantes,
     parser: "nlp_geral"
   });
+  if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    botTabularImportLog("validation_summary", owner, tabularImportSummary(parsed));
+  }
 
   const criticalLocalFallback = parsed.dados?.origem_parser !== "gemini"
     && (parsed.flags || []).some((flag) => ["use_gemini_fallback", "compound_message", "multiple_intents_detected", "conflicting_intents", "correction_message"].includes(flag));
@@ -4883,10 +4897,20 @@ async function handleConfirmation(
       status: "aguardando_confirmacao",
       nextStep: "salvar"
     });
+    if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+      botTabularImportLog("confirm_command", owner, tabularImportSummary(pending));
+    }
     const result = await saveConfirmedRecord(supabase, owner, pending);
     await saveSession(supabase, owner, result.nextSession || { etapa: "livre", dados: result.sessionData || {} });
     const postConfirmationText = result.savedReal ?await handlePostConfirmationConsultations(supabase, owner, pending) : "";
     const resultResponse = postConfirmationText ?`${result.response}\n\n${postConfirmationText}` : result.response;
+    if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+      botTabularImportLog("save_result", owner, {
+        saved_real: Boolean(result.savedReal),
+        saved_tables: result.savedTables || [],
+        response_chars: resultResponse.length
+      });
+    }
 
     if (options.modoTesteSalvarReal && result.savedReal) {
       console.log("[BOT TEST REAL SAVE]", {
@@ -5092,6 +5116,20 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const localParsedPreview = parseRanchoMessage(parserMessage);
     const tableParsedPreview = localParsedPreview.tipo === "IMPORTACAO_EVENTOS_TABELA" ?localParsedPreview : null;
+    if (originalMessage.includes(";")) {
+      botTabularImportLog("parser_preview", owner, {
+        chars_original: originalMessage.length,
+        chars_sanitized: message.length,
+        has_real_newline: /[\r\n]/.test(originalMessage),
+        has_escaped_newline: /\\[rn]/.test(originalMessage),
+        selected_intent: localParsedPreview.tipo,
+        confidence: localParsedPreview.confianca,
+        table_detected: Boolean(tableParsedPreview),
+        total_linhas: tableParsedPreview?.dados?.total_linhas || null,
+        parse_validas: tableParsedPreview?.dados?.total_linhas_parse_validas || null,
+        parse_invalidas: tableParsedPreview?.dados?.total_linhas_parse_invalidas || null
+      });
+    }
     const conversationAct: ConversationAct = tableParsedPreview ?{
       messageType: "new_action",
       intent: "IMPORTACAO_EVENTOS_TABELA",
@@ -5160,6 +5198,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         }
       });
       response = dryRunConfirmationText(parsed);
+      if (parsed?.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+        botTabularImportLog("dry_run_confirmed", owner, {
+          ...tabularImportSummary(parsed),
+          response_chars: response.length
+        });
+      }
       }
     } else if (previousSession.etapa === "aguardando_confirmacao") {
       parsed = pendingFromSession(previousSession);

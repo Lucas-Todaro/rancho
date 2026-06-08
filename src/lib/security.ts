@@ -52,6 +52,18 @@ export function sanitizeFreeText(value: unknown, maxLength = MAX_WHATSAPP_MESSAG
     .slice(0, maxLength);
 }
 
+export function sanitizeWhatsappMessageText(value: unknown, maxLength = MAX_WHATSAPP_MESSAGE_LENGTH) {
+  return String(value ?? "")
+    .replace(CONTROL_CHARS_PATTERN, " ")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim()
+    .slice(0, maxLength);
+}
+
 export function isOversizedText(value: unknown, maxLength = MAX_WHATSAPP_MESSAGE_LENGTH) {
   return String(value ?? "").length > maxLength;
 }

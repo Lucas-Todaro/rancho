@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { safeErrorText, sanitizeFreeText } from "@/lib/security";
+import { safeErrorText, sanitizeFreeText, sanitizeWhatsappMessageText } from "@/lib/security";
 import { getIncomingMessage } from "@/services/whatsapp/meta";
 import { handleConversation } from "@/services/whatsapp/conversation";
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     await handleConversation({
       phone: sanitizeFreeText(incoming.phone, 80),
-      text: sanitizeFreeText(incoming.text),
+      text: sanitizeWhatsappMessageText(incoming.text),
       buttonId: sanitizeFreeText(incoming.buttonId, 120)
     });
 

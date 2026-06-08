@@ -34,6 +34,9 @@ module.exports = function loadBotTestSection(context) {
       "391;Inseminação;11.11.26;",
       "090;Último Protocolo;;Não passou"
     ].join("\n");
+    const escapedTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\\n");
+    const routeSanitizedTabularAnimalEventsMessage = sanitizeWhatsappMessageText(realTabularAnimalEventsMessage);
+    const crlfTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\r\n");
 
     const tabularAnimalCodes = [
       "001", "204", "143", "177", "397", "387", "249", "062", "195", "398",
@@ -70,7 +73,46 @@ module.exports = function loadBotTestSection(context) {
           exactTipo: true,
           tipo: "IMPORTACAO_EVENTOS_TABELA",
           total_linhas: 31,
-          tableRow: { lineNumber: 19, animal: "5714 CF", evento_tipo: "inseminacao", data_referencia: "2026-05-06", observacoes: "Não passou" }
+          tableRow: { lineNumber: 19, animal: "5714 CF", evento_tipo: "inseminacao", data_referencia: "2026-05-06", observacoes: "passou" }
+        }
+      },
+      {
+        name: "tabela real com quebras escapadas nao cai no parser comum",
+        module: "tabela-eventos",
+        phrase: escapedTabularAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 31,
+          total_linhas_parse_validas: 30,
+          total_linhas_parse_invalidas: 1,
+          tableRow: { lineNumber: 2, animal: "001", evento_tipo: "inseminacao", data_referencia: "2026-01-01" }
+        }
+      },
+      {
+        name: "tabela real sanitizada pela rota preserva linhas",
+        module: "tabela-eventos",
+        phrase: routeSanitizedTabularAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 31,
+          total_linhas_parse_validas: 30,
+          total_linhas_parse_invalidas: 1,
+          tableRow: { lineNumber: 32, animal: "090", evento_tipo: "protocolo", observacoes: "passou", problem: "data_ausente" }
+        }
+      },
+      {
+        name: "tabela real com crlf preserva numeracao e linhas",
+        module: "tabela-eventos",
+        phrase: crlfTabularAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 31,
+          total_linhas_parse_validas: 30,
+          total_linhas_parse_invalidas: 1,
+          tableRow: { lineNumber: 19, animal: "5714 CF", evento_tipo: "inseminacao", data_referencia: "2026-05-06", observacoes: "passou" }
         }
       },
       {
@@ -80,7 +122,7 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           exactTipo: true,
           tipo: "IMPORTACAO_EVENTOS_TABELA",
-          tableRow: { lineNumber: 32, animal: "090", evento_tipo: "protocolo", observacoes: "Não passou", problem: "data_ausente" }
+          tableRow: { lineNumber: 32, animal: "090", evento_tipo: "protocolo", observacoes: "passou", problem: "data_ausente" }
         }
       },
       {
@@ -130,11 +172,46 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela real pelo sanitizador da rota pede confirmacao",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [routeSanitizedTabularAnimalEventsMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "Prontas para importar: 30",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "tabela real importa apenas linhas validas em dry-run",
         module: "tabela-eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         extraAnimals: tabularExtraAnimals,
         messages: [realTabularAnimalEventsMessage, "importar validas"],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "30 evento",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 30,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "5714 CF", data_evento: "2026-05-06" },
+          shouldNotSaveValues: { animal_codigo: "090" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela com quebras escapadas importa com so as validas",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [escapedTabularAnimalEventsMessage, "so as validas"],
         expected: {
           finalIntent: "IMPORTACAO_EVENTOS_TABELA",
           responseIncludes: "30 evento",
@@ -161,6 +238,36 @@ module.exports = function loadBotTestSection(context) {
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela ver erros mantendo confirmacao pendente",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [routeSanitizedTabularAnimalEventsMessage, "ver erros"],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "linha 32",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela cancela importacao sem salvar",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [routeSanitizedTabularAnimalEventsMessage, "cancelar"],
+        expected: {
+          responseIncludes: "Cancelado",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldClearSession: true,
           shouldNotWriteBusiness: true
         }
       },

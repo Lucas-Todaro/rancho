@@ -142,10 +142,25 @@ function eventCounts(rows: ParsedTabularAnimalEventRow[]) {
   }, {});
 }
 
-export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
-  const lines = String(text || "")
+export function normalizeTabularAnimalEventsText(text: string) {
+  let normalized = String(text || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
+    .replace(/\r/g, "\n");
+
+  if (!normalized.includes("\n") && normalized.includes(";")) {
+    normalized = normalized
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\n")
+      .replace(/%0D%0A|%0A|%0D/gi, "\n")
+      .replace(/&#10;|&#x0a;/gi, "\n");
+  }
+
+  return normalized;
+}
+
+export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
+  const lines = normalizeTabularAnimalEventsText(text)
     .split("\n")
     .map((line, index) => ({ text: line.trim(), lineNumber: index + 1 }))
     .filter((line) => line.text);
