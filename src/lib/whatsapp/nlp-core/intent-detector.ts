@@ -192,6 +192,7 @@ function financeQueryData(normalized: string) {
 function reportQueryPeriod(normalized: string) {
   if (/\b(?:ultimos|ultimas)\s+30\s+dias\b/.test(normalized)) return "ultimos_30";
   if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
+  if (/\b(?:recentes?|recentemente|mais\s+recentes?|ultimos|ultimas|ultimo|ultima)\b/.test(normalized)) return "recentes";
   if (/\b(?:semana passada|ultima semana)\b/.test(normalized)) return "semana_passada";
   if (/\bmes\s+passado\b/.test(normalized)) return "mes_passado";
   if (/\b(?:este ano|esse ano|deste ano|desse ano|ano atual)\b/.test(normalized)) return "ano";
@@ -209,8 +210,13 @@ function reportEventType(normalized: string) {
   if (/\b(?:vacina|vacinas|vacinacao|vacinados|aftosa)\b/.test(normalized)) return "vacina";
   if (/\b(?:medicamento|medicamentos|medicacao|medicacoes|tratamento|tratamentos|medicados|remedio|vermifugo)\b/.test(normalized)) return "tratamento";
   if (/\b(?:doente|doenca|clinico|clinica|observacao|observacoes|problema|problemas|apetite|mastite)\b/.test(normalized)) return "clinico";
-  if (/\b(?:parto|partos|nascimento|nascimentos|pariram|pariu)\b/.test(normalized)) return "parto";
-  if (/\b(?:cio|cios|prenhez|prenhezes|inseminacao|inseminacoes|reprodutivo|reprodutivos)\b/.test(normalized)) return "reprodutivo";
+  if (/\b(?:pre\s*partos?|pre-partos?|prepartos?)\b/.test(normalized)) return "pre_parto";
+  if (/\b(?:parto|partos|nascimento|nascimentos|pariram|pariu|deu cria|deram cria)\b/.test(normalized)) return "parto";
+  if (/\b(?:inseminacao|inseminacoes|inseminad[ao]s?|cobertura|cobertas?|cobertos?|ia|iatf|semen)\b/.test(normalized)) return "inseminacao";
+  if (/\b(?:prenhez|prenhezes|prenhas?|prenhes|gestantes?|gestacao)\b/.test(normalized)) return "prenhez";
+  if (/\b(?:protocolos?|reteste|nao passou)\b/.test(normalized)) return "protocolo";
+  if (/\b(?:cio|cios)\b/.test(normalized)) return "reprodutivo";
+  if (/\b(?:reprodutivo|reprodutivos|reproducao)\b/.test(normalized)) return "reprodutivo";
   return undefined;
 }
 
@@ -226,7 +232,7 @@ function reportQueryData(normalized: string) {
   const area = reportArea(normalized);
   const consulta_registros = /\b(?:alerta|alertas|atencao|atenção|preoculpante|preocupante|critico|crítico|problema|problemas|resolver|pendencia|pendência)\b/.test(normalized)
     ? "alertas"
-    : /\b(?:eventos?|acontecimentos?|ocorrencias?|historico|vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized)
+    : /\b(?:eventos?|acontecimentos?|ocorrencias?|historico|vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|pariu|pariram|deu cria|deram cria|cios?|prenhezes|pre\s*partos?|pre-partos?|protocolos?|inseminacoes?|inseminad[ao]s?)\b/.test(normalized)
       ? "eventos"
       : "relatorio";
   const relatorio_modo = /\b(?:detalhado|detalhes|completo|tudo|movimentacoes?)\b/.test(normalized)
@@ -883,14 +889,20 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("CONSULTA_REBANHO", dados, [], 0.88);
   }
 
-  const eventQueryCue = /\b(?:quais|qual|teve|foram|foi|mostra|mostrar|ver|historico|ultimos|ultimas|registrados?|registradas?|ocorreram|aconteceu|acontecimentos?|ocorrencias?|rebanho|do mes|da semana|de hoje|de ontem)\b/.test(normalized);
+  const recentReportCue = /\b(?:recentes?|recentemente|mais\s+recentes?|ultimos|ultimas|ultimo|ultima)\b/.test(normalized);
+  const eventPeriodCue = /\b(?:hoje|hj|ontem|anteontem|semana|semanal|mes|mensal|mes passado|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized);
+  const eventQuestionCue = /\b(?:quais|qual|quem|teve|mostra|mostrar|ver|historico|registrados?|registradas?|ocorreram|aconteceu|acontecimentos?|ocorrencias?|rebanho)\b/.test(normalized);
+  const eventQueryCue = eventQuestionCue || recentReportCue || eventPeriodCue || /\b(?:do mes|da semana|de hoje|de ontem)\b/.test(normalized);
   const reportCue = /\b(?:relatorio|relatirio|resumo|resumao|geral|mez|panorama|visao geral|fechamento|balanco|status do dia|status do mes|como foi|como esta indo|esta indo|ta indo|principais|alertas?|atencao|preocupante|preoculpante|critico|problemas?|eventos?|ocorrencias?|aconteceu|acontecimentos?)\b/.test(normalized)
     || /\btudo\s+que\s+aconteceu\b/.test(normalized)
     || (/\b(?:rancho|fazenda)\b/.test(normalized) && /\b(?:foi|bem|mal|indo|geral|resumo|relatorio)\b/.test(normalized));
-  const eventTypeCue = /\b(?:vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|cios?|prenhezes|inseminacoes?)\b/.test(normalized);
+  const eventTypeCue = /\b(?:vacinas?|vacinacao|medicacoes?|tratamentos?|doente|partos?|nascimentos?|pariu|pariram|deu cria|deram cria|cios?|prenhezes|prenhas?|pre\s*partos?|pre-partos?|protocolos?|inseminacoes?|inseminad[ao]s?|eventos?\s+reprodutivos?|reproducao)\b/.test(normalized);
+  const eventMutationCue = /\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|apliquei|aplicar|vacinei|mediquei|tratei|pariu|ficou doente|observacao:|deu cria)\b/.test(normalized)
+    || /\bfoi\s+inseminad[ao]\b/.test(normalized)
+    || /\b(?:pre\s*parto|pre-parto|preparto)\s+(?:da|do|de|na|no)\b/.test(normalized);
   const earlyReportQuery = (
     (reportCue || (eventTypeCue && eventQueryCue))
-    && !/\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|apliquei|aplicar|vacinei|mediquei|tratei|pariu|ficou doente|observacao:|deu cria)\b/.test(normalized)
+    && (!eventMutationCue || (eventTypeCue && eventQueryCue && eventQuestionCue))
     && !/\b(?:financeiro|ponto|pagina|tenho)\b/.test(normalized)
     && !reportAnimalSpecific
     && !(/\b(?:mimosa|estrela|vaca|novilha|animal)\b/.test(normalized) && !eventQueryCue && !/\b(?:fazenda|rancho|rebanho)\b/.test(normalized))

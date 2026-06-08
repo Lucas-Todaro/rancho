@@ -1,5 +1,31 @@
 module.exports = function loadBotTestSection(context) {
   with (context) {
+    const recentReproductiveEvents = [
+      { id: "recent-parto-204", animal_id: "animal-b-001", tipo: "parto", descricao: "parto registrado", data_evento: "2026-01-10T08:00:00.000Z" },
+      { id: "recent-parto-062", animal_id: "animal-b-002", tipo: "parto", descricao: "parto registrado", data_evento: "2026-03-21T08:00:00.000Z" },
+      { id: "recent-parto-064", animal_id: "animal-b-003", tipo: "parto", descricao: "parto registrado", data_evento: "2026-05-07T08:00:00.000Z" },
+      { id: "recent-parto-306", animal_id: "animal-kelly", tipo: "parto", descricao: "parto registrado", data_evento: "2026-05-11T08:00:00.000Z" },
+      { id: "recent-parto-318", animal_id: "animal-thais", tipo: "parto", descricao: "parto registrado", data_evento: "2026-05-14T08:00:00.000Z" },
+      { id: "recent-ia-001", animal_id: "animal-b-001", tipo: "inseminacao", descricao: "inseminacao registrada", data_evento: "2026-01-01T08:00:00.000Z" },
+      { id: "recent-ia-177", animal_id: "animal-b-002", tipo: "inseminacao", descricao: "Reteste", data_evento: "2026-02-18T08:00:00.000Z" },
+      { id: "recent-ia-5714", animal_id: "animal-b-003", tipo: "inseminacao", descricao: "Nao passou", data_evento: "2026-05-06T08:00:00.000Z" },
+      { id: "recent-ia-244", animal_id: "animal-kelly", tipo: "inseminacao", descricao: "inseminacao registrada", data_evento: "2026-06-02T08:00:00.000Z" },
+      { id: "recent-protocolo", animal_id: "animal-thais", tipo: "observacao", descricao: "Protocolo reprodutivo - Nao passou", data_evento: "2026-06-03T08:00:00.000Z" },
+      { id: "recent-pre-parto", animal_id: "animal-b-002", tipo: "observacao", descricao: "Pre-parto registrado", data_evento: "2026-06-04T08:00:00.000Z" },
+      { id: "recent-other-farm", fazenda_id: BOT_TEST_FARM_ID_B, animal_id: "animal-b2-b-002", tipo: "parto", descricao: "parto rancho B", data_evento: "2026-06-05T08:00:00.000Z" }
+    ];
+
+    const paginatedPartos = Array.from({ length: 12 }, (_, index) => {
+      const day = 20 - index;
+      return {
+        id: `recent-parto-page-${index + 1}`,
+        animal_id: "animal-b-001",
+        tipo: "parto",
+        descricao: `parto pagina ${index + 1}`,
+        data_evento: `2026-05-${String(day).padStart(2, "0")}T08:00:00.000Z`
+      };
+    });
+
     const eventFrameworkCases = [
       {
         name: "vacina completa pede confirmacao e nao salva antes",
@@ -609,6 +635,101 @@ module.exports = function loadBotTestSection(context) {
           finalIntent: "CONSULTA_REGISTROS_HOJE",
           entities: { consulta_registros: "eventos", evento_tipo: "clinico" },
           responseIncludes: "queda de apetite",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "partos recentes buscam ultimos registros e nao apenas hoje",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: recentReproductiveEvents,
+        messages: ["quais foram os partos recentes"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", data_referencia: "recentes", evento_tipo: "parto" },
+          responseIncludes: "Últimos partos registrados",
+          responseRawIncludes: "14/05/2026",
+          responseRawNotIncludes: ["hoje", "rancho B"],
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "partos de hoje respeita periodo explicito",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: recentReproductiveEvents,
+        messages: ["partos de hoje"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", data_referencia: "hoje", evento_tipo: "parto" },
+          responseIncludes: "Não encontrei partos registrados hoje",
+          responseNotIncludes: "14/05/2026",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "partos de maio filtram mes nominal",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: recentReproductiveEvents,
+        messages: ["partos de maio"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", data_referencia: "2026-05", evento_tipo: "parto" },
+          responseRawIncludes: "14/05/2026",
+          responseRawNotIncludes: "10/01/2026",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "ultimas inseminacoes mostram observacoes reprodutivas",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: recentReproductiveEvents,
+        messages: ["ultimas inseminacoes"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", data_referencia: "recentes", evento_tipo: "inseminacao" },
+          responseIncludes: "Últimas inseminações registradas",
+          responseRawIncludes: ["02/06/2026", "Reteste", "Nao passou"],
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "eventos reprodutivos recentes agregam tipos reprodutivos",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: recentReproductiveEvents,
+        messages: ["eventos reprodutivos recentes"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", data_referencia: "recentes", evento_tipo: "reprodutivo" },
+          responseIncludes: "Últimos eventos reprodutivos",
+          responseRawIncludes: ["Pré-parto", "Protocolo", "Inseminação"],
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "paginacao de eventos recentes continua mesma consulta",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: paginatedPartos,
+        messages: ["ultimos partos", "ver mais"],
+        expected: {
+          responseRawIncludes: ["11. Mimosa (B-001) - 10/05/2026", "12. Mimosa (B-001) - 09/05/2026"],
+          responseRawNotIncludes: "20/05/2026",
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true

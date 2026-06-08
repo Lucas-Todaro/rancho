@@ -24,6 +24,8 @@ export type OperationalReportInput = {
   kind?: OperationalReportKind;
   mode?: OperationalReportMode;
   eventType?: string;
+  eventOffset?: number;
+  eventPageSize?: number;
 };
 
 export type OperationalReportResult = {
@@ -33,6 +35,14 @@ export type OperationalReportResult = {
   modules: string[];
   counts: Record<string, number>;
   data: AnyRecord;
+  pagination?: {
+    tipo: "eventos_lista";
+    periodo: string;
+    evento_tipo: string | null;
+    offset: number;
+    pageSize: number;
+    total: number;
+  };
 };
 
 type PeriodRange = {
@@ -153,6 +163,7 @@ export function normalizeOperationalReportPeriod(period?: string) {
   const value = normalizeRanchoText(period || "hoje").replace(/\s+/g, "_");
   if (["ultimos_30", "ultimos_30_dias", "ultimas_30", "ultimas_30_dias"].includes(value)) return "ultimos_30";
   if (["ultimos_7", "ultimos_7_dias", "ultimas_7", "ultimas_7_dias"].includes(value)) return "ultimos_7";
+  if (["recentes", "recente", "recentemente", "mais_recentes", "ultimos", "ultimas", "ultimo", "ultima"].includes(value)) return "recentes";
   if (["semana_passada", "ultima_semana"].includes(value)) return "semana_passada";
   if (["mes_passado", "ultimo_mes"].includes(value)) return "mes_passado";
   if (["ano", "este_ano", "esse_ano", "ano_atual"].includes(value)) return "ano";
@@ -161,6 +172,7 @@ export function normalizeOperationalReportPeriod(period?: string) {
 
 export function operationalReportPeriodRange(period?: string): PeriodRange {
   const normalized = normalizeOperationalReportPeriod(period);
+  if (normalized === "recentes") return lastDaysRange(90);
   if (normalized === "ultimos_30") return lastDaysRange(30);
   if (normalized === "ultimos_7") return lastDaysRange(7);
   if (normalized === "semana_passada") return previousWeekRange();
@@ -174,6 +186,7 @@ export function operationalReportPeriodRange(period?: string): PeriodRange {
 
 export function operationalReportPeriodLabel(period?: string) {
   const normalized = normalizeOperationalReportPeriod(period);
+  if (normalized === "recentes") return "recentemente";
   if (normalized === "ultimos_30") return "nos últimos 30 dias";
   if (normalized === "ultimos_7") return "nos últimos 7 dias";
   if (normalized === "semana_passada") return "na semana passada";
@@ -236,9 +249,16 @@ function topCategories(rows: AnyRecord[], type: "entrada" | "saida") {
 
 function eventTypeMatches(row: AnyRecord, requested?: string) {
   if (!requested) return true;
+  const type = normalizeRanchoText(row.tipo || "");
   const text = normalizeRanchoText([row.tipo, row.descricao, row.medicamento].filter(Boolean).join(" "));
   if (requested === "clinico") return /\b(?:doenca|doente|observacao|clinico|clinica|apetite|mastite|problema)\b/.test(text);
-  if (requested === "reprodutivo") return /\b(?:cio|prenhez|inseminacao|cobertura|reprodutivo)\b/.test(text);
+  if (requested === "parto") return type === "parto" || /\b(?:parto|pariu|nascimento|nasceu|deu cria|teve cria)\b/.test(text);
+  if (requested === "inseminacao") return type === "inseminacao" || /\b(?:inseminacao|inseminada|inseminado|cobertura|coberta|coberto|ia|iatf|semen)\b/.test(text);
+  if (requested === "prenhez") return /\b(?:prenhez|prenha|prenhe|prenhas|prenhes|gestante|gestacao|diagnostico positivo|pegou cria)\b/.test(text);
+  if (requested === "pre_parto") return /\b(?:pre parto|pre-parto|preparto|pre_parto)\b/.test(text);
+  if (requested === "protocolo") return /\b(?:protocolo|reteste|nao passou)\b/.test(text);
+  if (requested === "cio") return /\bcio\b/.test(text);
+  if (requested === "reprodutivo") return /\b(?:cio|prenhez|prenha|prenhe|inseminacao|inseminada|cobertura|pre parto|pre-parto|preparto|parto|pariu|protocolo|reteste|nao passou|reprodutivo)\b/.test(text);
   return text.includes(requested);
 }
 
@@ -246,7 +266,10 @@ function eventLabel(row: AnyRecord) {
   const tipo = normalizeRanchoText(row.tipo || "");
   if (tipo === "vacina") return `Vacina${row.medicamento ? ` ${row.medicamento}` : ""}`;
   if (tipo === "tratamento") return `Tratamento${row.medicamento ? ` ${row.medicamento}` : ""}`;
-  if (tipo === "parto") return "Parto registrado";
+  if (eventTypeMatches(row, "pre_parto")) return "Pré-parto";
+  if (eventTypeMatches(row, "prenhez")) return "Prenhez";
+  if (eventTypeMatches(row, "protocolo")) return "Protocolo";
+  if (tipo === "parto") return "Parto";
   if (tipo === "observacao") return "Observação";
   if (tipo === "doenca") return "Ocorrência clínica";
   if (tipo === "cio") return "Cio registrado";
@@ -362,15 +385,18 @@ async function queryStockMovements(supabase: SupabaseAdmin, owner: WhatsAppOwner
 }
 
 async function queryEvents(supabase: SupabaseAdmin, owner: WhatsAppOwner, period: string, eventType?: string) {
-  const range = operationalReportPeriodRange(period);
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLES.eventosAnimal)
     .select("id,animal_id,tipo,descricao,medicamento,data_evento,created_at")
     .eq("fazenda_id", owner.fazenda_id)
-    .gte("data_evento", range.start)
-    .lt("data_evento", range.end)
-    .order("data_evento", { ascending: false })
-    .limit(3000);
+    .order("data_evento", { ascending: false });
+
+  if (normalizeOperationalReportPeriod(period) !== "recentes") {
+    const range = operationalReportPeriodRange(period);
+    query = query.gte("data_evento", range.start).lt("data_evento", range.end);
+  }
+
+  const { data, error } = await query.limit(3000);
   if (error) throw new Error(error.message);
   return ((data || []) as AnyRecord[]).filter((row) => eventTypeMatches(row, eventType));
 }
@@ -433,16 +459,68 @@ async function queryWhatsappRegistrations(supabase: SupabaseAdmin, owner: WhatsA
   return { rows: visibleRows, registrations };
 }
 
-function buildEventsText(rows: AnyRecord[], animalsById: Map<string, AnyRecord>, period: string, eventType?: string) {
-  const label = eventType ? `${eventType} ` : "";
-  if (!rows.length) return `Não encontrei eventos ${label}registrados no rebanho ${operationalReportPeriodLabel(period)}.`;
-  const lines = rows.slice(0, 8).map((row, index) => {
+function formatEventDate(row: AnyRecord) {
+  const value = String(row.data_evento || row.created_at || "");
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "sem data";
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function eventPluralLabel(eventType?: string) {
+  if (eventType === "parto") return "partos";
+  if (eventType === "inseminacao") return "inseminações";
+  if (eventType === "prenhez") return "prenhezes";
+  if (eventType === "pre_parto") return "pré-partos";
+  if (eventType === "protocolo") return "protocolos";
+  if (eventType === "cio") return "cios";
+  if (eventType === "vacina") return "vacinas";
+  if (eventType === "tratamento") return "tratamentos";
+  if (eventType === "clinico") return "eventos clínicos";
+  if (eventType === "reprodutivo") return "eventos reprodutivos";
+  return "eventos";
+}
+
+function eventRecentTitle(eventType?: string) {
+  if (eventType === "parto") return "Últimos partos registrados:";
+  if (eventType === "inseminacao") return "Últimas inseminações registradas:";
+  if (eventType === "reprodutivo") return "Últimos eventos reprodutivos:";
+  const plural = eventPluralLabel(eventType);
+  return `${plural.charAt(0).toUpperCase()}${plural.slice(1)} recentes:`;
+}
+
+function emptyEventsText(period: string, eventType?: string) {
+  const plural = eventPluralLabel(eventType);
+  const label = normalizeOperationalReportPeriod(period) === "recentes" ? "recentemente" : operationalReportPeriodLabel(period);
+  return `Não encontrei ${plural} registrados ${label}.`;
+}
+
+function buildEventsText(
+  rows: AnyRecord[],
+  animalsById: Map<string, AnyRecord>,
+  period: string,
+  eventType?: string,
+  offset = 0,
+  pageSize = 10
+) {
+  if (!rows.length) return { text: emptyEventsText(period, eventType), nextOffset: 0, hasMore: false, total: 0 };
+  const normalizedPeriod = normalizeOperationalReportPeriod(period);
+  const safeOffset = Math.max(0, offset);
+  const safePageSize = Math.max(1, Math.min(20, pageSize));
+  const pageRows = rows.slice(safeOffset, safeOffset + safePageSize);
+  const lines = pageRows.map((row, index) => {
     const animal = animalLabel(animalsById.get(String(row.animal_id || "")));
     const description = row.descricao ? `: ${row.descricao}` : "";
-    return `${index + 1}. ${animal} - ${eventLabel(row)}${description}`;
+    return `${safeOffset + index + 1}. ${animal} - ${formatEventDate(row)} - ${eventLabel(row)}${description}`;
   });
-  const extra = rows.length > 8 ? `\n...e mais ${rows.length - 8} evento(s).` : "";
-  return `Eventos ${operationalReportPeriodLabel(period)} no rebanho:\n${lines.join("\n")}${extra}`;
+  const nextOffset = safeOffset + pageRows.length;
+  const hasMore = nextOffset < rows.length;
+  const title = normalizedPeriod === "recentes"
+    ? eventRecentTitle(eventType)
+    : `Eventos ${operationalReportPeriodLabel(period)} no rebanho:`;
+  const footer = hasMore
+    ? `\nMostrando ${safeOffset + 1}-${nextOffset} de ${rows.length}. Para continuar esta consulta, peça "ver mais".`
+    : safeOffset > 0 ?"\nFim da lista." : "";
+  return { text: `${title}\n${lines.join("\n")}${footer}`, nextOffset, hasMore, total: rows.length };
 }
 
 function buildAlertsText(input: {
@@ -647,7 +725,7 @@ function buildGeneralText(input: {
   ];
 
   if (input.mode === "detalhado" && input.events.length) {
-    lines.splice(lines.length - 1, 0, "", buildEventsText(input.events.slice(0, 5), new Map(input.animals.map((row) => [String(row.id), row])), input.period));
+    lines.splice(lines.length - 1, 0, "", buildEventsText(input.events, new Map(input.animals.map((row) => [String(row.id), row])), input.period, undefined, 0, 5).text);
   }
 
   return lines.join("\n");
@@ -713,8 +791,9 @@ export async function buildRanchReport(input: OperationalReportInput): Promise<O
     counts
   });
 
+  const eventPage = buildEventsText(events, animalsById, period, input.eventType, input.eventOffset || 0, input.eventPageSize || 10);
   const text = kind === "eventos"
-    ? buildEventsText(events, animalsById, period, input.eventType)
+    ? eventPage.text
     : kind === "alertas"
       ? buildAlertsText({
         stockLow: stockSection.low,
@@ -747,11 +826,20 @@ export async function buildRanchReport(input: OperationalReportInput): Promise<O
     period,
     modules,
     counts,
+    pagination: kind === "eventos" && eventPage.hasMore ?{
+      tipo: "eventos_lista",
+      periodo: period,
+      evento_tipo: input.eventType || null,
+      offset: eventPage.nextOffset,
+      pageSize: input.eventPageSize || 10,
+      total: eventPage.total
+    } : undefined,
     data: {
       periodo: period,
       tipo: kind,
       modo: mode,
       ...counts,
+      eventos_exibidos: kind === "eventos" ?Math.min(eventPage.nextOffset, eventPage.total) : events.length,
       producao_litros: production.total,
       financeiro_entradas: finance.allowed ? finance.totals.entrada : null,
       financeiro_saidas: finance.allowed ? finance.totals.saida : null,

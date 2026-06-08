@@ -116,6 +116,7 @@ const STOCK_PAGE_SIZE = 8;
 const FINANCE_PAGE_SIZE = 5;
 const HERD_PAGE_SIZE = 8;
 const LOT_PAGE_SIZE = 10;
+const EVENT_PAGE_SIZE = 10;
 const BOT_TABULAR_IMPORT_DEBUG = process.env.RANCHO_BOT_DEBUG_TABULAR === "1";
 const CONSULT_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "CONSULTA_PRODUCAO",
@@ -5168,11 +5169,58 @@ async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: Wh
     period,
     kind: reportKind,
     mode: mode as OperationalReportMode,
-    eventType: requestedType
+    eventType: requestedType,
+    eventPageSize: EVENT_PAGE_SIZE
   });
 
   parsed.dados.consulta_executada = report.executedAs;
   parsed.dados.resultado = report.data;
+  if (report.pagination) {
+    await saveSession(supabase, owner, {
+      etapa: "livre",
+      dados: {
+        eventos_paginacao: report.pagination
+      }
+    });
+  } else if (reportKind === "eventos") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+  return report.text;
+}
+
+async function handleEventsPagination(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession) {
+  const pagination = session.dados?.eventos_paginacao as AnyRecord | undefined;
+  if (!pagination || pagination.tipo !== "eventos_lista") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return "Não há mais eventos para mostrar agora.";
+  }
+
+  const period = String(pagination.periodo || "recentes");
+  const eventType = pagination.evento_tipo ?String(pagination.evento_tipo) : undefined;
+  const offset = Math.max(0, Number(pagination.offset || 0));
+  const pageSize = Math.max(1, Math.min(20, Number(pagination.pageSize || EVENT_PAGE_SIZE)));
+  const report = await buildRanchReport({
+    supabase,
+    owner,
+    period,
+    kind: "eventos",
+    mode: "resumo",
+    eventType,
+    eventOffset: offset,
+    eventPageSize: pageSize
+  });
+
+  if (report.pagination) {
+    await saveSession(supabase, owner, {
+      etapa: "livre",
+      dados: {
+        eventos_paginacao: report.pagination
+      }
+    });
+  } else {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+  }
+
   return report.text;
 }
 
@@ -6764,6 +6812,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       const handled = await handleHerdPagination(supabase, owner, previousSession, command);
       parsed = handled.parsed;
       response = handled.response;
+    } else if (isStockPaginationCommand(command) && previousSession.dados?.eventos_paginacao) {
+      response = await handleEventsPagination(supabase, owner, previousSession);
     } else if (isStockPaginationCommand(command) && previousSession.dados?.estoque_paginacao) {
       response = await handleStockPagination(supabase, owner, previousSession);
     } else if (isStockPaginationCommand(command) && previousSession.dados?.financeiro_paginacao) {
