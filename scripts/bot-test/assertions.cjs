@@ -226,6 +226,12 @@ module.exports = function loadBotTestSection(context) {
       if ("total_linhas" in expected && Number(dados.total_linhas) !== Number(expected.total_linhas)) failures.push(`total_linhas esperado ${expected.total_linhas}, recebido ${dados.total_linhas}`);
       if ("total_linhas_parse_validas" in expected && Number(dados.total_linhas_parse_validas) !== Number(expected.total_linhas_parse_validas)) failures.push(`total_linhas_parse_validas esperado ${expected.total_linhas_parse_validas}, recebido ${dados.total_linhas_parse_validas}`);
       if ("total_linhas_parse_invalidas" in expected && Number(dados.total_linhas_parse_invalidas) !== Number(expected.total_linhas_parse_invalidas)) failures.push(`total_linhas_parse_invalidas esperado ${expected.total_linhas_parse_invalidas}, recebido ${dados.total_linhas_parse_invalidas}`);
+      if (expected.eventCounts) {
+        const counts = dados.contagem_eventos_parse || dados.resumo_validacao?.por_tipo || {};
+        for (const [eventType, total] of Object.entries(expected.eventCounts)) {
+          if (Number(counts[eventType] || 0) !== Number(total)) failures.push(`contagem ${eventType} esperada ${total}, recebida ${counts[eventType] || 0}`);
+        }
+      }
       if (expected.tableRow) {
         const rows = Array.isArray(dados.linhas) ? dados.linhas : [];
         const row = rows.find((item) => Number(item.lineNumber) === Number(expected.tableRow.lineNumber))

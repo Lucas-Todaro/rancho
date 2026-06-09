@@ -80,6 +80,46 @@ module.exports = function loadBotTestSection(context) {
       "MISSING-777;Inseminacao;02/06/26;animal faltante",
       "MISSING-778;Protocolo;03/06/26;animal faltante"
     ].join("\n");
+    const prePartoSimpleEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      "001;Inseminacao;01.01.26;",
+      "001;Emprenhou;08.02.26;Prenhez confirmada",
+      "001;Pré-parto;20.09.26;Previsao de parto proxima",
+      "001;Pariu;10.10.26;"
+    ].join("\n");
+    const prePartoVariationsEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      "002;Pre-parto;20.09.26;",
+      "003;pre parto;21.09.26;",
+      "004;Pré parto;22.09.26;",
+      "005;PRE-PARTO;23.09.26;",
+      "006;preparto;24.09.26;",
+      "007;pre_parto;25.09.26;"
+    ].join("\n");
+    const bigPrePartoEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      ...Array.from({ length: 16 }, (_, index) => {
+        const code = String(index + 1).padStart(3, "0");
+        const day = String(index + 1).padStart(2, "0");
+        return [
+          `${code};Inseminacao;${day}.01.26;`,
+          `${code};Emprenhou;${day}.02.26;Prenhez confirmada`,
+          `${code};Pré-parto;${day}.09.26;`,
+          `${code};Pariu;${day}.10.26;`
+        ];
+      }).flat()
+    ].join("\n");
+    const partoOnlyEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      "010;Pariu;10.10.26;",
+      "011;Parto;11.10.26;",
+      "012;Nasceu;12.10.26;"
+    ].join("\n");
+    const prePartoAndPartoEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      "020;Pré-parto;20.09.26;",
+      "020;Pariu;10.10.26;"
+    ].join("\n");
     const stockImportTableMessage = [
       "Item;Quantidade;Unidade;Tipo;Data;Observacoes",
       "Racao de boi;10;kg;Entrada;01.06.26;",
@@ -227,6 +267,71 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela de eventos reconhece pre-parto simples",
+        module: "tabela-eventos",
+        phrase: prePartoSimpleEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_validas: 4,
+          eventCounts: { inseminacao: 1, prenhez: 1, pre_parto: 1, parto: 1 },
+          tableRow: { lineNumber: 4, animal: "001", evento_tipo: "pre_parto", data_referencia: "2026-09-20", observacoes: "Previsao" }
+        }
+      },
+      {
+        name: "tabela de eventos reconhece variacoes de pre-parto",
+        module: "tabela-eventos",
+        phrase: prePartoVariationsEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 6,
+          total_linhas_parse_validas: 6,
+          eventCounts: { pre_parto: 6 },
+          tableRow: { lineNumber: 7, animal: "007", evento_tipo: "pre_parto", data_referencia: "2026-09-25" }
+        }
+      },
+      {
+        name: "tabela grande de eventos reconhece todos pre-partos",
+        module: "tabela-eventos",
+        phrase: bigPrePartoEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 64,
+          total_linhas_parse_validas: 64,
+          eventCounts: { inseminacao: 16, prenhez: 16, pre_parto: 16, parto: 16 },
+          tableRow: { lineNumber: 64, animal: "016", evento_tipo: "pre_parto", data_referencia: "2026-09-16" }
+        }
+      },
+      {
+        name: "tabela de eventos continua reconhecendo parto",
+        module: "tabela-eventos",
+        phrase: partoOnlyEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          eventCounts: { parto: 3 },
+          tableRow: { lineNumber: 4, animal: "012", evento_tipo: "parto", data_referencia: "2026-10-12" }
+        }
+      },
+      {
+        name: "tabela de eventos nao confunde pre-parto com parto",
+        module: "tabela-eventos",
+        phrase: prePartoAndPartoEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          eventCounts: { pre_parto: 1, parto: 1 },
+          tableRow: { lineNumber: 2, animal: "020", evento_tipo: "pre_parto", data_referencia: "2026-09-20" }
+        }
+      },
+      {
         name: "tabela de cadastro de animais detecta linhas e campos",
         module: "tabela-animais",
         phrase: animalRegistrationTableMessage,
@@ -348,6 +453,21 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "IMPORTACAO_EVENTOS_TABELA",
           responseIncludes: "Prontas para importar: 30",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela com pre-parto mostra contador no resumo",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-tab-pre-001", brinco: "001", nome: "Animal 001" }],
+        messages: [prePartoSimpleEventsMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "pre-parto: 1",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,

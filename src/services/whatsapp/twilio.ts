@@ -625,6 +625,8 @@ function tabularImportSummary(parsed: ParsedRanchoMessage) {
 
 function tabularEventTypeLabel(type: string) {
   if (type === "inseminacao") return "inseminacao";
+  if (type === "prenhez") return "prenhez";
+  if (type === "pre_parto") return "pre-parto";
   if (type === "parto") return "parto";
   if (type === "protocolo") return "protocolo";
   return type || "desconhecido";

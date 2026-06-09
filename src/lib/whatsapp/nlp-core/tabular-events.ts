@@ -2,6 +2,7 @@ import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { inferAnimalSexFromCategory } from "./extractors";
 import { finalize } from "./result";
 import type { ParsedRanchoMessage } from "./types";
+import { normalizeReproductiveEventType, reproductiveEventDbType, reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
 
 export type ParsedTabularAnimalEventRow = {
   lineNumber: number;
@@ -9,7 +10,7 @@ export type ParsedTabularAnimalEventRow = {
   animal_codigo_original: string;
   animal_codigo: string;
   status_original: string;
-  evento_tipo: "inseminacao" | "parto" | "protocolo" | null;
+  evento_tipo: ReproductiveEventKind | null;
   evento_label: string | null;
   db_tipo: "observacao" | "parto" | "inseminacao" | null;
   data_original: string;
@@ -190,34 +191,14 @@ function parseTableDate(value: string) {
 }
 
 function resolveEventType(value: string): EventTypeResolution | null {
-  const normalized = normalizeRanchoText(value);
-  if (!normalized) return null;
+  const kind = normalizeReproductiveEventType(value);
+  if (!kind) return null;
 
-  if (/\b(?:pariu|parto|parida|nascimento)\b/.test(normalized)) {
-    return {
-      evento_tipo: "parto",
-      evento_label: "Parto",
-      db_tipo: "parto"
-    };
-  }
-
-  if (/\b(?:ultimo\s+protocolo|protocolo|protocolada|protocolado|iatf|implante)\b/.test(normalized)) {
-    return {
-      evento_tipo: "protocolo",
-      evento_label: "Protocolo",
-      db_tipo: "observacao"
-    };
-  }
-
-  if (/\b(?:inseminacao|inseminada|inseminado|inseminar|ia|cobertura|coberta|coberto)\b/.test(normalized)) {
-    return {
-      evento_tipo: "inseminacao",
-      evento_label: "Inseminacao",
-      db_tipo: "inseminacao"
-    };
-  }
-
-  return null;
+  return {
+    evento_tipo: kind,
+    evento_label: reproductiveEventLabel(kind),
+    db_tipo: reproductiveEventDbType(kind)
+  };
 }
 
 function normalizeAnimalCategory(value: string): ParsedTabularAnimalImportRow["categoria"] {
