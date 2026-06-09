@@ -24,6 +24,7 @@ export type OperationalReportInput = {
   kind?: OperationalReportKind;
   mode?: OperationalReportMode;
   eventType?: string;
+  eventOrder?: string;
   eventOffset?: number;
   eventPageSize?: number;
 };
@@ -39,6 +40,7 @@ export type OperationalReportResult = {
     tipo: "eventos_lista";
     periodo: string;
     evento_tipo: string | null;
+    evento_ordenacao?: string | null;
     offset: number;
     pageSize: number;
     total: number;
@@ -161,6 +163,7 @@ function previousWeekRange(): PeriodRange {
 
 export function normalizeOperationalReportPeriod(period?: string) {
   const value = normalizeRanchoText(period || "hoje").replace(/\s+/g, "_");
+  if (["historico", "histórico", "todo_historico", "todos", "todas"].includes(value)) return "historico";
   if (["ultimos_30", "ultimos_30_dias", "ultimas_30", "ultimas_30_dias"].includes(value)) return "ultimos_30";
   if (["ultimos_7", "ultimos_7_dias", "ultimas_7", "ultimas_7_dias"].includes(value)) return "ultimos_7";
   if (["recentes", "recente", "recentemente", "mais_recentes", "ultimos", "ultimas", "ultimo", "ultima"].includes(value)) return "recentes";
@@ -172,6 +175,7 @@ export function normalizeOperationalReportPeriod(period?: string) {
 
 export function operationalReportPeriodRange(period?: string): PeriodRange {
   const normalized = normalizeOperationalReportPeriod(period);
+  if (normalized === "historico") return { start: "1970-01-01T00:00:00.000Z", end: "9999-12-31T23:59:59.999Z" };
   if (normalized === "recentes") return lastDaysRange(90);
   if (normalized === "ultimos_30") return lastDaysRange(30);
   if (normalized === "ultimos_7") return lastDaysRange(7);
@@ -186,6 +190,7 @@ export function operationalReportPeriodRange(period?: string): PeriodRange {
 
 export function operationalReportPeriodLabel(period?: string) {
   const normalized = normalizeOperationalReportPeriod(period);
+  if (normalized === "historico") return "no histórico";
   if (normalized === "recentes") return "recentemente";
   if (normalized === "ultimos_30") return "nos últimos 30 dias";
   if (normalized === "ultimos_7") return "nos últimos 7 dias";
@@ -391,7 +396,7 @@ async function queryEvents(supabase: SupabaseAdmin, owner: WhatsAppOwner, period
     .eq("fazenda_id", owner.fazenda_id)
     .order("data_evento", { ascending: false });
 
-  if (normalizeOperationalReportPeriod(period) !== "recentes") {
+  if (!["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {
     const range = operationalReportPeriodRange(period);
     query = query.gte("data_evento", range.start).lt("data_evento", range.end);
   }
@@ -466,6 +471,20 @@ function formatEventDate(row: AnyRecord) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+function eventDateMs(row: AnyRecord) {
+  const value = String(row.data_evento || row.created_at || "");
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ?ms : 0;
+}
+
+function daysSinceEvent(row: AnyRecord) {
+  const ms = eventDateMs(row);
+  if (!ms) return null;
+  const diff = Date.now() - ms;
+  if (!Number.isFinite(diff) || diff < 0) return null;
+  return Math.floor(diff / 86400000);
+}
+
 function eventPluralLabel(eventType?: string) {
   if (eventType === "parto") return "partos";
   if (eventType === "inseminacao") return "inseminações";
@@ -489,9 +508,59 @@ function eventRecentTitle(eventType?: string) {
 }
 
 function emptyEventsText(period: string, eventType?: string) {
+  if (eventType === "parto" && ["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {
+    return "Não encontrei partos registrados no rebanho.";
+  }
+  if (eventType === "inseminacao" && ["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {
+    return "Não encontrei inseminações registradas.";
+  }
   const plural = eventPluralLabel(eventType);
   const label = normalizeOperationalReportPeriod(period) === "recentes" ? "recentemente" : operationalReportPeriodLabel(period);
   return `Não encontrei ${plural} registrados ${label}.`;
+}
+
+function buildOldestBirthsText(
+  rows: AnyRecord[],
+  animalsById: Map<string, AnyRecord>,
+  offset = 0,
+  pageSize = 10
+) {
+  const latestBirthByAnimal = new Map<string, AnyRecord>();
+  for (const row of rows.filter((item) => eventTypeMatches(item, "parto"))) {
+    const animalId = String(row.animal_id || "");
+    if (!animalId) continue;
+    const current = latestBirthByAnimal.get(animalId);
+    if (!current || eventDateMs(row) > eventDateMs(current)) latestBirthByAnimal.set(animalId, row);
+  }
+
+  const ordered = Array.from(latestBirthByAnimal.values())
+    .sort((left, right) => eventDateMs(left) - eventDateMs(right));
+
+  if (!ordered.length) {
+    return { text: "Não encontrei partos registrados no rebanho.", nextOffset: 0, hasMore: false, total: 0 };
+  }
+
+  const safeOffset = Math.max(0, offset);
+  const safePageSize = Math.max(1, Math.min(20, pageSize));
+  const pageRows = ordered.slice(safeOffset, safeOffset + safePageSize);
+  const lines = pageRows.map((row, index) => {
+    const animal = animalLabel(animalsById.get(String(row.animal_id || "")));
+    const days = daysSinceEvent(row);
+    const daysText = days === null ? "" : ` - ${days} dia(s) desde o parto`;
+    return `${safeOffset + index + 1}. ${animal} - último parto em ${formatEventDate(row)}${daysText}`;
+  });
+  const nextOffset = safeOffset + pageRows.length;
+  const hasMore = nextOffset < ordered.length;
+  const footer = hasMore
+    ? `\nMostrando ${safeOffset + 1}-${nextOffset} de ${ordered.length}. Para continuar esta consulta, peça "ver mais".`
+    : safeOffset > 0 ?"\nFim da lista." : "";
+
+  return {
+    text: `Vacas que pariram há mais tempo:\n${lines.join("\n")}${footer}`,
+    nextOffset,
+    hasMore,
+    total: ordered.length
+  };
 }
 
 function buildEventsText(
@@ -500,8 +569,13 @@ function buildEventsText(
   period: string,
   eventType?: string,
   offset = 0,
-  pageSize = 10
+  pageSize = 10,
+  eventOrder?: string
 ) {
+  if (eventOrder === "parto_mais_antigo_por_animal") {
+    return buildOldestBirthsText(rows, animalsById, offset, pageSize);
+  }
+
   if (!rows.length) return { text: emptyEventsText(period, eventType), nextOffset: 0, hasMore: false, total: 0 };
   const normalizedPeriod = normalizeOperationalReportPeriod(period);
   const safeOffset = Math.max(0, offset);
@@ -791,7 +865,7 @@ export async function buildRanchReport(input: OperationalReportInput): Promise<O
     counts
   });
 
-  const eventPage = buildEventsText(events, animalsById, period, input.eventType, input.eventOffset || 0, input.eventPageSize || 10);
+  const eventPage = buildEventsText(events, animalsById, period, input.eventType, input.eventOffset || 0, input.eventPageSize || 10, input.eventOrder);
   const text = kind === "eventos"
     ? eventPage.text
     : kind === "alertas"
@@ -830,6 +904,7 @@ export async function buildRanchReport(input: OperationalReportInput): Promise<O
       tipo: "eventos_lista",
       periodo: period,
       evento_tipo: input.eventType || null,
+      evento_ordenacao: input.eventOrder || null,
       offset: eventPage.nextOffset,
       pageSize: input.eventPageSize || 10,
       total: eventPage.total

@@ -200,6 +200,7 @@ function financeQueryData(normalized: string) {
 }
 
 function reportQueryPeriod(normalized: string) {
+  if (/\b(?:historico|todo\s+historico|todo\s+o\s+historico|historia)\b/.test(normalized)) return "historico";
   if (/\b(?:ultimos|ultimas)\s+30\s+dias\b/.test(normalized)) return "ultimos_30";
   if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
   if (/\b(?:recentes?|recentemente|mais\s+recentes?|ultimos|ultimas|ultimo|ultima)\b/.test(normalized)) return "recentes";
@@ -261,6 +262,121 @@ function reportQueryData(normalized: string) {
     relatorio_tipo: area,
     evento_tipo: reportEventType(normalized)
   };
+}
+
+function hasExplicitReportPeriod(normalized: string) {
+  return /\b(?:hoje|hj|ontem|anteontem|dia|semana|semanal|semana passada|ultima semana|mes|mensal|mes passado|este ano|esse ano|ano atual|historico|todo\s+historico|todo\s+o\s+historico|ultimos|ultimas|recentes?|recentemente|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized)
+    || Boolean(extractDateReference(normalized))
+    || Boolean(financeNamedMonthPeriod(normalized));
+}
+
+function collectiveReproductivePeriod(normalized: string) {
+  return hasExplicitReportPeriod(normalized) ?reportQueryPeriod(normalized) : "recentes";
+}
+
+function isCollectiveReproductiveQuery(normalized: string, original: string) {
+  const shortCollectiveCue = /^(?:partos|inseminad[ao]s|inseminacoes|gestantes|prenhas|gravidas|pre\s*partos?|pre-partos?|reteste|protocolo\s+nao\s+passou)$/.test(normalized);
+  const questionCollectiveCue = /\b(?:quem|quais|qual|lista|listagem|relatorios?|relatirios?|todas|todos)\b/.test(normalized) || /\?/.test(original);
+  const collectiveCue = /\b(?:relatorios?|relatirios?|lista|listagem|listar|liste|quais|qual|quem|todas|todos|todo|toda|vacas?\s+que|animais\s+que|vacas?\s+(?:em|prenhas?|gestantes?|gravid[ao]s?|inseminad[ao]s?)|animais\s+(?:em|prenhas?|gestantes?|gravid[ao]s?|inseminad[ao]s?)|rebanho|registrados?|registradas?|recentes?|ultimos|ultimas|maior\s+tempo|mais\s+antig[oa]s?|ha\s+mais\s+tempo|faz\s+mais\s+tempo)\b/.test(normalized)
+    || /\?/.test(original)
+    || shortCollectiveCue;
+  const reproductiveCue = /\b(?:partos?|pariram|pariu|tiveram\s+parto|deu\s+cria|deram\s+cria|inseminad[ao]s?|inseminacoes?|cobert[ao]s?|prenhas?|prenhes|prenhez|gestantes?|gestacao|gravid[ao]s?|pre\s*partos?|pre-partos?|prepartos?|protocolo|reteste|nao\s+passou)\b/.test(normalized);
+  const mutationCue = /\b(?:registrar|registra|cadastro|cadastrar|cadastra|adicionar|adiciona|incluir|inclui|novo|nova|lancar|lanca|marcar|marca|anotar|anota|inseminar|insemina|confirmar|confirma|ficou|entrou|foi\s+inseminad[ao]|pariu|pariuu|teve\s+parto|deu\s+cria)\b/.test(normalized);
+  const individualReproductiveReference = /\b(?:pre\s*parto|pre-parto|preparto|parto|inseminacao|cobertura|prenhez)\s+(?:da|do|de|na|no)\s+(?:vaca|animal|boi|touro|bezerra|bezerro|novilha)?\s*[a-z0-9-]+/.test(normalized);
+  const individualCue = hasExplicitAnimalCodeForHerdQuery(normalized)
+    || individualReproductiveReference
+    || (
+      !/\b(?:quem|quais|quantos|quantas|lista|listagem|relatorios?|relatirios?|rebanho|animais|vacas|todos|todas)\b/.test(normalized)
+      && /\b(?:esta|ta|ficou|foi|teve|pariu|pariuu|deu\s+cria|entrou)\b/.test(normalized)
+    );
+  return (collectiveCue || hasExplicitReportPeriod(normalized)) && reproductiveCue && !individualCue && (!mutationCue || questionCollectiveCue);
+}
+
+function collectiveReproductiveQuery(original: string, normalized: string): ParsedRanchoMessage | null {
+  if (!isCollectiveReproductiveQuery(normalized, original)) return null;
+
+  const oldBirthCue = /\b(?:ha\s+mais\s+tempo|mais\s+tempo|faz\s+mais\s+tempo|maior\s+tempo\s+desde|mais\s+tempo\s+sem\s+parir|partos?\s+mais\s+antig[oa]s?|parto\s+mais\s+antig[oa]|pariram\s+ha\s+mais\s+tempo)\b/.test(normalized);
+  const birthCue = oldBirthCue || /\b(?:partos?|pariram|pariu|tiveram\s+parto|deu\s+cria|deram\s+cria|nascimentos?)\b/.test(normalized);
+  const inseminationEventCue = /\b(?:inseminacoes?|ultimas\s+inseminacoes|ultimos\s+registros\s+de\s+inseminacao|relatorio\s+de\s+inseminacoes|inseminacoes\s+recentes)\b/.test(normalized);
+  const inseminatedHerdCue = /\b(?:inseminad[ao]s?|cobert[ao]s?|cobertas?|cobertos?)\b/.test(normalized);
+  const pregnantCue = /\b(?:prenhas?|prenhes|prenhez|gestantes?|gestacao|gravid[ao]s?)\b/.test(normalized);
+  const preBirthCue = /\b(?:pre\s*partos?|pre-partos?|prepartos?|proximas?\s+de\s+parir|perto\s+de\s+parir)\b/.test(normalized);
+  const protocolCue = /\b(?:reteste|nao\s+passou|protocolos?)\b/.test(normalized);
+
+  const preBirthEventCue = /\b(?:pre\s*partos|pre-partos|prepartos)\b/.test(normalized)
+    && /\b(?:recentes?|ultimos|ultimas|eventos?|relatorios?|relatirios?|historico)\b/.test(normalized);
+  if (preBirthCue && preBirthEventCue && !/\b(?:lista|listar|liste|animais|vacas|rebanho)\b/.test(normalized)) {
+    const period = collectiveReproductivePeriod(normalized);
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      consulta: true,
+      consulta_registros: "eventos",
+      relatorio_modo: "resumo",
+      data_referencia: period,
+      periodo: period,
+      evento_tipo: "pre_parto"
+    }, [], 0.9);
+  }
+
+  if (pregnantCue || preBirthCue || inseminatedHerdCue) {
+    const reproduction = preBirthCue ? "pre_parto" : pregnantCue ? "prenhe" : "inseminada";
+    return finalize("CONSULTA_REBANHO", {
+      consulta: true,
+      modo: /\b(?:quantos|quantas|total|contagem|numero)\b/.test(normalized) ? "contagem" : "lista",
+      categoria: /\bvacas?\b/.test(normalized) ? "vaca" : undefined,
+      reproducao: reproduction,
+      pagina: extractQueryPage(normalized)
+    }, [], 0.9);
+  }
+
+  if (oldBirthCue) {
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      consulta: true,
+      consulta_registros: "eventos",
+      relatorio_modo: "resumo",
+      data_referencia: "historico",
+      periodo: "historico",
+      evento_tipo: "parto",
+      evento_ordenacao: "parto_mais_antigo_por_animal"
+    }, [], 0.92);
+  }
+
+  if (birthCue) {
+    const period = collectiveReproductivePeriod(normalized);
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      consulta: true,
+      consulta_registros: "eventos",
+      relatorio_modo: "resumo",
+      data_referencia: period,
+      periodo: period,
+      evento_tipo: "parto"
+    }, [], 0.9);
+  }
+
+  if (inseminationEventCue) {
+    const period = collectiveReproductivePeriod(normalized);
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      consulta: true,
+      consulta_registros: "eventos",
+      relatorio_modo: "resumo",
+      data_referencia: period,
+      periodo: period,
+      evento_tipo: "inseminacao"
+    }, [], 0.9);
+  }
+
+  if (protocolCue) {
+    const period = collectiveReproductivePeriod(normalized);
+    return finalize("CONSULTA_REGISTROS_HOJE", {
+      consulta: true,
+      consulta_registros: "eventos",
+      relatorio_modo: "resumo",
+      data_referencia: period,
+      periodo: period,
+      evento_tipo: "protocolo"
+    }, [], 0.88);
+  }
+
+  return null;
 }
 
 function isAmbiguousReportQuery(normalized: string) {
@@ -855,6 +971,9 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (isAmbiguousReportQuery(normalized)) {
     return finalize("CONSULTA_REGISTROS_HOJE", { consulta: true, precisa_periodo: true, consulta_registros: "relatorio" }, [], 0.75);
   }
+
+  const collectiveReproduction = collectiveReproductiveQuery(original, normalized);
+  if (collectiveReproduction) return collectiveReproduction;
 
   const directOperationalReport = /\b(?:me\s+da\s+(?:um\s+)?geral|geral\s+(?:de|do|da)|me\s+fala\s+tudo|tudo\s+que\s+aconteceu|movimentacoes?\s+(?:de\s+)?hoje|movimentacoes?\s+do\s+dia|movimentacoes?\s+de\s+estoque)\b/.test(normalized)
     || (/\b(?:rancho|fazenda)\b/.test(normalized) && /\b(?:foi|bem|mal|indo|geral|resumo|relatorio)\b/.test(normalized));

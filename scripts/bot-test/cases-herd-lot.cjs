@@ -159,6 +159,98 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "consulta gestantes por relatorio lista somente prenhas",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["Relatorio das vacas que estao gestantes"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", reproducao: "prenhe", modo: "lista" },
+          responseIncludes: "gestante",
+          allResponsesNotInclude: ["vaca, prenhas/gestantes", "Qual é o brinco"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "consulta todas as vacas inseminadas nao usa todas como animal",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        animalEvents: [
+          { animal_id: "animal-b-001", tipo: "inseminacao", descricao: "Cobertura registrada", data_evento: "2026-04-20T09:00:00.000Z" }
+        ],
+        messages: ["Lista de todas as vacas inseminadas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", reproducao: "inseminada", modo: "lista" },
+          responseIncludes: "B-001",
+          responseNotIncludes: "parto",
+          allResponsesNotInclude: ["TODAS", "Qual é o brinco"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio de partos nao usa que como animal",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        reportFixture: true,
+        messages: ["Relatorios das vacas que tiveram parto"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", evento_tipo: "parto", periodo: "recentes" },
+          responseIncludes: "partos",
+          allResponsesNotInclude: ["Qual é o brinco"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio vacas que pariram ha mais tempo ordena historico",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        reportFixture: true,
+        animalEvents: [
+          { animal_id: "animal-b-002", tipo: "parto", descricao: "Parto antigo", data_evento: "2026-01-10T11:00:00.000Z" },
+          { animal_id: "animal-b-003", tipo: "parto", descricao: "Parto recente", data_evento: "2026-05-10T11:00:00.000Z" }
+        ],
+        messages: ["Relatorio das vacas que pariram ha mais tempo"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          entities: { consulta_registros: "eventos", evento_tipo: "parto", evento_ordenacao: "parto_mais_antigo_por_animal", periodo: "historico" },
+          responseIncludes: "B-002",
+          allResponsesNotInclude: ["Qual é o brinco"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "paginacao de relatorio de partos preserva ordenacao antiga",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: Array.from({ length: 12 }, (_, index) => ({
+          id: `animal-birth-${index + 1}`,
+          brinco: `BIRTH-${String(index + 1).padStart(2, "0")}`,
+          nome: `Parto ${index + 1}`,
+          categoria: "vaca",
+          sexo: "femea",
+          fase: "lactacao",
+          lote_id: "lote-lactacao-1"
+        })),
+        animalEvents: Array.from({ length: 12 }, (_, index) => ({
+          animal_id: `animal-birth-${index + 1}`,
+          tipo: "parto",
+          descricao: "Parto registrado",
+          data_evento: `2026-01-${String(index + 1).padStart(2, "0")}T11:00:00.000Z`
+        })),
+        messages: ["Relatorio das vacas que pariram ha mais tempo", "ver mais"],
+        expected: {
+          responseIncludes: "BIRTH-11",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "paginacao de rebanho preserva filtro reprodutivo",
         module: "rebanho-lotes",
         phone: BOT_TEST_ADMIN_PHONE,

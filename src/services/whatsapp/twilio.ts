@@ -1637,7 +1637,40 @@ function animalStatusLabel(animal: AnyRecord) {
   return animalStatusValue(animal) || String(animal.status || "ativo");
 }
 
-function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, index: number) {
+function formatBotEventDate(event?: AnyRecord | null) {
+  const value = String(event?.data_evento || event?.created_at || "");
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function reproductiveEventForFilter(animal: AnyRecord, eventsByAnimal: Map<string, AnyRecord[]>, filter?: HerdReproductionFilter) {
+  if (!filter) return null;
+  const events = sortedEventsForAnimal(eventsByAnimal, animal);
+  if (filter === "prenhe") {
+    return events.find((event) => ["prenhez", "pre_parto"].includes(String(reproductiveEventKind(event) || "")))
+      || events.find((event) => reproductiveEventKind(event) === "inseminacao")
+      || null;
+  }
+  if (filter === "pre_parto") return events.find((event) => reproductiveEventKind(event) === "pre_parto") || null;
+  if (filter === "inseminada") return events.find((event) => reproductiveEventKind(event) === "inseminacao") || null;
+  return null;
+}
+
+function reproductiveEventLine(animal: AnyRecord, eventsByAnimal: Map<string, AnyRecord[]>, filter?: HerdReproductionFilter) {
+  const event = reproductiveEventForFilter(animal, eventsByAnimal, filter);
+  const date = formatBotEventDate(event);
+  if (filter === "prenhe") {
+    if (event && reproductiveEventKind(event) === "inseminacao") return date ?`Última inseminação: ${date}` : "Inseminação registrada";
+    if (event) return date ?`Prenhez/gestação registrada em ${date}` : "Prenhez/gestação registrada";
+    if (animalPhaseIsPregnant(animal)) return "Marcada como gestante no cadastro";
+  }
+  if (filter === "pre_parto" && event) return date ?`Pré-parto desde ${date}` : "Pré-parto registrado";
+  if (filter === "inseminada" && event) return date ?`Inseminada em ${date}` : "Inseminação registrada";
+  return "";
+}
+
+function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, index: number, eventsByAnimal?: Map<string, AnyRecord[]>, reproduction?: HerdReproductionFilter) {
   const lot = animal.lote_id ?lotById.get(String(animal.lote_id)) : null;
   const details = [
     animal.categoria || "animal",
@@ -1645,7 +1678,8 @@ function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, inde
     animalStatusLabel(animal),
     lotLabel(lot)
   ].filter(Boolean).join(" | ");
-  return `${index + 1}. ${animalLabel(animal)} - ${details}`;
+  const reproductionDetail = eventsByAnimal ?reproductiveEventLine(animal, eventsByAnimal, reproduction) : "";
+  return `${index + 1}. ${animalLabel(animal)} - ${details}${reproductionDetail ?` - ${reproductionDetail}` : ""}`;
 }
 
 type HerdReproductionFilter = "prenhe" | "pre_parto" | "inseminada" | "sem_evento" | "com_evento";
@@ -1658,8 +1692,8 @@ function herdReproductionFilter(value: unknown): HerdReproductionFilter | undefi
 }
 
 function reproductiveFilterLabel(filter?: HerdReproductionFilter) {
-  if (filter === "prenhe") return "prenhas/gestantes";
-  if (filter === "pre_parto") return "em pre-parto";
+  if (filter === "prenhe") return "gestantes";
+  if (filter === "pre_parto") return "em pré-parto";
   if (filter === "inseminada") return "inseminadas";
   if (filter === "sem_evento") return "sem eventos";
   if (filter === "com_evento") return "com eventos";
@@ -1810,8 +1844,12 @@ function parsedLotPaginationMessage(page: number): ParsedRanchoMessage {
 
 function filterLabel(dados: AnyRecord, lotName?: string) {
   const reproduction = herdReproductionFilter(dados.reproducao || dados.filtro_reprodutivo);
+  const category = dados.categoria ?String(dados.categoria) : "animais";
+  if (reproduction === "prenhe") return `${category === "vaca" ? "vacas" : category} gestantes${lotName ?` no lote ${lotName}` : ""}`;
+  if (reproduction === "inseminada") return `${category === "vaca" ? "vacas" : category} inseminadas${lotName ?` no lote ${lotName}` : ""}`;
+  if (reproduction === "pre_parto") return `${category === "vaca" ? "vacas" : category} em pré-parto${lotName ?` no lote ${lotName}` : ""}`;
   const labels = [
-    dados.categoria ?String(dados.categoria) : "animais",
+    category,
     dados.sexo && dados.sexo !== "nao_informado" ?`sexo ${dados.sexo}` : "",
     dados.sexo === "nao_informado" ?"sem sexo informado" : "",
     dados.status ?`status ${dados.status}` : "",
@@ -1820,6 +1858,15 @@ function filterLabel(dados: AnyRecord, lotName?: string) {
     lotName ?`no lote ${lotName}` : ""
   ].filter(Boolean);
   return labels.join(", ");
+}
+
+function countAwareHerdLabel(label: string, total: number) {
+  if (total !== 1) return label;
+  return label
+    .replace(/^vacas\b/, "vaca")
+    .replace(/^animais\b/, "animal")
+    .replace(/\bgestantes\b/, "gestante")
+    .replace(/\binseminadas\b/, "inseminada");
 }
 
 function paginateRows<T>(rows: T[], page?: unknown, pageSize = 8) {
@@ -4693,13 +4740,16 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
 
   if (!filtered.length) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    if (reproduction === "prenhe") return `Não encontrei ${label} no momento.`;
+    if (reproduction === "inseminada") return `Não encontrei ${label} no momento.`;
+    if (reproduction === "pre_parto") return `Não encontrei ${label} no momento.`;
     return `Não encontrei ${label} cadastrados.`;
   }
 
   const mode = String(dados.modo || "lista");
   if (mode === "contagem") {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return `Encontrei ${filtered.length} ${label} cadastrados.`;
+    return `Encontrei ${filtered.length} ${countAwareHerdLabel(label, filtered.length)}.`;
   }
 
   if (mode === "resumo") {
@@ -4710,7 +4760,7 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
   }
 
   const page = paginateRows(filtered, dados.pagina, HERD_PAGE_SIZE);
-  const lines = page.rows.map((animal, index) => animalListLine(animal, lotById, page.start + index)).join("\n");
+  const lines = page.rows.map((animal, index) => animalListLine(animal, lotById, page.start + index, eventMap, reproduction)).join("\n");
   const hasMore = page.end < filtered.length;
   if (hasMore) {
     await saveHerdPagination(supabase, owner, dados, Math.min(page.currentPage + 1, page.totalPages), HERD_PAGE_SIZE, lotFilter ?lotLabel(lotFilter) : undefined);
@@ -4720,7 +4770,7 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
   const pageText = hasMore
     ?`\nMostrando ${page.start + 1}-${page.end} de ${filtered.length}. Para continuar esta consulta, peça "ver mais" ou "pagina ${Math.min(page.currentPage + 1, page.totalPages)} do rebanho".`
     : "";
-  return `Encontrei ${filtered.length} ${label} cadastrados:\n${lines}${pageText}`;
+  return `Encontrei ${filtered.length} ${countAwareHerdLabel(label, filtered.length)}:\n${lines}${pageText}`;
 }
 
 async function handleLotConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
@@ -5326,6 +5376,7 @@ async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: Wh
   const mode = String(parsed.dados.relatorio_modo || "resumo");
   const kind = String(parsed.dados.consulta_registros || "whatsapp");
   const requestedType = parsed.dados.evento_tipo ?String(parsed.dados.evento_tipo) : undefined;
+  const requestedOrder = parsed.dados.evento_ordenacao ?String(parsed.dados.evento_ordenacao) : undefined;
   const reportKind = (kind === "alertas" ? "alertas" : kind === "eventos" ? "eventos" : parsed.dados.relatorio_tipo || "geral") as OperationalReportKind;
   const report = await buildRanchReport({
     supabase,
@@ -5334,6 +5385,7 @@ async function handleEventsReportConsultation(supabase: SupabaseAdmin, owner: Wh
     kind: reportKind,
     mode: mode as OperationalReportMode,
     eventType: requestedType,
+    eventOrder: requestedOrder,
     eventPageSize: EVENT_PAGE_SIZE
   });
 
@@ -5361,6 +5413,7 @@ async function handleEventsPagination(supabase: SupabaseAdmin, owner: WhatsAppOw
 
   const period = String(pagination.periodo || "recentes");
   const eventType = pagination.evento_tipo ?String(pagination.evento_tipo) : undefined;
+  const eventOrder = pagination.evento_ordenacao ?String(pagination.evento_ordenacao) : undefined;
   const offset = Math.max(0, Number(pagination.offset || 0));
   const pageSize = Math.max(1, Math.min(20, Number(pagination.pageSize || EVENT_PAGE_SIZE)));
   const report = await buildRanchReport({
@@ -5370,6 +5423,7 @@ async function handleEventsPagination(supabase: SupabaseAdmin, owner: WhatsAppOw
     kind: "eventos",
     mode: "resumo",
     eventType,
+    eventOrder,
     eventOffset: offset,
     eventPageSize: pageSize
   });

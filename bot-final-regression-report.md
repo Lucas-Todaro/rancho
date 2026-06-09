@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-08T19:37:57.832Z
+Gerado em: 2026-06-09T18:02:26.910Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1287
-- Aprovados: 1287
+- Total geral de testes: 1303
+- Aprovados: 1303
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -24,7 +24,7 @@ Gerado em: 2026-06-08T19:37:57.832Z
 | Folha/salarios | 8 | 8 | 0 | 100% |
 | Eventos/vacinas/medicamentos | 215 | 215 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
-| Rebanho/lotes | 42 | 42 | 0 | 100% |
+| Rebanho/lotes | 57 | 57 | 0 | 100% |
 | Dashboard/relatorios | 26 | 26 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |

@@ -143,6 +143,7 @@ module.exports = function loadBotTestSection(context) {
       if (expected.venda && !dados.venda) failures.push("esperava venda=true");
       if ("registro_evento_animal" in expected && Boolean(dados.registro_evento_animal) !== Boolean(expected.registro_evento_animal)) failures.push(`registro_evento_animal esperado ${expected.registro_evento_animal}, recebido ${dados.registro_evento_animal}`);
       if (expected.evento_tipo && normalize(dados.evento_tipo) !== normalize(expected.evento_tipo)) failures.push(`evento_tipo esperado ${expected.evento_tipo}, recebido ${dados.evento_tipo}`);
+      if (expected.evento_ordenacao && normalize(dados.evento_ordenacao) !== normalize(expected.evento_ordenacao)) failures.push(`evento_ordenacao esperada ${expected.evento_ordenacao}, recebida ${dados.evento_ordenacao}`);
       if (expected.evento_reprodutivo_tipo && normalize(dados.evento_reprodutivo_tipo) !== normalize(expected.evento_reprodutivo_tipo)) failures.push(`evento_reprodutivo_tipo esperado ${expected.evento_reprodutivo_tipo}, recebido ${dados.evento_reprodutivo_tipo}`);
       if (expected.origem_inseminacao && normalize(dados.origem_inseminacao) !== normalize(expected.origem_inseminacao)) failures.push(`origem_inseminacao esperada ${expected.origem_inseminacao}, recebida ${dados.origem_inseminacao}`);
       if (expected.animal && normalize(dados.animal_codigo) !== normalize(expected.animal)) failures.push(`animal esperado ${expected.animal}, recebido ${dados.animal_codigo}`);
@@ -163,6 +164,7 @@ module.exports = function loadBotTestSection(context) {
       if (expected.loteId && dados.lote_id !== expected.loteId) failures.push(`lote_id esperado ${expected.loteId}, recebido ${dados.lote_id}`);
       if (expected.data_nascimento && dados.data_nascimento !== expected.data_nascimento) failures.push(`data_nascimento esperada ${expected.data_nascimento}, recebida ${dados.data_nascimento}`);
       if (expected.data_referencia && dados.data_referencia !== expected.data_referencia) failures.push(`data_referencia esperada ${expected.data_referencia}, recebida ${dados.data_referencia}`);
+      if (expected.periodo && dados.periodo !== expected.periodo) failures.push(`periodo esperado ${expected.periodo}, recebido ${dados.periodo}`);
       if (expected.turno && normalize(dados.turno) !== normalize(expected.turno)) failures.push(`turno esperado ${expected.turno}, recebido ${dados.turno}`);
       if ("peso" in expected && Number(dados.peso) !== Number(expected.peso)) failures.push(`peso esperado ${expected.peso}, recebido ${dados.peso}`);
       if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
