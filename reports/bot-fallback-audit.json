@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-09T21:38:17.705Z",
+  "generatedAt": "2026-06-09T22:09:51.299Z",
   "command": "npm run test:bot:fallback-audit",
   "notes": [
     "Auditoria offline: Gemini real nao e chamado.",
@@ -12,15 +12,15 @@
   },
   "summary": {
     "total": 500,
-    "passed": 318,
-    "failed": 182,
-    "accuracy": 63.6,
+    "passed": 324,
+    "failed": 176,
+    "accuracy": 64.8,
     "expectedGemini": 140,
-    "calledGemini": 226,
-    "falseNegativeFallback": 41,
-    "falsePositiveFallback": 127,
+    "calledGemini": 238,
+    "falseNegativeFallback": 31,
+    "falsePositiveFallback": 129,
     "wrongIntents": 35,
-    "missingWarnings": 25,
+    "missingWarnings": 15,
     "groupCounts": {
       "G1 - Producao simples correta": 32,
       "G2 - Producao incompleta": 20,
@@ -55,1089 +55,14 @@
       "Funcionarios e folha": 6,
       "Saude/observacao sanitaria": 16,
       "Vacina/medicamento": 12,
-      "Reproducao/parto/inseminacao": 2,
+      "Reproducao/parto/inseminacao": 4,
       "Cadastro individual de animal": 24,
       "Consultas e relatorios": 6,
-      "Frases compostas/multiplas acoes": 8,
       "Correcao/cancelamento/negacao": 6,
       "Ruido, typos e linguagem informal": 16,
       "Casos perigosos de nao fallback": 4
     },
     "topCritical": [
-      {
-        "id": "G17-004",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "Mimosa foi inseminada e Lindona pariu",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "ATUALIZACAO_ANIMAL",
-        "confidence": 0.88,
-        "riskScore": 0,
-        "warnings": [
-          "sensitive_action",
-          "needs_confirmation",
-          "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "ATUALIZACAO_ANIMAL",
-          "confianca": 0.88,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "campo_alterado": "observacoes",
-            "novo_valor": "Mimosa foi inseminada e Lindona pariu",
-            "data_referencia": "hoje",
-            "descricao": "Mimosa foi inseminada e Lindona pariu",
-            "registro_evento_animal": true,
-            "evento_tipo": "reprodutivo",
-            "evento_reprodutivo_tipo": "parto"
-          },
-          "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
-          "perguntas_faltantes": [],
-          "flags": [
-            "sensitive_action",
-            "needs_confirmation",
-            "requires_confirmation",
-            "single_clear_intent",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              0
-            ],
-            "units": [],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "ATUALIZACAO_ANIMAL",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": null,
-              "date": "hoje",
-              "notes": "Mimosa foi inseminada e Lindona pariu",
-              "rawText": "Mimosa foi inseminada e Lindona pariu"
-            }
-          ],
-          "reason": "base 0.88 -> 0.88; single clear intent",
-          "debugReason": "base 0.88 -> 0.88; single clear intent",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-008",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "cadastrei vaca Mimosa e registrei producao 20 litros",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "PRODUCAO_LEITE",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "PRODUCAO_LEITE",
-          "confianca": 0.9,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "litros": 20,
-            "data_referencia": "hoje",
-            "destino_leite_claro": false,
-            "tanque": false
-          },
-          "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              20,
-              0
-            ],
-            "units": [
-              "litros"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "PRODUCAO_LEITE",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": "litro",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-010",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "Mimosa nao comeu e vaca 2 deu 15 litros",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "PRODUCAO_LEITE",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "PRODUCAO_LEITE",
-          "confianca": 0.9,
-          "dados": {
-            "animal_codigo": "2",
-            "litros": 15,
-            "data_referencia": "hoje",
-            "destino_leite_claro": false,
-            "tanque": false
-          },
-          "resumo": "registrar produção de leite do animal 2 com 15 litros (hoje)",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "2"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              2,
-              15,
-              0
-            ],
-            "units": [
-              "litros"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "PRODUCAO_LEITE",
-              "entity": "2",
-              "quantity": 0,
-              "unit": "litro",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "Mimosa nao comeu e vaca 2 deu 15 litros"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-014",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "Mimosa foi inseminada e Lindona pariu",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "ATUALIZACAO_ANIMAL",
-        "confidence": 0.88,
-        "riskScore": 0,
-        "warnings": [
-          "sensitive_action",
-          "needs_confirmation",
-          "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "ATUALIZACAO_ANIMAL",
-          "confianca": 0.88,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "campo_alterado": "observacoes",
-            "novo_valor": "Mimosa foi inseminada e Lindona pariu",
-            "data_referencia": "hoje",
-            "descricao": "Mimosa foi inseminada e Lindona pariu",
-            "registro_evento_animal": true,
-            "evento_tipo": "reprodutivo",
-            "evento_reprodutivo_tipo": "parto"
-          },
-          "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
-          "perguntas_faltantes": [],
-          "flags": [
-            "sensitive_action",
-            "needs_confirmation",
-            "requires_confirmation",
-            "single_clear_intent",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              0
-            ],
-            "units": [],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "ATUALIZACAO_ANIMAL",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": null,
-              "date": "hoje",
-              "notes": "Mimosa foi inseminada e Lindona pariu",
-              "rawText": "Mimosa foi inseminada e Lindona pariu"
-            }
-          ],
-          "reason": "base 0.88 -> 0.88; single clear intent",
-          "debugReason": "base 0.88 -> 0.88; single clear intent",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-018",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "cadastrei vaca Mimosa e registrei producao 20 litros",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "PRODUCAO_LEITE",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "PRODUCAO_LEITE",
-          "confianca": 0.9,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "litros": 20,
-            "data_referencia": "hoje",
-            "destino_leite_claro": false,
-            "tanque": false
-          },
-          "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              20,
-              0
-            ],
-            "units": [
-              "litros"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "PRODUCAO_LEITE",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": "litro",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-020",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "Mimosa nao comeu e vaca 2 deu 15 litros",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "PRODUCAO_LEITE",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "PRODUCAO_LEITE",
-          "confianca": 0.9,
-          "dados": {
-            "animal_codigo": "2",
-            "litros": 15,
-            "data_referencia": "hoje",
-            "destino_leite_claro": false,
-            "tanque": false
-          },
-          "resumo": "registrar produção de leite do animal 2 com 15 litros (hoje)",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "2"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              2,
-              15,
-              0
-            ],
-            "units": [
-              "litros"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "PRODUCAO_LEITE",
-              "entity": "2",
-              "quantity": 0,
-              "unit": "litro",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "Mimosa nao comeu e vaca 2 deu 15 litros"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-024",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "Mimosa foi inseminada e Lindona pariu",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "ATUALIZACAO_ANIMAL",
-        "confidence": 0.88,
-        "riskScore": 0,
-        "warnings": [
-          "sensitive_action",
-          "needs_confirmation",
-          "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "ATUALIZACAO_ANIMAL",
-          "confianca": 0.88,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "campo_alterado": "observacoes",
-            "novo_valor": "Mimosa foi inseminada e Lindona pariu",
-            "data_referencia": "hoje",
-            "descricao": "Mimosa foi inseminada e Lindona pariu",
-            "registro_evento_animal": true,
-            "evento_tipo": "reprodutivo",
-            "evento_reprodutivo_tipo": "parto"
-          },
-          "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
-          "perguntas_faltantes": [],
-          "flags": [
-            "sensitive_action",
-            "needs_confirmation",
-            "requires_confirmation",
-            "single_clear_intent",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              0
-            ],
-            "units": [],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "ATUALIZACAO_ANIMAL",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": null,
-              "date": "hoje",
-              "notes": "Mimosa foi inseminada e Lindona pariu",
-              "rawText": "Mimosa foi inseminada e Lindona pariu"
-            }
-          ],
-          "reason": "base 0.88 -> 0.88; single clear intent",
-          "debugReason": "base 0.88 -> 0.88; single clear intent",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G17-028",
-        "grupo": "G17",
-        "grupoNome": "Frases compostas/multiplas acoes",
-        "mensagem": "cadastrei vaca Mimosa e registrei producao 20 litros",
-        "expectedIntentAnyOf": [
-          "LOTE_REGISTROS",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "RECEITA_VENDA",
-          "DESPESA",
-          "CADASTRO_ANIMAL",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "compound_single_without_fallback"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "PRODUCAO_LEITE",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback",
-          "frase composta virou acao unica sem fallback"
-        ],
-        "parserResult": {
-          "tipo": "PRODUCAO_LEITE",
-          "confianca": 0.9,
-          "dados": {
-            "animal_codigo": "MIMOSA",
-            "litros": 20,
-            "data_referencia": "hoje",
-            "destino_leite_claro": false,
-            "tanque": false
-          },
-          "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [
-              "MIMOSA"
-            ],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              20,
-              0
-            ],
-            "units": [
-              "litros"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "PRODUCAO_LEITE",
-              "entity": "MIMOSA",
-              "quantity": 0,
-              "unit": "litro",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
-        "id": "G18-004",
-        "grupo": "G18",
-        "grupoNome": "Correcao/cancelamento/negacao",
-        "mensagem": "apaga o lancamento de racao",
-        "expectedIntentAnyOf": [
-          "DESCONHECIDO",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "CONSULTA_FINANCEIRO",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": true,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO",
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback"
-        ],
-        "parserResult": {
-          "tipo": "CONSULTA_FINANCEIRO",
-          "confianca": 0.9,
-          "dados": {
-            "data_referencia": "mes",
-            "periodo": "mes",
-            "financeiro_modo": "detalhado",
-            "consulta": true
-          },
-          "resumo": "consultar financeiro",
-          "perguntas_faltantes": [],
-          "flags": [
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              0
-            ],
-            "units": [],
-            "dates": [
-              "mes"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "CONSULTA_FINANCEIRO",
-              "entity": null,
-              "quantity": 0,
-              "unit": null,
-              "date": "mes",
-              "notes": null,
-              "rawText": "apaga o lancamento de racao"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "local_execution"
-        }
-      },
-      {
-        "id": "G18-014",
-        "grupo": "G18",
-        "grupoNome": "Correcao/cancelamento/negacao",
-        "mensagem": "apaga o lancamento de racao",
-        "expectedIntentAnyOf": [
-          "DESCONHECIDO",
-          "PRODUCAO_LEITE",
-          "ESTOQUE_ENTRADA",
-          "ESTOQUE_SAIDA",
-          "ATUALIZACAO_ANIMAL",
-          "PARTO"
-        ],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [],
-        "forbiddenPatterns": [],
-        "mustNotSave": false,
-        "observacao": "",
-        "parserIntent": "CONSULTA_FINANCEIRO",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": true,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO",
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback"
-        ],
-        "parserResult": {
-          "tipo": "CONSULTA_FINANCEIRO",
-          "confianca": 0.9,
-          "dados": {
-            "data_referencia": "mes",
-            "periodo": "mes",
-            "financeiro_modo": "detalhado",
-            "consulta": true
-          },
-          "resumo": "consultar financeiro",
-          "perguntas_faltantes": [],
-          "flags": [
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [],
-            "stockItems": [],
-            "employees": [],
-            "quantities": [
-              0
-            ],
-            "units": [],
-            "dates": [
-              "mes"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "CONSULTA_FINANCEIRO",
-              "entity": null,
-              "quantity": 0,
-              "unit": null,
-              "date": "mes",
-              "notes": null,
-              "rawText": "apaga o lancamento de racao"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90",
-          "debugReason": "base 0.90 -> 0.90",
-          "decision": "local_execution"
-        }
-      },
       {
         "id": "G4-009",
         "grupo": "G4",
@@ -2122,6 +1047,975 @@
           ],
           "reason": "base 0.88 -> 0.88; single clear intent",
           "debugReason": "base 0.88 -> 0.88; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G18-016",
+        "grupo": "G18",
+        "grupoNome": "Correcao/cancelamento/negacao",
+        "mensagem": "Lindona nao comeu hoje",
+        "expectedIntentAnyOf": [
+          "DESCONHECIDO",
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "ATUALIZACAO_ANIMAL",
+          "PARTO"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [
+          "use_gemini_fallback"
+        ],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "ATUALIZACAO_ANIMAL",
+        "confidence": 0.88,
+        "riskScore": 0,
+        "warnings": [
+          "sensitive_action",
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [
+          "use_gemini_fallback"
+        ],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback",
+          "warnings ausentes: use_gemini_fallback"
+        ],
+        "parserResult": {
+          "tipo": "ATUALIZACAO_ANIMAL",
+          "confianca": 0.88,
+          "dados": {
+            "animal_codigo": "LINDONA",
+            "campo_alterado": "observacoes",
+            "novo_valor": "Lindona nao comeu hoje",
+            "data_referencia": "hoje",
+            "descricao": "Lindona nao comeu hoje",
+            "registro_evento_animal": true,
+            "evento_tipo": "clinico"
+          },
+          "resumo": "registrar ocorrência clínica para LINDONA: Lindona nao comeu hoje",
+          "perguntas_faltantes": [],
+          "flags": [
+            "sensitive_action",
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [
+              "LINDONA"
+            ],
+            "stockItems": [],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "ATUALIZACAO_ANIMAL",
+              "entity": "LINDONA",
+              "quantity": 0,
+              "unit": null,
+              "date": "hoje",
+              "notes": "Lindona nao comeu hoje",
+              "rawText": "Lindona nao comeu hoje"
+            }
+          ],
+          "reason": "base 0.88 -> 0.88; single clear intent",
+          "debugReason": "base 0.88 -> 0.88; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G19-007",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "qto tem de leite cru",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "CONSULTA_ESTOQUE_ITEM",
+        "confidence": 0.88,
+        "riskScore": 0,
+        "warnings": [
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": true,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "intent esperada PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL, recebida CONSULTA_ESTOQUE_ITEM",
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "CONSULTA_ESTOQUE_ITEM",
+          "confianca": 0.88,
+          "dados": {
+            "item_nome": "qto de leite cru",
+            "consulta": true
+          },
+          "resumo": "consultar estoque de qto de leite cru",
+          "perguntas_faltantes": [],
+          "flags": [
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "qto de leite cru"
+            ],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "CONSULTA_ESTOQUE_ITEM",
+              "entity": "qto de leite cru",
+              "quantity": 0,
+              "unit": null,
+              "date": null,
+              "notes": null,
+              "rawText": "qto tem de leite cru"
+            }
+          ],
+          "reason": "base 0.88 -> 0.88",
+          "debugReason": "base 0.88 -> 0.88",
+          "decision": "local_execution"
+        }
+      },
+      {
+        "id": "G19-017",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "qto tem de leite cru",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "CONSULTA_ESTOQUE_ITEM",
+        "confidence": 0.88,
+        "riskScore": 0,
+        "warnings": [
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": true,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "intent esperada PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL, recebida CONSULTA_ESTOQUE_ITEM",
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "CONSULTA_ESTOQUE_ITEM",
+          "confianca": 0.88,
+          "dados": {
+            "item_nome": "qto de leite cru",
+            "consulta": true
+          },
+          "resumo": "consultar estoque de qto de leite cru",
+          "perguntas_faltantes": [],
+          "flags": [
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "qto de leite cru"
+            ],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "CONSULTA_ESTOQUE_ITEM",
+              "entity": "qto de leite cru",
+              "quantity": 0,
+              "unit": null,
+              "date": null,
+              "notes": null,
+              "rawText": "qto tem de leite cru"
+            }
+          ],
+          "reason": "base 0.88 -> 0.88",
+          "debugReason": "base 0.88 -> 0.88",
+          "decision": "local_execution"
+        }
+      },
+      {
+        "id": "G20-009",
+        "grupo": "G20",
+        "grupoNome": "Casos perigosos de nao fallback",
+        "mensagem": "comprei 30kg de racao",
+        "expectedIntentAnyOf": [],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [
+          "use_gemini_fallback"
+        ],
+        "expectedMustNotHappen": [
+          "silent_dangerous_parse"
+        ],
+        "forbiddenPatterns": [],
+        "mustNotSave": true,
+        "observacao": "",
+        "parserIntent": "ESTOQUE_ENTRADA",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [
+          "use_gemini_fallback"
+        ],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback",
+          "warnings ausentes: use_gemini_fallback"
+        ],
+        "parserResult": {
+          "tipo": "ESTOQUE_ENTRADA",
+          "confianca": 0.9,
+          "dados": {
+            "item_nome": "racao",
+            "quantidade": 30,
+            "unidade": "kg",
+            "compra": true,
+            "data_referencia": "hoje"
+          },
+          "resumo": "adicionar 30 kg de racao ao estoque",
+          "perguntas_faltantes": [],
+          "flags": [
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "racao"
+            ],
+            "employees": [],
+            "quantities": [
+              30,
+              0
+            ],
+            "units": [
+              "kg"
+            ],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "ESTOQUE_ENTRADA",
+              "entity": "racao",
+              "quantity": 30,
+              "unit": "kg",
+              "date": "hoje",
+              "notes": null,
+              "rawText": "comprei 30kg de racao"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90; single clear intent",
+          "debugReason": "base 0.90 -> 0.90; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G20-010",
+        "grupo": "G20",
+        "grupoNome": "Casos perigosos de nao fallback",
+        "mensagem": "quanto tem de racao?",
+        "expectedIntentAnyOf": [],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [
+          "use_gemini_fallback"
+        ],
+        "expectedMustNotHappen": [
+          "silent_dangerous_parse"
+        ],
+        "forbiddenPatterns": [],
+        "mustNotSave": true,
+        "observacao": "",
+        "parserIntent": "CONSULTA_ESTOQUE_ITEM",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [
+          "use_gemini_fallback"
+        ],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback",
+          "warnings ausentes: use_gemini_fallback"
+        ],
+        "parserResult": {
+          "tipo": "CONSULTA_ESTOQUE_ITEM",
+          "confianca": 0.9,
+          "dados": {
+            "item_nome": "racao",
+            "consulta": true
+          },
+          "resumo": "consultar estoque de racao",
+          "perguntas_faltantes": [],
+          "flags": [
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "racao"
+            ],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "CONSULTA_ESTOQUE_ITEM",
+              "entity": "racao",
+              "quantity": 0,
+              "unit": null,
+              "date": null,
+              "notes": null,
+              "rawText": "quanto tem de racao?"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90",
+          "debugReason": "base 0.90 -> 0.90",
+          "decision": "local_execution"
+        }
+      },
+      {
+        "id": "G20-011",
+        "grupo": "G20",
+        "grupoNome": "Casos perigosos de nao fallback",
+        "mensagem": "resumo do dia",
+        "expectedIntentAnyOf": [],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [
+          "use_gemini_fallback"
+        ],
+        "expectedMustNotHappen": [
+          "silent_dangerous_parse"
+        ],
+        "forbiddenPatterns": [],
+        "mustNotSave": true,
+        "observacao": "",
+        "parserIntent": "CONSULTA_REGISTROS_HOJE",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [
+          "use_gemini_fallback"
+        ],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback",
+          "warnings ausentes: use_gemini_fallback"
+        ],
+        "parserResult": {
+          "tipo": "CONSULTA_REGISTROS_HOJE",
+          "confianca": 0.9,
+          "dados": {
+            "data_referencia": "hoje",
+            "periodo": "hoje",
+            "consulta": true,
+            "consulta_registros": "relatorio",
+            "relatorio_modo": "resumo"
+          },
+          "resumo": "consultar registros de hoje",
+          "perguntas_faltantes": [],
+          "flags": [
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "CONSULTA_REGISTROS_HOJE",
+              "entity": null,
+              "quantity": 0,
+              "unit": null,
+              "date": "hoje",
+              "notes": null,
+              "rawText": "resumo do dia"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90; single clear intent",
+          "debugReason": "base 0.90 -> 0.90; single clear intent",
+          "decision": "local_execution"
+        }
+      },
+      {
+        "id": "G20-012",
+        "grupo": "G20",
+        "grupoNome": "Casos perigosos de nao fallback",
+        "mensagem": "Lindona nao comeu hoje",
+        "expectedIntentAnyOf": [],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [
+          "use_gemini_fallback"
+        ],
+        "expectedMustNotHappen": [
+          "silent_dangerous_parse"
+        ],
+        "forbiddenPatterns": [],
+        "mustNotSave": true,
+        "observacao": "",
+        "parserIntent": "ATUALIZACAO_ANIMAL",
+        "confidence": 0.88,
+        "riskScore": 0,
+        "warnings": [
+          "sensitive_action",
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [
+          "use_gemini_fallback"
+        ],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback",
+          "warnings ausentes: use_gemini_fallback"
+        ],
+        "parserResult": {
+          "tipo": "ATUALIZACAO_ANIMAL",
+          "confianca": 0.88,
+          "dados": {
+            "animal_codigo": "LINDONA",
+            "campo_alterado": "observacoes",
+            "novo_valor": "Lindona nao comeu hoje",
+            "data_referencia": "hoje",
+            "descricao": "Lindona nao comeu hoje",
+            "registro_evento_animal": true,
+            "evento_tipo": "clinico"
+          },
+          "resumo": "registrar ocorrência clínica para LINDONA: Lindona nao comeu hoje",
+          "perguntas_faltantes": [],
+          "flags": [
+            "sensitive_action",
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [
+              "LINDONA"
+            ],
+            "stockItems": [],
+            "employees": [],
+            "quantities": [
+              0
+            ],
+            "units": [],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "ATUALIZACAO_ANIMAL",
+              "entity": "LINDONA",
+              "quantity": 0,
+              "unit": null,
+              "date": "hoje",
+              "notes": "Lindona nao comeu hoje",
+              "rawText": "Lindona nao comeu hoje"
+            }
+          ],
+          "reason": "base 0.88 -> 0.88; single clear intent",
+          "debugReason": "base 0.88 -> 0.88; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G19-001",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "vca 1 deu 15 litro",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "PRODUCAO_LEITE",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "PRODUCAO_LEITE",
+          "confianca": 0.9,
+          "dados": {
+            "animal_codigo": "1",
+            "litros": 15,
+            "data_referencia": "hoje",
+            "destino_leite_claro": false,
+            "tanque": false
+          },
+          "resumo": "registrar produção de leite do animal 1 com 15 litros (hoje)",
+          "perguntas_faltantes": [],
+          "flags": [
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [
+              "1"
+            ],
+            "stockItems": [],
+            "employees": [],
+            "quantities": [
+              1,
+              15,
+              0
+            ],
+            "units": [
+              "litro"
+            ],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "PRODUCAO_LEITE",
+              "entity": "1",
+              "quantity": 0,
+              "unit": "litro",
+              "date": "hoje",
+              "notes": null,
+              "rawText": "vca 1 deu 15 litro"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90; single clear intent",
+          "debugReason": "base 0.90 -> 0.90; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G19-002",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "mimosa deu uns 20 litro hj",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "PRODUCAO_LEITE",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "PRODUCAO_LEITE",
+          "confianca": 0.9,
+          "dados": {
+            "animal_codigo": "MIMOSA",
+            "litros": 20,
+            "data_referencia": "hoje",
+            "destino_leite_claro": false,
+            "tanque": false
+          },
+          "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
+          "perguntas_faltantes": [],
+          "flags": [
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [
+              "MIMOSA"
+            ],
+            "stockItems": [],
+            "employees": [],
+            "quantities": [
+              20,
+              0
+            ],
+            "units": [
+              "litro"
+            ],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "PRODUCAO_LEITE",
+              "entity": "MIMOSA",
+              "quantity": 0,
+              "unit": "litro",
+              "date": "hoje",
+              "notes": null,
+              "rawText": "mimosa deu uns 20 litro hj"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90; single clear intent",
+          "debugReason": "base 0.90 -> 0.90; single clear intent",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G19-003",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "lanca ai 30 l da kelly",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "ESTOQUE_ENTRADA",
+        "confidence": 0.74,
+        "riskScore": 0.18,
+        "warnings": [
+          "ambiguous_verb",
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "ESTOQUE_ENTRADA",
+          "confianca": 0.74,
+          "dados": {
+            "item_nome": "kelly",
+            "quantidade": 30,
+            "unidade": "L",
+            "data_referencia": "hoje"
+          },
+          "resumo": "adicionar 30 litros de kelly ao estoque",
+          "perguntas_faltantes": [],
+          "flags": [
+            "ambiguous_verb",
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent"
+          ],
+          "riskScore": 0.18,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "kelly"
+            ],
+            "employees": [],
+            "quantities": [
+              30,
+              0
+            ],
+            "units": [
+              "l",
+              "L"
+            ],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "ESTOQUE_ENTRADA",
+              "entity": "kelly",
+              "quantity": 30,
+              "unit": "L",
+              "date": "hoje",
+              "notes": null,
+              "rawText": "lanca ai 30 l da kelly"
+            }
+          ],
+          "reason": "base 0.90 -> 0.74; single clear intent; ambiguous verb",
+          "debugReason": "base 0.90 -> 0.74; single clear intent; ambiguous verb",
           "decision": "ask_confirmation"
         }
       }
@@ -34203,32 +34097,38 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
-      "confidence": 0.88,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 0.85,
       "warnings": [
+        "missing_domain_in_parse_result",
         "sensitive_action",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
       "falseNegativeFallback": false,
-      "falsePositiveFallback": false,
+      "falsePositiveFallback": true,
       "missingWarnings": [],
       "critical": false,
-      "passed": true,
-      "errors": [],
+      "passed": false,
+      "errors": [
+        "falso positivo de fallback"
+      ],
       "parserResult": {
         "tipo": "ATUALIZACAO_ANIMAL",
-        "confianca": 0.88,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "THAIS",
           "campo_alterado": "observacoes",
@@ -34242,12 +34142,13 @@
         "resumo": "registrar pre-parto para THAIS: Thais entrou em pre parto",
         "perguntas_faltantes": [],
         "flags": [
+          "missing_domain_in_parse_result",
           "sensitive_action",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 0.85,
         "detectedEntities": {
           "animals": [
             "THAIS"
@@ -34276,9 +34177,10 @@
             "rawText": "Thais entrou em pre parto"
           }
         ],
-        "reason": "base 0.88 -> 0.88",
-        "debugReason": "base 0.88 -> 0.88",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.55; missing domain in parse result",
+        "debugReason": "base 0.88 -> 0.55; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -35130,32 +35032,38 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
-      "confidence": 0.88,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 0.85,
       "warnings": [
+        "missing_domain_in_parse_result",
         "sensitive_action",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
       "falseNegativeFallback": false,
-      "falsePositiveFallback": false,
+      "falsePositiveFallback": true,
       "missingWarnings": [],
       "critical": false,
-      "passed": true,
-      "errors": [],
+      "passed": false,
+      "errors": [
+        "falso positivo de fallback"
+      ],
       "parserResult": {
         "tipo": "ATUALIZACAO_ANIMAL",
-        "confianca": 0.88,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "THAIS",
           "campo_alterado": "observacoes",
@@ -35169,12 +35077,13 @@
         "resumo": "registrar pre-parto para THAIS: Thais entrou em pre parto",
         "perguntas_faltantes": [],
         "flags": [
+          "missing_domain_in_parse_result",
           "sensitive_action",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 0.85,
         "detectedEntities": {
           "animals": [
             "THAIS"
@@ -35203,9 +35112,10 @@
             "rawText": "Thais entrou em pre parto"
           }
         ],
-        "reason": "base 0.88 -> 0.88",
-        "debugReason": "base 0.88 -> 0.88",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.55; missing domain in parse result",
+        "debugReason": "base 0.88 -> 0.55; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -44426,9 +44336,13 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "missing_unit",
         "needs_clarification",
         "needs_confirmation",
@@ -44436,6 +44350,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -44454,7 +44372,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.55,
         "dados": {
           "item_nome": "racao e o Bruno",
           "quantidade": 0,
@@ -44466,13 +44384,17 @@
           "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "missing_unit",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -44501,8 +44423,9 @@
             "rawText": "comprei racao e paguei o Bruno"
           }
         ],
-        "reason": "base 0.65 -> 0.65; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; missing: unidade",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
         "decision": "gemini_fallback"
       }
     },
@@ -44636,39 +44559,40 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
-      "confidence": 0.88,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
         "sensitive_action",
         "needs_confirmation",
         "requires_confirmation",
-        "single_clear_intent",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "ATUALIZACAO_ANIMAL",
-        "confianca": 0.88,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "campo_alterado": "observacoes",
@@ -44682,13 +44606,15 @@
         "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
           "sensitive_action",
           "needs_confirmation",
           "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -44717,9 +44643,10 @@
             "rawText": "Mimosa foi inseminada e Lindona pariu"
           }
         ],
-        "reason": "base 0.88 -> 0.88; single clear intent",
-        "debugReason": "base 0.88 -> 0.88; single clear intent",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "debugReason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -45174,37 +45101,41 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "PRODUCAO_LEITE",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "PRODUCAO_LEITE",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "litros": 20,
@@ -45215,11 +45146,15 @@
         "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -45251,9 +45186,10 @@
             "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "debugReason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -45283,9 +45219,13 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "missing_unit",
         "needs_clarification",
         "needs_confirmation",
@@ -45293,6 +45233,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -45311,7 +45255,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.55,
         "dados": {
           "item_nome": "salario do Bruno e racao",
           "quantidade": 0,
@@ -45323,13 +45267,17 @@
           "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "missing_unit",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -45358,8 +45306,9 @@
             "rawText": "paguei salario do Bruno e comprei racao"
           }
         ],
-        "reason": "base 0.65 -> 0.65; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; missing: unidade",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
         "decision": "gemini_fallback"
       }
     },
@@ -45390,37 +45339,41 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "PRODUCAO_LEITE",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "PRODUCAO_LEITE",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "2",
           "litros": 15,
@@ -45431,11 +45384,15 @@
         "resumo": "registrar produção de leite do animal 2 com 15 litros (hoje)",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "2"
@@ -45468,9 +45425,10 @@
             "rawText": "Mimosa nao comeu e vaca 2 deu 15 litros"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "debugReason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -45646,9 +45604,13 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "missing_unit",
         "needs_clarification",
         "needs_confirmation",
@@ -45656,6 +45618,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -45674,7 +45640,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.55,
         "dados": {
           "item_nome": "racao e o Bruno",
           "quantidade": 0,
@@ -45686,13 +45652,17 @@
           "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "missing_unit",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -45721,8 +45691,9 @@
             "rawText": "comprei racao e paguei o Bruno"
           }
         ],
-        "reason": "base 0.65 -> 0.65; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; missing: unidade",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
         "decision": "gemini_fallback"
       }
     },
@@ -45856,39 +45827,40 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
-      "confidence": 0.88,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
         "sensitive_action",
         "needs_confirmation",
         "requires_confirmation",
-        "single_clear_intent",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "ATUALIZACAO_ANIMAL",
-        "confianca": 0.88,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "campo_alterado": "observacoes",
@@ -45902,13 +45874,15 @@
         "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
           "sensitive_action",
           "needs_confirmation",
           "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -45937,9 +45911,10 @@
             "rawText": "Mimosa foi inseminada e Lindona pariu"
           }
         ],
-        "reason": "base 0.88 -> 0.88; single clear intent",
-        "debugReason": "base 0.88 -> 0.88; single clear intent",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "debugReason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -46394,37 +46369,41 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "PRODUCAO_LEITE",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "PRODUCAO_LEITE",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "litros": 20,
@@ -46435,11 +46414,15 @@
         "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -46471,9 +46454,10 @@
             "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "debugReason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -46503,9 +46487,13 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "missing_unit",
         "needs_clarification",
         "needs_confirmation",
@@ -46513,6 +46501,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -46531,7 +46523,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.55,
         "dados": {
           "item_nome": "salario do Bruno e racao",
           "quantidade": 0,
@@ -46543,13 +46535,17 @@
           "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "missing_unit",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -46578,8 +46574,9 @@
             "rawText": "paguei salario do Bruno e comprei racao"
           }
         ],
-        "reason": "base 0.65 -> 0.65; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; missing: unidade",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
         "decision": "gemini_fallback"
       }
     },
@@ -46610,37 +46607,41 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "PRODUCAO_LEITE",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "PRODUCAO_LEITE",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "2",
           "litros": 15,
@@ -46651,11 +46652,15 @@
         "resumo": "registrar produção de leite do animal 2 com 15 litros (hoje)",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "2"
@@ -46688,9 +46693,10 @@
             "rawText": "Mimosa nao comeu e vaca 2 deu 15 litros"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "debugReason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -46866,9 +46872,13 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "missing_unit",
         "needs_clarification",
         "needs_confirmation",
@@ -46876,6 +46886,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -46894,7 +46908,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.55,
         "dados": {
           "item_nome": "racao e o Bruno",
           "quantidade": 0,
@@ -46906,13 +46920,17 @@
           "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "missing_unit",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -46941,8 +46959,9 @@
             "rawText": "comprei racao e paguei o Bruno"
           }
         ],
-        "reason": "base 0.65 -> 0.65; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; missing: unidade",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
         "decision": "gemini_fallback"
       }
     },
@@ -47076,39 +47095,40 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
-      "confidence": 0.88,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
         "sensitive_action",
         "needs_confirmation",
         "requires_confirmation",
-        "single_clear_intent",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "ATUALIZACAO_ANIMAL",
-        "confianca": 0.88,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "campo_alterado": "observacoes",
@@ -47122,13 +47142,15 @@
         "resumo": "registrar parto para MIMOSA: Mimosa foi inseminada e Lindona pariu",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
           "sensitive_action",
           "needs_confirmation",
           "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -47157,9 +47179,10 @@
             "rawText": "Mimosa foi inseminada e Lindona pariu"
           }
         ],
-        "reason": "base 0.88 -> 0.88; single clear intent",
-        "debugReason": "base 0.88 -> 0.88; single clear intent",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "debugReason": "base 0.88 -> 0.55; compound message; multiple intents; possible multi-domain message",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -47614,37 +47637,41 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "PRODUCAO_LEITE",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "needs_confirmation",
         "requires_confirmation",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback",
-        "frase composta virou acao unica sem fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "PRODUCAO_LEITE",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "animal_codigo": "MIMOSA",
           "litros": 20,
@@ -47655,11 +47682,15 @@
         "resumo": "registrar produção de leite do animal MIMOSA com 20 litros (hoje)",
         "perguntas_faltantes": [],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "needs_confirmation",
           "requires_confirmation",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [
             "MIMOSA"
@@ -47691,9 +47722,10 @@
             "rawText": "cadastrei vaca Mimosa e registrei producao 20 litros"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "ask_confirmation"
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "debugReason": "base 0.90 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -47719,8 +47751,12 @@
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
       "confidence": 0.35,
-      "riskScore": 0.82,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "negation_message",
         "references_previous_context",
         "possible_duplicate_risk",
@@ -47733,6 +47769,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -47767,6 +47807,10 @@
           "Qual é o brinco ou código do animal?"
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "negation_message",
           "references_previous_context",
           "possible_duplicate_risk",
@@ -47778,7 +47822,7 @@
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.82,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [],
@@ -47805,8 +47849,9 @@
             "rawText": "nao e parto, e inseminacao"
           }
         ],
-        "reason": "base 0.88 -> 0.35; negation message; missing: animal_codigo, animal_codigo",
-        "debugReason": "base 0.88 -> 0.35; negation message; missing: animal_codigo, animal_codigo",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.35; compound message; multiple intents; negation message; possible multi-domain message; missing domain in parse result; missing: animal_codigo, animal_codigo",
+        "debugReason": "base 0.88 -> 0.35; compound message; multiple intents; negation message; possible multi-domain message; missing domain in parse result; missing: animal_codigo, animal_codigo",
         "decision": "gemini_fallback"
       }
     },
@@ -48028,35 +48073,35 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "CONSULTA_FINANCEIRO",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 0.85,
       "warnings": [
-        "safe_for_local_execution"
+        "delete_or_cancel_keyword_conflict",
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "delete_or_cancel_keyword_conflict",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": true,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
+      "missingWarnings": [],
+      "critical": false,
       "passed": false,
       "errors": [
-        "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO",
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback"
+        "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO"
       ],
       "parserResult": {
         "tipo": "CONSULTA_FINANCEIRO",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "data_referencia": "mes",
           "periodo": "mes",
@@ -48066,9 +48111,10 @@
         "resumo": "consultar financeiro",
         "perguntas_faltantes": [],
         "flags": [
-          "safe_for_local_execution"
+          "delete_or_cancel_keyword_conflict",
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 0.85,
         "detectedEntities": {
           "animals": [],
           "stockItems": [],
@@ -48095,9 +48141,10 @@
             "rawText": "apaga o lancamento de racao"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "local_execution"
+        "fallbackReason": "delete_or_cancel_keyword_conflict",
+        "reason": "base 0.90 -> 0.55; delete/cancel keyword conflict",
+        "debugReason": "base 0.90 -> 0.55; delete/cancel keyword conflict",
+        "decision": "gemini_fallback"
       }
     },
     {
@@ -48730,8 +48777,12 @@
       "observacao": "",
       "parserIntent": "ATUALIZACAO_ANIMAL",
       "confidence": 0.35,
-      "riskScore": 0.82,
+      "riskScore": 1,
       "warnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "negation_message",
         "references_previous_context",
         "possible_duplicate_risk",
@@ -48744,6 +48795,10 @@
         "use_gemini_fallback"
       ],
       "criticalWarnings": [
+        "compound_message",
+        "multiple_intents_detected",
+        "possible_multi_domain_message",
+        "missing_domain_in_parse_result",
         "use_gemini_fallback"
       ],
       "fallbackCalled": true,
@@ -48778,6 +48833,10 @@
           "Qual é o brinco ou código do animal?"
         ],
         "flags": [
+          "compound_message",
+          "multiple_intents_detected",
+          "possible_multi_domain_message",
+          "missing_domain_in_parse_result",
           "negation_message",
           "references_previous_context",
           "possible_duplicate_risk",
@@ -48789,7 +48848,7 @@
           "requires_confirmation",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.82,
+        "riskScore": 1,
         "detectedEntities": {
           "animals": [],
           "stockItems": [],
@@ -48816,8 +48875,9 @@
             "rawText": "nao e parto, e inseminacao"
           }
         ],
-        "reason": "base 0.88 -> 0.35; negation message; missing: animal_codigo, animal_codigo",
-        "debugReason": "base 0.88 -> 0.35; negation message; missing: animal_codigo, animal_codigo",
+        "fallbackReason": "multi_domain_message_not_fully_parsed",
+        "reason": "base 0.88 -> 0.35; compound message; multiple intents; negation message; possible multi-domain message; missing domain in parse result; missing: animal_codigo, animal_codigo",
+        "debugReason": "base 0.88 -> 0.35; compound message; multiple intents; negation message; possible multi-domain message; missing domain in parse result; missing: animal_codigo, animal_codigo",
         "decision": "gemini_fallback"
       }
     },
@@ -49039,35 +49099,35 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "CONSULTA_FINANCEIRO",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.55,
+      "riskScore": 0.85,
       "warnings": [
-        "safe_for_local_execution"
+        "delete_or_cancel_keyword_conflict",
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "delete_or_cancel_keyword_conflict",
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": true,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
+      "missingWarnings": [],
+      "critical": false,
       "passed": false,
       "errors": [
-        "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO",
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback"
+        "intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO"
       ],
       "parserResult": {
         "tipo": "CONSULTA_FINANCEIRO",
-        "confianca": 0.9,
+        "confianca": 0.55,
         "dados": {
           "data_referencia": "mes",
           "periodo": "mes",
@@ -49077,9 +49137,10 @@
         "resumo": "consultar financeiro",
         "perguntas_faltantes": [],
         "flags": [
-          "safe_for_local_execution"
+          "delete_or_cancel_keyword_conflict",
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 0.85,
         "detectedEntities": {
           "animals": [],
           "stockItems": [],
@@ -49106,9 +49167,10 @@
             "rawText": "apaga o lancamento de racao"
           }
         ],
-        "reason": "base 0.90 -> 0.90",
-        "debugReason": "base 0.90 -> 0.90",
-        "decision": "local_execution"
+        "fallbackReason": "delete_or_cancel_keyword_conflict",
+        "reason": "base 0.90 -> 0.55; delete/cancel keyword conflict",
+        "debugReason": "base 0.90 -> 0.55; delete/cancel keyword conflict",
+        "decision": "gemini_fallback"
       }
     },
     {

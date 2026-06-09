@@ -20,6 +20,9 @@ export type ParserRiskFlag =
   | "command_word_as_name"
   | "ambiguous_category"
   | "parsed_number_may_be_time"
+  | "possible_multi_domain_message"
+  | "missing_domain_in_parse_result"
+  | "delete_or_cancel_keyword_conflict"
   | "correction_message"
   | "negation_message"
   | "cancellation_message"
@@ -123,6 +126,7 @@ export type ParsedRanchoMessage = {
   flags?: ParserRiskFlag[];
   riskScore?: number;
   reason?: string;
+  fallbackReason?: string;
   debugReason?: string;
   detectedEntities?: DetectedRanchoEntities;
   actions?: ParsedAction[];

@@ -1,16 +1,16 @@
 # Fallback Audit - Bot WhatsApp
 
 Total de casos: 500
-Passaram: 318
-Falharam: 182
-Acuracia: 63.6%
+Passaram: 324
+Falharam: 176
+Acuracia: 64.8%
 
 Gemini esperado: 140
-Gemini chamado: 226
-Falsos negativos de fallback: 41
-Falsos positivos de fallback: 127
+Gemini chamado: 238
+Falsos negativos de fallback: 31
+Falsos positivos de fallback: 129
 Intents erradas: 35
-Warnings ausentes: 25
+Warnings ausentes: 15
 
 ## Casos por grupo
 
@@ -48,96 +48,95 @@ Warnings ausentes: 25
 - Funcionarios e folha: 6
 - Saude/observacao sanitaria: 16
 - Vacina/medicamento: 12
-- Reproducao/parto/inseminacao: 2
+- Reproducao/parto/inseminacao: 4
 - Cadastro individual de animal: 24
 - Consultas e relatorios: 6
-- Frases compostas/multiplas acoes: 8
 - Correcao/cancelamento/negacao: 6
 - Ruido, typos e linguagem informal: 16
 - Casos perigosos de nao fallback: 4
 
 ## Top 20 casos criticos
 
-1. [G17-004] "Mimosa foi inseminada e Lindona pariu"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-2. [G17-008] "cadastrei vaca Mimosa e registrei producao 20 litros"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-3. [G17-010] "Mimosa nao comeu e vaca 2 deu 15 litros"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-4. [G17-014] "Mimosa foi inseminada e Lindona pariu"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-5. [G17-018] "cadastrei vaca Mimosa e registrei producao 20 litros"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-6. [G17-020] "Mimosa nao comeu e vaca 2 deu 15 litros"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-7. [G17-024] "Mimosa foi inseminada e Lindona pariu"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-8. [G17-028] "cadastrei vaca Mimosa e registrei producao 20 litros"
-   - Esperado: LOTE_REGISTROS ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou RECEITA_VENDA ou DESPESA ou CADASTRO_ANIMAL ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-9. [G18-004] "apaga o lancamento de racao"
-   - Esperado: DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: CONSULTA_FINANCEIRO; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO; falso negativo de fallback; warnings ausentes: use_gemini_fallback
-10. [G18-014] "apaga o lancamento de racao"
-   - Esperado: DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
-   - Atual: CONSULTA_FINANCEIRO; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO; falso negativo de fallback; warnings ausentes: use_gemini_fallback
-11. [G4-009] "deu 20 litros na vaca nova"
+1. [G4-009] "deu 20 litros na vaca nova"
    - Esperado: PRODUCAO_LEITE ou LOTE_REGISTROS; fallback=true
    - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-12. [G4-019] "deu 20 litros na vaca nova"
+2. [G4-019] "deu 20 litros na vaca nova"
    - Esperado: PRODUCAO_LEITE ou LOTE_REGISTROS; fallback=true
    - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-13. [G7-003] "vendi 2 bezerros"
+3. [G7-003] "vendi 2 bezerros"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: RECEITA_VENDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-14. [G7-006] "vendi 1 vaca"
+4. [G7-006] "vendi 1 vaca"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: RECEITA_VENDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-15. [G7-009] "saiu venda de 40L leite"
+5. [G7-009] "saiu venda de 40L leite"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: ESTOQUE_SAIDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-16. [G7-013] "vendi 2 bezerros"
+6. [G7-013] "vendi 2 bezerros"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: RECEITA_VENDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-17. [G7-016] "vendi 1 vaca"
+7. [G7-016] "vendi 1 vaca"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: RECEITA_VENDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-18. [G7-019] "saiu venda de 40L leite"
+8. [G7-019] "saiu venda de 40L leite"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: ESTOQUE_SAIDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-19. [G7-023] "vendi 2 bezerros"
+9. [G7-023] "vendi 2 bezerros"
    - Esperado: ESTOQUE_SAIDA ou RECEITA_VENDA; fallback=true
    - Atual: RECEITA_VENDA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: physical_sale_without_price
-20. [G18-006] "Lindona nao comeu hoje"
+10. [G18-006] "Lindona nao comeu hoje"
    - Esperado: DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
    - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+11. [G18-016] "Lindona nao comeu hoje"
+   - Esperado: DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO; fallback=true
+   - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+12. [G19-007] "qto tem de leite cru"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: CONSULTA_ESTOQUE_ITEM; confidence=0.88; riskScore=0; fallback=false
+   - Problemas: intent esperada PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL, recebida CONSULTA_ESTOQUE_ITEM; falso negativo de fallback
+13. [G19-017] "qto tem de leite cru"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: CONSULTA_ESTOQUE_ITEM; confidence=0.88; riskScore=0; fallback=false
+   - Problemas: intent esperada PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL, recebida CONSULTA_ESTOQUE_ITEM; falso negativo de fallback
+14. [G20-009] "comprei 30kg de racao"
+   - Esperado: qualquer intent segura; fallback=true
+   - Atual: ESTOQUE_ENTRADA; confidence=0.9; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+15. [G20-010] "quanto tem de racao?"
+   - Esperado: qualquer intent segura; fallback=true
+   - Atual: CONSULTA_ESTOQUE_ITEM; confidence=0.9; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+16. [G20-011] "resumo do dia"
+   - Esperado: qualquer intent segura; fallback=true
+   - Atual: CONSULTA_REGISTROS_HOJE; confidence=0.9; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+17. [G20-012] "Lindona nao comeu hoje"
+   - Esperado: qualquer intent segura; fallback=true
+   - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
+18. [G19-001] "vca 1 deu 15 litro"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback
+19. [G19-002] "mimosa deu uns 20 litro hj"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
+   - Problemas: falso negativo de fallback
+20. [G19-003] "lanca ai 30 l da kelly"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: ESTOQUE_ENTRADA; confidence=0.74; riskScore=0.18; fallback=false
+   - Problemas: falso negativo de fallback
 
 ## Lista completa de falhas
 
@@ -489,9 +488,15 @@ Warnings ausentes: 25
 - [G12-020] Vacina/medicamento: "usei 2 doses de aftosa e 20kg de racao"
   - Atual: LOTE_REGISTROS; fallback=true; confidence=0.55; riskScore=0.95
   - Erros: falso positivo de fallback
+- [G13-005] Reproducao/parto/inseminacao: "Thais entrou em pre parto"
+  - Atual: ATUALIZACAO_ANIMAL; fallback=true; confidence=0.55; riskScore=0.85
+  - Erros: falso positivo de fallback
 - [G13-008] Reproducao/parto/inseminacao: "Mimosa abortou"
   - Atual: DESCONHECIDO; fallback=true; confidence=0.2; riskScore=0.25
   - Erros: intent esperada PARTO ou ATUALIZACAO_ANIMAL ou VACINA_MEDICAMENTO, recebida DESCONHECIDO; falso positivo de fallback
+- [G13-015] Reproducao/parto/inseminacao: "Thais entrou em pre parto"
+  - Atual: ATUALIZACAO_ANIMAL; fallback=true; confidence=0.55; riskScore=0.85
+  - Erros: falso positivo de fallback
 - [G13-018] Reproducao/parto/inseminacao: "Mimosa abortou"
   - Atual: DESCONHECIDO; fallback=true; confidence=0.2; riskScore=0.25
   - Erros: intent esperada PARTO ou ATUALIZACAO_ANIMAL ou VACINA_MEDICAMENTO, recebida DESCONHECIDO; falso positivo de fallback
@@ -585,33 +590,9 @@ Warnings ausentes: 25
 - [G16-028] Consultas e relatorios: "funcionarios cadastrados"
   - Atual: DESCONHECIDO; fallback=true; confidence=0.2; riskScore=0.25
   - Erros: intent esperada CONSULTA_ESTOQUE ou CONSULTA_ESTOQUE_ITEM ou CONSULTA_ESTOQUE_GERAL ou CONSULTA_REGISTROS_HOJE ou CONSULTA_ANIMAL ou CONSULTA_REBANHO ou CONSULTA_PRODUCAO ou CONSULTA_PRODUCAO_ANIMAL ou CONSULTA_FINANCEIRO ou CONSULTA_FUNCIONARIO, recebida DESCONHECIDO; falso positivo de fallback
-- [G17-004] Frases compostas/multiplas acoes: "Mimosa foi inseminada e Lindona pariu"
-  - Atual: ATUALIZACAO_ANIMAL; fallback=false; confidence=0.88; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-008] Frases compostas/multiplas acoes: "cadastrei vaca Mimosa e registrei producao 20 litros"
-  - Atual: PRODUCAO_LEITE; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-010] Frases compostas/multiplas acoes: "Mimosa nao comeu e vaca 2 deu 15 litros"
-  - Atual: PRODUCAO_LEITE; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-014] Frases compostas/multiplas acoes: "Mimosa foi inseminada e Lindona pariu"
-  - Atual: ATUALIZACAO_ANIMAL; fallback=false; confidence=0.88; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-018] Frases compostas/multiplas acoes: "cadastrei vaca Mimosa e registrei producao 20 litros"
-  - Atual: PRODUCAO_LEITE; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-020] Frases compostas/multiplas acoes: "Mimosa nao comeu e vaca 2 deu 15 litros"
-  - Atual: PRODUCAO_LEITE; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-024] Frases compostas/multiplas acoes: "Mimosa foi inseminada e Lindona pariu"
-  - Atual: ATUALIZACAO_ANIMAL; fallback=false; confidence=0.88; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
-- [G17-028] Frases compostas/multiplas acoes: "cadastrei vaca Mimosa e registrei producao 20 litros"
-  - Atual: PRODUCAO_LEITE; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback; frase composta virou acao unica sem fallback
 - [G18-004] Correcao/cancelamento/negacao: "apaga o lancamento de racao"
-  - Atual: CONSULTA_FINANCEIRO; fallback=false; confidence=0.9; riskScore=0
-  - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO; falso negativo de fallback; warnings ausentes: use_gemini_fallback
+  - Atual: CONSULTA_FINANCEIRO; fallback=true; confidence=0.55; riskScore=0.85
+  - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO
 - [G18-005] Correcao/cancelamento/negacao: "nao foi venda, foi compra"
   - Atual: RECEITA_VENDA; fallback=true; confidence=0.35; riskScore=1
   - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida RECEITA_VENDA
@@ -619,8 +600,8 @@ Warnings ausentes: 25
   - Atual: ATUALIZACAO_ANIMAL; fallback=false; confidence=0.88; riskScore=0
   - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback
 - [G18-014] Correcao/cancelamento/negacao: "apaga o lancamento de racao"
-  - Atual: CONSULTA_FINANCEIRO; fallback=false; confidence=0.9; riskScore=0
-  - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO; falso negativo de fallback; warnings ausentes: use_gemini_fallback
+  - Atual: CONSULTA_FINANCEIRO; fallback=true; confidence=0.55; riskScore=0.85
+  - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida CONSULTA_FINANCEIRO
 - [G18-015] Correcao/cancelamento/negacao: "nao foi venda, foi compra"
   - Atual: RECEITA_VENDA; fallback=true; confidence=0.35; riskScore=1
   - Erros: intent esperada DESCONHECIDO ou PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou ATUALIZACAO_ANIMAL ou PARTO, recebida RECEITA_VENDA

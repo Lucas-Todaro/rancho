@@ -56,6 +56,9 @@ const CRITICAL_FLAGS = new Set([
   "physical_sale_without_price",
   "command_word_as_name",
   "parsed_number_may_be_time",
+  "possible_multi_domain_message",
+  "missing_domain_in_parse_result",
+  "delete_or_cancel_keyword_conflict",
   "compound_message",
   "multiple_intents_detected",
   "conflicting_intents"

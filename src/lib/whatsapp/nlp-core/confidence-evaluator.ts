@@ -41,7 +41,10 @@ const FALLBACK_FLAGS = new Set<ParserRiskFlag>([
   "intent_keyword_conflict",
   "physical_sale_without_price",
   "command_word_as_name",
-  "parsed_number_may_be_time"
+  "parsed_number_may_be_time",
+  "possible_multi_domain_message",
+  "missing_domain_in_parse_result",
+  "delete_or_cancel_keyword_conflict"
 ]);
 
 const AMBIGUOUS_VERB_PATTERN = /\b(?:sobe|subir|baixa|baixar|lanca|lança|coloca|colocar|tira|tirar|bota|botar|arruma|arrumar|muda|mudar)\b/;
@@ -63,9 +66,59 @@ const HEALTH_WORD_PATTERN = /\b(?:nao comeu|não comeu|mancando|doente|doenca|do
 const MILK_PRODUCTION_PATTERN = /\b(?:deu|produziu|ordenhei|tirou)\s+\d+(?:[.,]\d+)?\s*(?:l|litro|litros)\b/;
 const QUERY_WORD_PATTERN = /\b(?:relatorio|relatório|lista|listar|resumo|quanto tem|quantos|consulta|consultar|mostrar|mostra)\b/;
 const TIME_TOKEN_PATTERN = /\b\d{1,2}h(?:\d{2})?\b|\b\d{1,2}:\d{2}\b/;
+const DELETE_OR_CANCEL_PATTERN = /\b(?:apaga|apagar|apague|cancela|cancelar|cancele|remove|remover|remova|exclui|excluir|exclua|deleta|deletar|delete)\b/;
+
+type OperationalDomain =
+  | "PRODUCAO_LEITE"
+  | "ESTOQUE_ENTRADA"
+  | "ESTOQUE_SAIDA"
+  | "FINANCEIRO"
+  | "CADASTRO_ANIMAL"
+  | "SAUDE"
+  | "REPRODUCAO"
+  | "CORRECAO_CANCELAMENTO_EXCLUSAO";
+
+type MultiDomainDetection = {
+  domains: OperationalDomain[];
+  hasConnector: boolean;
+  multipleReproductiveEvents: boolean;
+};
 
 function unique<T>(values: Array<T | undefined | null | "">): T[] {
   return Array.from(new Set(values.filter((value): value is T => value !== undefined && value !== null && value !== "")));
+}
+
+function addDomain(domains: Set<OperationalDomain>, domain: OperationalDomain, active: boolean) {
+  if (active) domains.add(domain);
+}
+
+export function detectPotentialMultiDomainMessage(originalText: string): MultiDomainDetection {
+  const normalized = normalizeRanchoText(originalText);
+  const domains = new Set<OperationalDomain>();
+  const hasConnector = /\s+e\s+|,|\n|\b(?:tambem|mais)\b/.test(normalized);
+  const purchaseLike = PURCHASE_WORD_PATTERN.test(normalized);
+  const saleLike = SALE_WORD_PATTERN.test(normalized);
+
+  addDomain(domains, "PRODUCAO_LEITE", /\b(?:deu|produziu|ordenhei|tirou)\s+\d+(?:[.,]\d+)?\s*(?:l|litro|litros)\b|\bproducao\b/.test(normalized));
+  addDomain(domains, "ESTOQUE_ENTRADA", /\b(?:comprei|comprar|comprou|compramos|chegou|entrou|entrada|adicionei|adicionado|adiciona|adicionar)\b/.test(normalized));
+  addDomain(domains, "ESTOQUE_SAIDA", /\b(?:usei|use|gastei|saiu|baixa|baixei|consumi|retirei|retirar|tirei)\b/.test(normalized));
+  addDomain(domains, "FINANCEIRO", /\b(?:paguei|pagar|pagou|recebi|receber|recebeu|salario|diaria|frete|energia|despesa|receita)\b/.test(normalized));
+  addDomain(domains, "CADASTRO_ANIMAL", /\b(?:cadastrei|cadastrar|cadastro|novo animal|nova vaca|novo boi|registrar animal)\b/.test(normalized));
+  addDomain(domains, "SAUDE", /\b(?:nao comeu|mancando|doente|febre|triste|fraco|tossindo|diarreia|machucou|nao levantou|parou de comer)\b/.test(normalized));
+  addDomain(domains, "REPRODUCAO", /\b(?:inseminada|inseminado|inseminou|inseminar|pariu|parto|nasceu|prenha|cio|abortou|pre parto)\b/.test(normalized));
+  addDomain(domains, "CORRECAO_CANCELAMENTO_EXCLUSAO", CORRECTION_PATTERN.test(normalized) || NEGATION_PATTERN.test(normalized) || CANCELLATION_PATTERN.test(normalized) || DELETE_OR_CANCEL_PATTERN.test(normalized));
+
+  if ((purchaseLike || saleLike) && domains.has("FINANCEIRO") && !/\b(?:paguei|recebi|salario|diaria|frete|energia|despesa|receita)\b/.test(normalized)) {
+    domains.delete("FINANCEIRO");
+  }
+
+  const reproductiveEvents = Array.from(normalized.matchAll(/\b(?:inseminada|inseminado|inseminou|inseminar|pariu|parto|nasceu|prenha|cio|abortou|pre parto)\b/g)).length;
+
+  return {
+    domains: Array.from(domains),
+    hasConnector,
+    multipleReproductiveEvents: hasConnector && reproductiveEvents >= 2
+  };
 }
 
 function addFlag(flags: Set<ParserRiskFlag>, flag: ParserRiskFlag, active = true) {
@@ -214,6 +267,29 @@ function hasPhysicalSaleWithoutPrice(normalized: string, parsed: ParsedRanchoMes
   return parsed.tipo === "RECEITA_VENDA" || parsed.tipo === "ESTOQUE_SAIDA";
 }
 
+function domainsForParsedMessage(parsed: ParsedRanchoMessage): OperationalDomain[] {
+  if (parsed.tipo === "LOTE_REGISTROS" && Array.isArray(parsed.dados?.registros)) {
+    return unique((parsed.dados.registros as ParsedRanchoMessage[]).flatMap((registro) => domainsForParsedMessage(registro)));
+  }
+
+  const dados = parsed.dados || {};
+  if (parsed.tipo === "PRODUCAO_LEITE" || parsed.tipo === "CONSULTA_PRODUCAO" || parsed.tipo === "CONSULTA_PRODUCAO_ANIMAL") return ["PRODUCAO_LEITE"];
+  if (parsed.tipo === "ESTOQUE_ENTRADA" || parsed.tipo === "CRIAR_ITEM_ESTOQUE" || parsed.tipo === "ESTOQUE_CADASTRO") return ["ESTOQUE_ENTRADA"];
+  if (parsed.tipo === "ESTOQUE_SAIDA") return ["ESTOQUE_SAIDA"];
+  if (["DESPESA", "RECEITA_VENDA", "PAGAMENTO_FUNCIONARIO", "CONSULTA_FINANCEIRO", "CONSULTA_FOLHA"].includes(parsed.tipo)) return ["FINANCEIRO"];
+  if (parsed.tipo === "CADASTRO_ANIMAL") return ["CADASTRO_ANIMAL"];
+  if (["PARTO", "MORTE"].includes(parsed.tipo)) return ["REPRODUCAO"];
+  if (parsed.tipo === "VACINA_MEDICAMENTO") return ["SAUDE"];
+  if (parsed.tipo === "ATUALIZACAO_ANIMAL") return dados.evento_tipo === "reprodutivo" ?["REPRODUCAO"] : ["SAUDE"];
+  return [];
+}
+
+function parsedActionCount(parsed: ParsedRanchoMessage) {
+  if (parsed.tipo === "LOTE_REGISTROS" && Array.isArray(parsed.dados?.registros)) return parsed.dados.registros.length;
+  if (Array.isArray(parsed.actions)) return parsed.actions.length;
+  return 1;
+}
+
 function riskScoreForFlags(flags: Set<ParserRiskFlag>, confidence: number) {
   let score = 0;
   const weights: Partial<Record<ParserRiskFlag, number>> = {
@@ -223,6 +299,9 @@ function riskScoreForFlags(flags: Set<ParserRiskFlag>, confidence: number) {
     physical_sale_without_price: 0.5,
     command_word_as_name: 0.55,
     parsed_number_may_be_time: 0.45,
+    possible_multi_domain_message: 0.55,
+    missing_domain_in_parse_result: 0.6,
+    delete_or_cancel_keyword_conflict: 0.6,
     multiple_intents_detected: 0.35,
     compound_message: 0.35,
     conflicting_intents: 0.55,
@@ -305,6 +384,9 @@ function confidenceReason(flags: Set<ParserRiskFlag>, missing: string[], origina
   if (flags.has("physical_sale_without_price")) parts.push("physical sale without price");
   if (flags.has("command_word_as_name")) parts.push("command word as name");
   if (flags.has("parsed_number_may_be_time")) parts.push("number may be time");
+  if (flags.has("possible_multi_domain_message")) parts.push("possible multi-domain message");
+  if (flags.has("missing_domain_in_parse_result")) parts.push("missing domain in parse result");
+  if (flags.has("delete_or_cancel_keyword_conflict")) parts.push("delete/cancel keyword conflict");
   if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
   return parts.join("; ");
 }
@@ -364,9 +446,18 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   const intentKeywordConflict = hasIntentKeywordConflict(normalized, parsed);
   const physicalSaleWithoutPrice = hasPhysicalSaleWithoutPrice(normalized, parsed, detectedEntities.moneyValues)
     || (parsed.tipo === "ESTOQUE_SAIDA" && Boolean(parsed.dados?.venda) && missing.includes("valor"));
+  const multiDomainDetection = detectPotentialMultiDomainMessage(text);
+  const parsedDomains = new Set(domainsForParsedMessage(parsed));
+  const parsedCoversDetectedDomains = multiDomainDetection.domains.every((domain) => parsedDomains.has(domain));
+  const parsedAsMultiAction = parsed.tipo === "LOTE_REGISTROS" && parsedActionCount(parsed) >= 2;
+  const possibleMultiDomainMessage = multiDomainDetection.hasConnector
+    && (multiDomainDetection.domains.length >= 2 || multiDomainDetection.multipleReproductiveEvents)
+    && (!parsedAsMultiAction || !parsedCoversDetectedDomains);
+  const missingDomainInParseResult = multiDomainDetection.domains.length >= 2 && !parsedCoversDetectedDomains;
+  const deleteOrCancelKeywordConflict = DELETE_OR_CANCEL_PATTERN.test(normalized) && CONSULT_INTENTS.has(parsed.tipo);
 
-  addFlag(flags, "compound_message", isCompound);
-  addFlag(flags, "multiple_intents_detected", isCompound || (hasCompoundConnector && cues.size > 1));
+  addFlag(flags, "compound_message", isCompound || possibleMultiDomainMessage);
+  addFlag(flags, "multiple_intents_detected", isCompound || possibleMultiDomainMessage || (hasCompoundConnector && cues.size > 1));
   addFlag(flags, "conflicting_intents", hasConflictingIntents);
   addFlag(flags, "suspicious_animal_ref", suspiciousAnimalRef);
   addFlag(flags, "suspicious_item_name", suspiciousItemName);
@@ -374,6 +465,9 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   addFlag(flags, "physical_sale_without_price", physicalSaleWithoutPrice);
   addFlag(flags, "command_word_as_name", commandWordAsName);
   addFlag(flags, "parsed_number_may_be_time", parsedNumberMayBeTime);
+  addFlag(flags, "possible_multi_domain_message", possibleMultiDomainMessage);
+  addFlag(flags, "missing_domain_in_parse_result", missingDomainInParseResult);
+  addFlag(flags, "delete_or_cancel_keyword_conflict", deleteOrCancelKeywordConflict);
   addFlag(flags, "ambiguous_verb", isAmbiguousVerb);
   addFlag(flags, "ambiguous_reference", AMBIGUOUS_REFERENCE_PATTERN.test(normalized));
   addFlag(flags, "correction_message", isCorrection);
@@ -415,6 +509,7 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   if (suspiciousAnimalRef || suspiciousItemName || commandWordAsName || parsedNumberMayBeTime) confidence = Math.min(confidence, 0.62);
   if (intentKeywordConflict) confidence = Math.min(confidence, 0.55);
   if (physicalSaleWithoutPrice) confidence = Math.min(confidence, 0.64);
+  if (possibleMultiDomainMessage || missingDomainInParseResult || deleteOrCancelKeywordConflict) confidence = Math.min(confidence, 0.55);
 
   const hasCriticalFlags = Array.from(FALLBACK_FLAGS).some((flag) => flags.has(flag));
   const needsClarification = missing.length > 0
@@ -451,7 +546,12 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
     flags: Array.from(flags),
     riskScore,
     detectedEntities,
-    actions: actionsFromParsed(parsed, text)
+    actions: actionsFromParsed(parsed, text),
+    fallbackReason: missingDomainInParseResult || possibleMultiDomainMessage
+      ? "multi_domain_message_not_fully_parsed"
+      : deleteOrCancelKeywordConflict
+        ? "delete_or_cancel_keyword_conflict"
+        : parsed.fallbackReason
   };
 
   if (shouldUseGeminiFallback(resultWithoutDecision, DEFAULT_GEMINI_FALLBACK_CONFIDENCE)) {

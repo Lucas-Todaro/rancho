@@ -347,7 +347,11 @@ module.exports = function loadBotTestSection(context) {
       { phrase: "comprei 10 sacos de racao por 2,5 mil", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 2500, shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
       { phrase: "vaca 1 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15, shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
       { phrase: "usei 20kg de racao", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 20, unidade: "kg", item: "Ração", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
-      { phrase: "quanto tem de Leite Cru no estoque?", expected: { tipo: "CONSULTA_ESTOQUE", item: "Leite Cru", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } }
+      { phrase: "quanto tem de Leite Cru no estoque?", expected: { tipo: "CONSULTA_ESTOQUE", item: "Leite Cru", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
+      { phrase: "Mimosa foi inseminada e Lindona pariu", expected: { shouldUseGeminiFallback: true, flags: ["possible_multi_domain_message"], minRiskScore: 0.45 } },
+      { phrase: "cadastrei vaca Mimosa e registrei producao 20 litros", expected: { shouldUseGeminiFallback: true, flags: ["possible_multi_domain_message", "missing_domain_in_parse_result"], minRiskScore: 0.45 } },
+      { phrase: "Mimosa nao comeu e vaca 2 deu 15 litros", expected: { shouldUseGeminiFallback: true, flags: ["possible_multi_domain_message", "missing_domain_in_parse_result"], minRiskScore: 0.45 } },
+      { phrase: "apaga o lancamento de racao", expected: { shouldUseGeminiFallback: true, flags: ["delete_or_cancel_keyword_conflict"], minRiskScore: 0.45 } }
     ];
 
     return { mandatoryTests, extraTests, regressionTests, consultationParserTests, herdLotParserTests, decimalRegressionTests, productionRobustnessTests, geminiFallbackDecisionTests };
