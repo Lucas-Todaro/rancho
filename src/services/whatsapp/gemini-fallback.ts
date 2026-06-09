@@ -419,11 +419,15 @@ function safeMessagePreview(text: string) {
 }
 
 function logLocalParserDecision(text: string, parsed: ParsedRanchoMessage, threshold: number) {
+  const fallbackCalled = shouldUseGeminiFallback(parsed, threshold);
   console.log("[BOT PARSER DECISION]", {
-    message: safeMessagePreview(text),
-    intent: parsed.tipo,
-    confidence: parsed.confianca,
-    flags: parsed.flags || [],
+    originalText: safeMessagePreview(text),
+    parserIntent: parsed.tipo,
+    parserConfidence: parsed.confianca,
+    parserWarnings: parsed.flags || [],
+    riskScore: parsed.riskScore ?? 0,
+    fallbackCalled,
+    fallbackReason: fallbackCalled ? parserDecisionForParsed(parsed, threshold) : "local_parser_coherent",
     missingFields: parsed.perguntas_faltantes || [],
     decision: parserDecisionForParsed(parsed, threshold),
     reason: parsed.reason || parsed.debugReason || ""
@@ -534,6 +538,14 @@ export async function parseWithGeminiFallback(input: {
 
   if (!gemini.ok) {
     if (gemini.reason === "missing_api_key") {
+      console.log("[BOT FALLBACK DECISION]", {
+        originalText: safeMessagePreview(input.text),
+        fallbackCalled: true,
+        fallbackReason: "missing_api_key",
+        parserIntent: input.localParsed.tipo,
+        finalIntent: input.localParsed.tipo,
+        finalDecisionReason: "Gemini indisponível; seguindo parser local validado pelo backend"
+      });
       return {
         kind: "local",
         parsed: input.localParsed,
@@ -549,5 +561,20 @@ export async function parseWithGeminiFallback(input: {
     };
   }
 
-  return convertInterpretation(gemini.interpretation, threshold);
+  const converted = convertInterpretation(gemini.interpretation, threshold);
+  console.log("[BOT FALLBACK DECISION]", {
+    originalText: safeMessagePreview(input.text),
+    fallbackCalled: true,
+    fallbackReason: "risk_or_low_confidence",
+    parserIntent: input.localParsed.tipo,
+    geminiIntent: gemini.interpretation.actions[0]?.type || null,
+    geminiConfidence: gemini.interpretation.confidence,
+    geminiRiskFlags: gemini.interpretation.risk_flags || [],
+    finalIntent: converted.kind === "parsed" ?converted.parsed.tipo
+      : converted.kind === "consultations" ?converted.consultations[0]?.tipo
+      : converted.kind === "compound" ?converted.pending.tipo
+      : input.localParsed.tipo,
+    finalDecisionReason: converted.kind
+  });
+  return converted;
 }

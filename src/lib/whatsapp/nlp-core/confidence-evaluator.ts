@@ -10,7 +10,7 @@ import type {
   RanchoIntent
 } from "./types";
 
-const DEFAULT_GEMINI_FALLBACK_CONFIDENCE = 0.6;
+const DEFAULT_GEMINI_FALLBACK_CONFIDENCE = 0.7;
 
 const CONSULT_INTENTS = new Set<RanchoIntent>([
   "CONSULTA_PRODUCAO",
@@ -35,7 +35,13 @@ const FALLBACK_FLAGS = new Set<ParserRiskFlag>([
   "compound_message",
   "conflicting_intents",
   "correction_message",
-  "negation_message"
+  "negation_message",
+  "suspicious_animal_ref",
+  "suspicious_item_name",
+  "intent_keyword_conflict",
+  "physical_sale_without_price",
+  "command_word_as_name",
+  "parsed_number_may_be_time"
 ]);
 
 const AMBIGUOUS_VERB_PATTERN = /\b(?:sobe|subir|baixa|baixar|lanca|lança|coloca|colocar|tira|tirar|bota|botar|arruma|arrumar|muda|mudar)\b/;
@@ -48,6 +54,15 @@ const CONFIRMATION_PATTERN = /^(?:sim|s|ss|ok|okay|blz|beleza|isso|isso mesmo|co
 const DESTRUCTIVE_PATTERN = /\b(?:apaga tudo|apagar tudo|zera|zerar|excluir tudo|delete tudo|remove tudo|limpa tudo|limpar tudo|muda todos|alterar todos)\b/;
 const SENSITIVE_PATTERN = /\b(?:excluir|desligar|apagar|zerar|morte|morreu|alterar|atualizar|muda|mudar|genealogia)\b/;
 const GENERIC_COMMAND_PATTERN = /\b(?:faz ai|faz aí|faz qualquer coisa|resolve|arruma isso|mexe ai|mexe aí)\b/;
+const ANIMAL_NAME_COMMAND_WORDS = new Set(["novo", "nova", "cadastrar", "cadastra", "cadastro", "animal", "adicionar", "adiciona", "registrar", "registra", "criar", "cria"]);
+const STOCK_WORD_PATTERN = /\b(?:racao|ração|sal|milho|feno|leite|suplemento|saco|sacos|kg|quilo|quilos|litro|litros|l)\b/;
+const SALE_WORD_PATTERN = /\b(?:vendi|vendeu|vendemos|vender|venda|vendido)\b/;
+const PURCHASE_WORD_PATTERN = /\b(?:comprei|comprou|compramos|comprar|compra|comprado)\b/;
+const STOCK_OUT_WORD_PATTERN = /\b(?:usei|usou|usamos|usar|baixa|baixar|retirei|retirar|tirei|saida|saída)\b/;
+const HEALTH_WORD_PATTERN = /\b(?:nao comeu|não comeu|mancando|doente|doenca|doença|machucado|febre|tratar|tratamento|vacina|vacinou|apliquei)\b/;
+const MILK_PRODUCTION_PATTERN = /\b(?:deu|produziu|ordenhei|tirou)\s+\d+(?:[.,]\d+)?\s*(?:l|litro|litros)\b/;
+const QUERY_WORD_PATTERN = /\b(?:relatorio|relatório|lista|listar|resumo|quanto tem|quantos|consulta|consultar|mostrar|mostra)\b/;
+const TIME_TOKEN_PATTERN = /\b\d{1,2}h(?:\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 
 function unique<T>(values: Array<T | undefined | null | "">): T[] {
   return Array.from(new Set(values.filter((value): value is T => value !== undefined && value !== null && value !== "")));
@@ -150,6 +165,85 @@ function actionCueCount(normalized: string) {
   return cues.reduce((total, pattern) => total + Array.from(normalized.matchAll(pattern)).length, 0);
 }
 
+function splitWords(value: unknown) {
+  return normalizeRanchoText(String(value || ""))
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
+function isCommandOnlyName(value: unknown) {
+  const words = splitWords(value);
+  return words.length > 0 && words.every((word) => ANIMAL_NAME_COMMAND_WORDS.has(word));
+}
+
+function hasCommandWordAsName(value: unknown) {
+  const words = splitWords(value);
+  return words.some((word) => ANIMAL_NAME_COMMAND_WORDS.has(word));
+}
+
+function hasSuspiciousAnimalReference(value: unknown) {
+  const text = normalizeRanchoText(String(value || "")).trim();
+  if (!text) return false;
+  if (/^(?:e|tambem|também|mais)\b/.test(text)) return true;
+  if (TIME_TOKEN_PATTERN.test(text)) return true;
+  if (/\b\d+(?:[.,]\d+)?\s*(?:kg|quilo|quilos|l|litro|litros|reais|real|rs|brl)\b/.test(text)) return true;
+  if (/^(?:novo|nova|cadastrar|cadastra|cadastro|animal|adicionar|adiciona|registrar|registra|criar|cria)$/.test(text)) return true;
+  return false;
+}
+
+function hasSuspiciousItemName(value: unknown) {
+  const text = normalizeRanchoText(String(value || "")).trim();
+  if (!text) return false;
+  return /(?:r\$\s*)?\d+(?:[.,]\d+)?\s*(?:reais|real|rs|brl)\b/.test(text);
+}
+
+function hasIntentKeywordConflict(normalized: string, parsed: ParsedRanchoMessage) {
+  if (SALE_WORD_PATTERN.test(normalized) && parsed.tipo === "ESTOQUE_ENTRADA") return true;
+  if (PURCHASE_WORD_PATTERN.test(normalized) && (parsed.tipo === "RECEITA_VENDA" || parsed.tipo === "ESTOQUE_SAIDA")) return true;
+  if (STOCK_OUT_WORD_PATTERN.test(normalized) && parsed.tipo === "ESTOQUE_ENTRADA") return true;
+  if (HEALTH_WORD_PATTERN.test(normalized) && parsed.tipo === "CADASTRO_ANIMAL") return true;
+  if (MILK_PRODUCTION_PATTERN.test(normalized) && parsed.tipo === "CADASTRO_ANIMAL") return true;
+  if (QUERY_WORD_PATTERN.test(normalized) && !CONSULT_INTENTS.has(parsed.tipo) && parsed.tipo !== "AJUDA") return true;
+  return false;
+}
+
+function hasPhysicalSaleWithoutPrice(normalized: string, parsed: ParsedRanchoMessage, moneyValues: number[]) {
+  if (!SALE_WORD_PATTERN.test(normalized) || moneyValues.length > 0) return false;
+  if (!STOCK_WORD_PATTERN.test(normalized)) return false;
+  return parsed.tipo === "RECEITA_VENDA" || parsed.tipo === "ESTOQUE_SAIDA";
+}
+
+function riskScoreForFlags(flags: Set<ParserRiskFlag>, confidence: number) {
+  let score = 0;
+  const weights: Partial<Record<ParserRiskFlag, number>> = {
+    suspicious_animal_ref: 0.5,
+    suspicious_item_name: 0.5,
+    intent_keyword_conflict: 0.6,
+    physical_sale_without_price: 0.5,
+    command_word_as_name: 0.55,
+    parsed_number_may_be_time: 0.45,
+    multiple_intents_detected: 0.35,
+    compound_message: 0.35,
+    conflicting_intents: 0.55,
+    correction_message: 0.35,
+    negation_message: 0.35,
+    missing_required_entity: 0.22,
+    missing_quantity: 0.2,
+    missing_unit: 0.16,
+    missing_money_value: 0.2,
+    unknown_animal: 0.35,
+    unknown_stock_item: 0.3,
+    unknown_employee: 0.3,
+    ambiguous_reference: 0.25,
+    ambiguous_verb: 0.18
+  };
+
+  for (const flag of Array.from(flags)) score += weights[flag] || 0;
+  if (confidence < DEFAULT_GEMINI_FALLBACK_CONFIDENCE) score += 0.25;
+  return clamp(Number(score.toFixed(2)), 0, 1);
+}
+
 function hasConflictingModuleCues(cues: Set<string>, normalized: string, parsed: ParsedRanchoMessage) {
   const actionableCues = new Set(Array.from(cues).filter((cue) => cue !== "consulta" && cue !== "animais"));
   const hasConnector = COMPOUND_CONNECTOR_PATTERN.test(normalized);
@@ -205,6 +299,12 @@ function confidenceReason(flags: Set<ParserRiskFlag>, missing: string[], origina
   if (flags.has("cancellation_message")) parts.push("cancellation message");
   if (flags.has("confirmation_response")) parts.push("confirmation response");
   if (flags.has("destructive_action")) parts.push("destructive action");
+  if (flags.has("suspicious_animal_ref")) parts.push("suspicious animal reference");
+  if (flags.has("suspicious_item_name")) parts.push("suspicious item name");
+  if (flags.has("intent_keyword_conflict")) parts.push("intent keyword conflict");
+  if (flags.has("physical_sale_without_price")) parts.push("physical sale without price");
+  if (flags.has("command_word_as_name")) parts.push("command word as name");
+  if (flags.has("parsed_number_may_be_time")) parts.push("number may be time");
   if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
   return parts.join("; ");
 }
@@ -221,6 +321,7 @@ function decisionForParsed(parsed: ParsedRanchoMessage, threshold = DEFAULT_GEMI
 export function shouldUseGeminiFallback(parsed: ParsedRanchoMessage, threshold = DEFAULT_GEMINI_FALLBACK_CONFIDENCE) {
   const flags = new Set(parsed.flags || []);
   if (parsed.confianca < threshold) return true;
+  if (typeof parsed.riskScore === "number" && parsed.riskScore >= 0.45) return true;
   return Array.from(FALLBACK_FLAGS).some((flag) => flags.has(flag));
 }
 
@@ -252,10 +353,27 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   const milkWithoutQuantity = /\bleite\b/.test(normalized) && !detectedEntities.quantities.length && ["PRODUCAO_LEITE", "CONSULTA_ANIMAL", "DESCONHECIDO"].includes(parsed.tipo);
   const stockWithoutItem = /\bestoque\b/.test(normalized) && /\b(?:tira|tirar|baixa|baixar|sobe|subir)\b/.test(normalized) && !detectedEntities.stockItems.length;
   const hasConflictingIntents = hasConflictingModuleCues(cues, normalized, parsed);
+  const suspiciousAnimalRef = hasSuspiciousAnimalReference(parsed.dados?.animal_codigo)
+    || hasSuspiciousAnimalReference(parsed.dados?.animal_referencia_nao_encontrada);
+  const suspiciousItemName = hasSuspiciousItemName(parsed.dados?.item_nome) || hasSuspiciousItemName(parsed.dados?.item_extraido);
+  const commandWordAsName = parsed.tipo === "CADASTRO_ANIMAL" && (
+    isCommandOnlyName(parsed.dados?.nome)
+    || (!parsed.dados?.animal_codigo && hasCommandWordAsName(parsed.dados?.nome))
+  );
+  const parsedNumberMayBeTime = TIME_TOKEN_PATTERN.test(normalized) && (suspiciousAnimalRef || parsed.tipo === "PRODUCAO_LEITE");
+  const intentKeywordConflict = hasIntentKeywordConflict(normalized, parsed);
+  const physicalSaleWithoutPrice = hasPhysicalSaleWithoutPrice(normalized, parsed, detectedEntities.moneyValues)
+    || (parsed.tipo === "ESTOQUE_SAIDA" && Boolean(parsed.dados?.venda) && missing.includes("valor"));
 
   addFlag(flags, "compound_message", isCompound);
   addFlag(flags, "multiple_intents_detected", isCompound || (hasCompoundConnector && cues.size > 1));
   addFlag(flags, "conflicting_intents", hasConflictingIntents);
+  addFlag(flags, "suspicious_animal_ref", suspiciousAnimalRef);
+  addFlag(flags, "suspicious_item_name", suspiciousItemName);
+  addFlag(flags, "intent_keyword_conflict", intentKeywordConflict);
+  addFlag(flags, "physical_sale_without_price", physicalSaleWithoutPrice);
+  addFlag(flags, "command_word_as_name", commandWordAsName);
+  addFlag(flags, "parsed_number_may_be_time", parsedNumberMayBeTime);
   addFlag(flags, "ambiguous_verb", isAmbiguousVerb);
   addFlag(flags, "ambiguous_reference", AMBIGUOUS_REFERENCE_PATTERN.test(normalized));
   addFlag(flags, "correction_message", isCorrection);
@@ -294,6 +412,9 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   if (missing.includes("valor")) confidence = Math.min(confidence, 0.64);
   if (flags.has("ambiguous_reference")) confidence = Math.min(confidence, 0.7);
   if (flags.has("unknown_animal") || flags.has("unknown_stock_item") || flags.has("unknown_employee")) confidence = Math.min(confidence, 0.58);
+  if (suspiciousAnimalRef || suspiciousItemName || commandWordAsName || parsedNumberMayBeTime) confidence = Math.min(confidence, 0.62);
+  if (intentKeywordConflict) confidence = Math.min(confidence, 0.55);
+  if (physicalSaleWithoutPrice) confidence = Math.min(confidence, 0.64);
 
   const hasCriticalFlags = Array.from(FALLBACK_FLAGS).some((flag) => flags.has(flag));
   const needsClarification = missing.length > 0
@@ -322,11 +443,13 @@ export function evaluateRanchoParseConfidence(text: string, parsed: ParsedRancho
   addFlag(flags, "requires_confirmation", isCorrection || needsConfirmation);
   addFlag(flags, "single_clear_intent", !hasCriticalFlags && cues.size <= 1 && parsed.tipo !== "DESCONHECIDO");
   addFlag(flags, "safe_for_local_execution", safeForLocal);
+  const riskScore = riskScoreForFlags(flags, confidence);
 
   const resultWithoutDecision: ParsedRanchoMessage = {
     ...parsed,
     confianca: clamp(Number(confidence.toFixed(2)), 0, 1),
     flags: Array.from(flags),
+    riskScore,
     detectedEntities,
     actions: actionsFromParsed(parsed, text)
   };

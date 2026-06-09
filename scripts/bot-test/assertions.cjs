@@ -281,6 +281,30 @@ module.exports = function loadBotTestSection(context) {
         failures.push(`não esperava pendências, recebeu: ${parsed.perguntas_faltantes.join(" | ")}`);
       }
 
+      for (const flag of expected.flags || []) {
+        if (!(parsed.flags || []).includes(flag)) failures.push(`flag esperada ${flag} ausente; flags=${(parsed.flags || []).join(", ")}`);
+      }
+
+      for (const flag of expected.notFlags || []) {
+        if ((parsed.flags || []).includes(flag)) failures.push(`flag ${flag} nao deveria estar presente`);
+      }
+
+      if (expected.shouldUseGeminiFallback === true && !(parsed.flags || []).includes("use_gemini_fallback")) {
+        failures.push(`esperava use_gemini_fallback; flags=${(parsed.flags || []).join(", ")}`);
+      }
+
+      if (expected.shouldUseGeminiFallback === false && (parsed.flags || []).includes("use_gemini_fallback")) {
+        failures.push(`nao esperava use_gemini_fallback; flags=${(parsed.flags || []).join(", ")}`);
+      }
+
+      if (typeof expected.minRiskScore === "number" && Number(parsed.riskScore || 0) < expected.minRiskScore) {
+        failures.push(`riskScore esperado >= ${expected.minRiskScore}, recebido ${parsed.riskScore || 0}`);
+      }
+
+      if (typeof expected.maxRiskScore === "number" && Number(parsed.riskScore || 0) > expected.maxRiskScore) {
+        failures.push(`riskScore esperado <= ${expected.maxRiskScore}, recebido ${parsed.riskScore || 0}`);
+      }
+
       return failures;
     }
 

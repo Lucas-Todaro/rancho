@@ -1149,6 +1149,7 @@ module.exports = function loadBotTestSection(context) {
       ...consultationParserTests,
       ...herdLotParserTests,
       ...decimalRegressionTests,
+      ...(typeof geminiFallbackDecisionTests !== "undefined" ? geminiFallbackDecisionTests : []),
       ...financeHumanParserTests,
       ...inventoryHumanParserTests,
       ...productionRobustnessTests,

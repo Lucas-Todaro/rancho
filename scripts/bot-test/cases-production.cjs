@@ -337,7 +337,19 @@ module.exports = function loadBotTestSection(context) {
       { phrase: "corrigir 20 litros", pending: () => pendingFrom("B-002 deu 18 litros"), expected: { tipo: "PRODUCAO_LEITE", exactTipo: true, animal: "B-002", litros: 20, noMissing: true } }
     ];
 
+    const geminiFallbackDecisionTests = [
+      { phrase: "Kelly deu 28 litros e Thais 25", expected: { tipo: "LOTE_REGISTROS", shouldUseGeminiFallback: true, flags: ["compound_message"], minRiskScore: 0.45 } },
+      { phrase: "ordenhei 21,5L de Natasha hoje de 10h", expected: { tipo: "PRODUCAO_LEITE", shouldUseGeminiFallback: true, flags: ["parsed_number_may_be_time"], minRiskScore: 0.45 } },
+      { phrase: "vendi 40L de leite", expected: { tipo: "ESTOQUE_SAIDA", shouldUseGeminiFallback: true, flags: ["physical_sale_without_price"], minRiskScore: 0.45 } },
+      { phrase: "Lindona nao comeu hoje", expected: { tipo: "ATUALIZACAO_ANIMAL", animal: "LINDONA", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
+      { phrase: "tem vaca doente", expected: { tipo: "ATUALIZACAO_ANIMAL", shouldUseGeminiFallback: true, flags: ["missing_required_entity"] } },
+      { phrase: "novo animal", expected: { tipo: "CADASTRO_ANIMAL", shouldUseGeminiFallback: true, flags: ["missing_required_entity"] } },
+      { phrase: "comprei 10 sacos de racao por 2,5 mil", expected: { tipo: "ESTOQUE_ENTRADA", compra: true, quantidade: 10, unidade: "saco", item: "Ração", valor: 2500, shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
+      { phrase: "vaca 1 deu 15 litros", expected: { tipo: "PRODUCAO_LEITE", animal: "1", litros: 15, shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
+      { phrase: "usei 20kg de racao", expected: { tipo: "ESTOQUE_SAIDA", quantidade: 20, unidade: "kg", item: "Ração", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } },
+      { phrase: "quanto tem de Leite Cru no estoque?", expected: { tipo: "CONSULTA_ESTOQUE", item: "Leite Cru", shouldUseGeminiFallback: false, maxRiskScore: 0.44 } }
+    ];
 
-    return { mandatoryTests, extraTests, regressionTests, consultationParserTests, herdLotParserTests, decimalRegressionTests, productionRobustnessTests };
+    return { mandatoryTests, extraTests, regressionTests, consultationParserTests, herdLotParserTests, decimalRegressionTests, productionRobustnessTests, geminiFallbackDecisionTests };
   }
 };

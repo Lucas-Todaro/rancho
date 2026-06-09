@@ -24,6 +24,9 @@ export type GeminiInterpretation = {
   confidence: number;
   requiresConfirmation: boolean;
   reason: string;
+  reasoning_short?: string;
+  risk_flags?: string[];
+  alternative_intents?: string[];
   actions: GeminiAction[];
   userResponse: string;
 };
@@ -63,7 +66,7 @@ type GeminiApiResponse = {
 };
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-const DEFAULT_FALLBACK_CONFIDENCE = 0.6;
+const DEFAULT_FALLBACK_CONFIDENCE = 0.7;
 const GEMINI_TIMEOUT_MS = 8000;
 const MAX_ACTIONS = 8;
 const MAX_TEXT_LENGTH = 500;
@@ -175,6 +178,9 @@ function buildPrompt(input: {
     confidence: "number between 0 and 1",
     requiresConfirmation: "boolean",
     reason: "short string explaining the interpretation",
+    reasoning_short: "one short sentence explaining the interpretation",
+    risk_flags: ["short strings such as ambiguous_quantity, missing_value, multi_action, keyword_conflict"],
+    alternative_intents: ["other possible supported action types when ambiguous"],
     actions: [
       {
         type: "one supported action type",
@@ -198,7 +204,7 @@ function buildPrompt(input: {
     "Se a mensagem tiver mais de uma acao, retorne as acoes na ordem em que devem acontecer.",
     "Para registros, alteracoes, exclusoes, financeiro, estoque, animais, funcionarios, genealogia ou ponto, marque requiresConfirmation como true.",
     "Para consultas e relatorios claros, requiresConfirmation pode ser false.",
-    "Se estiver ambiguo, use confidence menor que 0.6, requiresConfirmation true e userResponse pedindo esclarecimento.",
+    "Se estiver ambiguo, use confidence menor que 0.7, requiresConfirmation true e userResponse pedindo esclarecimento.",
     "Campos: entity deve guardar o alvo principal; quantity deve guardar quantidade ou valor monetario; unit deve guardar unidade; notes deve guardar descricao curta.",
     "",
     `Data atual: ${input.currentDate}`,
@@ -284,7 +290,14 @@ export function validateGeminiInterpretation(value: unknown): GeminiInterpretati
   if (typeof requiresConfirmation !== "boolean") errors.push("requiresConfirmation deve ser booleano");
 
   const reason = safeText(value.reason, "reason", errors, { required: true, max: 300 });
+  const reasoningShort = safeText(value.reasoning_short, "reasoning_short", errors, { max: 300 });
   const userResponse = safeText(value.userResponse, "userResponse", errors, { max: 500 });
+  const riskFlags = Array.isArray(value.risk_flags)
+    ? value.risk_flags.slice(0, 12).map((flag, index) => safeText(flag, `risk_flags[${index}]`, errors, { max: 80 })).filter((flag): flag is string => Boolean(flag))
+    : [];
+  const alternativeIntents = Array.isArray(value.alternative_intents)
+    ? value.alternative_intents.slice(0, 8).map((intent, index) => safeText(intent, `alternative_intents[${index}]`, errors, { max: 80 })).filter((intent): intent is string => Boolean(intent && allowedTypes.has(intent)))
+    : [];
 
   if (!Array.isArray(value.actions)) {
     errors.push("actions deve ser array");
@@ -343,6 +356,9 @@ export function validateGeminiInterpretation(value: unknown): GeminiInterpretati
       confidence: Number(confidence),
       requiresConfirmation: Boolean(requiresConfirmation),
       reason: reason || "",
+      reasoning_short: reasoningShort || undefined,
+      risk_flags: riskFlags,
+      alternative_intents: alternativeIntents,
       actions,
       userResponse: userResponse || ""
     }

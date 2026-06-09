@@ -308,5 +308,8 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
 }
 
 export function refreshRanchoMessage(parsed: ParsedRanchoMessage, dados: AnyRecord = parsed.dados): ParsedRanchoMessage {
-  return finalize(parsed.tipo, dados, buildMissing(parsed.tipo, dados), parsed.confianca);
+  return {
+    ...parsed,
+    ...finalize(parsed.tipo, dados, buildMissing(parsed.tipo, dados), parsed.confianca)
+  };
 }

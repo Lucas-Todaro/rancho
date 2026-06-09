@@ -13,6 +13,13 @@ export type ParserRiskFlag =
   | "unknown_animal"
   | "unknown_stock_item"
   | "unknown_employee"
+  | "suspicious_animal_ref"
+  | "suspicious_item_name"
+  | "intent_keyword_conflict"
+  | "physical_sale_without_price"
+  | "command_word_as_name"
+  | "ambiguous_category"
+  | "parsed_number_may_be_time"
   | "correction_message"
   | "negation_message"
   | "cancellation_message"
@@ -114,6 +121,7 @@ export type ParsedRanchoMessage = {
   resumo: string;
   perguntas_faltantes: string[];
   flags?: ParserRiskFlag[];
+  riskScore?: number;
   reason?: string;
   debugReason?: string;
   detectedEntities?: DetectedRanchoEntities;
