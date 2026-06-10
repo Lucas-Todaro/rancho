@@ -8,7 +8,7 @@ import { getAnimalSexInfo } from "@/lib/animal-sex";
 import type { AnyRecord, RelationOption } from "@/lib/types";
 
 const ANIMAL_RENDER_BATCH_SIZE = 72;
-//oioio
+//oio
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
   boi: "Boi",
