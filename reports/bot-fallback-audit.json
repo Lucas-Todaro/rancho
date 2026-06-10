@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-09T22:47:48.336Z",
+  "generatedAt": "2026-06-10T18:08:49.558Z",
   "command": "npm run test:bot:fallback-audit",
   "notes": [
     "Auditoria offline: Gemini real nao e chamado.",
@@ -12,15 +12,15 @@
   },
   "summary": {
     "total": 500,
-    "passed": 324,
-    "failed": 176,
-    "accuracy": 64.8,
+    "passed": 325,
+    "failed": 175,
+    "accuracy": 65,
     "expectedGemini": 140,
-    "calledGemini": 238,
-    "falseNegativeFallback": 31,
+    "calledGemini": 239,
+    "falseNegativeFallback": 30,
     "falsePositiveFallback": 129,
     "wrongIntents": 35,
-    "missingWarnings": 15,
+    "missingWarnings": 14,
     "groupCounts": {
       "G1 - Producao simples correta": 32,
       "G2 - Producao incompleta": 20,
@@ -60,7 +60,7 @@
       "Consultas e relatorios": 6,
       "Correcao/cancelamento/negacao": 6,
       "Ruido, typos e linguagem informal": 16,
-      "Casos perigosos de nao fallback": 4
+      "Casos perigosos de nao fallback": 3
     },
     "topCritical": [
       {
@@ -1335,106 +1335,6 @@
         }
       },
       {
-        "id": "G20-009",
-        "grupo": "G20",
-        "grupoNome": "Casos perigosos de nao fallback",
-        "mensagem": "comprei 30kg de racao",
-        "expectedIntentAnyOf": [],
-        "expectedShouldCallGemini": true,
-        "expectedCriticalWarnings": [
-          "use_gemini_fallback"
-        ],
-        "expectedMustNotHappen": [
-          "silent_dangerous_parse"
-        ],
-        "forbiddenPatterns": [],
-        "mustNotSave": true,
-        "observacao": "",
-        "parserIntent": "ESTOQUE_ENTRADA",
-        "confidence": 0.9,
-        "riskScore": 0,
-        "warnings": [
-          "needs_confirmation",
-          "requires_confirmation",
-          "single_clear_intent",
-          "safe_for_local_execution"
-        ],
-        "criticalWarnings": [],
-        "fallbackCalled": false,
-        "fallbackReason": "not_called",
-        "mockGemini": {
-          "called": false,
-          "reason": "local_parser_accepted",
-          "saved": false
-        },
-        "intentWrong": false,
-        "falseNegativeFallback": true,
-        "falsePositiveFallback": false,
-        "missingWarnings": [
-          "use_gemini_fallback"
-        ],
-        "critical": true,
-        "passed": false,
-        "errors": [
-          "falso negativo de fallback",
-          "warnings ausentes: use_gemini_fallback"
-        ],
-        "parserResult": {
-          "tipo": "ESTOQUE_ENTRADA",
-          "confianca": 0.9,
-          "dados": {
-            "item_nome": "racao",
-            "quantidade": 30,
-            "unidade": "kg",
-            "compra": true,
-            "data_referencia": "hoje"
-          },
-          "resumo": "adicionar 30 kg de racao ao estoque",
-          "perguntas_faltantes": [],
-          "flags": [
-            "needs_confirmation",
-            "requires_confirmation",
-            "single_clear_intent",
-            "safe_for_local_execution"
-          ],
-          "riskScore": 0,
-          "detectedEntities": {
-            "animals": [],
-            "stockItems": [
-              "racao"
-            ],
-            "employees": [],
-            "quantities": [
-              30,
-              0
-            ],
-            "units": [
-              "kg"
-            ],
-            "dates": [
-              "hoje"
-            ],
-            "moneyValues": [
-              0
-            ]
-          },
-          "actions": [
-            {
-              "type": "ESTOQUE_ENTRADA",
-              "entity": "racao",
-              "quantity": 30,
-              "unit": "kg",
-              "date": "hoje",
-              "notes": null,
-              "rawText": "comprei 30kg de racao"
-            }
-          ],
-          "reason": "base 0.90 -> 0.90; single clear intent",
-          "debugReason": "base 0.90 -> 0.90; single clear intent",
-          "decision": "ask_confirmation"
-        }
-      },
-      {
         "id": "G20-010",
         "grupo": "G20",
         "grupoNome": "Casos perigosos de nao fallback",
@@ -2016,6 +1916,107 @@
           ],
           "reason": "base 0.90 -> 0.74; single clear intent; ambiguous verb",
           "debugReason": "base 0.90 -> 0.74; single clear intent; ambiguous verb",
+          "decision": "ask_confirmation"
+        }
+      },
+      {
+        "id": "G19-004",
+        "grupo": "G19",
+        "grupoNome": "Ruido, typos e linguagem informal",
+        "mensagem": "botei racao 20kg",
+        "expectedIntentAnyOf": [
+          "PRODUCAO_LEITE",
+          "ESTOQUE_ENTRADA",
+          "ESTOQUE_SAIDA",
+          "DESPESA",
+          "ATUALIZACAO_ANIMAL",
+          "CONSULTA_ESTOQUE",
+          "CONSULTA_REGISTROS_HOJE",
+          "CADASTRO_ANIMAL"
+        ],
+        "expectedShouldCallGemini": true,
+        "expectedCriticalWarnings": [],
+        "expectedMustNotHappen": [],
+        "forbiddenPatterns": [],
+        "mustNotSave": false,
+        "observacao": "",
+        "parserIntent": "ESTOQUE_ENTRADA",
+        "confidence": 0.9,
+        "riskScore": 0,
+        "warnings": [
+          "needs_confirmation",
+          "requires_confirmation",
+          "single_clear_intent",
+          "safe_for_local_execution"
+        ],
+        "criticalWarnings": [],
+        "fallbackCalled": false,
+        "fallbackReason": "not_called",
+        "mockGemini": {
+          "called": false,
+          "reason": "local_parser_accepted",
+          "saved": false
+        },
+        "intentWrong": false,
+        "falseNegativeFallback": true,
+        "falsePositiveFallback": false,
+        "missingWarnings": [],
+        "critical": true,
+        "passed": false,
+        "errors": [
+          "falso negativo de fallback"
+        ],
+        "parserResult": {
+          "tipo": "ESTOQUE_ENTRADA",
+          "confianca": 0.9,
+          "dados": {
+            "item_nome": "racao",
+            "quantidade": 20,
+            "unidade": "kg",
+            "data_referencia": "hoje"
+          },
+          "resumo": "adicionar 20 kg de racao ao estoque",
+          "perguntas_faltantes": [],
+          "flags": [
+            "needs_confirmation",
+            "requires_confirmation",
+            "single_clear_intent",
+            "safe_for_local_execution"
+          ],
+          "riskScore": 0,
+          "detectedEntities": {
+            "animals": [],
+            "stockItems": [
+              "racao"
+            ],
+            "employees": [],
+            "quantities": [
+              20,
+              0
+            ],
+            "units": [
+              "kg"
+            ],
+            "dates": [
+              "hoje"
+            ],
+            "moneyValues": [
+              0
+            ]
+          },
+          "actions": [
+            {
+              "type": "ESTOQUE_ENTRADA",
+              "entity": "racao",
+              "quantity": 20,
+              "unit": "kg",
+              "date": "hoje",
+              "notes": null,
+              "rawText": "botei racao 20kg"
+            }
+          ],
+          "reason": "base 0.90 -> 0.90; single clear intent",
+          "debugReason": "base 0.90 -> 0.90; single clear intent",
           "decision": "ask_confirmation"
         }
       }
@@ -44344,6 +44345,7 @@
         "possible_multi_domain_message",
         "missing_domain_in_parse_result",
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -44381,7 +44383,8 @@
         },
         "resumo": "adicionar 0 de racao e o Bruno ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "compound_message",
@@ -44389,6 +44392,7 @@
           "possible_multi_domain_message",
           "missing_domain_in_parse_result",
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
@@ -44424,8 +44428,8 @@
           }
         ],
         "fallbackReason": "multi_domain_message_not_fully_parsed",
-        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
-        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -45227,6 +45231,7 @@
         "possible_multi_domain_message",
         "missing_domain_in_parse_result",
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -45264,7 +45269,8 @@
         },
         "resumo": "adicionar 0 de salario do Bruno e racao ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "compound_message",
@@ -45272,6 +45278,7 @@
           "possible_multi_domain_message",
           "missing_domain_in_parse_result",
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
@@ -45307,8 +45314,8 @@
           }
         ],
         "fallbackReason": "multi_domain_message_not_fully_parsed",
-        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
-        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -45612,6 +45619,7 @@
         "possible_multi_domain_message",
         "missing_domain_in_parse_result",
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -45649,7 +45657,8 @@
         },
         "resumo": "adicionar 0 de racao e o Bruno ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "compound_message",
@@ -45657,6 +45666,7 @@
           "possible_multi_domain_message",
           "missing_domain_in_parse_result",
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
@@ -45692,8 +45702,8 @@
           }
         ],
         "fallbackReason": "multi_domain_message_not_fully_parsed",
-        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
-        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -46495,6 +46505,7 @@
         "possible_multi_domain_message",
         "missing_domain_in_parse_result",
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -46532,7 +46543,8 @@
         },
         "resumo": "adicionar 0 de salario do Bruno e racao ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "compound_message",
@@ -46540,6 +46552,7 @@
           "possible_multi_domain_message",
           "missing_domain_in_parse_result",
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
@@ -46575,8 +46588,8 @@
           }
         ],
         "fallbackReason": "multi_domain_message_not_fully_parsed",
-        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
-        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -46880,6 +46893,7 @@
         "possible_multi_domain_message",
         "missing_domain_in_parse_result",
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -46917,7 +46931,8 @@
         },
         "resumo": "adicionar 0 de racao e o Bruno ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "compound_message",
@@ -46925,6 +46940,7 @@
           "possible_multi_domain_message",
           "missing_domain_in_parse_result",
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
@@ -46960,8 +46976,8 @@
           }
         ],
         "fallbackReason": "multi_domain_message_not_fully_parsed",
-        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
-        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade",
+        "reason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.55; compound message; multiple intents; possible multi-domain message; missing domain in parse result; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -50302,10 +50318,11 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.64,
+      "riskScore": 0.61,
       "warnings": [
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -50331,7 +50348,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.64,
         "dados": {
           "item_nome": "racao ,5mil",
           "quantidade": 2,
@@ -50340,17 +50357,19 @@
         },
         "resumo": "adicionar 2 de racao ,5mil ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "single_clear_intent",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 0.61,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -50380,8 +50399,8 @@
             "rawText": "comprei racao 2,5mil"
           }
         ],
-        "reason": "base 0.65 -> 0.65; single clear intent; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; single clear intent; missing: unidade",
+        "reason": "base 0.65 -> 0.64; single clear intent; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.64; single clear intent; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -51297,10 +51316,11 @@
       "mustNotSave": false,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.65,
-      "riskScore": 0.41,
+      "confidence": 0.64,
+      "riskScore": 0.61,
       "warnings": [
         "missing_unit",
+        "missing_money_value",
         "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
@@ -51326,7 +51346,7 @@
       "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.65,
+        "confianca": 0.64,
         "dados": {
           "item_nome": "racao ,5mil",
           "quantidade": 2,
@@ -51335,17 +51355,19 @@
         },
         "resumo": "adicionar 2 de racao ,5mil ao estoque",
         "perguntas_faltantes": [
-          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade."
+          "Qual unidade deseja usar?Exemplo: saco, kg ou unidade.",
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
         ],
         "flags": [
           "missing_unit",
+          "missing_money_value",
           "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "single_clear_intent",
           "use_gemini_fallback"
         ],
-        "riskScore": 0.41,
+        "riskScore": 0.61,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -51375,8 +51397,8 @@
             "rawText": "comprei racao 2,5mil"
           }
         ],
-        "reason": "base 0.65 -> 0.65; single clear intent; missing: unidade",
-        "debugReason": "base 0.65 -> 0.65; single clear intent; missing: unidade",
+        "reason": "base 0.65 -> 0.64; single clear intent; missing: unidade, valor",
+        "debugReason": "base 0.65 -> 0.64; single clear intent; missing: unidade, valor",
         "decision": "gemini_fallback"
       }
     },
@@ -52219,37 +52241,36 @@
       "mustNotSave": true,
       "observacao": "",
       "parserIntent": "ESTOQUE_ENTRADA",
-      "confidence": 0.9,
-      "riskScore": 0,
+      "confidence": 0.64,
+      "riskScore": 0.45,
       "warnings": [
+        "missing_money_value",
+        "needs_clarification",
         "needs_confirmation",
         "requires_confirmation",
         "single_clear_intent",
-        "safe_for_local_execution"
+        "use_gemini_fallback"
       ],
-      "criticalWarnings": [],
-      "fallbackCalled": false,
-      "fallbackReason": "not_called",
+      "criticalWarnings": [
+        "use_gemini_fallback"
+      ],
+      "fallbackCalled": true,
+      "fallbackReason": "use_gemini_fallback",
       "mockGemini": {
-        "called": false,
-        "reason": "local_parser_accepted",
+        "called": true,
+        "reason": "mocked_would_call_gemini",
         "saved": false
       },
       "intentWrong": false,
-      "falseNegativeFallback": true,
+      "falseNegativeFallback": false,
       "falsePositiveFallback": false,
-      "missingWarnings": [
-        "use_gemini_fallback"
-      ],
-      "critical": true,
-      "passed": false,
-      "errors": [
-        "falso negativo de fallback",
-        "warnings ausentes: use_gemini_fallback"
-      ],
+      "missingWarnings": [],
+      "critical": false,
+      "passed": true,
+      "errors": [],
       "parserResult": {
         "tipo": "ESTOQUE_ENTRADA",
-        "confianca": 0.9,
+        "confianca": 0.64,
         "dados": {
           "item_nome": "racao",
           "quantidade": 30,
@@ -52258,14 +52279,18 @@
           "data_referencia": "hoje"
         },
         "resumo": "adicionar 30 kg de racao ao estoque",
-        "perguntas_faltantes": [],
+        "perguntas_faltantes": [
+          "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\"."
+        ],
         "flags": [
+          "missing_money_value",
+          "needs_clarification",
           "needs_confirmation",
           "requires_confirmation",
           "single_clear_intent",
-          "safe_for_local_execution"
+          "use_gemini_fallback"
         ],
-        "riskScore": 0,
+        "riskScore": 0.45,
         "detectedEntities": {
           "animals": [],
           "stockItems": [
@@ -52297,9 +52322,9 @@
             "rawText": "comprei 30kg de racao"
           }
         ],
-        "reason": "base 0.90 -> 0.90; single clear intent",
-        "debugReason": "base 0.90 -> 0.90; single clear intent",
-        "decision": "ask_confirmation"
+        "reason": "base 0.65 -> 0.64; single clear intent; missing: valor",
+        "debugReason": "base 0.65 -> 0.64; single clear intent; missing: valor",
+        "decision": "gemini_fallback"
       }
     },
     {

@@ -471,7 +471,26 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: "CONSULTA_PRODUCAO_HOJE",
               estadoNovo: "livre",
-              responseIncludes: "Hoje foram registrados 12"
+              responseIncludes: "Relatório de produção hoje"
+            }
+          }
+        ]
+      },
+      {
+        name: "relatorio de producao hoje mostra detalhe por animal",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        animalProductions: [
+          { animal_id: "animal-b-001", litros: 25, ordenhado_em: `${localDateOnly()}T08:15:00.000Z` },
+          { animal_id: "animal-b-003", litros: 30, ordenhado_em: `${localDateOnly()}T08:30:00.000Z` }
+        ],
+        messages: [
+          {
+            text: "dá o relatório da produção de hoje",
+            expected: {
+              intent: "CONSULTA_PRODUCAO_HOJE",
+              estadoNovo: "livre",
+              responseRawIncludes: ["Relatório de produção hoje", "Total:", "Mimosa (B-001) - 25 L - 08:15", "Princesa (B-003) - 30 L - 08:30"]
             }
           }
         ]

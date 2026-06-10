@@ -52,10 +52,10 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "compra fisica sem valor salva apenas entrada de estoque no dry-run",
+        name: "compra fisica sem valor pede valor e permite seguir sem financeiro",
         module: "estoque-compras",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["comprei 10 sacos de racao", "sim"],
+        messages: ["comprei 10 sacos de racao", "2", "sim"],
         expected: {
           finalIntent: "ESTOQUE_ENTRADA",
           entities: { item_nome: "Racao", quantidade: 10, unidade: "saco" },
@@ -89,17 +89,16 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "compra de item inexistente nao salva antes de escolher criar",
+        name: "compra de item inexistente sem valor pede valor antes de criar",
         module: "estoque-compras",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: [
-          { text: "comprei 70kg de arroz", salvarReal: true },
-          { text: "sim", salvarReal: true }
+          { text: "comprei 70kg de arroz", salvarReal: true }
         ],
         expected: {
           finalIntent: "ESTOQUE_ENTRADA",
-          responseIncludes: "Não encontrei",
-          shouldAskConfirmation: true,
+          responseIncludes: "Quanto custou essa compra",
+          shouldAskConfirmation: false,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true,

@@ -354,6 +354,60 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "admin consulta com o que gastou hoje lista despesas",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        financeTransactions: [
+          { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" },
+          { tipo: "entrada", valor: 900, descricao: "Venda de leite", categoria: "leite" }
+        ],
+        messages: ["com o que eu gastei hoje?"],
+        expected: {
+          finalIntent: "CONSULTA_FINANCEIRO",
+          avoidIntents: ["CONSULTA_REGISTROS_HOJE"],
+          entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "detalhado" },
+          responseIncludes: "Compra de racao",
+          responseNotIncludes: "pelo WhatsApp",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "admin consulta gastos filtrados sem despesas retorna vazio financeiro",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["gastos de veterinario hoje"],
+        expected: {
+          finalIntent: "CONSULTA_FINANCEIRO",
+          avoidIntents: ["CONSULTA_REGISTROS_HOJE"],
+          entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "detalhado", filtro_texto: "veterinario" },
+          responseIncludes: "Não encontrei despesas registradas hoje",
+          responseNotIncludes: "pelo WhatsApp",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "admin consulta quanto eu gastei hoje soma saidas",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        financeTransactions: [
+          { tipo: "saida", valor: 250, descricao: "Compra de racao", categoria: "racao" }
+        ],
+        messages: ["quanto eu gastei hoje?"],
+        expected: {
+          finalIntent: "CONSULTA_FINANCEIRO",
+          avoidIntents: ["CONSULTA_REGISTROS_HOJE"],
+          entities: { data_referencia: "hoje", financeiro_tipo: "saida", financeiro_modo: "resumo" },
+          responseIncludes: "Saídas de hoje",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "funcionario comum nao consulta quanto gastei hoje",
         module: "financeiro",
         phone: BOT_TEST_WORKER_PHONE,

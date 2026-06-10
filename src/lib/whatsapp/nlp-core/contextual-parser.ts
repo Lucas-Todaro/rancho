@@ -51,6 +51,16 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   const expectedField = expectedFields[0];
   const correctionLike = /^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|animal errado|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b/.test(normalized);
 
+  const stockPurchaseWithoutFinance = current.tipo === "ESTOQUE_ENTRADA"
+    && dados.compra
+    && expectedField === "valor"
+    && /^(?:2|sem financeiro|so estoque|s[oó] estoque|apenas estoque|nao sei|n[aã]o sei|depois)$/.test(normalized);
+
+  if (stockPurchaseWithoutFinance) {
+    const nextDados = { ...dados, sem_financeiro: true, valor: undefined };
+    return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+  }
+
   if (current.tipo === "CADASTRO_ANIMAL" && expectedField === "sexo") {
     const sexAnswer = extractAnimalSex(normalized);
     if (sexAnswer) {

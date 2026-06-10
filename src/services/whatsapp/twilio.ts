@@ -5019,6 +5019,8 @@ function formatFinanceLine(row: AnyRecord, index: number) {
 function buildFinanceSummaryText(rows: AnyRecord[], period: string, type?: string, filter?: string) {
   const totals = financeTotals(rows);
   const header = financeSummaryHeader(type, period, filter);
+  if (!rows.length && type === "saida") return `Não encontrei despesas registradas ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`;
+  if (!rows.length && type === "entrada") return `Não encontrei entradas registradas ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`;
   if (type === "entrada") return `${header}\nTotal: ${formatMoney(totals.entrada)}\nRegistros: ${rows.length}`;
   if (type === "saida") return `${header}\nTotal: ${formatMoney(totals.saida)}\nRegistros: ${rows.length}`;
   return `${header}\nEntradas: ${formatMoney(totals.entrada)}\nSaídas: ${formatMoney(totals.saida)}\nResultado: ${formatMoney(totals.resultado)}\nRegistros: ${rows.length}`;
@@ -5027,6 +5029,22 @@ function buildFinanceSummaryText(rows: AnyRecord[], period: string, type?: strin
 function buildFinanceListText(rows: AnyRecord[], period: string, offset: number, pageSize: number, type?: string, filter?: string) {
   const total = rows.length;
   if (!total) {
+    if (type === "saida") {
+      return {
+        text: `Não encontrei despesas registradas ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`,
+        nextOffset: offset,
+        hasMore: false,
+        total
+      };
+    }
+    if (type === "entrada") {
+      return {
+        text: `Não encontrei entradas registradas ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`,
+        nextOffset: offset,
+        hasMore: false,
+        total
+      };
+    }
     return {
       text: `Não encontrei transações registradas em ${periodLabel(period)}${filter ?` para ${filter}` : ""}.`,
       nextOffset: offset,
@@ -5710,17 +5728,38 @@ async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner,
     const range = periodRange(period);
     const { data, error } = await supabase
       .from(TABLES.ordenhas)
-      .select("litros")
+      .select("animal_id,litros,ordenhado_em,created_at")
       .eq("fazenda_id", owner.fazenda_id)
       .gte("ordenhado_em", range.start)
-      .lt("ordenhado_em", range.end);
+      .lt("ordenhado_em", range.end)
+      .order("ordenhado_em", { ascending: true });
     if (error) throw new Error(error.message);
-    const total = (data || []).reduce((sum, row) => sum + Number(row.litros || 0), 0);
-    const count = (data || []).length;
+    const rows = (data || []) as AnyRecord[];
+    const total = rows.reduce((sum, row) => sum + Number(row.litros || 0), 0);
+    const count = rows.length;
+    const animalsById = animalMap(await listAnimals(supabase, owner));
+    const formatProductionTime = (row: AnyRecord) => {
+      const value = String(row.ordenhado_em || row.created_at || "");
+      const match = value.match(/[T\s](\d{2}):(\d{2})/);
+      return match ?`${match[1]}:${match[2]}` : "";
+    };
+    const registros = rows.map((row) => ({
+      animal_id: row.animal_id || null,
+      animal: animalShortLabel(animalsById.get(String(row.animal_id || ""))),
+      litros: Number(row.litros || 0),
+      horario: formatProductionTime(row) || null
+    }));
     parsed.dados.consulta_executada = "producao";
-    parsed.dados.resultado = { total_litros: total, registros: count, periodo: period };
-    if (!count) return `Ainda não há produção de leite registrada ${periodLabel(period)}.`;
-    return `${period === "hoje" ?"Hoje" : periodLabel(period)} foram registrados ${formatNumber(total)} litros de leite em ${count} ${count === 1 ?"registro" : "registros"}.`;
+    parsed.dados.resultado = { total_litros: total, registros: count, periodo: period, detalhes: registros };
+    if (!count) return period === "hoje"
+      ?"Não encontrei produções de leite registradas hoje."
+      :`Não encontrei produções de leite registradas ${periodLabel(period)}.`;
+    const detalhes = registros.slice(0, 20).map((row, index) => {
+      const horario = row.horario ?` - ${row.horario}` : "";
+      return `${index + 1}. ${row.animal} - ${formatNumber(row.litros)} L${horario}`;
+    }).join("\n");
+    const extra = registros.length > 20 ?`\n...e mais ${registros.length - 20} registro(s).` : "";
+    return `Relatório de produção ${periodLabel(period)}:\nTotal: ${formatNumber(total)} litros\nRegistros: ${count}\n\n${detalhes}${extra}`;
   }
 
   if (parsed.tipo === "CONSULTA_PRODUCAO_ANIMAL") {

@@ -159,7 +159,9 @@ function financeQueryType(normalized: string) {
 }
 
 function financeQueryMode(normalized: string) {
+  if (/\b(?:com o que|no que)\s+(?:eu\s+)?gastei\b/.test(normalized)) return "detalhado";
   if (/\b(?:transacoes?|movimentacoes?|lancamentos?|extrato|detalhes?|quais|listar|lista|mostra|mostrar|ver)\b/.test(normalized)) return "detalhado";
+  if (/\b(?:gastos?|despesas?|despezas?)\b.*\b(?:hoje|hj|ontem|anteontem|semana|mes)\b/.test(normalized)) return "detalhado";
   return "resumo";
 }
 
@@ -1043,7 +1045,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (earlyReportQuery) return finalize("CONSULTA_REGISTROS_HOJE", reportQueryData(normalized), [], 0.9);
 
   const earlyFinanceQuery = (
-    /\b(?:quanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)|quais\s+(?:entradas?|saidas?|transacoes?|despesas?|receitas?)|transacoes?|movimentacoes?|extrato|resultado|resutado|financeiro|finaceiro|financeirro|caixa|saldo|lucro|despesas?|despezas?|receitas?|vendas?|compras?)\b/.test(normalized)
+    /\b(?:quanto\s+(?:eu\s+)?(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)|(?:com o que|no que)\s+(?:eu\s+)?gastei|quais\s+(?:foram\s+)?(?:minhas?\s+|meus\s+)?(?:entradas?|saidas?|transacoes?|despesas?|receitas?|gastos?)|transacoes?|movimentacoes?|extrato|resultado|resutado|financeiro|finaceiro|financeirro|caixa|saldo|lucro|despesas?|despezas?|gastos?|receitas?|vendas?|compras?)\b/.test(normalized)
     && /\b(?:hoje|hj|ontem|anteontem|semana|mes|dia|\d{1,2}[/-]\d{1,2}|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|financeiro|caixa|saldo|resultado|resutado|transacoes?|movimentacoes?|extrato)\b/.test(normalized)
     && !/\b(?:registrar|registra|cadastrar|cadastra|lancar|lanca|ponto)\b/.test(normalized)
     && !/\bestoque\b/.test(normalized)
@@ -1239,7 +1241,9 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const enhancedFinanceQuery = !financeQueryBlocked && !explicitFinanceValue && !payrollQueryText && ((
     /\b(?:como ta|como esta|saldo|resultado|resutado|financeiro|finaceiro|financeirro|caixa|entradas?|saidas?|lucro|relatorio|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha)\b/.test(normalized)
     && /\b(?:financeiro|finaceiro|financeirro|mes|mez|hoje|hj|ontem|semana|caixa|entradas?|saidas?|lucro|resultado|resutado|transacoes?|movimentacoes?|lancamentos?|extrato|despesas?|despezas?|receitas?|folha|dia|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized)
-  ) || /\bquanto\s+(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
+  ) || /\bquanto\s+(?:eu\s+)?(?:entrou|entro|saiu|vendemos|gastamos|gastei|recebi)\b/.test(normalized)
+    || /\b(?:com o que|no que)\s+(?:eu\s+)?gastei\b/.test(normalized)
+    || /\bquais\s+(?:foram\s+)?(?:minhas?\s+|meus\s+)?(?:despesas?|gastos?)\b/.test(normalized)) && !/\bponto\b/.test(normalized);
   if (enhancedFinanceQuery) return finalize("CONSULTA_FINANCEIRO", financeQueryData(normalized), [], 0.9);
   const isFinanceQuery = !explicitFinanceValue && ((
     /\b(?:como ta|como está|saldo|resultado|financeiro|caixa|entradas|saidas|saídas|lucro|relatorio|relatório|transacoes|transações|despesas|receitas|folha)\b/.test(normalized)

@@ -1,16 +1,16 @@
 # Fallback Audit - Bot WhatsApp
 
 Total de casos: 500
-Passaram: 324
-Falharam: 176
-Acuracia: 64.8%
+Passaram: 325
+Falharam: 175
+Acuracia: 65%
 
 Gemini esperado: 140
-Gemini chamado: 238
-Falsos negativos de fallback: 31
+Gemini chamado: 239
+Falsos negativos de fallback: 30
 Falsos positivos de fallback: 129
 Intents erradas: 35
-Warnings ausentes: 15
+Warnings ausentes: 14
 
 ## Casos por grupo
 
@@ -53,7 +53,7 @@ Warnings ausentes: 15
 - Consultas e relatorios: 6
 - Correcao/cancelamento/negacao: 6
 - Ruido, typos e linguagem informal: 16
-- Casos perigosos de nao fallback: 4
+- Casos perigosos de nao fallback: 3
 
 ## Top 20 casos criticos
 
@@ -109,33 +109,33 @@ Warnings ausentes: 15
    - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
    - Atual: CONSULTA_ESTOQUE_ITEM; confidence=0.88; riskScore=0; fallback=false
    - Problemas: intent esperada PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL, recebida CONSULTA_ESTOQUE_ITEM; falso negativo de fallback
-14. [G20-009] "comprei 30kg de racao"
-   - Esperado: qualquer intent segura; fallback=true
-   - Atual: ESTOQUE_ENTRADA; confidence=0.9; riskScore=0; fallback=false
-   - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-15. [G20-010] "quanto tem de racao?"
+14. [G20-010] "quanto tem de racao?"
    - Esperado: qualquer intent segura; fallback=true
    - Atual: CONSULTA_ESTOQUE_ITEM; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-16. [G20-011] "resumo do dia"
+15. [G20-011] "resumo do dia"
    - Esperado: qualquer intent segura; fallback=true
    - Atual: CONSULTA_REGISTROS_HOJE; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-17. [G20-012] "Lindona nao comeu hoje"
+16. [G20-012] "Lindona nao comeu hoje"
    - Esperado: qualquer intent segura; fallback=true
    - Atual: ATUALIZACAO_ANIMAL; confidence=0.88; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback; warnings ausentes: use_gemini_fallback
-18. [G19-001] "vca 1 deu 15 litro"
+17. [G19-001] "vca 1 deu 15 litro"
    - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
    - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback
-19. [G19-002] "mimosa deu uns 20 litro hj"
+18. [G19-002] "mimosa deu uns 20 litro hj"
    - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
    - Atual: PRODUCAO_LEITE; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback
-20. [G19-003] "lanca ai 30 l da kelly"
+19. [G19-003] "lanca ai 30 l da kelly"
    - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
    - Atual: ESTOQUE_ENTRADA; confidence=0.74; riskScore=0.18; fallback=false
+   - Problemas: falso negativo de fallback
+20. [G19-004] "botei racao 20kg"
+   - Esperado: PRODUCAO_LEITE ou ESTOQUE_ENTRADA ou ESTOQUE_SAIDA ou DESPESA ou ATUALIZACAO_ANIMAL ou CONSULTA_ESTOQUE ou CONSULTA_REGISTROS_HOJE ou CADASTRO_ANIMAL; fallback=true
+   - Atual: ESTOQUE_ENTRADA; confidence=0.9; riskScore=0; fallback=false
    - Problemas: falso negativo de fallback
 
 ## Lista completa de falhas
@@ -656,9 +656,6 @@ Warnings ausentes: 15
 - [G19-018] Ruido, typos e linguagem informal: "resumo hj"
   - Atual: CONSULTA_REGISTROS_HOJE; fallback=false; confidence=0.9; riskScore=0
   - Erros: falso negativo de fallback
-- [G20-009] Casos perigosos de nao fallback: "comprei 30kg de racao"
-  - Atual: ESTOQUE_ENTRADA; fallback=false; confidence=0.9; riskScore=0
-  - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback
 - [G20-010] Casos perigosos de nao fallback: "quanto tem de racao?"
   - Atual: CONSULTA_ESTOQUE_ITEM; fallback=false; confidence=0.9; riskScore=0
   - Erros: falso negativo de fallback; warnings ausentes: use_gemini_fallback

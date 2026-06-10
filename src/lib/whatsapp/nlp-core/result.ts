@@ -30,7 +30,7 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
       return `Qual quantidade de ${dados.item_nome} entrou no estoque?`;
     }
     if (field === "valor" && tipo === "ESTOQUE_ENTRADA" && dados.compra) {
-      return "Quanto custou essa compra?";
+      return "Quanto custou essa compra? Se quiser registrar só a entrada no estoque, responda 2 ou \"sem financeiro\".";
     }
     if (field === "valor" && tipo === "ESTOQUE_SAIDA" && dados.venda) {
       return `Entendi que você vendeu ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"}. Qual foi o valor da venda?`;
@@ -92,6 +92,10 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
 
   if (tipo === "ESTOQUE_ENTRADA" && dados.compra && hasValue(dados.valor)) {
     return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque e registrar despesa de ${moneyText(dados.valor)}${dados.item_nome ?` com ${dados.item_nome}` : ""}`;
+  }
+
+  if (tipo === "ESTOQUE_ENTRADA" && dados.compra && dados.sem_financeiro) {
+    return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque sem registrar financeiro`;
   }
 
   if (tipo === "ESTOQUE_ENTRADA") return `adicionar ${formatStockQuantity(dados.quantidade, dados.unidade)} de ${dados.item_nome || "item"} ao estoque`;
@@ -268,6 +272,7 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   if (stockCreateIntent && !hasValue(dados.quantidade)) missing.push("quantidade");
   if (stockMovementIntent && !hasValue(dados.quantidade)) missing.push("quantidade");
   if (stockMovementIntent && !dados.unidade) missing.push("unidade");
+  if (tipo === "ESTOQUE_ENTRADA" && dados.compra && !dados.sem_financeiro && !hasValue(dados.valor)) missing.push("valor");
   if (tipo === "ESTOQUE_SAIDA" && dados.venda && !hasValue(dados.valor)) missing.push("valor");
   if (tipo === "CRIAR_FUNCIONARIO" && !dados.funcionario_nome) missing.push("funcionario_nome");
   if (tipo === "CRIAR_FUNCIONARIO" && !isValidBotPhone(dados.telefone)) missing.push("telefone");
