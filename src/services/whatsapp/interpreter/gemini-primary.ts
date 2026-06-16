@@ -2,7 +2,10 @@ import type { AnyRecord } from "@/lib/types";
 import { botAllowsLegacyRollback, botInterpreterMode, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
+import { classifyTableWithGemini } from "@/lib/whatsapp/gemini/table-classifier";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
+import { detectStructuredInput, parseStructuredInput } from "@/lib/whatsapp/nlp-core/structured-table";
+import { parseStructuredTableMessage } from "@/lib/whatsapp/nlp-core/tabular-events";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { parseRanchoMessage } from "@/lib/whatsapp/nlp";
@@ -673,6 +676,37 @@ function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string):
 }
 
 async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise<GeminiFallbackParseResult> {
+  const structuredDetection = detectStructuredInput(input.text);
+  const structuredTable = parseStructuredInput(input.text, structuredDetection);
+  if (structuredTable?.rows.length) {
+    const classified = await classifyTableWithGemini({ text: input.text, table: structuredTable });
+    const parsedTable = parseStructuredTableMessage(input.text, classified.ok ? classified.plan : undefined);
+    if (parsedTable) {
+      return {
+        kind: "parsed",
+        threshold: 0.7,
+        parsed: {
+          ...parsedTable,
+          dados: {
+            ...(parsedTable.dados || {}),
+            origem_parser: classified.ok ? "gemini_tabela" : parsedTable.dados?.origem_parser,
+            gemini_table_classifier: classified.ok,
+            gemini_table_classifier_reason: classified.ok ? "table_plan" : classified.reason,
+            gemini_table_sample_rows: classified.ok ? classified.sampleRowCount : 0
+          }
+        },
+        gemini: {
+          confidence: parsedTable.confianca,
+          requiresConfirmation: parsedTable.tipo !== "IMPORTACAO_TABELA_AMBIGUA",
+          reason: classified.ok ? "gemini_table_column_mapping" : "local_structured_table_mapping",
+          risk_flags: classified.ok ? classified.plan.warnings || [] : [classified.reason],
+          actions: [],
+          userResponse: ""
+        }
+      };
+    }
+  }
+
   if (process.env.BOT_GEMINI_MOCK === "legacy_parser") {
     return {
       kind: "parsed",

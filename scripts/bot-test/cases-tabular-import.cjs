@@ -150,7 +150,161 @@ module.exports = function loadBotTestSection(context) {
       nome: `Animal ${brinco}`
     }));
 
+    function lcg(seed) {
+      let state = seed >>> 0;
+      return () => {
+        state = (state * 1664525 + 1013904223) >>> 0;
+        return state / 0x100000000;
+      };
+    }
+
+    function randomCode(rand, index) {
+      const prefix = ["A", "B", "M", "R", "L"][Math.floor(rand() * 5)];
+      return `${prefix}-${String(Math.floor(rand() * 900) + 100)}-${index}`;
+    }
+
+    function randomDate(rand) {
+      const month = Math.floor(rand() * 12) + 1;
+      const day = Math.floor(rand() * 25) + 1;
+      return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/2026`;
+    }
+
+    function buildGenericEventRows(count, seed, options = {}) {
+      const rand = lcg(seed);
+      const events = options.events || ["Inseminacao", "Pariu", "Pre-parto", "Cio", "Aborto"];
+      return Array.from({ length: count }, (_, index) => ({
+        animal: randomCode(rand, index + 1),
+        evento: events[index % events.length],
+        data: randomDate(rand),
+        obs: index % 4 === 0 ? "obs extra" : ""
+      }));
+    }
+
+    function renderGenericTable(rows, columns, separator, withHeader = true) {
+      const headerNames = {
+        animal: "Animal",
+        evento: "Evento",
+        data: "Quando",
+        obs: "Obs",
+        extra: "Responsavel"
+      };
+      const rendered = rows.map((row, index) => columns.map((column) => column === "extra" ? `r${index + 1}` : row[column] || "").join(separator));
+      return withHeader ? [columns.map((column) => headerNames[column]).join(separator), ...rendered].join("\n") : rendered.join("\n");
+    }
+
+    const generatedThreeRows = buildGenericEventRows(3, 11);
+    const generatedThirtyRows = buildGenericEventRows(30, 21);
+    const generatedHundredRows = buildGenericEventRows(100, 31);
+    const generatedInvalidMiddleRows = buildGenericEventRows(5, 41);
+    generatedInvalidMiddleRows[2] = { ...generatedInvalidMiddleRows[2], evento: "", data: "" };
+    const generatedAmbiguousRows = buildGenericEventRows(4, 51, { events: ["Inseminacao", "Protocolo", "Pariu", "Cio"] });
+
+    const genericTabularTests = [
+      {
+        name: "tabela generica com colunas embaralhadas usa columnMapping",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedThreeRows, ["data", "animal", "obs", "evento"], ";"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"],
+          tableRow: { index: 0, animal: generatedThreeRows[0].animal }
+        }
+      },
+      ...[";", ",", "\t", "|"].map((separator) => ({
+        name: `tabela generica aceita separador ${separator === "\t" ? "tab" : separator}`,
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedThreeRows, ["animal", "evento", "data", "obs"], separator),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"],
+          separator
+        }
+      })),
+      {
+        name: "tabela generica processa 30 linhas sem enviar registros ao Gemini",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedThirtyRows, ["animal", "evento", "data", "obs"], "|"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 30,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"]
+        }
+      },
+      {
+        name: "tabela generica processa 100 linhas sem sumir linha",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedHundredRows, ["evento", "data", "animal", "obs"], ";"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 100,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"]
+        }
+      },
+      {
+        name: "tabela generica preserva linha invalida no meio",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedInvalidMiddleRows, ["animal", "evento", "data", "obs"], ";"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 5,
+          total_linhas_parse_invalidas: 1,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"]
+        }
+      },
+      {
+        name: "tabela generica manda evento ambiguo para revisao",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedAmbiguousRows, ["animal", "evento", "data", "obs"], ";"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 4,
+          total_linhas_revisao: 1,
+          structuredInvariants: true,
+          tableRow: { lineNumber: 3, problem: "tipo_evento_ambiguo" }
+        }
+      },
+      {
+        name: "tabela generica ignora coluna extra sem perder linhas",
+        module: "tabela-generica",
+        phrase: renderGenericTable(generatedThreeRows, ["extra", "data", "animal", "evento", "obs"], "|"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type", "date"]
+        }
+      },
+      {
+        name: "lista sem cabecalho usa estrutura generica e revisa evento ambiguo",
+        module: "tabela-generica",
+        phrase: buildGenericEventRows(3, 61, { events: ["Protocolo"] }).map((row) => `${row.animal}:${row.evento}`).join("\n"),
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          total_linhas_revisao: 3,
+          structuredInvariants: true,
+          columnMappingFields: ["animal_ref", "event_type"]
+        }
+      }
+    ];
+
     const tabularImportParserTests = [
+      ...genericTabularTests,
       {
         name: "tabela real de eventos detecta 31 linhas",
         module: "tabela-eventos",
@@ -212,7 +366,7 @@ module.exports = function loadBotTestSection(context) {
           total_linhas: 31,
           total_linhas_parse_validas: 30,
           total_linhas_parse_invalidas: 1,
-          tableRow: { lineNumber: 32, animal: "090", evento_tipo: "protocolo", observacoes: "passou", problem: "data_ausente" }
+          tableRow: { lineNumber: 32, animal: "090", observacoes: "passou", problem: "data_ausente" }
         }
       },
       {
@@ -235,7 +389,7 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           exactTipo: true,
           tipo: "IMPORTACAO_EVENTOS_TABELA",
-          tableRow: { lineNumber: 32, animal: "090", evento_tipo: "protocolo", observacoes: "passou", problem: "data_ausente" }
+          tableRow: { lineNumber: 32, animal: "090", observacoes: "passou", problem: "tipo_evento_ambiguo" }
         }
       },
       {
@@ -252,8 +406,10 @@ module.exports = function loadBotTestSection(context) {
           exactTipo: true,
           tipo: "IMPORTACAO_EVENTOS_TABELA",
           total_linhas: 3,
-          total_linhas_parse_validas: 3,
-          tableRow: { lineNumber: 5, animal: "5714 CF", evento_tipo: "protocolo", data_referencia: "2026-04-03", observacoes: "Não passou;segunda tentativa" }
+          total_linhas_parse_validas: 2,
+          total_linhas_parse_invalidas: 1,
+          total_linhas_revisao: 1,
+          tableRow: { lineNumber: 5, animal: "5714 CF", data_referencia: "2026-04-03", observacoes: "Não passou;segunda tentativa", problem: "tipo_evento_ambiguo" }
         }
       },
       {
@@ -767,10 +923,10 @@ module.exports = function loadBotTestSection(context) {
         messages: [missingAnimalEventsMessage, "1", "sim"],
         expected: {
           finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
-          responseIncludes: "2 animal",
+          responseIncludes: "1 animal",
           shouldAskConfirmation: true,
           savedAfterConfirmation: true,
-          simulatedSaveCount: 2,
+          simulatedSaveCount: 1,
           savedTables: [BOT_TEST_TABLES.animais],
           shouldSaveValues: { brinco: "MISSING-777", categoria: "outro" },
           shouldNotWriteBusiness: true

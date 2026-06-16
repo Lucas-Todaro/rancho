@@ -3,6 +3,16 @@ import { inferAnimalSexFromCategory } from "./extractors";
 import { finalize } from "./result";
 import type { ParsedRanchoMessage } from "./types";
 import { normalizeReproductiveEventType, reproductiveEventDbType, reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
+import {
+  classifyStructuredTableLocally,
+  detectStructuredInput,
+  mapStructuredRows,
+  parseStructuredInput,
+  type StructuredMappedBatch,
+  type StructuredParsedTable,
+  type StructuredTableDomain,
+  type StructuredTablePlan
+} from "./structured-table";
 
 export type ParsedTabularAnimalEventRow = {
   lineNumber: number;
@@ -567,6 +577,227 @@ function parsedTableLines(text: string): ParsedLine[] {
     .filter((line) => line.text);
 }
 
+function structuredMetadata(table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  return {
+    origem_parser: plan.source === "gemini" ? "tabela_gemini" : "tabela_estrutural",
+    structuredInputDetected: true,
+    structureType: table.detection.structureType,
+    separator: table.detection.separator,
+    hasHeader: table.detection.hasHeader,
+    rowCount: table.rows.length,
+    tableType: plan.tableType,
+    columnMapping: plan.columnMapping,
+    tablePlan: {
+      tableType: plan.tableType,
+      confidence: plan.confidence,
+      columnMapping: plan.columnMapping,
+      warnings: plan.warnings || [],
+      source: plan.source || "local",
+      needsUserClarification: Boolean(plan.needsUserClarification)
+    },
+    validRecords: batch.validRecords.length,
+    invalidRecords: batch.invalidRecords.length,
+    needsReviewRecords: batch.needsReview.length,
+    batchValidationSummary: batch.summary,
+    finalDecision: plan.needsUserClarification ? "ask_user" : "preview_requires_confirmation"
+  };
+}
+
+function dbTypeForStructuredEvent(event: string | null): ParsedTabularAnimalEventRow["db_tipo"] {
+  if (event === "parto") return "parto";
+  if (event === "inseminacao") return "inseminacao";
+  if (event === "prenhez" || event === "pre_parto" || event === "cio" || event === "aborto") return "observacao";
+  return null;
+}
+
+function labelForStructuredEvent(event: string | null) {
+  if (event === "pre_parto") return "Pré-parto";
+  if (event === "prenhez") return "Prenhez";
+  if (event === "parto") return "Parto";
+  if (event === "inseminacao") return "Inseminação";
+  if (event === "cio") return "Cio";
+  if (event === "aborto") return "Aborto";
+  return null;
+}
+
+function structuredEventRows(batch: StructuredMappedBatch): ParsedTabularAnimalEventRow[] {
+  return batch.records.map((record) => {
+    const event = typeof record.fields.event_type === "string" ? record.fields.event_type : null;
+    return {
+      lineNumber: record.lineNumber,
+      rawText: record.rawText,
+      animal_codigo_original: String(record.rawFields.animal_ref || ""),
+      animal_codigo: normalizeAnimalTableCode(String(record.fields.animal_ref || "")),
+      status_original: String(record.rawFields.event_type || ""),
+      evento_tipo: event as ReproductiveEventKind | null,
+      evento_label: labelForStructuredEvent(event),
+      db_tipo: dbTypeForStructuredEvent(event),
+      data_original: String(record.rawFields.date || ""),
+      data_referencia: typeof record.fields.date === "string" ? record.fields.date : null,
+      observacoes: String(record.fields.observations || ""),
+      problemas: record.problemas
+    };
+  });
+}
+
+function structuredAnimalRows(batch: StructuredMappedBatch): ParsedTabularAnimalImportRow[] {
+  return batch.records.map((record) => {
+    const category = typeof record.fields.category === "string" ? record.fields.category : null;
+    const sexOriginal = String(record.fields.sex || "");
+    const explicitSex = sexOriginal.trim() ? normalizeAnimalSex(sexOriginal) : null;
+    const inferredSex = !sexOriginal.trim() ? inferAnimalSexFromCategory(category || "") : undefined;
+    const sex = explicitSex || inferredSex || "nao_informado";
+    return {
+      lineNumber: record.lineNumber,
+      rawText: record.rawText,
+      animal_codigo_original: String(record.rawFields.animal_ref || ""),
+      animal_codigo: normalizeAnimalTableCode(String(record.fields.animal_ref || "")),
+      nome: String(record.fields.name || "") || null,
+      categoria_original: String(record.rawFields.category || ""),
+      categoria: category as ParsedTabularAnimalImportRow["categoria"],
+      sexo_original: sexOriginal,
+      sexo: sex,
+      sexo_inferido_categoria: inferredSex ? category : null,
+      sexo_origem: explicitSex ? "informado" : inferredSex ? "inferido_categoria" : "nao_informado",
+      raca: String(record.fields.breed || "") || null,
+      lote_nome: String(record.fields.lot || "") || null,
+      status_original: String(record.fields.status || ""),
+      status: normalizeAnimalStatus(String(record.fields.status || "")),
+      peso: typeof record.fields.weight === "number" ? record.fields.weight : null,
+      data_nascimento: typeof record.fields.birth_date === "string" ? record.fields.birth_date : null,
+      observacoes: String(record.fields.observations || ""),
+      problemas: record.problemas
+    };
+  });
+}
+
+function structuredStockRows(batch: StructuredMappedBatch): ParsedTabularStockImportRow[] {
+  return batch.records.map((record) => ({
+    lineNumber: record.lineNumber,
+    rawText: record.rawText,
+    item_original: String(record.rawFields.item || ""),
+    item_nome: String(record.fields.item || "").trim(),
+    quantidade_original: String(record.rawFields.quantity || ""),
+    quantidade: typeof record.fields.quantity === "number" ? record.fields.quantity : null,
+    unidade_original: String(record.fields.unit || ""),
+    unidade: normalizeStockUnit(String(record.fields.unit || "")),
+    tipo_original: String(record.rawFields.movement_type || ""),
+    tipo_movimento: record.fields.movement_type === "entrada" || record.fields.movement_type === "saida" ? record.fields.movement_type : null,
+    data_original: String(record.rawFields.date || ""),
+    data_referencia: typeof record.fields.date === "string" ? record.fields.date : null,
+    valor_original: "",
+    valor: typeof record.fields.value === "number" ? record.fields.value : null,
+    observacoes: String(record.fields.observations || ""),
+    problemas: record.problemas
+  }));
+}
+
+function buildStructuredEventsImport(table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  const rows = structuredEventRows(batch);
+  const invalidRows = rows.filter((row) => row.problemas.length > 0);
+  return finalize("IMPORTACAO_EVENTOS_TABELA", {
+    ...structuredMetadata(table, plan, batch),
+    tipo_tabela: "animal_events",
+    importacao_tabela_eventos: true,
+    tabela_destino: "eventos_animal",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: rows.length - invalidRows.length,
+    total_linhas_parse_invalidas: invalidRows.length,
+    total_linhas_revisao: batch.needsReview.length,
+    contagem_eventos_parse: eventCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidRows,
+    instrucoes_confirmacao: "confirmar_para_importar_linhas_validas"
+  }, [], plan.confidence || 0.9);
+}
+
+function buildStructuredAnimalsImport(table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  const rows = structuredAnimalRows(batch);
+  const invalidRows = rows.filter((row) => row.problemas.length > 0);
+  return finalize("IMPORTACAO_ANIMAIS_TABELA", {
+    ...structuredMetadata(table, plan, batch),
+    tipo_tabela: "animals_import",
+    importacao_tabela_animais: true,
+    tabela_destino: "animais",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: rows.length - invalidRows.length,
+    total_linhas_parse_invalidas: invalidRows.length,
+    total_linhas_revisao: batch.needsReview.length,
+    contagem_animais_parse: animalImportCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidRows,
+    instrucoes_confirmacao: "confirmar_para_cadastrar_animais_validos"
+  }, [], plan.confidence || 0.9);
+}
+
+function buildStructuredStockImport(table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  const rows = structuredStockRows(batch);
+  const invalidRows = rows.filter((row) => row.problemas.length > 0);
+  return finalize("IMPORTACAO_ESTOQUE_TABELA", {
+    ...structuredMetadata(table, plan, batch),
+    tipo_tabela: "stock_import",
+    importacao_tabela_estoque: true,
+    tabela_destino: "estoque_movimentacoes",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: rows.length - invalidRows.length,
+    total_linhas_parse_invalidas: invalidRows.length,
+    total_linhas_revisao: batch.needsReview.length,
+    contagem_estoque_parse: stockImportCounts(rows),
+    linhas: rows,
+    linhas_parse_invalidas: invalidRows,
+    instrucoes_confirmacao: "confirmar_para_importar_estoque_valido"
+  }, [], plan.confidence || 0.9);
+}
+
+function buildStructuredMilkBatch(table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  const registros = batch.records.map((record) => finalize("PRODUCAO_LEITE", {
+    animal_codigo: normalizeAnimalTableCode(String(record.fields.animal_ref || "")),
+    litros: typeof record.fields.quantity === "number" ? record.fields.quantity : null,
+    data_referencia: typeof record.fields.date === "string" ? record.fields.date : "hoje",
+    observacoes: String(record.fields.observations || ""),
+    origem_parser: "tabela_estrutural",
+    linha_tabela: record.lineNumber,
+    problemas: record.problemas
+  }, record.problemas.includes("litros_ausentes") ? ["litros"] : [], 0.9));
+
+  return finalize("LOTE_REGISTROS", {
+    ...structuredMetadata(table, plan, batch),
+    total_registros: registros.length,
+    registros,
+    total_linhas: batch.records.length,
+    total_linhas_parse_validas: batch.validRecords.length,
+    total_linhas_parse_invalidas: batch.invalidRecords.length + batch.needsReview.length,
+    total_linhas_revisao: batch.needsReview.length,
+    instrucoes_confirmacao: "confirmar_para_salvar_registros_validos"
+  }, [], plan.confidence || 0.9);
+}
+
+function buildStructuredAmbiguousTable(text: string, table: StructuredParsedTable, plan: StructuredTablePlan, batch: StructuredMappedBatch) {
+  return finalize("IMPORTACAO_TABELA_AMBIGUA", {
+    ...structuredMetadata(table, plan, batch),
+    tipo_tabela: "ambiguous",
+    texto_tabela_original: normalizeTabularAnimalEventsText(text),
+    cabecalho: table.headers.join(String(table.detection.separator || ";")),
+    total_linhas: table.rows.length,
+    instrucoes_confirmacao: "perguntar_tipo_tabela"
+  }, [], Math.min(plan.confidence || 0.7, 0.76));
+}
+
+export function parseStructuredTableMessage(text: string, forcedPlan?: StructuredTablePlan, forcedDomain?: StructuredTableDomain): ParsedRanchoMessage | null {
+  const detection = detectStructuredInput(normalizeTabularAnimalEventsText(text));
+  const table = parseStructuredInput(normalizeTabularAnimalEventsText(text), detection);
+  if (!table || !table.rows.length) return null;
+
+  const plan = forcedPlan || classifyStructuredTableLocally(table, forcedDomain);
+  const batch = mapStructuredRows(table, plan);
+  if (plan.tableType === "REPRODUCAO_EVENTOS") return buildStructuredEventsImport(table, plan, batch);
+  if (plan.tableType === "CADASTRO_ANIMAL") return buildStructuredAnimalsImport(table, plan, batch);
+  if (plan.tableType === "ESTOQUE_MOVIMENTACAO") return buildStructuredStockImport(table, plan, batch);
+  if (plan.tableType === "PRODUCAO_LEITE") return buildStructuredMilkBatch(table, plan, batch);
+  if (detection.detected) return buildStructuredAmbiguousTable(text, table, plan, batch);
+  return null;
+}
+
 function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const rows: ParsedTabularAnimalEventRow[] = [];
   for (const line of lines.slice(headerIndex + 1)) {
@@ -711,19 +942,30 @@ function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: num
 }
 
 export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
+  const structured = parseStructuredTableMessage(text);
+  if (structured && structured.tipo !== "IMPORTACAO_TABELA_AMBIGUA") return structured;
+
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
-  if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines);
+  if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines) || structured;
 
   const kind = detectTableKindFromHeader(lines[headerIndex].text);
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
   if (kind === "stock_import") return parseStockImportTable(text, lines, headerIndex);
   if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
-  return null;
+  return structured;
 }
 
 export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import"): ParsedRanchoMessage | null {
+  const forcedDomain = kind === "animal_events"
+    ? "REPRODUCAO_EVENTOS"
+    : kind === "animals_import"
+      ? "CADASTRO_ANIMAL"
+      : "ESTOQUE_MOVIMENTACAO";
+  const structured = parseStructuredTableMessage(text, undefined, forcedDomain);
+  if (structured && structured.tipo !== "IMPORTACAO_TABELA_AMBIGUA") return structured;
+
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
   if (headerIndex < 0 && kind === "animals_import") return parseHeaderlessAnimalsImportTable(text, lines);

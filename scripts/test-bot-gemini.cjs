@@ -134,6 +134,34 @@ global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = ({ text }) => {
   return clone(result);
 };
 
+function compactHeader(value) {
+  return normalize(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function genericColumnMapping(headers) {
+  const mapping = {};
+  headers.map(compactHeader).forEach((header, index) => {
+    if (/^(animal|codigo|cod|brinco|codigo animal)$/.test(header)) mapping.animal_ref = index;
+    if (/^(evento|tipo|status|status tipo)$/.test(header)) mapping.event_type = index;
+    if (/^(data|quando|dia)$/.test(header)) mapping.date = index;
+    if (/^(obs|observacao|observacoes)$/.test(header)) mapping.observations = index;
+    if (/^(litros|litro|quantidade|qtd)$/.test(header)) mapping.quantity = index;
+  });
+  return mapping;
+}
+
+global.__RANCHO_GEMINI_TABLE_CLASSIFIER_MOCK__ = ({ table }) => {
+  const mapping = genericColumnMapping(table.headers || []);
+  const tableType = Number.isInteger(mapping.quantity) ? "PRODUCAO_LEITE" : "REPRODUCAO_EVENTOS";
+  return {
+    tableType,
+    confidence: 0.91,
+    columnMapping: mapping,
+    warnings: [],
+    needsUserClarification: false
+  };
+};
+
 global.fetch = async () => {
   throw new Error("test:bot:gemini nao deve chamar API real");
 };
@@ -174,6 +202,26 @@ const cases = [
   { message: "quanto tem de Leite Cru no estoque?", intent: "CONSULTA_ESTOQUE_ITEM" },
   { message: "como esta a vaca 19?", intent: "CONSULTA_ANIMAL" },
   { message: "Codigo Animal Status Tipo Data Observacoes 001 Inseminacao 01.01.26 001 Pre-parto 20.09.26 001 Pariu 10.10.26", intent: "LOTE_REGISTROS", registros: 3 },
+  {
+    message: [
+      "Quando|Animal|Obs|Evento",
+      "01/01/2026|GX-11||Inseminacao",
+      "02/01/2026|GX-12|normal|Pariu",
+      "03/01/2026|GX-13||Cio",
+      "04/01/2026|GX-14||Pre-parto",
+      "05/01/2026|GX-15||Aborto",
+      "06/01/2026|GX-16||Inseminacao",
+      "07/01/2026|GX-17||Pariu",
+      "08/01/2026|GX-18||Cio",
+      "09/01/2026|GX-19||Pre-parto",
+      "10/01/2026|GX-20||Aborto",
+      "11/01/2026|GX-21||Inseminacao",
+      "12/01/2026|GX-22||Pariu"
+    ].join("\n"),
+    intent: "IMPORTACAO_EVENTOS_TABELA",
+    total_linhas: 12,
+    columnMappingFields: ["animal_ref", "event_type", "date"]
+  },
   { message: "boa tarde", clarify: true }
 ];
 
@@ -199,7 +247,7 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "gemini_tabela" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
       if (testCase.missing) {
@@ -208,6 +256,14 @@ const cases = [
       if (testCase.registros) {
         assert(Array.isArray(parsed.dados?.registros), `${testCase.message}: lote sem registros`);
         assert(parsed.dados.registros.length === testCase.registros, `${testCase.message}: registros esperado ${testCase.registros}, recebido ${parsed.dados.registros.length}`);
+      }
+      if (testCase.total_linhas) {
+        assert(Number(parsed.dados?.total_linhas) === Number(testCase.total_linhas), `${testCase.message}: total_linhas esperado ${testCase.total_linhas}, recebido ${parsed.dados?.total_linhas}`);
+        assert(Number(parsed.dados?.gemini_table_sample_rows) < Number(testCase.total_linhas), `${testCase.message}: Gemini recebeu linhas demais no sample`);
+      }
+      for (const field of testCase.columnMappingFields || []) {
+        const mapping = parsed.dados?.columnMapping || {};
+        assert(Number.isInteger(Number(mapping[field])), `${testCase.message}: columnMapping sem ${field}`);
       }
       results.push({ ok: true, name: testCase.message });
     } catch (error) {

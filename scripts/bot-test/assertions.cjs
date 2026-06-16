@@ -226,6 +226,23 @@ module.exports = function loadBotTestSection(context) {
       if ("total_linhas" in expected && Number(dados.total_linhas) !== Number(expected.total_linhas)) failures.push(`total_linhas esperado ${expected.total_linhas}, recebido ${dados.total_linhas}`);
       if ("total_linhas_parse_validas" in expected && Number(dados.total_linhas_parse_validas) !== Number(expected.total_linhas_parse_validas)) failures.push(`total_linhas_parse_validas esperado ${expected.total_linhas_parse_validas}, recebido ${dados.total_linhas_parse_validas}`);
       if ("total_linhas_parse_invalidas" in expected && Number(dados.total_linhas_parse_invalidas) !== Number(expected.total_linhas_parse_invalidas)) failures.push(`total_linhas_parse_invalidas esperado ${expected.total_linhas_parse_invalidas}, recebido ${dados.total_linhas_parse_invalidas}`);
+      if ("total_linhas_revisao" in expected && Number(dados.total_linhas_revisao || 0) !== Number(expected.total_linhas_revisao)) failures.push(`total_linhas_revisao esperado ${expected.total_linhas_revisao}, recebido ${dados.total_linhas_revisao || 0}`);
+      if (expected.structuredInvariants) {
+        const summary = dados.batchValidationSummary || {};
+        const total = Number(summary.totalRows ?? dados.total_linhas ?? 0);
+        const valid = Number(summary.validRecords ?? dados.validRecords ?? dados.total_linhas_parse_validas ?? 0);
+        const invalid = Number(summary.invalidRecords ?? dados.invalidRecords ?? 0);
+        const review = Number(summary.needsReview ?? dados.needsReviewRecords ?? dados.total_linhas_revisao ?? 0);
+        if (total !== Number(dados.total_linhas || total)) failures.push(`invariante tabela: totalRows ${total} difere de total_linhas ${dados.total_linhas}`);
+        if (valid + invalid + review !== total) failures.push(`invariante tabela: valid+invalid+review=${valid + invalid + review}, total=${total}`);
+      }
+      if (expected.columnMappingFields) {
+        const mapping = dados.columnMapping || dados.tablePlan?.columnMapping || {};
+        for (const field of expected.columnMappingFields) {
+          if (!Number.isInteger(Number(mapping[field]))) failures.push(`columnMapping sem campo ${field}`);
+        }
+      }
+      if (expected.separator && dados.separator !== expected.separator) failures.push(`separador esperado ${JSON.stringify(expected.separator)}, recebido ${JSON.stringify(dados.separator)}`);
       if (expected.eventCounts) {
         const counts = dados.contagem_eventos_parse || dados.resumo_validacao?.por_tipo || {};
         for (const [eventType, total] of Object.entries(expected.eventCounts)) {
