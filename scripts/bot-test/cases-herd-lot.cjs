@@ -89,6 +89,20 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "dados das vacas consulta rebanho sem pedir brinco",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["dados das vacas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", modo: "resumo" },
+          responseIncludes: "Resumo do rebanho",
+          allResponsesNotInclude: ["Qual é o brinco", "Está correto"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "lista das minhas vacas consulta rebanho sem confirmacao",
         module: "rebanho-lotes",
         phone: BOT_TEST_ADMIN_PHONE,

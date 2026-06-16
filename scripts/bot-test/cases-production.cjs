@@ -256,6 +256,7 @@ module.exports = function loadBotTestSection(context) {
       { module: "rebanho-lotes", phrase: "quais animais eu tenho cadastrado", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, modo: "lista", consulta: true } },
       { module: "rebanho-lotes", phrase: "quantos animais tenho?", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, modo: "contagem", consulta: true } },
       { module: "rebanho-lotes", phrase: "quais vacas eu tenho", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", modo: "lista", consulta: true } },
+      { module: "rebanho-lotes", phrase: "dados das vacas", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", modo: "resumo", consulta: true, noMissing: true } },
       { module: "rebanho-lotes", phrase: "dados das minhas vacas", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", modo: "resumo", consulta: true, noMissing: true } },
       { module: "rebanho-lotes", phrase: "lista das minhas vacas", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, categoria: "vaca", modo: "lista", consulta: true, noMissing: true } },
       { module: "rebanho-lotes", phrase: "me mostra meus animais", expected: { tipo: "CONSULTA_REBANHO", exactTipo: true, modo: "lista", consulta: true, noMissing: true } },

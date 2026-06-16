@@ -5,7 +5,7 @@ import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
-import { parseRanchoMessage } from "@/lib/whatsapp/nlp";
+import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
 
@@ -66,6 +66,68 @@ function animalRef(fields: AnyRecord) {
   return cleanText(fields.animal_ref || fields.animal_codigo || fields.codigo || fields.animal);
 }
 
+function herdCategoryFromText(text: string) {
+  if (/\b(?:vacas?|vaca)\b/.test(text)) return "vaca";
+  if (/\b(?:bois?|boi)\b/.test(text)) return "boi";
+  if (/\b(?:touros?|touro)\b/.test(text)) return "touro";
+  if (/\b(?:bezerras?|bezerra)\b/.test(text)) return "bezerra";
+  if (/\b(?:bezerros?|bezerro)\b/.test(text)) return "bezerro";
+  if (/\b(?:novilhas?|novilha)\b/.test(text)) return "novilha";
+  return undefined;
+}
+
+function herdReproductionFromText(text: string) {
+  if (/\b(?:prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao|gestando|gravidas?)\b/.test(text)) return "prenhe";
+  if (/\b(?:pre\s*parto|pre-parto|preparto|quase\s+parindo|perto\s+de\s+parir)\b/.test(text)) return "pre_parto";
+  if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|cobert[ao]s?|cobertura|cobertas?|cobertos?)\b/.test(text)) return "inseminada";
+  if (/\b(?:sem\s+(?:evento|eventos|historico|registro|registros))\b/.test(text)) return "sem_evento";
+  return undefined;
+}
+
+function herdModeFromText(text: string) {
+  if (/\b(?:quantos|quantas|total|contagem|numero)\b/.test(text)) return "contagem";
+  if (/\b(?:resumo|relatorio|dados|informacoes|info)\b/.test(text)) return "resumo";
+  return "lista";
+}
+
+function hasCollectiveHerdCue(text: string) {
+  const directCollective = /\b(?:minhas?\s+vacas|minhas?\s+bezerras|meus\s+animais|dados\s+das|dados\s+dos|vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
+  const listCue = /\b(?:lista|listar|liste|mostra|mostrar|mostre|relatorio|resumo|quais|quantos|quantas)\b/.test(text);
+  const groupCue = /\b(?:vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
+  return directCollective || (listCue && groupCue);
+}
+
+function hasSpecificAnimalCue(fields: AnyRecord, text: string) {
+  const ref = animalRef(fields);
+  if (ref && !/\b(?:vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?|animais|rebanho|gado|minhas?|meus|cadastrados?|cadastradas?)\b/.test(normalizeRanchoText(ref))) {
+    return true;
+  }
+  return /\b(?:brinco|codigo|cod|numero|n)\s+[a-z]*\d[a-z0-9-]*\b/.test(text)
+    || /\b(?:vaca|animal|boi|touro|bezerro|bezerra|novilha)\s+\d[a-z0-9-]*\b/.test(text)
+    || /\b[a-z]+-\d[a-z0-9-]*\b/.test(text)
+    || /\b[a-z]+\d[a-z0-9-]*\b/.test(text);
+}
+
+function normalizeHerdConsultationIntent(intent: string, fields: AnyRecord, rawText: string) {
+  const text = normalizeRanchoText(rawText);
+  const shouldRouteToHerd = hasCollectiveHerdCue(text) && !hasSpecificAnimalCue(fields, text);
+  if (!shouldRouteToHerd) return { intent, fields };
+  if (intent !== "CONSULTA_ANIMAL" && intent !== "DESCONHECIDO" && intent !== "CONSULTA_REBANHO") return { intent, fields };
+
+  return {
+    intent: "CONSULTA_REBANHO",
+    fields: {
+      ...fields,
+      animal_ref: undefined,
+      animal_codigo: undefined,
+      animal: undefined,
+      categoria: cleanText(fields.categoria) || herdCategoryFromText(text),
+      reproducao: cleanText(fields.reproducao) || herdReproductionFromText(text),
+      modo: cleanText(fields.modo) || herdModeFromText(text)
+    }
+  };
+}
+
 function itemName(fields: AnyRecord) {
   return cleanText(fields.item || fields.item_nome || fields.produto);
 }
@@ -120,11 +182,14 @@ function buildParsedFromData(
 
 function mapMissingFields(intent: string, fields: AnyRecord, missingFields: string[]) {
   const mapped = new Set<string>();
+  const sourceMissingFields = intent === "CONSULTA_REBANHO"
+    ? missingFields.filter((field) => !["animal_ref", "animal_codigo", "codigo", "animal"].includes(field))
+    : missingFields;
   const add = (field?: string) => {
     if (field) mapped.add(field);
   };
 
-  for (const field of missingFields) {
+  for (const field of sourceMissingFields) {
     if (field === "animal_ref") add("animal_codigo");
     else if (field === "item") add("item_nome");
     else if (field === "valor_total") add("valor");
@@ -287,6 +352,22 @@ function mapGeminiFieldsToRancho(intent: string, fields: AnyRecord, rawText: str
           data_referencia: dateReference(fields) || "hoje",
           periodo: cleanText(fields.periodo || fields.data) || "hoje",
           consulta_producao: cleanText(fields.modo)
+        }
+      };
+
+    case "CONSULTA_REBANHO":
+      return {
+        tipo,
+        dados: {
+          consulta: true,
+          modo: cleanText(fields.modo) || "lista",
+          categoria: cleanText(fields.categoria),
+          sexo: cleanText(fields.sexo),
+          status: cleanText(fields.status),
+          reproducao: cleanText(fields.reproducao),
+          lote_nome: cleanText(fields.lote_nome || fields.lote),
+          sem_lote: fields.sem_lote === true || undefined,
+          pagina: numberValue(fields.pagina)
         }
       };
 
@@ -478,34 +559,37 @@ function mapGeminiFieldsToRancho(intent: string, fields: AnyRecord, rawText: str
 }
 
 export function geminiResultToParsed(result: GeminiStructuredResult, rawText: string): ParsedRanchoMessage | null {
-  const intent = normalizeGeminiIntent(result.intent);
-  const mapping = mapGeminiFieldsToRancho(intent, result.fields || {}, rawText);
+  const normalized = normalizeHerdConsultationIntent(normalizeGeminiIntent(result.intent), result.fields || {}, rawText);
+  const mapping = mapGeminiFieldsToRancho(normalized.intent, normalized.fields, rawText);
   if (!mapping) return null;
   return buildParsedFromData(
     mapping.tipo,
-    intent,
+    normalized.intent,
     mapping.dados,
-    result,
-    mapMissingFields(intent, result.fields || {}, result.missing_fields || [])
+    {
+      ...result,
+      should_confirm: GEMINI_CONSULT_INTENTS.has(normalized.intent) ? false : result.should_confirm
+    },
+    mapMissingFields(normalized.intent, normalized.fields, result.missing_fields || [])
   );
 }
 
 function geminiActionToParsed(action: GeminiStructuredAction, parent: GeminiStructuredResult, rawText: string): ParsedRanchoMessage | null {
-  const intent = normalizeGeminiIntent(action.intent);
-  const mapping = mapGeminiFieldsToRancho(intent, action.fields || {}, rawText);
+  const normalized = normalizeHerdConsultationIntent(normalizeGeminiIntent(action.intent), action.fields || {}, rawText);
+  const mapping = mapGeminiFieldsToRancho(normalized.intent, normalized.fields, rawText);
   if (!mapping) return null;
   return buildParsedFromData(
     mapping.tipo,
-    intent,
+    normalized.intent,
     mapping.dados,
     {
       ...action,
       confidence: action.confidence ?? parent.confidence,
       riskScore: action.riskScore ?? parent.riskScore,
       warnings: [...(parent.warnings || []), ...(action.warnings || [])],
-      should_confirm: action.should_confirm ?? parent.should_confirm
+      should_confirm: GEMINI_CONSULT_INTENTS.has(normalized.intent) ? false : action.should_confirm ?? parent.should_confirm
     },
-    mapMissingFields(intent, action.fields || {}, action.missing_fields || [])
+    mapMissingFields(normalized.intent, normalized.fields, action.missing_fields || [])
   );
 }
 

@@ -92,6 +92,10 @@ export const GEMINI_INTENT_SCHEMAS: Record<GeminiAllowedIntent, GeminiIntentSche
     required: ["animal_ref"],
     optional: ["periodo", "data", "modo"]
   },
+  CONSULTA_REBANHO: {
+    required: [],
+    optional: ["categoria", "sexo", "status", "reproducao", "lote", "lote_nome", "modo", "pagina", "sem_lote"]
+  },
   CONSULTA_REGISTROS_HOJE: {
     required: [],
     optional: ["data", "periodo", "tipo"]

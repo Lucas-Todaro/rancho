@@ -97,6 +97,8 @@ const fixtures = new Map([
   ["paguei 300 de energia", fixture("FINANCEIRO_DESPESA", { valor: 300, descricao: "energia", categoria: "energia" })],
   ["com o que eu gastei hoje?", fixture("CONSULTA_FINANCEIRO_DESPESAS", { data: "hoje" }, { should_confirm: false })],
   ["da o relatorio da producao de hoje", fixture("CONSULTA_PRODUCAO_HOJE", {}, { should_confirm: false })],
+  ["dados das vacas", fixture("CONSULTA_ANIMAL", { animal_ref: "vacas" }, { should_confirm: false })],
+  ["lista das vacas", fixture("CONSULTA_REBANHO", { categoria: "vaca", modo: "lista" }, { should_confirm: false })],
   ["novo animal", fixture("CADASTRO_ANIMAL", {}, { missing_fields: ["codigo", "categoria"], should_confirm: false })],
   ["cadastrar vaca mimosa brinco 021 peso 400kg", fixture("CADASTRO_ANIMAL", { codigo: "021", categoria: "vaca", nome: "Mimosa", peso: 400 })],
   ["001;vaca 002;boi", fixture("CADASTRO_ANIMAL_EM_MASSA", {
@@ -162,6 +164,8 @@ const cases = [
   { message: "paguei 300 de energia", intent: "DESPESA" },
   { message: "com o que eu gastei hoje?", intent: "CONSULTA_FINANCEIRO" },
   { message: "da o relatorio da producao de hoje", intent: "CONSULTA_PRODUCAO_HOJE" },
+  { message: "dados das vacas", intent: "CONSULTA_REBANHO" },
+  { message: "lista das vacas", intent: "CONSULTA_REBANHO" },
   { message: "novo animal", intent: "CADASTRO_ANIMAL", missing: true },
   { message: "cadastrar vaca Mimosa brinco 021 peso 400kg", intent: "CADASTRO_ANIMAL" },
   { message: "001;vaca 002;boi", intent: "IMPORTACAO_ANIMAIS_TABELA" },
