@@ -1,0 +1,208 @@
+import { configuredGeminiModel, botTestVerbose } from "@/lib/whatsapp/gemini/config";
+import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
+import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
+import { buildGeminiSystemPrompt } from "@/lib/whatsapp/gemini/system-prompt";
+import { validateInterpretedAction } from "@/lib/whatsapp/gemini/validator";
+import type {
+  GeminiInterpreterInput,
+  GeminiInterpreterResult
+} from "@/lib/whatsapp/gemini/types";
+
+type GeminiApiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+  };
+};
+
+type GeminiMockGlobal = typeof globalThis & {
+  __RANCHO_GEMINI_INTERPRETER_MOCK__?: (input: GeminiInterpreterInput) => unknown | Promise<unknown>;
+};
+
+const GEMINI_TIMEOUT_MS = 8000;
+
+function textFromGeminiResponse(data: GeminiApiResponse) {
+  return (data.candidates || [])
+    .flatMap((candidate) => candidate.content?.parts || [])
+    .map((part) => part.text || "")
+    .join("\n")
+    .trim();
+}
+
+function parseJsonObject(text: string): unknown {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("JSON object not found");
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+}
+
+function geminiInterpreterLog(event: string, details: Record<string, unknown>) {
+  console.log("[BOT GEMINI INTERPRETER]", {
+    event,
+    ...details
+  });
+}
+
+async function mockInterpretation(input: GeminiInterpreterInput) {
+  const globalMock = (globalThis as GeminiMockGlobal).__RANCHO_GEMINI_INTERPRETER_MOCK__;
+  if (globalMock) return globalMock(input);
+
+  if (process.env.BOT_GEMINI_MOCK === "json" && process.env.BOT_GEMINI_MOCK_RESPONSE) {
+    return parseJsonObject(process.env.BOT_GEMINI_MOCK_RESPONSE);
+  }
+
+  return undefined;
+}
+
+export async function interpretWithGemini(input: GeminiInterpreterInput): Promise<GeminiInterpreterResult> {
+  const mock = await mockInterpretation(input);
+  if (mock !== undefined) {
+    const validation = validateInterpretedAction(mock, {
+      originalText: input.text,
+      currentDate: input.currentDate,
+      timezone: input.timezone
+    });
+    if (!validation.ok) {
+      return { ok: false, reason: validation.reason === "dangerous_response" ? "dangerous_response" : "invalid_schema", message: validation.message };
+    }
+    return {
+      ok: true,
+      interpretation: validation.value,
+      model: "mock",
+      rawText: JSON.stringify(mock),
+      validationStatus: validation.status
+    };
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const model = configuredGeminiModel();
+  if (!apiKey) {
+    geminiInterpreterLog("skipped", { reason: "missing_api_key", model, messageLength: input.text.length });
+    return { ok: false, reason: "missing_api_key", message: "GEMINI_API_KEY nao configurada." };
+  }
+
+  const prompt = buildGeminiSystemPrompt({
+    ...input,
+    allowedIntents: input.allowedIntents || [...GEMINI_ALLOWED_INTENTS],
+    schemas: input.schemas || allGeminiSchemasForPrompt()
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  const modelPath = model.replace(/^models\//, "");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  try {
+    geminiInterpreterLog("request", { model, messageLength: input.text.length });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json"
+        }
+      }),
+      signal: controller.signal
+    });
+
+    const data = await response.json().catch(() => ({})) as GeminiApiResponse;
+    if (!response.ok) {
+      const reason = response.status === 429 ? "rate_limit" : response.status >= 500 ? "api_error" : "api_error";
+      geminiInterpreterLog("error", { reason, status: response.status, model, apiStatus: data.error?.status || null });
+      return {
+        ok: false,
+        reason,
+        status: response.status,
+        message: data.error?.message || "Erro ao chamar Gemini."
+      };
+    }
+
+    const rawText = textFromGeminiResponse(data);
+    if (!rawText) {
+      geminiInterpreterLog("error", { reason: "empty_response", model });
+      return { ok: false, reason: "empty_response", message: "Gemini retornou resposta vazia." };
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = parseJsonObject(rawText);
+    } catch {
+      geminiInterpreterLog("error", { reason: "invalid_json", model, responseLength: rawText.length });
+      return { ok: false, reason: "invalid_json", message: "Gemini retornou JSON invalido.", rawText };
+    }
+
+    const validation = validateInterpretedAction(parsed, {
+      originalText: input.text,
+      currentDate: input.currentDate,
+      timezone: input.timezone
+    });
+    if (!validation.ok) {
+      geminiInterpreterLog("error", { reason: validation.reason, model, message: validation.message });
+      return {
+        ok: false,
+        reason: validation.reason === "dangerous_response" ? "dangerous_response" : "invalid_schema",
+        message: validation.message,
+        rawText
+      };
+    }
+
+    if (botTestVerbose()) {
+      geminiInterpreterLog("verbose", {
+        prompt,
+        rawText,
+        validationStatus: validation.status,
+        warnings: validation.warnings
+      });
+    }
+
+    geminiInterpreterLog("success", {
+      model,
+      intent: validation.value.intent,
+      confidence: validation.value.confidence,
+      riskScore: validation.value.riskScore,
+      missingFields: validation.missingFields,
+      shouldConfirm: validation.value.should_confirm
+    });
+
+    return {
+      ok: true,
+      model,
+      rawText,
+      interpretation: validation.value,
+      validationStatus: validation.status
+    };
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === "AbortError";
+    const reason = aborted ? "timeout" : "network_error";
+    geminiInterpreterLog("error", { reason, model });
+    return {
+      ok: false,
+      reason,
+      message: aborted ? "Tempo esgotado ao chamar Gemini." : "Erro de rede ao chamar Gemini."
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+

@@ -5,6 +5,10 @@ const nodeCrypto = require("crypto");
 const ts = require("typescript");
 
 const root = path.resolve(__dirname, "..");
+if (!process.env.BOT_INTERPRETER) process.env.BOT_INTERPRETER = "legacy_parser";
+if (process.env.BOT_INTERPRETER === "gemini" && !process.env.BOT_GEMINI_MOCK && !process.env.GEMINI_API_KEY) {
+  process.env.BOT_GEMINI_MOCK = "legacy_parser";
+}
 const BOT_TEST_REPORT_JSON = path.join(root, "bot-test-report.json");
 const BOT_TEST_REPORT_MD = path.join(root, "bot-test-report.md");
 const BOT_EVALUATION_REPORT_JSON = path.join(root, "bot-evaluation-report.json");

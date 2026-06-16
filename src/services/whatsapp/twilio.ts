@@ -14,7 +14,7 @@ import { animalBlockedMessage, animalDeathDate, animalStatusValue, isAnimalInact
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/identity";
 import { detectConversationAct, logConversationAct, type ConversationAct } from "@/services/whatsapp/conversation-act";
-import { parseWithGeminiFallback } from "@/services/whatsapp/gemini-fallback";
+import { isGeminiPrimaryMode, parseWithConfiguredInterpreter } from "@/services/whatsapp/interpreter/gemini-primary";
 import { buildRanchReport, type OperationalReportKind, type OperationalReportMode } from "@/services/whatsapp/operational-report";
 import {
   BOT_EXAMPLES,
@@ -7019,7 +7019,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else {
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const localParsedPreview = parseRanchoMessage(parserMessage);
-    const tableParsedPreview = ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
+    const legacyParserCanDecide = !isGeminiPrimaryMode();
+    const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;
     if (originalMessage.includes(";")) {
@@ -7183,7 +7184,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         response = handled.response || "";
       } else {
         const localParsed = localParsedPreview;
-        const fallback = await parseWithGeminiFallback({
+        const fallback = await parseWithConfiguredInterpreter({
           text: parserMessage,
           localParsed,
           owner
