@@ -6034,6 +6034,10 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
 
   const criticalLocalFallback = parsed.dados?.origem_parser !== "gemini"
     && (parsed.flags || []).some((flag) => ["use_gemini_fallback", "compound_message", "multiple_intents_detected", "conflicting_intents", "correction_message"].includes(flag));
+  if (CONSULT_INTENTS.has(parsed.tipo) && parsed.perguntas_faltantes.length && !parsed.dados?.animal_referencia_nao_encontrada) {
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
+    return missingText(parsed);
+  }
   if (criticalLocalFallback && CONSULT_INTENTS.has(parsed.tipo)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return "Não consegui entender essa mensagem com segurança. Pode mandar uma ação por vez ou reformular com mais detalhes?";

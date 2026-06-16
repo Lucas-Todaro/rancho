@@ -110,6 +110,24 @@ export const GEMINI_ACTION_TYPES = [
   "AJUDA"
 ] as const;
 
+const GEMINI_CONSULTATION_ACTION_TYPES = new Set<string>([
+  "CONSULTA_GENEALOGIA",
+  "CONSULTA_ANIMAL",
+  "CONSULTA_REBANHO",
+  "CONSULTA_LOTES",
+  "CONSULTA_PRODUCAO",
+  "CONSULTA_PRODUCAO_HOJE",
+  "CONSULTA_PRODUCAO_ANIMAL",
+  "CONSULTA_FINANCEIRO",
+  "CONSULTA_ESTOQUE",
+  "CONSULTA_ESTOQUE_ITEM",
+  "CONSULTA_ESTOQUE_GERAL",
+  "CONSULTA_FUNCIONARIO",
+  "CONSULTA_PONTO",
+  "CONSULTA_REGISTROS_HOJE",
+  "AJUDA"
+]);
+
 const GEMINI_OPERATIONS = [
   "register",
   "create",
@@ -140,7 +158,8 @@ const ACTION_DESCRIPTIONS = [
   "CADASTRO_ANIMAL/ATUALIZACAO_ANIMAL/EXCLUIR_REBANHO: cadastrar, alterar ou excluir todos os animais do rebanho",
   "ATUALIZACAO_GENEALOGIA/CONSULTA_GENEALOGIA: alterar ou consultar genealogia",
   "CRIAR_LOTE/CONSULTA_LOTES: criar ou consultar lotes",
-  "CONSULTA_REBANHO: consultar animais/rebanho",
+  "CONSULTA_ANIMAL: consultar dados de um animal especifico somente quando houver codigo/brinco/nome claro",
+  "CONSULTA_REBANHO: listar ou resumir animais/rebanho; use para minhas vacas, meus animais, lista de vacas, dados das vacas, vacas cadastradas, gado ou rebanho",
   "CONSULTA_PRODUCAO/CONSULTA_PRODUCAO_HOJE/CONSULTA_PRODUCAO_ANIMAL: consultar producao",
   "CONSULTA_FINANCEIRO: consultar financeiro",
   "CONSULTA_ESTOQUE/CONSULTA_ESTOQUE_ITEM/CONSULTA_ESTOQUE_GERAL: consultar estoque",
@@ -203,7 +222,13 @@ function buildPrompt(input: {
     "Use apenas os tipos de acao suportados. Nunca retorne SQL, nomes de tabelas, schema, tokens, chaves ou instrucoes de backend.",
     "Se a mensagem tiver mais de uma acao, retorne as acoes na ordem em que devem acontecer.",
     "Para registros, alteracoes, exclusoes, financeiro, estoque, animais, funcionarios, genealogia ou ponto, marque requiresConfirmation como true.",
-    "Para consultas e relatorios claros, requiresConfirmation pode ser false.",
+    "Para consultas, listagens e relatorios claros, requiresConfirmation deve ser false.",
+    "Use CONSULTA_ANIMAL apenas quando o usuario mencionar um animal especifico por codigo/brinco/nome, como \"vaca 19\", \"B-002\", \"Mimosa\" ou \"dados da Mimosa\".",
+    "Quando o usuario pedir \"minhas vacas\", \"meus animais\", \"rebanho\", \"lista de vacas\", \"dados das vacas\", \"vacas cadastradas\" ou \"animais cadastrados\", use CONSULTA_REBANHO.",
+    "Nao peca brinco/codigo quando a mensagem estiver no plural ou pedir lista/relatorio do rebanho.",
+    "Se a mensagem pedir lista/relatorio, retorne intent de consulta/listagem, nao intent operacional.",
+    "Para CONSULTA_REBANHO use entity para categoria/filtro principal, como vaca, boi, bezerro, novilha, touro, ou null para rebanho inteiro.",
+    "Para CONSULTA_REBANHO use notes para filtros adicionais, como prenhe, gestante, pre_parto, inseminada, ativo, morto, lote ou resumo.",
     "Se estiver ambiguo, use confidence menor que 0.7, requiresConfirmation true e userResponse pedindo esclarecimento.",
     "Campos: entity deve guardar o alvo principal; quantity deve guardar quantidade ou valor monetario; unit deve guardar unidade; notes deve guardar descricao curta.",
     "",
@@ -348,13 +373,15 @@ export function validateGeminiInterpretation(value: unknown): GeminiInterpretati
     return { ok: false, reason: "invalid_schema", message: errors.join("; ") };
   }
 
+  const allActionsAreConsultations = actions.length > 0 && actions.every((action) => GEMINI_CONSULTATION_ACTION_TYPES.has(action.type));
+
   return {
     ok: true,
     model: geminiModel(),
     rawText: "",
     interpretation: {
       confidence: Number(confidence),
-      requiresConfirmation: Boolean(requiresConfirmation),
+      requiresConfirmation: allActionsAreConsultations ?false : Boolean(requiresConfirmation),
       reason: reason || "",
       reasoning_short: reasoningShort || undefined,
       risk_flags: riskFlags,

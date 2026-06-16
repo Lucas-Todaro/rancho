@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:bot": "node scripts/test-bot.cjs",
+    "test:bot:gemini": "node scripts/test-gemini-fallback.cjs",
     "test:bot:fallback-audit": "node scripts/test-bot-fallback-audit.cjs",
     "test:bot:heavy": "node scripts/test-bot-heavy.cjs",
     "test:gemini-fallback": "node scripts/test-gemini-fallback.cjs"

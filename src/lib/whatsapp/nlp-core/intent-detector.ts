@@ -633,7 +633,7 @@ function herdReproductionQueryCue(normalized: string, original: string) {
 
 function consultationModeFromText(normalized: string) {
   if (/\b(?:quantos|quantas|total|contagem|numero)\b/.test(normalized)) return "contagem";
-  if (/\b(?:resumo|relatorio|como esta|como ta)\b/.test(normalized)) return "resumo";
+  if (/\b(?:resumo|relatorio|dados|informacoes|info|como esta|como ta)\b/.test(normalized)) return "resumo";
   return "lista";
 }
 
@@ -1187,10 +1187,14 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const herdActionCue = /\b(?:cadastra|cadastrar|cadastre|cadastro|adicionar|adiciona|adicione|inclui|incluir|registrar|registra|lanca|lançar|lancar|bota|botar|botei|coloca|colocar|coloquei|cria|criar|novo|nova|mudar|atualizar|alterar|trocar|corrigir|vendi|vendeu|morreu|pariu)\b/.test(normalized);
   const herdReproductiveMutationCue = /\b(?:confirmar|diagnostico|positivo|negativo|ficou|esta|ta|foi|marcar|marca|coberta|coberto)\b/.test(normalized)
     || /\b(?:prenhez|inseminacao|cobertura)\s+(?:da|do|de|na|no)\b/.test(normalized);
+  const genericSingleAnimalReportQuery = /\b(?:como\s+(?:que\s+)?(?:ta|esta)|relatorio|resumo|ficha|dados|informacoes|info|situacao|status)\s+(?:da\s+vaca|do\s+animal|do\s+boi|do\s+touro|da\s+bezerra|do\s+bezerro|da\s+novilha)\s*[?!.]*$/.test(normalized);
+  if (genericSingleAnimalReportQuery) {
+    return finalize("CONSULTA_ANIMAL", { consulta: true }, buildMissing("CONSULTA_ANIMAL", { consulta: true }), 0.65);
+  }
   const herdQueryCue = !herdActionCue
     && !herdReproductiveMutationCue
     && (
-      /\b(?:quais|quantos|quantas|total|lista|listar|mostra|mostrar|ver|consulta|consultar|tenho|cadastrados|cadastradas|resumo|relatorio|relatório|como esta|como ta|pagina|pg)\b/.test(normalized)
+      /\b(?:quais|quantos|quantas|total|lista|listar|mostra|mostrar|ver|consulta|consultar|tenho|cadastrados|cadastradas|resumo|relatorio|relatório|dados|informacoes|info|como esta|como ta|pagina|pg)\b/.test(normalized)
       || /\?/.test(original)
     )
     && (

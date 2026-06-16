@@ -72,6 +72,10 @@ function isConsultIntent(tipo: RanchoIntent) {
   return CONSULT_INTENTS.has(tipo);
 }
 
+function consultationRequiresConfirmation(tipo: RanchoIntent, interpretation: GeminiInterpretation) {
+  return !isConsultIntent(tipo) && interpretation.requiresConfirmation;
+}
+
 function cleanString(value: string | null | undefined) {
   const text = String(value || "").trim();
   return text || undefined;
@@ -126,11 +130,86 @@ function medicineType(action: GeminiAction) {
   return /\bvacina|vacin/i.test(actionText(action)) ?"vacina" : "tratamento";
 }
 
+function herdCategoryFromGeminiText(text: string) {
+  if (/\b(?:vacas?|vaca)\b/.test(text)) return "vaca";
+  if (/\b(?:bois?|boi)\b/.test(text)) return "boi";
+  if (/\b(?:touros?|touro)\b/.test(text)) return "touro";
+  if (/\b(?:bezerras?|bezerra)\b/.test(text)) return "bezerra";
+  if (/\b(?:bezerros?|bezerro)\b/.test(text)) return "bezerro";
+  if (/\b(?:novilhas?|novilha)\b/.test(text)) return "novilha";
+  return undefined;
+}
+
+function herdReproductionFromGeminiText(text: string) {
+  if (/\b(?:prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao|gestando|gravidas?)\b/.test(text)) return "prenhe";
+  if (/\b(?:pre\s*parto|pre-parto|preparto|quase\s+parindo|perto\s+de\s+parir)\b/.test(text)) return "pre_parto";
+  if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|cobert[ao]s?|cobertura|cobertas?|cobertos?)\b/.test(text)) return "inseminada";
+  if (/\b(?:sem\s+(?:evento|eventos|historico|registro|registros))\b/.test(text)) return "sem_evento";
+  return undefined;
+}
+
+function herdModeFromGeminiText(text: string) {
+  if (/\b(?:quantos|quantas|total|contagem|numero)\b/.test(text)) return "contagem";
+  if (/\b(?:resumo|relatorio|relatorio|dados)\b/.test(text)) return "resumo";
+  return "lista";
+}
+
+function hasCollectiveHerdCue(text: string) {
+  const directCollective = /\b(?:minhas?\s+vacas|minhas?\s+bezerras|meus\s+animais|vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?|dados\s+das|dados\s+dos)\b/.test(text);
+  const listCue = /\b(?:lista|listar|liste|mostra|mostrar|mostre|relatorio|resumo|quais|quantos|quantas)\b/.test(text);
+  const groupCue = /\b(?:vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
+  return directCollective || (listCue && groupCue);
+}
+
+function hasSpecificAnimalCue(entity: string | undefined, text: string) {
+  if (entity && !/\b(?:vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?|animais|rebanho|gado|minhas?|meus|cadastrados?|cadastradas?)\b/.test(normalizeRanchoText(entity))) return true;
+  return /\b(?:brinco|codigo|cod|numero|n)\s+[a-z]*\d[a-z0-9-]*\b/.test(text)
+    || /\b(?:vaca|animal|boi|touro|bezerro|bezerra|novilha)\s+\d[a-z0-9-]*\b/.test(text)
+    || /\b[a-z]+-\d[a-z0-9-]*\b/.test(text)
+    || /\b[a-z]+\d[a-z0-9-]*\b/.test(text);
+}
+
+function normalizeGeminiIntentByText(action: GeminiAction): GeminiAction {
+  const text = actionText(action);
+  const entity = cleanString(action.entity);
+
+  if (action.type !== "CONSULTA_ANIMAL") return action;
+  if (hasSpecificAnimalCue(entity, text)) return action;
+  if (!hasCollectiveHerdCue(text)) return action;
+
+  return {
+    ...action,
+    type: "CONSULTA_REBANHO",
+    entity: herdCategoryFromGeminiText(text) || null,
+    notes: [
+      action.notes,
+      herdReproductionFromGeminiText(text) ?`reproducao:${herdReproductionFromGeminiText(text)}` : null,
+      `modo:${herdModeFromGeminiText(text)}`
+    ].filter(Boolean).join(" | ") || null
+  };
+}
+
+function herdDataFromGeminiAction(action: GeminiAction) {
+  const text = actionText(action);
+  const notes = cleanString(action.notes) || "";
+  const mode = cleanString(notes.match(/\bmodo:([a-z_]+)\b/)?.[1]) || herdModeFromGeminiText(text);
+  const reproduction = cleanString(notes.match(/\breproducao:([a-z_]+)\b/)?.[1]) || herdReproductionFromGeminiText(text);
+  const category = herdCategoryFromGeminiText(text) || herdCategoryFromGeminiText(normalizeRanchoText(String(action.entity || "")));
+
+  return {
+    consulta: true,
+    modo: mode,
+    categoria: category,
+    reproducao: reproduction,
+    filtro_texto: cleanString(action.notes || action.entity)
+  };
+}
+
 function withGeminiMetadata(tipo: RanchoIntent, action: GeminiAction, interpretation: GeminiInterpretation, dados: AnyRecord) {
   return {
     ...dados,
     origem_parser: "gemini",
-    gemini_requires_confirmation: interpretation.requiresConfirmation || !isConsultIntent(tipo),
+    gemini_requires_confirmation: consultationRequiresConfirmation(tipo, interpretation),
     gemini_reason: interpretation.reason,
     gemini_raw_text: action.rawText
   };
@@ -141,6 +220,7 @@ function buildParsed(tipo: RanchoIntent, dados: AnyRecord, confidence: number) {
 }
 
 function convertAction(action: GeminiAction, interpretation: GeminiInterpretation): ParsedRanchoMessage | null {
+  action = normalizeGeminiIntentByText(action);
   if (!isRanchoIntent(action.type)) return null;
 
   let tipo: RanchoIntent = action.type;
@@ -266,10 +346,7 @@ function convertAction(action: GeminiAction, interpretation: GeminiInterpretatio
       };
       break;
     case "CONSULTA_REBANHO":
-      dados = {
-        consulta: true,
-        filtro_texto: notes || entity
-      };
+      dados = herdDataFromGeminiAction(action);
       break;
     case "CONSULTA_LOTES":
       dados = {

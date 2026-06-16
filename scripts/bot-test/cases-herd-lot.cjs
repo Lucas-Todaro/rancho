@@ -75,6 +75,76 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "dados das minhas vacas consulta rebanho sem pedir brinco",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["dados das minhas vacas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", modo: "resumo" },
+          responseIncludes: "Resumo do rebanho",
+          allResponsesNotInclude: ["Qual é o brinco", "Está correto"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "lista das minhas vacas consulta rebanho sem confirmacao",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["lista das minhas vacas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", modo: "lista" },
+          responseIncludes: "Encontrei",
+          allResponsesNotInclude: ["Qual é o brinco", "Está correto"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "me mostra meus animais consulta rebanho geral",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["me mostra meus animais"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { modo: "lista" },
+          responseIncludes: "Encontrei",
+          allResponsesNotInclude: ["Qual é o brinco", "Está correto"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "relatorio das vacas prenhas consulta rebanho gestante",
+        module: "rebanho-lotes",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["relatorio das vacas prenhas"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          entities: { categoria: "vaca", reproducao: "prenhe" },
+          responseIncludes: "gestante",
+          allResponsesNotInclude: ["Qual é o brinco", "Está correto"],
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "dados da vaca pede qual animal sem confirmar",
+        module: "animal-relatorio-individual",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["dados da vaca"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "brinco",
+          shouldAskFollowUp: true,
+          responseNotIncludes: "Está correto",
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "consulta rebanho por categoria e lote",
         module: "rebanho-lotes",
         phone: BOT_TEST_ADMIN_PHONE,

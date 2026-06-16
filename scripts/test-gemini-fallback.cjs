@@ -224,9 +224,9 @@ function postConsultations(pending) {
 }
 
 const simpleMessages = [
-  "cadastro vaca Estrela",
+  "vaca B-002 deu 18 litros",
   "registra 12 litros da Estrela hoje",
-  "comprei 3 sacos de ração",
+  "comprei 3 sacos de ração por 120 reais",
   "paguei 200 reais pro João",
   "quanto tem de ração no estoque?"
 ];
@@ -294,8 +294,8 @@ const parserRiskCases = [
   },
   {
     message: "paguei João",
-    flags: ["missing_money_value", "needs_clarification"],
-    decision: "ask_clarification"
+    flags: ["missing_money_value", "needs_clarification", "use_gemini_fallback"],
+    decision: "gemini_fallback"
   },
   {
     message: "lança leite da Estrela",
@@ -628,6 +628,109 @@ test("consulta clara via Gemini pode executar direto", async () => {
   assertEqual(result.kind, "parsed", "consulta clara deveria virar parsed");
   assertEqual(result.parsed.tipo, "CONSULTA_ESTOQUE_ITEM", "tipo de consulta esperado");
   assertEqual(Boolean(result.parsed.dados.gemini_requires_confirmation), false, "consulta clara não deve exigir confirmação");
+});
+
+const collectiveHerdGeminiCases = [
+  {
+    message: "dados das minhas vacas",
+    expected: { categoria: "vaca", modo: "resumo" }
+  },
+  {
+    message: "lista das minhas vacas",
+    expected: { categoria: "vaca", modo: "lista" }
+  },
+  {
+    message: "me mostra meus animais",
+    expected: { modo: "lista" }
+  },
+  {
+    message: "relatorio das vacas prenhas",
+    expected: { categoria: "vaca", reproducao: "prenhe", modo: "resumo" }
+  }
+];
+
+for (const item of collectiveHerdGeminiCases) {
+  test(`Gemini CONSULTA_ANIMAL coletivo vira CONSULTA_REBANHO: ${item.message}`, async () => {
+    const { result } = await runFallback(item.message, interpretation({
+      requiresConfirmation: true,
+      actions: [
+        action({
+          type: "CONSULTA_ANIMAL",
+          operation: "query",
+          rawText: item.message
+        })
+      ]
+    }));
+
+    assertEqual(result.kind, "parsed", `${item.message}: resultado esperado`);
+    assertEqual(result.parsed.tipo, "CONSULTA_REBANHO", `${item.message}: intent corrigida`);
+    assertEqual(Boolean(result.parsed.dados.consulta), true, `${item.message}: deve ser consulta`);
+    assertEqual(result.parsed.perguntas_faltantes.length, 0, `${item.message}: não deve pedir campos faltantes`);
+    assertEqual(Boolean(result.parsed.dados.gemini_requires_confirmation), false, `${item.message}: consulta não deve pedir confirmação`);
+
+    for (const [field, value] of Object.entries(item.expected)) {
+      assertEqual(result.parsed.dados[field], value, `${item.message}: ${field} esperado`);
+    }
+  });
+}
+
+test("Gemini mantem CONSULTA_ANIMAL quando ha codigo claro", async () => {
+  const { result } = await runFallback("como esta a vaca 19?", interpretation({
+    requiresConfirmation: true,
+    actions: [
+      action({
+        type: "CONSULTA_ANIMAL",
+        operation: "query",
+        entity: "19",
+        rawText: "como esta a vaca 19?"
+      })
+    ]
+  }));
+
+  assertEqual(result.kind, "parsed", "consulta individual por codigo deveria virar parsed");
+  assertEqual(result.parsed.tipo, "CONSULTA_ANIMAL", "intent individual esperada");
+  assertEqual(result.parsed.dados.animal_codigo, "19", "animal individual esperado");
+  assertEqual(result.parsed.perguntas_faltantes.length, 0, "consulta individual com codigo nao deve pedir campos");
+  assertEqual(Boolean(result.parsed.dados.gemini_requires_confirmation), false, "consulta individual nao deve pedir confirmacao");
+});
+
+test("Gemini mantem CONSULTA_ANIMAL quando ha nome claro", async () => {
+  const { result } = await runFallback("dados da Mimosa", interpretation({
+    requiresConfirmation: true,
+    actions: [
+      action({
+        type: "CONSULTA_ANIMAL",
+        operation: "query",
+        entity: "Mimosa",
+        rawText: "dados da Mimosa"
+      })
+    ]
+  }));
+
+  assertEqual(result.kind, "parsed", "consulta individual por nome deveria virar parsed");
+  assertEqual(result.parsed.tipo, "CONSULTA_ANIMAL", "intent individual esperada");
+  assertEqual(result.parsed.dados.animal_codigo, "Mimosa", "animal individual esperado");
+  assertEqual(result.parsed.perguntas_faltantes.length, 0, "consulta individual com nome nao deve pedir campos");
+  assertEqual(Boolean(result.parsed.dados.gemini_requires_confirmation), false, "consulta individual nao deve pedir confirmacao");
+});
+
+test("Gemini mantem CONSULTA_ANIMAL incompleta para dados da vaca", async () => {
+  const { result } = await runFallback("dados da vaca", interpretation({
+    requiresConfirmation: true,
+    actions: [
+      action({
+        type: "CONSULTA_ANIMAL",
+        operation: "query",
+        rawText: "dados da vaca"
+      })
+    ]
+  }));
+
+  assertEqual(result.kind, "parsed", "consulta individual incompleta deveria virar parsed");
+  assertEqual(result.parsed.tipo, "CONSULTA_ANIMAL", "intent individual esperada");
+  assertEqual(Boolean(result.parsed.dados.animal_codigo), false, "nao deve inventar animal");
+  assert(/\b(?:animal|brinco)\b/i.test(result.parsed.perguntas_faltantes.join(" ")), "deve pedir animal/brinco faltante");
+  assertEqual(Boolean(result.parsed.dados.gemini_requires_confirmation), false, "consulta incompleta nao deve pedir confirmacao");
 });
 
 test("sem GEMINI_API_KEY o sistema segue com parser local e não chama rede", async () => {

@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-10T18:08:34.206Z
+Gerado em: 2026-06-16T20:30:43.706Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1334
-- Aprovados: 1334
+- Total geral de testes: 1346
+- Aprovados: 1346
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -16,7 +16,7 @@ Gerado em: 2026-06-10T18:08:34.206Z
 | --- | ---: | ---: | ---: | ---: |
 | Geral/comandos humanos | 21 | 21 | 0 | 100% |
 | Producao | 67 | 67 | 0 | 100% |
-| Animais | 52 | 52 | 0 | 100% |
+| Animais | 55 | 55 | 0 | 100% |
 | Estoque | 211 | 211 | 0 | 100% |
 | Financeiro | 178 | 178 | 0 | 100% |
 | Funcionarios | 42 | 42 | 0 | 100% |
@@ -24,7 +24,7 @@ Gerado em: 2026-06-10T18:08:34.206Z
 | Folha/salarios | 8 | 8 | 0 | 100% |
 | Eventos/vacinas/medicamentos | 215 | 215 | 0 | 100% |
 | Genealogia | 81 | 81 | 0 | 100% |
-| Rebanho/lotes | 57 | 57 | 0 | 100% |
+| Rebanho/lotes | 65 | 65 | 0 | 100% |
 | Dashboard/relatorios | 26 | 26 | 0 | 100% |
 | Suporte | 8 | 8 | 0 | 100% |
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
