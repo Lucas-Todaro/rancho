@@ -2,6 +2,11 @@ import type { AnyRecord } from "@/lib/types";
 import { GEMINI_CONSULT_INTENTS, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allowedFieldsForGeminiIntent, schemaForGeminiIntent } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
+import {
+  detectDestructiveBulkAction,
+  detectRecentBirthsQuery,
+  recentBirthsQueryData
+} from "@/lib/whatsapp/nlp-core/safety-guards";
 
 export type GeminiValidationContext = {
   originalText?: string;
@@ -33,6 +38,7 @@ const ANIMAL_NAME_STOPWORDS = new Set(["novo", "nova", "cadastrar", "animal", "a
 const PHYSICAL_UNITS = new Set(["kg", "g", "l", "litro", "litros", "saco", "sacos", "dose", "doses", "fardo", "unidade"]);
 const FINANCIAL_FIELDS = new Set(["valor", "valor_total", "preco", "preco_total", "salario_base"]);
 const DATE_FIELDS = new Set(["data", "nascimento", "horario"]);
+const GEMINI_BLOCKED_INTENTS = new Set(["ACAO_DESTRUTIVA_EM_MASSA"]);
 
 function isPlainObject(value: unknown): value is AnyRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -45,6 +51,10 @@ function numberOrDefault(value: unknown, fallback: number, min: number, max: num
 
 function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function geminiIntentRequiresConfirmation(intent: string) {
+  return !GEMINI_CONSULT_INTENTS.has(intent) && !GEMINI_BLOCKED_INTENTS.has(intent) && intent !== "DESCONHECIDO";
 }
 
 function normalizeMissing(values: unknown): string[] {
@@ -126,6 +136,46 @@ function validateFieldValues(intent: string, fields: AnyRecord, errors: string[]
   }
 }
 
+function destructiveBulkGeminiValue(originalText: string): GeminiStructuredResult {
+  return {
+    intent: "ACAO_DESTRUTIVA_EM_MASSA",
+    confidence: 1,
+    riskScore: 1,
+    fields: {
+      alvo: "massa",
+      blocked: true,
+      motivo: "destructive_bulk_action_blocked",
+      observacoes: originalText
+    },
+    actions: [],
+    missing_fields: [],
+    warnings: ["destructive_bulk_action_blocked"],
+    should_confirm: false,
+    response_hint: null
+  };
+}
+
+function normalizeGeminiReproductionQuery(originalText: string | undefined, value: GeminiStructuredResult) {
+  if (!originalText || !detectRecentBirthsQuery(originalText)) return value;
+  if (!["DESCONHECIDO", "CONSULTA_ANIMAL", "CONSULTA_REGISTROS_HOJE", "RELATORIO_DIA"].includes(value.intent)) return value;
+
+  const fields = {
+    ...(value.fields || {}),
+    ...recentBirthsQueryData(originalText),
+    tipo: "eventos"
+  };
+  return {
+    ...value,
+    intent: "CONSULTA_REGISTROS_HOJE",
+    confidence: Math.max(value.confidence || 0, 0.92),
+    riskScore: Math.min(value.riskScore || 0, 0.1),
+    fields,
+    missing_fields: [],
+    warnings: Array.from(new Set([...(value.warnings || []), "reproduction_birth_query_normalized"])),
+    should_confirm: false
+  };
+}
+
 function validateSingleAction(
   raw: unknown,
   path: string,
@@ -170,7 +220,7 @@ function validateSingleAction(
     fields,
     missing_fields: missingFields,
     warnings: normalizeWarnings(object.warnings),
-    should_confirm: typeof object.should_confirm === "boolean" ? object.should_confirm : !GEMINI_CONSULT_INTENTS.has(intent),
+    should_confirm: typeof object.should_confirm === "boolean" ? object.should_confirm : geminiIntentRequiresConfirmation(intent),
     response_hint: typeof object.response_hint === "string" ? object.response_hint.slice(0, STRING_MAX) : null
   };
 }
@@ -178,6 +228,17 @@ function validateSingleAction(
 export function validateInterpretedAction(result: unknown, context: GeminiValidationContext = {}): GeminiValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  if (context.originalText && detectDestructiveBulkAction(context.originalText)) {
+    const value = destructiveBulkGeminiValue(context.originalText);
+    return {
+      ok: true,
+      status: "valid",
+      value,
+      warnings: value.warnings,
+      missingFields: []
+    };
+  }
 
   if (!isPlainObject(result)) {
     return {
@@ -227,8 +288,8 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
 
   const shouldConfirm = typeof result.should_confirm === "boolean"
     ? result.should_confirm
-    : !GEMINI_CONSULT_INTENTS.has(topIntent);
-  if (!shouldConfirm && topIntent && !GEMINI_CONSULT_INTENTS.has(topIntent) && topIntent !== "DESCONHECIDO") {
+    : geminiIntentRequiresConfirmation(topIntent);
+  if (!shouldConfirm && topIntent && geminiIntentRequiresConfirmation(topIntent)) {
     warnings.push("registro sensivel sem confirmacao foi forcado para confirmacao local");
   }
 
@@ -259,7 +320,7 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
       .map((warning) => warning.replace("missing.", ""))
   ]));
 
-  const value: GeminiStructuredResult = {
+  const value: GeminiStructuredResult = normalizeGeminiReproductionQuery(context.originalText, {
     intent: topIntent,
     confidence: numberOrDefault(result.confidence, 0.8, 0, 1),
     riskScore: numberOrDefault(result.riskScore, 0, 0, 1),
@@ -267,9 +328,9 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     actions,
     missing_fields: missingFields,
     warnings: Array.from(new Set([...normalizeWarnings(result.warnings), ...warnings.filter((warning) => !warning.startsWith("missing."))])),
-    should_confirm: shouldConfirm || (!GEMINI_CONSULT_INTENTS.has(topIntent) && topIntent !== "DESCONHECIDO"),
+    should_confirm: shouldConfirm || geminiIntentRequiresConfirmation(topIntent),
     response_hint: typeof result.response_hint === "string" ? result.response_hint.slice(0, STRING_MAX) : null
-  };
+  });
 
   if (context.originalText && /(?:corrige|cancela|nao era)/i.test(context.originalText) && !["CORRECAO", "CANCELAMENTO", "DESCONHECIDO"].includes(value.intent)) {
     return {

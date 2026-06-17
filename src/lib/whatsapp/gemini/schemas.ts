@@ -98,11 +98,11 @@ export const GEMINI_INTENT_SCHEMAS: Record<GeminiAllowedIntent, GeminiIntentSche
   },
   CONSULTA_REGISTROS_HOJE: {
     required: [],
-    optional: ["data", "periodo", "tipo"]
+    optional: ["data", "periodo", "tipo", "evento", "evento_tipo", "dias"]
   },
   RELATORIO_DIA: {
     required: [],
-    optional: ["data", "periodo", "tipo"]
+    optional: ["data", "periodo", "tipo", "evento", "evento_tipo", "dias"]
   },
   CADASTRO_ANIMAL: {
     required: ["codigo", "categoria"],
@@ -115,6 +115,10 @@ export const GEMINI_INTENT_SCHEMAS: Record<GeminiAllowedIntent, GeminiIntentSche
   IMPORTACAO_ANIMAIS_TABELA: {
     required: ["linhas"],
     optional: ["observacoes"]
+  },
+  ACAO_DESTRUTIVA_EM_MASSA: {
+    required: [],
+    optional: ["alvo", "blocked", "motivo", "observacoes"]
   },
   CADASTRO_FUNCIONARIO: {
     required: ["funcionario"],

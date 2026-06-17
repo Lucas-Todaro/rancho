@@ -31,6 +31,11 @@ import {
   type ReproductiveEventKind as NlpReproductiveEventKind,
   type ParsedRanchoMessage
 } from "@/lib/whatsapp/nlp";
+import {
+  DESTRUCTIVE_BULK_ACTION_MESSAGE,
+  detectDestructiveBulkAction,
+  destructiveBulkActionParsed
+} from "@/lib/whatsapp/nlp-core/safety-guards";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -349,6 +354,19 @@ function maskPhone(value: string) {
 
 function isBotAdmin(owner: WhatsAppOwner) {
   return owner.papel_bot === "admin";
+}
+
+function isDestructiveBulkParsed(parsed?: ParsedRanchoMessage | null) {
+  return parsed?.tipo === "ACAO_DESTRUTIVA_EM_MASSA" || parsed?.tipo === "EXCLUIR_REBANHO";
+}
+
+function logDestructiveBulkBlock(owner: WhatsAppOwner | null | undefined, details: AnyRecord = {}) {
+  console.warn("[BOT SECURITY]", {
+    event: "destructive_bulk_action_blocked",
+    phone: owner?.telefone_e164 ?maskPhone(owner.telefone_e164) : null,
+    fazenda_id: owner?.fazenda_id || null,
+    ...details
+  });
 }
 
 function isValidBotPhone(value: string | number | null | undefined) {
@@ -1011,6 +1029,10 @@ function animalImportPendingFromMissingEventAnimals(parsed: ParsedRanchoMessage)
 }
 
 function confirmationText(parsed: ParsedRanchoMessage) {
+  if (isDestructiveBulkParsed(parsed)) {
+    return DESTRUCTIVE_BULK_ACTION_MESSAGE;
+  }
+
   if (parsed.tipo === "EXCLUIR_REBANHO") {
     return [
       "Entendi que você quer excluir todos os animais do rebanho.",
@@ -1055,6 +1077,10 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
   if (!parsed) return "Confirmação recebida no modo teste. Nenhum registro real foi salvo.";
 
   const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
+
+  if (isDestructiveBulkParsed(parsed)) {
+    return DESTRUCTIVE_BULK_ACTION_MESSAGE;
+  }
 
   if (parsed.tipo === "LOTE_REGISTROS") {
     const total = Number(parsed.dados?.total_registros || (Array.isArray(parsed.dados?.registros) ?parsed.dados.registros.length : 0));
@@ -1142,6 +1168,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     PONTO_FUNCIONARIO: "registro de ponto",
     CADASTRO_ANIMAL: "cadastro de animal",
     EXCLUIR_REBANHO: "exclusão do rebanho",
+    ACAO_DESTRUTIVA_EM_MASSA: "ação destrutiva em massa bloqueada",
     ATUALIZACAO_ANIMAL: "atualização de animal",
     CONSULTA_ANIMAL: "consulta de animal",
     CRIAR_LOTE: "cadastro de lote",
@@ -1403,6 +1430,7 @@ function safeBotPayload(table: string, payload: AnyRecord) {
 
 function validatePendingForSave(pending: ParsedRanchoMessage) {
   const dados = pending.dados || {};
+  if (isDestructiveBulkParsed(pending)) return DESTRUCTIVE_BULK_ACTION_MESSAGE;
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
@@ -3316,42 +3344,12 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   if (invalidReason) return { response: invalidReason };
 
   if (pending.tipo === "EXCLUIR_REBANHO") {
-    if (!isBotAdmin(owner)) {
-      return { response: "Você não tem permissão para excluir o rebanho pelo bot. Peça para um administrador fazer essa alteração." };
-    }
-
-    const animalIds = await farmRowIds(supabase, TABLES.animais, owner.fazenda_id);
-    if (!animalIds.length) return { response: "Não encontrei animais para excluir neste rancho." };
-
-    const eventIds = await farmRowIds(supabase, TABLES.eventosAnimal, owner.fazenda_id);
-    const milkingIds = await farmRowIds(supabase, TABLES.ordenhas, owner.fazenda_id);
-    const linkedIds = [...animalIds, ...eventIds, ...milkingIds];
-    const legacyEventOrigins = eventIds.flatMap((id) => [`evento_animal:${id}`, `${TABLES.eventosAnimal}:${id}`]);
-
-    await tryDeleteFarmRowsByIds(supabase, TABLES.transacoesFinanceiras, "source_id", eventIds, owner.fazenda_id);
-    await tryDeleteEventFinanceOriginLinks(supabase, eventIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByValues(supabase, TABLES.transacoesFinanceiras, "origem", legacyEventOrigins, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "source_id", milkingIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.estoqueMovimentacoes, "producao_id", milkingIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "animal_id", animalIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "animal_id", animalIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "entidade_id", linkedIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "registro_id", linkedIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.notificacoes, "referencia_id", linkedIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "entidade_id", linkedIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "registro_id", linkedIds, owner.fazenda_id);
-    await tryDeleteFarmRowsByIds(supabase, TABLES.alertas, "referencia_id", linkedIds, owner.fazenda_id);
-    await tryClearAnimalSelfReferences(supabase, animalIds, owner.fazenda_id);
-    await deleteFarmRows(supabase, TABLES.ordenhas, owner.fazenda_id);
-    await deleteFarmRows(supabase, TABLES.eventosAnimal, owner.fazenda_id);
-    await deleteFarmRows(supabase, TABLES.animais, owner.fazenda_id);
-    await logAudit(supabase, owner, TABLES.animais, "delete_all", {
-      total_animais: animalIds.length,
-      total_eventos: eventIds.length,
-      total_ordenhas: milkingIds.length
+    logDestructiveBulkBlock(owner, {
+      currentIntent: pending.tipo,
+      source: "save_confirmed_record_legacy",
+      blocked: true
     });
-
-    return realSaveResult(`Pronto, ${animalIds.length} animal(is) foram excluídos do rebanho.`, [TABLES.animais, TABLES.eventosAnimal, TABLES.ordenhas]);
+    return { response: DESTRUCTIVE_BULK_ACTION_MESSAGE };
   }
 
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
@@ -6024,6 +6022,16 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     botTabularImportLog("stock_import_validation_summary", owner, stockImportSummary(parsed));
   }
 
+  if (isDestructiveBulkParsed(parsed)) {
+    logDestructiveBulkBlock(owner, {
+      currentIntent: parsed.tipo,
+      source: "handle_free_text",
+      blocked: true
+    });
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return DESTRUCTIVE_BULK_ACTION_MESSAGE;
+  }
+
   if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed, acao_pendente: "tipo_tabela_ambigua" } });
     return confirmationText(parsed);
@@ -6670,6 +6678,16 @@ async function handleConfirmation(
     return "Não encontrei uma confirmação pendente. Envie um novo registro.";
   }
 
+  if (isDestructiveBulkParsed(pending)) {
+    logDestructiveBulkBlock(owner, {
+      currentIntent: pending.tipo,
+      source: "handle_confirmation",
+      blocked: true
+    });
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return DESTRUCTIVE_BULK_ACTION_MESSAGE;
+  }
+
   const pendingEventSummary = pending.tipo === "IMPORTACAO_EVENTOS_TABELA" ?tabularImportSummary(pending) : null;
   const pendingAnimalSummary = pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" ?animalImportSummary(pending) : null;
   const pendingStockSummary = pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" ?stockImportSummary(pending) : null;
@@ -7013,6 +7031,16 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = messageTooLong ? "Mensagem muito longa para processar com segurança. Envie uma mensagem mais curta." : "Envie uma mensagem para o bot.";
       suppressPreviousPending = true;
+    } else if (detectDestructiveBulkAction(message)) {
+      parsed = destructiveBulkActionParsed(message);
+      logDestructiveBulkBlock(owner, {
+        currentIntent: parsed.tipo,
+        source: "process_input_guard",
+        blocked: true
+      });
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      response = DESTRUCTIVE_BULK_ACTION_MESSAGE;
+      suppressPreviousPending = true;
     } else if (isUnsafeOperationalMessage(message)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       response = SAFE_OPERATION_BLOCKED_MESSAGE;
@@ -7163,7 +7191,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
             && !(command === "2" && !stockSummary.missingItems && Boolean(stockSummary.invalid || stockSummary.duplicates))
           )
         ));
-        eventConfirmed = (isConfirmCommand(command) || isHerdDeleteConfirmationCommand(parsed, command) || isStockImportDecision) && !isMissingAnimalDecision;
+        eventConfirmed = (isConfirmCommand(command) || isHerdDeleteConfirmationCommand(parsed, command) || isStockImportDecision) && !isMissingAnimalDecision && !isDestructiveBulkParsed(parsed);
         response = await handleConfirmation(supabase, owner, previousSession, message, command, {
           modoTesteSalvarReal: salvarRealNoTeste
         });

@@ -825,21 +825,22 @@ module.exports = function loadBotTestSection(context) {
     }));
 
     const herdDeleteConfirmationCases = [
-      "sim, quero excluir meu rebanho",
-      "confirmo, pode excluir",
-      "pode apagar todos os animais"
-    ].map((confirmation) => ({
-      name: `exclusao do rebanho aceita confirmacao longa: ${confirmation}`,
+      "excluir todo o rebanho",
+      "deletar todas as vacas",
+      "apagar todos os animais",
+      "remover todo o rebanho"
+    ].map((message) => ({
+      name: `exclusao em massa bloqueada: ${message}`,
       module: "confirmacao",
       phone: BOT_TEST_ADMIN_PHONE,
-      messages: ["excluir todos os animais", confirmation],
+      messages: [message],
       expected: {
-        finalIntent: "EXCLUIR_REBANHO",
-        shouldAskConfirmation: true,
+        finalIntent: "ACAO_DESTRUTIVA_EM_MASSA",
+        entities: { blocked: true },
+        responseIncludes: "Por segurança, não faço exclusão em massa pelo WhatsApp",
+        responseNotIncludes: "Confirmar",
         shouldSaveBeforeConfirmation: false,
-        savedAfterConfirmation: true,
-        simulatedSaveCount: 1,
-        savedTables: [BOT_TEST_TABLES.animais],
+        savedAfterConfirmation: false,
         shouldNotWriteBusiness: true
       }
     }));

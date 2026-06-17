@@ -1,6 +1,7 @@
 import type { AnyRecord } from "@/lib/types";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
+import { detectDestructiveBulkAction, destructiveBulkActionParsed, detectRecentBirthsQuery, recentBirthsQueryData } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parserDecisionForParsed, shouldUseGeminiFallback, type ParsedRanchoMessage, type RanchoIntent } from "@/lib/whatsapp/nlp";
 import {
   GEMINI_ACTION_TYPES,
@@ -93,6 +94,12 @@ function periodFromAction(action: GeminiAction, fallback?: string) {
   if (/\bsemana\b/.test(text)) return "semana";
   if (/\bmes|m[eê]s\b/.test(text)) return "mes";
   return fallback;
+}
+
+function reportEventTypeFromAction(action: GeminiAction) {
+  const text = actionText(action);
+  return cleanString(text.match(/\bevento_tipo:([a-z_]+)\b/)?.[1])
+    || (/\b(?:parto|partos|pariram|deu cria|deram cria)\b/.test(text) ? "parto" : undefined);
 }
 
 function stockQueryMode(action: GeminiAction) {
@@ -323,9 +330,22 @@ function convertAction(action: GeminiAction, interpretation: GeminiInterpretatio
       };
       break;
     case "EXCLUIR_REBANHO":
+      tipo = "ACAO_DESTRUTIVA_EM_MASSA";
       dados = {
+        blocked: true,
+        bloqueado: true,
         alvo: "rebanho",
-        confirmar_exclusao_total: true
+        motivo: "destructive_bulk_action_blocked",
+        should_confirm: false
+      };
+      break;
+    case "ACAO_DESTRUTIVA_EM_MASSA":
+      dados = {
+        blocked: true,
+        bloqueado: true,
+        alvo: entity || "massa",
+        motivo: "destructive_bulk_action_blocked",
+        should_confirm: false
       };
       break;
     case "ATUALIZACAO_GENEALOGIA":
@@ -430,7 +450,9 @@ function convertAction(action: GeminiAction, interpretation: GeminiInterpretatio
         consulta: true,
         data_referencia: periodFromAction(action, "hoje"),
         periodo: periodFromAction(action, "hoje"),
-        consulta_registros: action.operation === "report" ?"relatorio" : undefined
+        consulta_registros: action.operation === "report" ?"relatorio" : undefined,
+        evento_tipo: reportEventTypeFromAction(action),
+        evento: reportEventTypeFromAction(action) === "parto" ? "PARTO" : undefined
       };
       break;
     case "ORDEM_SERVICO":
@@ -596,6 +618,38 @@ export async function parseWithGeminiFallback(input: {
 }): Promise<GeminiFallbackParseResult> {
   const threshold = geminiFallbackConfidence();
   logLocalParserDecision(input.text, input.localParsed, threshold);
+
+  if (detectDestructiveBulkAction(input.text)) {
+    return {
+      kind: "parsed",
+      threshold,
+      parsed: destructiveBulkActionParsed(input.text),
+      gemini: {
+        confidence: 1,
+        requiresConfirmation: false,
+        reason: "destructive_bulk_action_blocked",
+        risk_flags: ["destructive_bulk_action_blocked"],
+        actions: [],
+        userResponse: ""
+      }
+    };
+  }
+
+  if (detectRecentBirthsQuery(input.text) && ["DESCONHECIDO", "CONSULTA_ANIMAL", "CONSULTA_REBANHO"].includes(input.localParsed.tipo)) {
+    return {
+      kind: "parsed",
+      threshold,
+      parsed: finalize("CONSULTA_REGISTROS_HOJE", recentBirthsQueryData(input.text), [], 0.92),
+      gemini: {
+        confidence: 0.92,
+        requiresConfirmation: false,
+        reason: "reproduction_birth_query_normalized",
+        risk_flags: [],
+        actions: [],
+        userResponse: ""
+      }
+    };
+  }
 
   if (!shouldUseGeminiFallback(input.localParsed, threshold)) {
     return {

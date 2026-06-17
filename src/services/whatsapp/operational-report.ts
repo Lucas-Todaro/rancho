@@ -164,6 +164,8 @@ function previousWeekRange(): PeriodRange {
 export function normalizeOperationalReportPeriod(period?: string) {
   const value = normalizeRanchoText(period || "hoje").replace(/\s+/g, "_");
   if (["historico", "histórico", "todo_historico", "todos", "todas"].includes(value)) return "historico";
+  const genericDays = value.match(/^ultim[oa]s?_(\d{1,3})(?:_dias)?$/);
+  if (genericDays) return `ultimos_${Math.max(1, Math.min(365, Number(genericDays[1])))}`;
   if (["ultimos_30", "ultimos_30_dias", "ultimas_30", "ultimas_30_dias"].includes(value)) return "ultimos_30";
   if (["ultimos_7", "ultimos_7_dias", "ultimas_7", "ultimas_7_dias"].includes(value)) return "ultimos_7";
   if (["recentes", "recente", "recentemente", "mais_recentes", "ultimos", "ultimas", "ultimo", "ultima"].includes(value)) return "recentes";
@@ -177,6 +179,8 @@ export function operationalReportPeriodRange(period?: string): PeriodRange {
   const normalized = normalizeOperationalReportPeriod(period);
   if (normalized === "historico") return { start: "1970-01-01T00:00:00.000Z", end: "9999-12-31T23:59:59.999Z" };
   if (normalized === "recentes") return lastDaysRange(90);
+  const genericDays = normalized.match(/^ultimos_(\d{1,3})$/);
+  if (genericDays) return lastDaysRange(Math.max(1, Math.min(365, Number(genericDays[1]))));
   if (normalized === "ultimos_30") return lastDaysRange(30);
   if (normalized === "ultimos_7") return lastDaysRange(7);
   if (normalized === "semana_passada") return previousWeekRange();
@@ -192,6 +196,8 @@ export function operationalReportPeriodLabel(period?: string) {
   const normalized = normalizeOperationalReportPeriod(period);
   if (normalized === "historico") return "no histórico";
   if (normalized === "recentes") return "recentemente";
+  const genericDays = normalized.match(/^ultimos_(\d{1,3})$/);
+  if (genericDays) return `nos últimos ${genericDays[1]} dias`;
   if (normalized === "ultimos_30") return "nos últimos 30 dias";
   if (normalized === "ultimos_7") return "nos últimos 7 dias";
   if (normalized === "semana_passada") return "na semana passada";
@@ -396,7 +402,7 @@ async function queryEvents(supabase: SupabaseAdmin, owner: WhatsAppOwner, period
     .eq("fazenda_id", owner.fazenda_id)
     .order("data_evento", { ascending: false });
 
-  if (!["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {
+  if (normalizeOperationalReportPeriod(period) !== "historico") {
     const range = operationalReportPeriodRange(period);
     query = query.gte("data_evento", range.start).lt("data_evento", range.end);
   }
@@ -508,7 +514,10 @@ function eventRecentTitle(eventType?: string) {
 }
 
 function emptyEventsText(period: string, eventType?: string) {
-  if (eventType === "parto" && ["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {
+  if (eventType === "parto" && normalizeOperationalReportPeriod(period) === "recentes") {
+    return "Não encontrei partos recentes registrados.";
+  }
+  if (eventType === "parto" && normalizeOperationalReportPeriod(period) === "historico") {
     return "Não encontrei partos registrados no rebanho.";
   }
   if (eventType === "inseminacao" && ["recentes", "historico"].includes(normalizeOperationalReportPeriod(period))) {

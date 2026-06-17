@@ -7,6 +7,7 @@ import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
 import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { detectDestructiveBulkAction, destructiveBulkActionParsed } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
 
@@ -380,7 +381,24 @@ function mapGeminiFieldsToRancho(intent: string, fields: AnyRecord, rawText: str
           consulta: true,
           data_referencia: dateReference(fields) || "hoje",
           periodo: cleanText(fields.periodo || fields.data) || "hoje",
-          consulta_registros: cleanText(fields.tipo || "relatorio")
+          consulta_registros: cleanText(fields.tipo || "relatorio"),
+          evento: cleanText(fields.evento),
+          evento_tipo: cleanText(fields.evento_tipo),
+          dias: numberValue(fields.dias),
+          should_confirm: false
+        }
+      };
+
+    case "ACAO_DESTRUTIVA_EM_MASSA":
+      return {
+        tipo,
+        dados: {
+          blocked: true,
+          bloqueado: true,
+          alvo: cleanText(fields.alvo) || "massa",
+          motivo: cleanText(fields.motivo) || "destructive_bulk_action_blocked",
+          should_confirm: false,
+          observacoes: cleanText(fields.observacoes || rawText)
         }
       };
 
@@ -783,6 +801,32 @@ function localFallbackResult(
 async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise<GeminiFallbackParseResult> {
   const structuredDetection = detectStructuredInput(input.text);
   const route = structuredDetection.isStructured ? "structured_input" : "normal_message";
+
+  if (detectDestructiveBulkAction(input.text)) {
+    const guarded = destructiveBulkActionParsed(input.text);
+    return {
+      kind: "parsed",
+      threshold: 0.7,
+      parsed: {
+        ...guarded,
+        dados: {
+          ...guarded.dados,
+          origem_parser: "local_guard",
+          route,
+          structuredDetection,
+          interpreter_final_usado: "local_destructive_bulk_guard"
+        }
+      },
+      gemini: {
+        confidence: 1,
+        requiresConfirmation: false,
+        reason: "destructive_bulk_action_blocked",
+        risk_flags: ["destructive_bulk_action_blocked"],
+        actions: [],
+        userResponse: ""
+      }
+    };
+  }
 
   if (process.env.BOT_GEMINI_MOCK === "legacy_parser") {
     return {

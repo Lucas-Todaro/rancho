@@ -7,6 +7,7 @@ import {
   hasReproductiveEventCue
 } from "./reproductive-events";
 import { buildMissing, finalize } from "./result";
+import { detectDestructiveBulkAction, destructiveBulkActionParsed, recentBirthsQueryData } from "./safety-guards";
 import {
   cleanStockQueryItem,
   extractAnimalBirthDate,
@@ -89,12 +90,7 @@ function hasAnimalEventCostCue(normalized: string) {
 }
 
 function isExplicitHerdDeleteCommand(normalized: string) {
-  return /\b(?:exclui|excluir|apaga|apagar|remove|remover|deleta|deletar|limpa|limpar|zera|zerar)\b/.test(normalized)
-    && (
-      /\b(?:todos?|todas?|inteiro|inteira|completo|completa|todo o|toda a)\b/.test(normalized)
-      || /\b(?:rebanho inteiro|rebanho completo|todo rebanho|toda boiada)\b/.test(normalized)
-    )
-    && /\b(?:rebanho|animais|animal|gado|vacas?|bois?|touros?|bezerr[oa]s?|novilhas?|boiada)\b/.test(normalized);
+  return detectDestructiveBulkAction(normalized);
 }
 
 function withAnimalObservationEventData(dados: Record<string, unknown>, original: string, normalized: string) {
@@ -203,6 +199,8 @@ function financeQueryData(normalized: string) {
 
 function reportQueryPeriod(normalized: string) {
   if (/\b(?:historico|todo\s+historico|todo\s+o\s+historico|historia)\b/.test(normalized)) return "historico";
+  const genericDays = normalized.match(/\b(?:ultimos|ultimas)\s+(\d{1,3})\s+dias\b/);
+  if (genericDays) return `ultimos_${Math.max(1, Math.min(365, Number(genericDays[1])))}`;
   if (/\b(?:ultimos|ultimas)\s+30\s+dias\b/.test(normalized)) return "ultimos_30";
   if (/\b(?:ultimos|ultimas)\s+7\s+dias\b/.test(normalized)) return "ultimos_7";
   if (/\b(?:recentes?|recentemente|mais\s+recentes?|ultimos|ultimas|ultimo|ultima)\b/.test(normalized)) return "recentes";
@@ -343,14 +341,19 @@ function collectiveReproductiveQuery(original: string, normalized: string): Pars
   }
 
   if (birthCue) {
-    const period = collectiveReproductivePeriod(normalized);
+    const data = recentBirthsQueryData(original);
+    const fallbackPeriod = collectiveReproductivePeriod(normalized);
+    const period = String(data.periodo === "recentes" && fallbackPeriod !== "recentes" ? fallbackPeriod : data.periodo || fallbackPeriod);
     return finalize("CONSULTA_REGISTROS_HOJE", {
       consulta: true,
       consulta_registros: "eventos",
       relatorio_modo: "resumo",
       data_referencia: period,
       periodo: period,
-      evento_tipo: "parto"
+      evento_tipo: "parto",
+      evento: "PARTO",
+      dias: period === "recentes" || /^ultimos_\d+$/.test(period) ? data.dias : undefined,
+      should_confirm: false
     }, [], 0.9);
   }
 
@@ -967,7 +970,7 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   if (!normalized) return finalize("DESCONHECIDO", {}, []);
 
   if (isExplicitHerdDeleteCommand(normalized)) {
-    return finalize("EXCLUIR_REBANHO", { alvo: "rebanho", confirmar_exclusao_total: true }, [], 0.96);
+    return destructiveBulkActionParsed(original);
   }
 
   if (isAmbiguousReportQuery(normalized)) {

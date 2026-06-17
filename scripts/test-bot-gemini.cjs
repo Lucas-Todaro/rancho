@@ -99,6 +99,12 @@ const fixtures = new Map([
   ["da o relatorio da producao de hoje", fixture("CONSULTA_PRODUCAO_HOJE", {}, { should_confirm: false })],
   ["dados das vacas", fixture("CONSULTA_ANIMAL", { animal_ref: "vacas" }, { should_confirm: false })],
   ["lista das vacas", fixture("CONSULTA_REBANHO", { categoria: "vaca", modo: "lista" }, { should_confirm: false })],
+  ["partos recentes", fixture("DESCONHECIDO", {}, { confidence: 0.4, should_confirm: false })],
+  ["relatorio dos partos recentes", fixture("CONSULTA_ANIMAL", { animal_ref: "partos recentes" }, { should_confirm: false })],
+  ["quais vacas pariram recentemente?", fixture("CONSULTA_ANIMAL", { animal_ref: "vacas" }, { should_confirm: false })],
+  ["partos dos ultimos 30 dias", fixture("DESCONHECIDO", {}, { confidence: 0.4, should_confirm: false })],
+  ["excluir todo o rebanho", fixture("DESCONHECIDO", {}, { confidence: 0.4, should_confirm: false })],
+  ["deletar todas as vacas", fixture("CONSULTA_REBANHO", { categoria: "vaca" }, { should_confirm: false })],
   ["novo animal", fixture("CADASTRO_ANIMAL", {}, { missing_fields: ["codigo", "categoria"], should_confirm: false })],
   ["cadastrar vaca mimosa brinco 021 peso 400kg", fixture("CADASTRO_ANIMAL", { codigo: "021", categoria: "vaca", nome: "Mimosa", peso: 400 })],
   ["001;vaca 002;boi", fixture("CADASTRO_ANIMAL_EM_MASSA", {
@@ -168,6 +174,12 @@ const cases = [
   { message: "da o relatorio da producao de hoje", intent: "CONSULTA_PRODUCAO_HOJE" },
   { message: "dados das vacas", intent: "CONSULTA_REBANHO" },
   { message: "lista das vacas", intent: "CONSULTA_REBANHO" },
+  { message: "partos recentes", intent: "CONSULTA_REGISTROS_HOJE", dados: { evento_tipo: "parto", periodo: "recentes", dias: 90, should_confirm: false } },
+  { message: "relatorio dos partos recentes", intent: "CONSULTA_REGISTROS_HOJE", dados: { evento_tipo: "parto", periodo: "recentes", dias: 90, should_confirm: false } },
+  { message: "quais vacas pariram recentemente?", intent: "CONSULTA_REGISTROS_HOJE", dados: { evento_tipo: "parto", periodo: "recentes", dias: 90, should_confirm: false } },
+  { message: "partos dos ultimos 30 dias", intent: "CONSULTA_REGISTROS_HOJE", dados: { evento_tipo: "parto", periodo: "ultimos_30", dias: 30, should_confirm: false } },
+  { message: "excluir todo o rebanho", intent: "ACAO_DESTRUTIVA_EM_MASSA", dados: { blocked: true, should_confirm: false } },
+  { message: "deletar todas as vacas", intent: "ACAO_DESTRUTIVA_EM_MASSA", dados: { blocked: true, should_confirm: false } },
   { message: "novo animal", intent: "CADASTRO_ANIMAL", missing: true },
   { message: "cadastrar vaca Mimosa brinco 021 peso 400kg", intent: "CADASTRO_ANIMAL" },
   { message: "001;vaca 002;boi", intent: "IMPORTACAO_ANIMAIS_TABELA" },
@@ -205,7 +217,7 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
       if (testCase.route) {
@@ -223,6 +235,13 @@ const cases = [
       if (testCase.registros) {
         assert(Array.isArray(parsed.dados?.registros), `${testCase.message}: lote sem registros`);
         assert(parsed.dados.registros.length === testCase.registros, `${testCase.message}: registros esperado ${testCase.registros}, recebido ${parsed.dados.registros.length}`);
+      }
+      for (const [field, expectedValue] of Object.entries(testCase.dados || {})) {
+        const receivedValue = parsed.dados?.[field];
+        assert(
+          String(receivedValue) === String(expectedValue),
+          `${testCase.message}: dados.${field} esperado ${expectedValue}, recebido ${receivedValue}`
+        );
       }
       results.push({ ok: true, name: testCase.message });
     } catch (error) {

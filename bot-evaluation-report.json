@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-17T01:47:12.327Z",
+  "generatedAt": "2026-06-17T11:38:59.559Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,16 +25,16 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1366,
-    "passed": 1366,
+    "total": 1385,
+    "passed": 1385,
     "failed": 0,
     "successRate": 100
   },
   "moduleBreakdown": {
     "geralComandos": {
       "label": "Geral/comandos humanos",
-      "total": 21,
-      "passed": 21,
+      "total": 22,
+      "passed": 22,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []

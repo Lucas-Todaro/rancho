@@ -671,6 +671,49 @@ module.exports = function loadBotTestSection(context) {
       }
     }));
 
+    const destructiveBulkSecurityCases = [
+      "excluir todo o rebanho",
+      "deletar todo o rebanho",
+      "apagar todas as vacas",
+      "remover todos os animais",
+      "limpar o rebanho",
+      "zerar o rebanho",
+      "apagar minha fazenda",
+      "deletar todos os dados",
+      "deletar minhas vacas",
+      "remover gado inteiro"
+    ].map((message) => ({
+      name: `acao destrutiva em massa bloqueada: ${message}`,
+      module: "seguranca-destrutiva",
+      phone: BOT_TEST_ADMIN_PHONE,
+      whatsappUsers: securityWhatsappUsers(),
+      messages: [message],
+      expected: {
+        finalIntent: "ACAO_DESTRUTIVA_EM_MASSA",
+        entities: { blocked: true, should_confirm: false },
+        responseIncludes: "Por segurança, não faço exclusão em massa pelo WhatsApp",
+        responseNotIncludes: "Confirmar",
+        shouldSaveBeforeConfirmation: false,
+        savedAfterConfirmation: false,
+        shouldNotWriteBusiness: true
+      }
+    }));
+
+    destructiveBulkSecurityCases.push({
+      name: "exclusao individual nao e classificada como massa",
+      module: "seguranca-destrutiva",
+      phone: BOT_TEST_ADMIN_PHONE,
+      whatsappUsers: securityWhatsappUsers(),
+      messages: ["excluir vaca 090"],
+      expected: {
+        finalIntent: "DESCONHECIDO",
+        responseNotIncludes: "exclusão em massa",
+        shouldSaveBeforeConfirmation: false,
+        savedAfterConfirmation: false,
+        shouldNotWriteBusiness: true
+      }
+    });
+
     const invalidPayloadSecurityCases = [
       {
         name: "payload invalido: valor NaN nao salva financeiro",
@@ -742,6 +785,7 @@ module.exports = function loadBotTestSection(context) {
       ...sessionSecurityCases,
       ...maliciousSecurityCases,
       ...unsafeOperationalSecurityCases,
+      ...destructiveBulkSecurityCases,
       ...invalidPayloadSecurityCases
     ];
 
@@ -783,20 +827,18 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "schema: exclusao real do rebanho limpa vinculos sem erro interno",
+        name: "schema: exclusao em massa pelo whatsapp e bloqueada mesmo com salvarReal",
         module: "schema-whatsapp",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["excluir todos os animais", { text: "sim, quero excluir meu rebanho", salvarReal: true }],
+        messages: [{ text: "excluir todos os animais", salvarReal: true }],
         expected: {
-          finalIntent: "EXCLUIR_REBANHO",
-          responseIncludes: "Registro salvo no sistema com sucesso",
+          finalIntent: "ACAO_DESTRUTIVA_EM_MASSA",
+          entities: { blocked: true },
+          responseIncludes: "Por segurança, não faço exclusão em massa pelo WhatsApp",
           responseNotIncludes: "Erro interno",
-          shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
-          savedAfterConfirmation: true,
-          simulatedSaveCount: 1,
-          savedTables: [BOT_TEST_TABLES.animais],
-          shouldNotWriteBusiness: false
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
         }
       },
       {
@@ -1175,6 +1217,6 @@ module.exports = function loadBotTestSection(context) {
     ];
 
 
-    return { whatsappFormatsA, whatsappFormatsB, whatsappNormalizationSecurityCases, blockedMessages, authorizationSecurityCases, rolePermissionSecurityCases, multiFarmSecurityCases, sessionSecurityCases, maliciousSecurityCases, unsafeOperationalSecurityCases, invalidPayloadSecurityCases, permissionMultiFarmWhatsappSecurityCases, schemaCompatibilityCases, structuredBotEvaluationCases };
+    return { whatsappFormatsA, whatsappFormatsB, whatsappNormalizationSecurityCases, blockedMessages, authorizationSecurityCases, rolePermissionSecurityCases, multiFarmSecurityCases, sessionSecurityCases, maliciousSecurityCases, unsafeOperationalSecurityCases, destructiveBulkSecurityCases, invalidPayloadSecurityCases, permissionMultiFarmWhatsappSecurityCases, schemaCompatibilityCases, structuredBotEvaluationCases };
   }
 };

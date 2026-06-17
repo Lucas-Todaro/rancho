@@ -170,6 +170,7 @@ module.exports = function loadBotTestSection(context) {
       if (expected.data_nascimento && dados.data_nascimento !== expected.data_nascimento) failures.push(`data_nascimento esperada ${expected.data_nascimento}, recebida ${dados.data_nascimento}`);
       if (expected.data_referencia && dados.data_referencia !== expected.data_referencia) failures.push(`data_referencia esperada ${expected.data_referencia}, recebida ${dados.data_referencia}`);
       if (expected.periodo && dados.periodo !== expected.periodo) failures.push(`periodo esperado ${expected.periodo}, recebido ${dados.periodo}`);
+      if ("dias" in expected && Number(dados.dias) !== Number(expected.dias)) failures.push(`dias esperado ${expected.dias}, recebido ${dados.dias}`);
       if (expected.turno && normalize(dados.turno) !== normalize(expected.turno)) failures.push(`turno esperado ${expected.turno}, recebido ${dados.turno}`);
       if ("peso" in expected && Number(dados.peso) !== Number(expected.peso)) failures.push(`peso esperado ${expected.peso}, recebido ${dados.peso}`);
       if (expected.campo_alterado && normalize(dados.campo_alterado) !== normalize(expected.campo_alterado)) failures.push(`campo_alterado esperado ${expected.campo_alterado}, recebido ${dados.campo_alterado}`);
