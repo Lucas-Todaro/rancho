@@ -88,7 +88,7 @@ const CONFIRM_EXACT = new Set([
   "1"
 ]);
 
-const CANCELLATION_PATTERN = /^(?:cancelar|cancela|cancela essa|desfaz|desfazer|esquece|deixa(?: pra la| para la)?|pare|para|parar|sair|apaga isso|nao salva|nao salvar|nao registrar)\b/;
+const CANCELLATION_PATTERN = /^(?:cancelar|cancela|cancele|cancela essa|desfaz|desfazer|esquece|deixa(?: pra la| para la)?|pare|para|parar|aborta|abortar|sair|apaga isso|nao salva|nao salve|nao salvar|nao registrar)\b/;
 const NEGATION_PATTERN = /\b(?:nao|n)\b|\bnao\s+(?:e|foi|era|quis|salva|salvar|registrar)\b/;
 const STRONG_NEGATION_PATTERN = /\bnao\s+(?:e|foi|era|quis dizer)\b|\b(?:entendeu errado|ta errado|esta errado|errado|incorreto|negativo)\b/;
 const CORRECTION_PATTERN = /\b(?:errei|corrige|corrigir|corrija|quero corrigir|na verdade|quis dizer|nao quis dizer|troca|trocar|ajusta|ajustar|atualiza|atualizar|entendeu errado|ta errado|esta errado|errado|incorreto)\b/;

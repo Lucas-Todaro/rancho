@@ -132,7 +132,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: null,
               estadoNovo: "livre",
-              responseIncludes: "O que voce quer cancelar ou corrigir"
+              responseIncludes: "Nao ha acao pendente"
             }
           },
           {
@@ -140,7 +140,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: null,
               estadoNovo: "livre",
-              responseIncludes: "O que voce quer cancelar ou corrigir"
+              responseIncludes: "Nao ha acao pendente"
             }
           },
           {
@@ -573,7 +573,30 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               estadoAnterior: "aguardando_confirmacao",
               estadoNovo: "livre",
-              responseIncludes: "Cancelado"
+              responseIncludes: "cancelei"
+            }
+          }
+        ]
+      },
+      {
+        name: "cancelamento durante campo faltante limpa sem salvar",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        messages: [
+          {
+            text: "B-002 deu leite",
+            expected: {
+              intent: "PRODUCAO_LEITE",
+              estadoNovo: "aguardando_dado",
+              missing: ["litros"]
+            }
+          },
+          {
+            text: "esquece",
+            expected: {
+              estadoAnterior: "aguardando_dado",
+              estadoNovo: "livre",
+              responseIncludes: "cancelei"
             }
           }
         ]

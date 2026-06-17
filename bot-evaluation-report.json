@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-17T12:16:32.152Z",
+  "generatedAt": "2026-06-17T13:34:04.871Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1392,
-    "passed": 1392,
+    "total": 1406,
+    "passed": 1406,
     "failed": 0,
     "successRate": 100
   },
@@ -161,8 +161,8 @@
     },
     "sessaoContexto": {
       "label": "Sessao/contexto",
-      "total": 40,
-      "passed": 40,
+      "total": 41,
+      "passed": 41,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []

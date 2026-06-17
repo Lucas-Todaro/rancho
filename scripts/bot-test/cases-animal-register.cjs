@@ -551,7 +551,7 @@ module.exports = function loadBotTestSection(context) {
           finalIntent: "CADASTRO_ANIMAL",
           savedAfterConfirmation: false,
           shouldClearSession: true,
-          responseIncludes: "Cancelado",
+          responseIncludes: "cancelei",
           shouldNotWriteBusiness: true
         }
       },

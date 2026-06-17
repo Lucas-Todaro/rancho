@@ -1,11 +1,11 @@
 # Bot Final Regression Report
 
-Gerado em: 2026-06-17T12:16:32.152Z
+Gerado em: 2026-06-17T13:34:04.871Z
 
 ## Resumo Geral
 
-- Total geral de testes: 1392
-- Aprovados: 1392
+- Total geral de testes: 1406
+- Aprovados: 1406
 - Falhos: 0
 - Taxa geral de sucesso: 100%
 - Avaliacao final: pronto_para_uso_real_com_monitoramento
@@ -30,7 +30,7 @@ Gerado em: 2026-06-17T12:16:32.152Z
 | WhatsApp autorizado | 42 | 42 | 0 | 100% |
 | Permissoes | 12 | 12 | 0 | 100% |
 | Multi-fazenda | 11 | 11 | 0 | 100% |
-| Sessao/contexto | 40 | 40 | 0 | 100% |
+| Sessao/contexto | 41 | 41 | 0 | 100% |
 | Seguranca/mensagens maliciosas | 24 | 24 | 0 | 100% |
 
 ## Estoque - Consultas

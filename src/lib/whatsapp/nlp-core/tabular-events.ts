@@ -2,6 +2,7 @@ import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { inferAnimalSexFromCategory } from "./extractors";
 import { finalize } from "./result";
 import type { ParsedRanchoMessage } from "./types";
+import { normalizeCalfSex } from "./birth-child";
 import { normalizeReproductiveEventType, reproductiveEventDbType, reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
 
 export type ParsedTabularAnimalEventRow = {
@@ -69,6 +70,32 @@ export type ParsedTabularMilkProductionRow = {
   litros: number | null;
   data_original: string;
   data_referencia: string | null;
+  turno_original: string;
+  turno: "manha" | "tarde" | "noite" | null;
+  observacoes: string;
+  problemas: string[];
+};
+
+export type ParsedTabularBirthChildRow = {
+  lineNumber: number;
+  rawText: string;
+  animal_codigo_original: string;
+  animal_codigo: string;
+  mae_ref_original: string;
+  mae_ref: string;
+  data_parto_original: string;
+  data_referencia: string | null;
+  cria_sexo_original: string;
+  cria_sexo: "macho" | "femea" | null;
+  cria_codigo_original: string;
+  cria_codigo: string;
+  cria_nome: string | null;
+  pai_ref_original: string;
+  pai_ref: string | null;
+  evento_tipo: "parto";
+  evento_label: string;
+  db_tipo: "parto";
+  parto_cria_cadastro: true;
   observacoes: string;
   problemas: string[];
 };
@@ -79,7 +106,7 @@ type EventTypeResolution = {
   db_tipo: ParsedTabularAnimalEventRow["db_tipo"];
 };
 
-type TableKind = "animal_events" | "animals_import" | "stock_import" | "milk_production" | "ambiguous" | null;
+type TableKind = "animal_events" | "animals_import" | "stock_import" | "milk_production" | "birth_child_events" | "ambiguous" | null;
 
 type ParsedLine = {
   text: string;
@@ -88,8 +115,14 @@ type ParsedLine = {
 
 type HeaderMap = {
   code?: number;
+  mother?: number;
+  father?: number;
+  childCode?: number;
+  childSex?: number;
+  childName?: number;
   eventType?: number;
   date?: number;
+  time?: number;
   notes?: number;
   name?: number;
   category?: number;
@@ -312,8 +345,14 @@ function stockMovementDefaultFromHeader(cells: string[]) {
 function columnMappingFromHeader(header: HeaderMap) {
   const mapping: Record<string, number | string> = {};
   if (header.code !== undefined) mapping.animal_ref = header.code;
+  if (header.mother !== undefined) mapping.mae_ref = header.mother;
+  if (header.father !== undefined) mapping.pai_ref = header.father;
+  if (header.childCode !== undefined) mapping.codigo_cria = header.childCode;
+  if (header.childSex !== undefined) mapping.sexo_cria = header.childSex;
+  if (header.childName !== undefined) mapping.nome_cria = header.childName;
   if (header.eventType !== undefined) mapping.event_type = header.eventType;
   if (header.date !== undefined) mapping.date = header.date;
+  if (header.time !== undefined) mapping.turno = header.time;
   if (header.notes !== undefined) mapping.observations = header.notes;
   if (header.name !== undefined) mapping.name = header.name;
   if (header.category !== undefined) mapping.category = header.category;
@@ -336,24 +375,38 @@ function columnMappingFromHeader(header: HeaderMap) {
 function buildHeaderMap(headerLine: string): HeaderMap {
   const cells = splitHeaderCells(headerLine);
   const stockMovement = stockMovementDefaultFromHeader(cells);
+  const explicitCode = headerIndex(cells, [
+    /^(?:codigo|cod|brinco|id|animal\s+id|animal_id)(?:\s+animal)?$/,
+    /^(?:codigo|cod)\s+animal$/,
+    /^animal\s+ref$/
+  ]);
+  const genericCode = headerIndex(cells, [/^(?:animal|bicho|vaca|nome)$/]);
+  const code = explicitCode ?? genericCode;
+  const name = headerIndex(cells, [/^(?:nome|animal|apelido|identificacao|identificacao\s+animal)$/]);
   return {
-    code: headerIndex(cells, [/^(?:codigo|cod|brinco|animal|bicho)(?:\s+animal)?$/, /^(?:codigo|cod)\s+animal$/, /^animal\s+ref$/]),
+    code,
+    mother: headerIndex(cells, [/^(?:mae|mae\s+ref|mae\s+animal|matriz|vaca\s+mae|codigo\s+mae|cod\s+mae|brinco\s+mae)$/]),
+    father: headerIndex(cells, [/^(?:pai|pai\s+ref|touro|reprodutor|codigo\s+pai|cod\s+pai|brinco\s+pai)$/]),
+    childCode: headerIndex(cells, [/^(?:codigo\s+cria|cod\s+cria|brinco\s+cria|cria\s+codigo|cria\s+brinco|codigo\s+bezerro|brinco\s+bezerro)$/]),
+    childSex: headerIndex(cells, [/^(?:sexo\s+cria|cria\s+sexo|sexo\s+bezerro|sexo\s+bezerra|sexo\s+filho|sexo\s+filha)$/]),
+    childName: headerIndex(cells, [/^(?:nome\s+cria|cria\s+nome|nome\s+bezerro|nome\s+bezerra)$/]),
     eventType: headerIndex(cells, [/^(?:status\s+tipo|tipo|evento|ocorrencia)$/]),
-    date: headerIndex(cells, [/^data$/, /^data\s+evento$/, /^quando$/]),
-    notes: headerIndex(cells, [/^(?:observacoes|observacao|obs|nota|notas|motivo)$/]),
-    name: headerIndex(cells, [/^nome$/]),
+    date: headerIndex(cells, [/^data$/, /^data\s+evento$/, /^data\s+parto$/, /^data\s+do\s+parto$/, /^dia$/, /^quando$/, /^ordenha\s+data$/]),
+    time: headerIndex(cells, [/^(?:horario|hora|turno|ordenha)$/]),
+    notes: headerIndex(cells, [/^(?:observacoes|observacao|obs|nota|notas|motivo|comentario|comentarios)$/]),
+    name: name !== code ? name : undefined,
     category: headerIndex(cells, [/^(?:categoria|tipo|classe)$/]),
-    sex: headerIndex(cells, [/^sexo$/]),
+    sex: headerIndex(cells, [/^(?:sexo|genero)$/]),
     breed: headerIndex(cells, [/^raca$/]),
-    lot: headerIndex(cells, [/^(?:lote|piquete|pasto)$/]),
+    lot: headerIndex(cells, [/^(?:lote|piquete|pasto|grupo)$/]),
     status: headerIndex(cells, [/^(?:status|situacao)$/]),
     weight: headerIndex(cells, [/^(?:peso|kg)$/]),
-    birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]),
+    birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento|nasc)$/]),
     item: headerIndex(cells, [/^(?:item|produto|insumo|material)$/]),
     quantity: headerIndex(cells, [/^(?:quantidade|qtd|qtde)$/]) ?? stockMovement.index,
     unit: headerIndex(cells, [/^(?:unidade|un|medida)$/]),
     value: headerIndex(cells, [/^(?:valor|preco|preco\s+unitario|valor\s+unitario|valor\s+total|valor_total|custo|total)$/]),
-    liters: headerIndex(cells, [/^(?:litro|litros|producao|producao\s+litros|quantidade\s+litros)$/]),
+    liters: headerIndex(cells, [/^(?:litro|litros|leite|producao|producao\s+litros|qtd|qtde|quantidade|quantidade\s+litros|volume|total\s+litros)$/]),
     movementType: headerIndex(cells, [/^(?:movimento|tipo\s+movimento|entrada\s+ou\s+saida)$/]),
     movementTypeDefault: stockMovement.movementTypeDefault
   };
@@ -372,6 +425,11 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
   const hasAnimalRegistrationField = [header.name, header.sex, header.breed, header.lot, header.weight, header.birthDate].some((value) => value !== undefined);
   const hasStockField = [header.item, header.quantity, header.unit, header.value, header.movementType].some((value) => value !== undefined) || Boolean(header.movementTypeDefault);
   const hasLiters = header.liters !== undefined;
+  const hasBirthChildShape = header.mother !== undefined
+    && header.date !== undefined
+    && (header.childCode !== undefined || header.childSex !== undefined || header.father !== undefined);
+
+  if (hasBirthChildShape) return "birth_child_events";
 
   const eventScore = (hasCode ? 1 : 0) + (hasDate ? 2 : 0) + (hasEvent ? 3 : 0) + (hasTypeOrStatus ? 1 : 0);
   const animalScore = (hasCode ? 1 : 0) + (hasAnimalField ? 3 : 0) + (header.name !== undefined ? 2 : 0) + (header.category !== undefined ? 2 : 0);
@@ -390,6 +448,7 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
   if (header.item !== undefined && stockScore >= 5 && stockScore > eventScore && stockScore > animalScore) return "stock_import";
   if (!hasCode) return hasStockField || hasDate || hasEvent || hasLiters ? "ambiguous" : null;
   if (eventScore >= 4 && hasAnimalRegistrationField && hasDate) return "ambiguous";
+  if (animalScore >= 4 && animalScore > eventScore) return "animals_import";
   if (eventScore >= 4 && eventScore >= productionScore) return "animal_events";
   if (animalScore >= 4) return "animals_import";
   if (hasDate && hasTypeOrStatus) return "animal_events";
@@ -444,6 +503,9 @@ function validDateParts(day: number, month: number, year: number) {
 function parseTableDate(value: string) {
   const text = value.trim();
   if (!text) return null;
+
+  const relative = normalizeRanchoText(text);
+  if (["hoje", "ontem", "anteontem", "amanha"].includes(relative)) return relative;
 
   const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (isoMatch) {
@@ -518,10 +580,23 @@ function parseAnimalWeight(value: string) {
 }
 
 function parsePositiveTableNumber(value: string) {
-  const normalized = value.trim().replace(/\s+/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
-  if (!normalized) return null;
-  const number = Number(normalized);
+  const text = value.trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text) || /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(text)) return null;
+  const normalized = text.replace(/\s+/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+  const match = normalized.match(/^(\d+(?:\.\d+)?)(?:[a-zA-ZÀ-ÿ]+)?$/);
+  if (!match) return null;
+  const number = Number(match[1]);
   return Number.isFinite(number) && number > 0 ?number : null;
+}
+
+function normalizeProductionTurno(value: string) {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return null;
+  if (/\b(?:manha|primeira)\b/.test(normalized)) return "manha" as const;
+  if (/\b(?:tarde|segunda)\b/.test(normalized)) return "tarde" as const;
+  if (/\b(?:noite|terceira)\b/.test(normalized)) return "noite" as const;
+  return null;
 }
 
 function parseOptionalMoney(value: string) {
@@ -713,9 +788,11 @@ function parseMilkProductionLine(line: string, lineNumber: number, header: Heade
   const animalOriginal = cellAt(cells, header.code ?? 0);
   const litrosOriginal = cellAt(cells, header.liters);
   const dateOriginal = cellAt(cells, header.date);
+  const turnoOriginal = cellAt(cells, header.time);
   const notes = cellAt(cells, header.notes);
   const litros = parsePositiveTableNumber(litrosOriginal);
   const parsedDate = dateOriginal ? parseTableDate(dateOriginal) : null;
+  const turno = normalizeProductionTurno(turnoOriginal || notes);
   const problemas: string[] = [];
   const animalCode = normalizeAnimalTableCode(animalOriginal);
 
@@ -733,7 +810,66 @@ function parseMilkProductionLine(line: string, lineNumber: number, header: Heade
     litros,
     data_original: dateOriginal,
     data_referencia: parsedDate,
+    turno_original: turnoOriginal,
+    turno,
     observacoes: notes,
+    problemas
+  };
+}
+
+function parseBirthChildLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularBirthChildRow | null {
+  const cells = rowCellsForHeader(line, header);
+  if (cells.length < 3) return null;
+  if (cells.every((cell) => !cell)) return null;
+
+  const motherOriginal = cellAt(cells, header.mother ?? header.code ?? 0);
+  const dateOriginal = cellAt(cells, header.date);
+  const childSexOriginal = cellAt(cells, header.childSex);
+  const childCodeOriginal = cellAt(cells, header.childCode);
+  const childName = cellAt(cells, header.childName) || null;
+  const fatherOriginal = cellAt(cells, header.father);
+  const notes = cellAt(cells, header.notes);
+  const parsedDate = parseTableDate(dateOriginal);
+  const childSex = normalizeCalfSex(childSexOriginal) || null;
+  const motherRef = normalizeAnimalTableCode(motherOriginal);
+  const childCode = normalizeAnimalTableCode(childCodeOriginal);
+  const fatherRef = fatherOriginal.trim() ? normalizeAnimalTableCode(fatherOriginal) : null;
+  const problemas: string[] = [];
+
+  if (!motherRef) problemas.push("mae_sem_codigo");
+  if (!dateOriginal.trim()) problemas.push("data_ausente");
+  else if (!parsedDate) problemas.push("data_invalida");
+  if (!childSexOriginal.trim()) problemas.push("sexo_cria_ausente");
+  else if (!childSex) problemas.push("sexo_cria_invalido");
+  if (!childCode) problemas.push("codigo_cria_ausente");
+
+  const childDetails = [
+    childSex ? `cria ${childSex}` : "",
+    childCode ? `codigo ${childCode}` : "",
+    fatherRef ? `pai ${fatherRef}` : "pai nao informado"
+  ].filter(Boolean).join(", ");
+
+  return {
+    lineNumber,
+    rawText: line,
+    animal_codigo_original: motherOriginal,
+    animal_codigo: motherRef,
+    mae_ref_original: motherOriginal,
+    mae_ref: motherRef,
+    data_parto_original: dateOriginal,
+    data_referencia: parsedDate,
+    cria_sexo_original: childSexOriginal,
+    cria_sexo: childSex,
+    cria_codigo_original: childCodeOriginal,
+    cria_codigo: childCode,
+    cria_nome: childName,
+    pai_ref_original: fatherOriginal,
+    pai_ref: fatherRef,
+    evento_tipo: "parto",
+    evento_label: "Parto",
+    db_tipo: "parto",
+    parto_cria_cadastro: true,
+    observacoes: [notes, childDetails].filter(Boolean).join(". "),
     problemas
   };
 }
@@ -769,6 +905,7 @@ function productionRowsToBatchRecords(rows: ParsedTabularMilkProductionRow[], ro
       animal_codigo: row.animal_codigo,
       litros: row.litros,
       data_referencia: row.data_referencia || "hoje",
+      turno: row.turno || undefined,
       observacoes: row.observacoes || undefined,
       column_mapping: columnMapping,
       ...routeMeta
@@ -976,13 +1113,21 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
     const cells = line.text.split(";").map((cell) => cell.trim());
     if (cells.length < 2 || cells.length > 3) return false;
     if (!cells[0] || !cells[1]) return false;
-    const category = normalizeAnimalCategory(cells[1]);
-    const sex = cells[2] ?normalizeAnimalSex(cells[2]) : "nao_informado";
-    return Boolean(category && sex);
+    const categorySecond = normalizeAnimalCategory(cells[1]);
+    const sexThird = cells[2] ?normalizeAnimalSex(cells[2]) : "nao_informado";
+    const categoryThird = cells[2] ?normalizeAnimalCategory(cells[2]) : null;
+    return Boolean((categorySecond && sexThird) || (cells.length === 3 && categoryThird && !categorySecond));
   });
   if (candidateLines.length < 2) return null;
 
-  const header: HeaderMap = { code: 0, category: 1, sex: 2 };
+  const nameCategoryCount = candidateLines.filter((line) => {
+    const cells = line.text.split(";").map((cell) => cell.trim());
+    return cells.length === 3 && Boolean(normalizeAnimalCategory(cells[2])) && !normalizeAnimalCategory(cells[1]);
+  }).length;
+  const categorySexCount = candidateLines.length - nameCategoryCount;
+  const header: HeaderMap = nameCategoryCount >= 2 && nameCategoryCount >= categorySexCount
+    ? { code: 0, name: 1, category: 2 }
+    : { code: 0, category: 1, sex: 2 };
   const columnMapping = columnMappingFromHeader(header);
   const rows = candidateLines
     .map((line) => parseAnimalImportLine(line.text, line.lineNumber, header))
@@ -999,7 +1144,7 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
     column_mapping: columnMapping,
     importacao_tabela_animais: true,
     tabela_destino: "animais",
-    cabecalho_inferido: "Codigo;Categoria;Sexo",
+    cabecalho_inferido: header.name === 1 ? "Codigo;Nome;Categoria" : "Codigo;Categoria;Sexo",
     total_linhas: rows.length,
     total_linhas_parse_validas: validParseRows.length,
     total_linhas_parse_invalidas: invalidParseRows.length,
@@ -1008,6 +1153,41 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
     linhas_parse_invalidas: invalidParseRows,
     instrucoes_confirmacao: "confirmar_para_cadastrar_animais_validos"
   }, [], 0.92);
+}
+
+function parseBirthChildEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const header = buildHeaderMap(lines[headerIndex].text);
+  const columnMapping = columnMappingFromHeader(header);
+  const rows: ParsedTabularBirthChildRow[] = [];
+
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (isConcreteStructuredHeaderLine(line.text)) continue;
+    if (!line.text.includes(";")) continue;
+    const row = parseBirthChildLine(line.text, line.lineNumber, header);
+    if (row) rows.push(row);
+  }
+
+  if (!rows.length) return null;
+
+  const validParseRows = rows.filter((row) => row.problemas.length === 0);
+  const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+
+  return finalize("IMPORTACAO_EVENTOS_TABELA", {
+    origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
+    tipo_tabela: "birth_child_events",
+    column_mapping: columnMapping,
+    importacao_tabela_eventos: true,
+    importacao_parto_cria_tabela: true,
+    tabela_destino: "eventos_animal",
+    total_linhas: rows.length,
+    total_linhas_parse_validas: validParseRows.length,
+    total_linhas_parse_invalidas: invalidParseRows.length,
+    contagem_eventos_parse: { parto: rows.length },
+    linhas: rows,
+    linhas_parse_invalidas: invalidParseRows,
+    instrucoes_confirmacao: "confirmar_para_importar_partos_com_cria"
+  }, [], 0.96);
 }
 
 function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
@@ -1125,11 +1305,12 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
   if (kind === "stock_import") return parseStockImportTable(text, lines, headerIndex);
   if (kind === "milk_production") return parseMilkProductionTable(text, lines, headerIndex);
+  if (kind === "birth_child_events") return parseBirthChildEventsTable(text, lines, headerIndex);
   if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
   return null;
 }
 
-export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import"): ParsedRanchoMessage | null {
+export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import" | "birth_child_events"): ParsedRanchoMessage | null {
   const structuredDetection = detectStructuredInput(text);
   if (!structuredDetection.isStructured) return null;
 
@@ -1139,5 +1320,6 @@ export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_ev
   if (headerIndex < 0) return null;
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
+  if (kind === "birth_child_events") return parseBirthChildEventsTable(text, lines, headerIndex);
   return parseStockImportTable(text, lines, headerIndex);
 }

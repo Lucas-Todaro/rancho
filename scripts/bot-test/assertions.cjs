@@ -187,6 +187,7 @@ module.exports = function loadBotTestSection(context) {
       if (expected.financeiro_modo && normalize(dados.financeiro_modo) !== normalize(expected.financeiro_modo)) failures.push(`financeiro_modo esperado ${expected.financeiro_modo}, recebido ${dados.financeiro_modo}`);
       if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
       if (expected.filtro_texto && normalize(dados.filtro_texto) !== normalize(expected.filtro_texto)) failures.push(`filtro_texto esperado ${expected.filtro_texto}, recebido ${dados.filtro_texto}`);
+      if (expected.tipo_tabela && normalize(dados.tipo_tabela) !== normalize(expected.tipo_tabela)) failures.push(`tipo_tabela esperado ${expected.tipo_tabela}, recebido ${dados.tipo_tabela}`);
       if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
       if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
       if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
@@ -264,6 +265,11 @@ module.exports = function loadBotTestSection(context) {
           failures.push(`linha de tabela esperada nao encontrada: ${JSON.stringify(expected.tableRow)}`);
         } else {
           if (expected.tableRow.animal && normalize(row.animal_codigo) !== normalize(expected.tableRow.animal)) failures.push(`linha tabela animal esperado ${expected.tableRow.animal}, recebido ${row.animal_codigo}`);
+          if (expected.tableRow.mae_ref && normalize(row.mae_ref) !== normalize(expected.tableRow.mae_ref)) failures.push(`linha tabela mae_ref esperado ${expected.tableRow.mae_ref}, recebido ${row.mae_ref}`);
+          if (expected.tableRow.pai_ref && normalize(row.pai_ref) !== normalize(expected.tableRow.pai_ref)) failures.push(`linha tabela pai_ref esperado ${expected.tableRow.pai_ref}, recebido ${row.pai_ref}`);
+          if (expected.tableRow.cria_codigo && normalize(row.cria_codigo) !== normalize(expected.tableRow.cria_codigo)) failures.push(`linha tabela cria_codigo esperado ${expected.tableRow.cria_codigo}, recebido ${row.cria_codigo}`);
+          if (expected.tableRow.cria_sexo && normalize(row.cria_sexo) !== normalize(expected.tableRow.cria_sexo)) failures.push(`linha tabela cria_sexo esperado ${expected.tableRow.cria_sexo}, recebido ${row.cria_sexo}`);
+          if ("parto_cria_cadastro" in expected.tableRow && Boolean(row.parto_cria_cadastro) !== Boolean(expected.tableRow.parto_cria_cadastro)) failures.push(`linha tabela parto_cria_cadastro esperado ${expected.tableRow.parto_cria_cadastro}, recebido ${row.parto_cria_cadastro}`);
           if (expected.tableRow.evento_tipo && normalize(row.evento_tipo) !== normalize(expected.tableRow.evento_tipo)) failures.push(`linha tabela evento esperado ${expected.tableRow.evento_tipo}, recebido ${row.evento_tipo}`);
           if (expected.tableRow.data_referencia && row.data_referencia !== expected.tableRow.data_referencia) failures.push(`linha tabela data esperada ${expected.tableRow.data_referencia}, recebida ${row.data_referencia}`);
           if (expected.tableRow.observacoes && !normalize(row.observacoes).includes(normalize(expected.tableRow.observacoes))) failures.push(`linha tabela observacao esperada ${expected.tableRow.observacoes}, recebida ${row.observacoes}`);
@@ -276,6 +282,7 @@ module.exports = function loadBotTestSection(context) {
           if (expected.tableRow.item_nome && normalize(row.item_nome) !== normalize(expected.tableRow.item_nome)) failures.push(`linha tabela item esperado ${expected.tableRow.item_nome}, recebido ${row.item_nome}`);
           if ("quantidade" in expected.tableRow && Number(row.quantidade) !== Number(expected.tableRow.quantidade)) failures.push(`linha tabela quantidade esperada ${expected.tableRow.quantidade}, recebida ${row.quantidade}`);
           if ("litros" in expected.tableRow && Number(row.litros) !== Number(expected.tableRow.litros)) failures.push(`linha tabela litros esperado ${expected.tableRow.litros}, recebido ${row.litros}`);
+          if (expected.tableRow.turno && normalize(row.turno) !== normalize(expected.tableRow.turno)) failures.push(`linha tabela turno esperado ${expected.tableRow.turno}, recebido ${row.turno}`);
           if (expected.tableRow.unidade && normalize(row.unidade) !== normalize(expected.tableRow.unidade)) failures.push(`linha tabela unidade esperada ${expected.tableRow.unidade}, recebida ${row.unidade}`);
           if (expected.tableRow.tipo_movimento && normalize(row.tipo_movimento) !== normalize(expected.tableRow.tipo_movimento)) failures.push(`linha tabela movimento esperado ${expected.tableRow.tipo_movimento}, recebido ${row.tipo_movimento}`);
           if (expected.tableRow.problem && !(Array.isArray(row.problemas) && row.problemas.includes(expected.tableRow.problem))) failures.push(`linha tabela deveria conter problema ${expected.tableRow.problem}, recebeu ${row.problemas}`);

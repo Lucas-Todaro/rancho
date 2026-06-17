@@ -34,6 +34,7 @@ import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/e
 
 type ReproductionKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo" | "observacao";
 type ReproductionFilter = "todos" | "prenhe" | "inseminada" | "pre_parto" | "parto" | "sem_info";
+type BirthPeriodFilter = "todos" | "recentes" | "antigos" | "hoje" | "semana" | "mes" | "ultimos_30" | "ultimos_90";
 
 type Draft = {
   type: ReproductionKind;
@@ -59,6 +60,9 @@ const ANIMAL_SELECT = [
   "status",
   "lote_id",
   "raca",
+  "data_nascimento",
+  "mae_id",
+  "pai_id",
   "created_at"
 ].join(",");
 
@@ -112,9 +116,22 @@ const statusFilters: Array<{ value: ReproductionFilter; label: string }> = [
   { value: "prenhe", label: "Prenhas" },
   { value: "inseminada", label: "Inseminadas" },
   { value: "pre_parto", label: "Pre-parto" },
-  { value: "parto", label: "Parto recente" },
+  { value: "parto", label: "Partos" },
   { value: "sem_info", label: "Sem info" }
 ];
+
+const birthPeriodOptions: Array<{ value: BirthPeriodFilter; label: string }> = [
+  { value: "todos", label: "Todos os partos" },
+  { value: "recentes", label: "Partos recentes" },
+  { value: "antigos", label: "Partos antigos" },
+  { value: "hoje", label: "Hoje" },
+  { value: "semana", label: "Esta semana" },
+  { value: "mes", label: "Este mês" },
+  { value: "ultimos_30", label: "Últimos 30 dias" },
+  { value: "ultimos_90", label: "Últimos 90 dias" }
+];
+
+const RECENT_BIRTH_DAYS = 90;
 
 const kindLabels: Record<ReproductionKind, string> = {
   inseminacao: "Inseminação",
@@ -292,6 +309,43 @@ function latestOfKind(events: AnyRecord[], kind: ReproductionKind) {
   return sortEventsDescending(events).find((event) => eventKind(event) === kind) || null;
 }
 
+function birthEvents(events: AnyRecord[]) {
+  return sortEventsDescending(events).filter((event) => eventKind(event) === "parto");
+}
+
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function startOfWeek(date: Date) {
+  const next = startOfDay(date);
+  const day = next.getDay();
+  next.setDate(next.getDate() + (day === 0 ? -6 : 1 - day));
+  return next;
+}
+
+function birthEventMatchesPeriod(event: AnyRecord, period: BirthPeriodFilter) {
+  const date = dateFromEvent(event);
+  if (!date) return false;
+  if (period === "todos") return true;
+  const today = startOfDay(new Date());
+  const eventDay = startOfDay(date);
+  const days = daysBetween(eventDay, today);
+  if (period === "recentes" || period === "ultimos_90") return days >= 0 && days < RECENT_BIRTH_DAYS;
+  if (period === "antigos") return days >= RECENT_BIRTH_DAYS;
+  if (period === "ultimos_30") return days >= 0 && days < 30;
+  if (period === "hoje") return eventDay.getTime() === today.getTime();
+  if (period === "semana") return eventDay >= startOfWeek(today) && eventDay <= today;
+  if (period === "mes") return eventDay.getFullYear() === today.getFullYear() && eventDay.getMonth() === today.getMonth();
+  return true;
+}
+
+function hasBirthInPeriod(events: AnyRecord[], period: BirthPeriodFilter) {
+  return birthEvents(events).some((event) => birthEventMatchesPeriod(event, period));
+}
+
 function isLatestReproductiveStatus(candidateDate: Date | null, dates: Array<Date | null>): candidateDate is Date {
   if (!candidateDate) return false;
   return dates.every((date) => !date || candidateDate.getTime() >= date.getTime());
@@ -423,17 +477,25 @@ function ReproductionAnimalCard({
   animal,
   lotName,
   events,
+  directChildren,
   selected,
   onOpen
 }: {
   animal: AnyRecord;
   lotName: string;
   events: AnyRecord[];
+  directChildren: AnyRecord[];
   selected: boolean;
   onOpen: () => void;
 }) {
   const status = animalReproductionStatus(animal, events);
   const lastEvent = status.lastEvent;
+  const lastParto = latestOfKind(events, "parto");
+  const latestChild = [...directChildren].sort((left, right) => {
+    const leftTime = parseLocalDate(left.data_nascimento || left.created_at)?.getTime() || 0;
+    const rightTime = parseLocalDate(right.data_nascimento || right.created_at)?.getTime() || 0;
+    return rightTime - leftTime;
+  })[0] || null;
   const sex = getAnimalSexInfo(animal);
 
   return (
@@ -474,8 +536,20 @@ function ReproductionAnimalCard({
           <span className="text-slate-500 dark:text-slate-400">Eventos</span>
           <strong className="text-slate-900 dark:text-slate-100">{events.length}</strong>
         </div>
+        {lastParto ? (
+          <div className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+            <span className="text-slate-500 dark:text-slate-400">Último parto</span>
+            <strong className="truncate text-right text-slate-900 dark:text-slate-100">{formatDate(lastParto.data_evento || lastParto.created_at)}</strong>
+          </div>
+        ) : null}
+        {lastParto ? (
+          <div className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+            <span className="text-slate-500 dark:text-slate-400">Cria vinculada</span>
+            <strong className="truncate text-right text-slate-900 dark:text-slate-100">{latestChild ? animalLabel(latestChild) : "-"}</strong>
+          </div>
+        ) : null}
         <div className="min-h-10 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
-          {status.detail}
+          {lastParto?.descricao ? lastParto.descricao : status.detail}
         </div>
       </div>
 
@@ -747,6 +821,7 @@ export function ReproductionScreen() {
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
   const [search, setSearch] = useState("");
   const [reproductionFilter, setReproductionFilter] = useState<ReproductionFilter>("todos");
+  const [birthPeriodFilter, setBirthPeriodFilter] = useState<BirthPeriodFilter>("recentes");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [categoryFilter, setCategoryFilter] = useState("todos");
   const [lotFilter, setLotFilter] = useState("todos");
@@ -831,6 +906,18 @@ export function ReproductionScreen() {
     return grouped;
   }, [events]);
 
+  const directChildrenByParent = useMemo(() => {
+    const grouped = new Map<string, AnyRecord[]>();
+    animals.forEach((animal) => {
+      [animal.mae_id, animal.pai_id].forEach((parentId) => {
+        const key = String(parentId || "");
+        if (!key) return;
+        grouped.set(key, [...(grouped.get(key) || []), animal]);
+      });
+    });
+    return grouped;
+  }, [animals]);
+
   const animalOptions = useMemo<RelationOption[]>(() => (
     animals.map((animal) => ({ value: String(animal.id), label: animalLabel(animal) }))
   ), [animals]);
@@ -851,6 +938,9 @@ export function ReproductionScreen() {
     return animals.filter((animal) => {
       const animalEvents = eventsByAnimal.get(String(animal.id)) || [];
       const reproStatus = animalReproductionStatus(animal, animalEvents);
+      const partos = birthEvents(animalEvents);
+      const latestParto = partos[0] || null;
+      const directChildren = directChildrenByParent.get(String(animal.id)) || [];
       const lotName = lotById.get(String(animal.lote_id || ""))?.nome || "Sem lote";
       const haystack = normalize([
         animal.nome,
@@ -861,17 +951,23 @@ export function ReproductionScreen() {
         animal.fase,
         lotName,
         reproStatus.label,
-        reproStatus.detail
+        reproStatus.detail,
+        latestParto?.descricao,
+        ...directChildren.map(animalLabel)
       ].filter(Boolean).join(" "));
 
       if (term && !haystack.includes(term)) return false;
-      if (reproductionFilter !== "todos" && reproStatus.key !== reproductionFilter) return false;
+      if (reproductionFilter === "parto") {
+        if (!partos.length || !hasBirthInPeriod(animalEvents, birthPeriodFilter)) return false;
+      } else if (reproductionFilter !== "todos" && reproStatus.key !== reproductionFilter) {
+        return false;
+      }
       if (statusFilter !== "todos" && String(animal.status || "") !== statusFilter) return false;
       if (categoryFilter !== "todos" && String(animal.categoria || "") !== categoryFilter) return false;
       if (lotFilter !== "todos" && String(animal.lote_id || "") !== lotFilter) return false;
       return true;
     });
-  }, [animals, categoryFilter, eventsByAnimal, lotById, lotFilter, reproductionFilter, search, statusFilter]);
+  }, [animals, birthPeriodFilter, categoryFilter, directChildrenByParent, eventsByAnimal, lotById, lotFilter, reproductionFilter, search, statusFilter]);
 
   const stats = useMemo(() => {
     const summaries = animals.map((animal) => animalReproductionStatus(animal, eventsByAnimal.get(String(animal.id)) || []));
@@ -1049,12 +1145,20 @@ export function ReproductionScreen() {
                     : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
                 )}
                 type="button"
-                onClick={() => setReproductionFilter(option.value)}
+                onClick={() => {
+                  setReproductionFilter(option.value);
+                  if (option.value === "parto" && birthPeriodFilter === "todos") setBirthPeriodFilter("recentes");
+                }}
               >
                 {option.label}
               </button>
             ))}
           </div>
+          {reproductionFilter === "parto" ? (
+            <select className="input max-w-xs" value={birthPeriodFilter} onChange={(event) => setBirthPeriodFilter(event.target.value as BirthPeriodFilter)}>
+              {birthPeriodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          ) : null}
         </div>
 
         {!canManage ? (
@@ -1080,6 +1184,7 @@ export function ReproductionScreen() {
                 animal={animal}
                 lotName={lotNameFor(animal)}
                 events={eventsByAnimal.get(String(animal.id)) || []}
+                directChildren={directChildrenByParent.get(String(animal.id)) || []}
                 selected={String(animal.id) === selectedAnimalId}
                 onOpen={() => openAnimal(animal)}
               />

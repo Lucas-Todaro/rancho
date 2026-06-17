@@ -198,6 +198,22 @@ const cases = [
   { message: "quanto tem de Leite Cru no estoque?", intent: "CONSULTA_ESTOQUE_ITEM" },
   { message: "como esta a vaca 19?", intent: "CONSULTA_ANIMAL" },
   { message: "Codigo Animal Status Tipo Data Observacoes 001 Inseminacao 01.01.26 001 Pre-parto 20.09.26 001 Pariu 10.10.26", intent: "LOTE_REGISTROS", registros: 3 },
+  {
+    message: ["Data;Animal;Litros", "2026-06-01;A-410;15", "2026-06-01;B-411;20"].join("\n"),
+    intent: "LOTE_REGISTROS",
+    registros: 2,
+    dados: { total_litros: 35 }
+  },
+  {
+    message: ["brinco;animal;tipo", "143;Princesa;vaca", "062;Lua;vaca"].join("\n"),
+    intent: "IMPORTACAO_ANIMAIS_TABELA",
+    dados: { tipo_tabela: "animals_import", total_linhas: 2, total_linhas_parse_validas: 2 }
+  },
+  {
+    message: ["mae;data_parto;sexo_cria;codigo_cria;pai;observacoes", "001;16/06/2026;femea;B-123;050;parto normal"].join("\n"),
+    intent: "IMPORTACAO_EVENTOS_TABELA",
+    dados: { tipo_tabela: "birth_child_events", total_linhas: 1, total_linhas_parse_validas: 1 }
+  },
   { message: "boa tarde", clarify: true }
 ];
 
@@ -223,7 +239,7 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.dados?.origem_parser === "tabela_local" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
       if (testCase.route) {

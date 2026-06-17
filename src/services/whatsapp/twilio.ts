@@ -114,7 +114,9 @@ type MilkStockResolution = {
 
 const CONFIRM_WORDS = new Set(["sim", "s", "ss", "confirmar", "confirma", "confirmado", "correto", "ok", "okay", "blz", "beleza", "pode", "pode salvar", "pode registrar", "pode lancar", "salvar", "salva", "registrar", "registra", "lancar", "lanca", "isso", "isso mesmo", "certo", "ta certo", "fechou", "show", "joia", "manda", "vai", "pode sim", "e isso", "importar", "importar validas", "importar linhas validas", "importar encontrados", "importar so encontrados", "salvar validas", "salvar linhas validas", "importa validas", "pode importar", "cadastrar", "cadastrar validos", "cadastrar animais", "so as validas", "so validas", "somente validas", "apenas validas", "1"]);
 const REJECT_WORDS = new Set(["nao", "n", "errado", "corrigir", "corrige", "nao e isso", "refazer", "refaz", "incorreto", "negativo", "na verdade", "2"]);
-const CANCEL_WORDS = new Set(["cancelar", "cancela", "sair", "para", "parar", "pare", "deixa", "esquece", "nao salva", "nao salvar", "nao registrar", "apaga isso"]);
+const CANCEL_WORDS = new Set(["cancelar", "cancela", "cancele", "sair", "para", "parar", "pare", "aborta", "abortar", "deixa", "esquece", "desfaz", "desfazer", "nao salva", "nao salve", "nao salvar", "nao registrar", "apaga isso"]);
+const PENDING_ACTION_CANCELLED_MESSAGE = "Beleza, cancelei essa acao. Nada foi salvo.";
+const NO_PENDING_ACTION_MESSAGE = "Nao ha acao pendente para cancelar.";
 const MENU_WORDS = new Set(["menu", "inicio", "ajuda", "voltar"]);
 const REPEAT_WORDS = new Set(["repete", "repetir", "repita", "mostra de novo", "mostrar de novo", "resumo", "resumir"]);
 const STOCK_PAGINATION_WORDS = new Set(["mais", "ver mais", "proximos", "proximo", "continuar", "continua"]);
@@ -512,7 +514,11 @@ function isRejectCommand(command: string) {
 }
 
 function isCancelCommand(command: string) {
-  return CANCEL_WORDS.has(command) || /^(?:cancelar|cancela|cancela essa|esquece|deixa(?: pra la| para la)?|pare|para|apaga isso|nao salva|nao salvar|nao registrar)\b/.test(command);
+  return CANCEL_WORDS.has(command) || /^(?:cancelar|cancela|cancele|cancela essa|esquece|deixa(?: pra la| para la)?|desfaz|desfazer|aborta|abortar|pare|para|parar|apaga isso|nao salva|nao salve|nao salvar|nao registrar)\b/.test(command);
+}
+
+function isClearPendingCommand(command: string) {
+  return isCancelCommand(command) || /^(?:nao|n|negativo|errei)$/.test(command);
 }
 
 function isMenuCommand(command: string) {
@@ -6736,6 +6742,16 @@ async function handleConversationActMessage(
     return { handled: false };
   }
 
+  if (pending && isClearPendingCommand(command)) {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      parsed: pending,
+      suppressPreviousPending: true,
+      response: PENDING_ACTION_CANCELLED_MESSAGE
+    };
+  }
+
   if (act.messageType === "confirmation" && !pending) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return {
@@ -6752,8 +6768,9 @@ async function handleConversationActMessage(
       handled: true,
       parsed: pending,
       response: pending
-        ? "Cancelado. Nao registrei essa acao. Nada foi salvo."
-        : "Cancelado. O que voce quer cancelar ou corrigir?"
+        ? PENDING_ACTION_CANCELLED_MESSAGE
+        : NO_PENDING_ACTION_MESSAGE,
+      suppressPreviousPending: true
     };
   }
 
@@ -6770,7 +6787,7 @@ async function handleConversationActMessage(
       handled: true,
       response: act.messageType === "correction"
         ? "O que voce quer corrigir? Me diga o animal/item e o valor correto."
-        : "Beleza. O que voce quer cancelar ou corrigir?"
+        : NO_PENDING_ACTION_MESSAGE
     };
   }
 
@@ -6800,7 +6817,8 @@ async function handleConversationActMessage(
     return {
       handled: true,
       parsed: pending,
-      response: "Cancelado. Nao registrei essa acao. Nada foi salvo."
+      suppressPreviousPending: true,
+      response: PENDING_ACTION_CANCELLED_MESSAGE
     };
   }
 

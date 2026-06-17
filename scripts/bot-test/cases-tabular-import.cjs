@@ -196,6 +196,58 @@ module.exports = function loadBotTestSection(context) {
       "002|20|01/06/2026|ordenha manha",
       "003|18,5|01/06/2026|ordenha tarde"
     ].join("\n");
+    const dataFirstProductionTableMessage = [
+      "Data;Animal;Litros",
+      "2026-06-01;A-410;15",
+      "2026-06-01;B-411;20"
+    ].join("\n");
+    const unitProductionTableMessage = [
+      "codigo;producao;quando;obs",
+      "A-510;15L;01.06.26;manha",
+      "B-511;20 l;01.06.26;tarde"
+    ].join("\n");
+    const tabProductionTableMessage = [
+      "animal\tlitros\tdata",
+      "A-610\t12\t01/06/2026",
+      "B-611\t15\t01/06/2026"
+    ].join("\n");
+    const namedProductionTableMessage = [
+      "vaca|leite|data",
+      "Mimosa|18|hoje",
+      "Estrela|22|hoje"
+    ].join("\n");
+    const invalidMiddleProductionTableMessage = [
+      "animal;litros;data;observacoes",
+      "A-710;10;01/06/2026;ok",
+      "B-711;;01/06/2026;sem litros",
+      "C-712;11,5;01/06/2026;ok"
+    ].join("\n");
+    const alternateAnimalRegistrationHeaderMessage = [
+      "brinco;animal;tipo",
+      "143;Princesa;vaca",
+      "062;Lua;vaca",
+      "090;Touro E;touro"
+    ].join("\n");
+    const shuffledAnimalRegistrationMessage = [
+      "categoria;nome;codigo",
+      "vaca;Princesa;143",
+      "vaca;Lua;062",
+      "touro;Touro E;090"
+    ].join("\n");
+    const headerlessNamedAnimalRegistrationMessage = [
+      "143;Princesa;vaca",
+      "062;Lua;vaca",
+      "090;Malhada;vaca"
+    ].join("\n");
+    const birthChildTableMessage = [
+      "mae;data_parto;sexo_cria;codigo_cria;pai;observacoes",
+      "001;16/06/2026;femea;B-123;050;parto normal",
+      "002;17/06/2026;macho;B-124;;pai nao informado"
+    ].join("\n");
+    const shuffledBirthChildTableMessage = [
+      "codigo_cria;sexo_cria;mae;data_parto;pai",
+      "B-200;femea;001;2026-06-16;050"
+    ].join("\n");
     const alternateStockEntryHeadersMessage = [
       "produto;qtd entrada;un;preco;obs",
       "racao;10;kg;300;compra semanal",
@@ -485,6 +537,80 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "producao tabular data primeiro nao usa ano como litros",
+        module: "tabela-producao",
+        phrase: dataFirstProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          total_litros: 35,
+          registros: 2,
+          columnMapping: { date: 0, animal_ref: 1, litros: 2 },
+          registroDetalhes: [
+            { animal: "A-410", litros: 15 },
+            { animal: "B-411", litros: 20 }
+          ]
+        }
+      },
+      {
+        name: "producao tabular aceita unidade grudada e turno generico",
+        module: "tabela-producao",
+        phrase: unitProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          total_litros: 35,
+          columnMapping: { animal_ref: 0, litros: 1, date: 2, observations: 3 },
+          tableRow: { lineNumber: 3, animal: "B-511", litros: 20, data_referencia: "2026-06-01", turno: "tarde" }
+        }
+      },
+      {
+        name: "producao tabular com tab usa aliases de colunas",
+        module: "tabela-producao",
+        phrase: tabProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          total_litros: 27,
+          columnMapping: { animal_ref: 0, litros: 1, date: 2 }
+        }
+      },
+      {
+        name: "producao tabular por nome de vaca usa coluna leite",
+        module: "tabela-producao",
+        phrase: namedProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          total_litros: 40,
+          columnMapping: { animal_ref: 0, litros: 1, date: 2 },
+          tableRow: { lineNumber: 2, animal: "MIMOSA", litros: 18, data_referencia: "hoje" }
+        }
+      },
+      {
+        name: "producao tabular mantem linha invalida sem perder validas",
+        module: "tabela-producao",
+        phrase: invalidMiddleProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 3,
+          total_linhas_parse_validas: 2,
+          total_linhas_parse_invalidas: 1,
+          total_litros: 21.5,
+          registros: 2,
+          tableRow: { lineNumber: 3, animal: "B-711", problem: "litros_ausentes" }
+        }
+      },
+      {
         name: "mensagem comum nao ativa parser tabular",
         module: "tabela-eventos",
         phrase: "B-002 deu 32 litros",
@@ -610,6 +736,56 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela de parto com cria mapeia mae cria pai e data",
+        module: "tabela-genealogia",
+        phrase: birthChildTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          tipo_tabela: "birth_child_events",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { mae_ref: 0, date: 1, sexo_cria: 2, codigo_cria: 3, pai_ref: 4, observations: 5 },
+          eventCounts: { parto: 2 },
+          tableRow: {
+            lineNumber: 2,
+            animal: "001",
+            mae_ref: "001",
+            evento_tipo: "parto",
+            data_referencia: "2026-06-16",
+            cria_sexo: "femea",
+            cria_codigo: "B-123",
+            pai_ref: "050",
+            parto_cria_cadastro: true,
+            observacoes: "parto normal"
+          }
+        }
+      },
+      {
+        name: "tabela de parto com cria embaralhada usa column mapping",
+        module: "tabela-genealogia",
+        phrase: shuffledBirthChildTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          tipo_tabela: "birth_child_events",
+          total_linhas: 1,
+          total_linhas_parse_validas: 1,
+          columnMapping: { codigo_cria: 0, sexo_cria: 1, mae_ref: 2, date: 3, pai_ref: 4 },
+          tableRow: {
+            lineNumber: 2,
+            animal: "001",
+            mae_ref: "001",
+            evento_tipo: "parto",
+            data_referencia: "2026-06-16",
+            cria_sexo: "femea",
+            cria_codigo: "B-200",
+            pai_ref: "050",
+            parto_cria_cadastro: true
+          }
+        }
+      },
+      {
         name: "tabela de cadastro de animais detecta linhas e campos",
         module: "tabela-animais",
         phrase: animalRegistrationTableMessage,
@@ -622,6 +798,32 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela de animais usa animal como nome quando ha brinco separado",
+        module: "tabela-animais",
+        phrase: alternateAnimalRegistrationHeaderMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { animal_ref: 0, name: 1, category: 2 },
+          tableRow: { lineNumber: 2, animal: "143", nome: "Princesa", categoria: "vaca", sexo: "femea" }
+        }
+      },
+      {
+        name: "tabela de animais com colunas embaralhadas preserva nome",
+        module: "tabela-animais",
+        phrase: shuffledAnimalRegistrationMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { animal_ref: 2, name: 1, category: 0 },
+          tableRow: { lineNumber: 4, animal: "090", nome: "Touro E", categoria: "touro", sexo: "macho" }
+        }
+      },
+      {
         name: "tabela minima de animais infere sexo pela categoria",
         module: "tabela-animais",
         phrase: minimalAnimalRegistrationTableMessage,
@@ -631,6 +833,19 @@ module.exports = function loadBotTestSection(context) {
           total_linhas: 2,
           total_linhas_parse_validas: 2,
           tableRow: { lineNumber: 3, animal: "IMP-202", categoria: "vaca", sexo: "femea" }
+        }
+      },
+      {
+        name: "tabela de animais sem cabecalho com nome no meio preserva nome",
+        module: "tabela-animais",
+        phrase: headerlessNamedAnimalRegistrationMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ANIMAIS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { animal_ref: 0, name: 1, category: 2 },
+          tableRow: { lineNumber: 1, animal: "143", nome: "Princesa", categoria: "vaca", sexo: "femea" }
         }
       },
       {
@@ -855,7 +1070,7 @@ module.exports = function loadBotTestSection(context) {
         extraAnimals: tabularExtraAnimals,
         messages: [routeSanitizedTabularAnimalEventsMessage, "cancelar"],
         expected: {
-          responseIncludes: "Cancelado",
+          responseIncludes: "cancelei",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
@@ -881,6 +1096,45 @@ module.exports = function loadBotTestSection(context) {
           shouldAskFollowUp: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "producao em tabela data primeiro nao salva e nao soma ano",
+        module: "tabela-producao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          { id: "animal-prod-a410", brinco: "A-410", nome: "Animal A-410" },
+          { id: "animal-prod-b411", brinco: "B-411", nome: "Animal B-411" }
+        ],
+        messages: [dataFirstProductionTableMessage],
+        expected: {
+          finalIntent: "LOTE_REGISTROS",
+          entities: { total_litros: 35 },
+          responseIncludes: "35",
+          responseNotIncludes: "2.026",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "producao em tabela cancela lote inteiro sem salvar",
+        module: "tabela-producao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          { id: "animal-prod-a410-cancel", brinco: "A-410", nome: "Animal A-410" },
+          { id: "animal-prod-b411-cancel", brinco: "B-411", nome: "Animal B-411" }
+        ],
+        messages: [dataFirstProductionTableMessage, "cancelar"],
+        expected: {
+          finalIntent: "LOTE_REGISTROS",
+          responseIncludes: "cancelei",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldClearSession: true,
           shouldNotWriteBusiness: true
         }
       },
@@ -960,6 +1214,23 @@ module.exports = function loadBotTestSection(context) {
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de animais com animal como nome preserva nome em dry-run",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [alternateAnimalRegistrationHeaderMessage, "sim"],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "3 animal",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 3,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "143", nome: "Princesa", categoria: "vaca" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
         }
       },
       {

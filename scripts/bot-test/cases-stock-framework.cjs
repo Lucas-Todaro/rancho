@@ -263,7 +263,7 @@ module.exports = function loadBotTestSection(context) {
         stockItems: stockPaginationItems(12),
         messages: ["me mostra o estoque", "cancelar"],
         expected: {
-          responseIncludes: "Cancelado",
+          responseIncludes: "Nao ha acao pendente",
           shouldClearSession: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
