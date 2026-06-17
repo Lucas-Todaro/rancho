@@ -37,7 +37,7 @@ import {
   destructiveBulkActionParsed
 } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
-import { domainFromUserChoice, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
+import { domainFromUserChoice, manualDomainChoiceOptionsText, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -975,74 +975,118 @@ function stockImportConfirmationText(parsed: ParsedRanchoMessage) {
 
 function domainTableSummary(parsed: ParsedRanchoMessage) {
   const dados = parsed.dados || {};
-  const summary = (dados.resumo_validacao || {}) as AnyRecord;
+  const summary = ((dados.resumo_validacao_dominio || dados.resumo_validacao || {}) as AnyRecord);
   return {
     domain: String(dados.dominio_tabela || "DESCONHECIDO"),
     total: Number(summary.total || dados.total_linhas || 0),
     ready: Number(summary.prontas || dados.total_linhas_parse_validas || 0),
-    invalid: Number(summary.invalidas || dados.total_linhas_parse_invalidas || 0),
-    review: Number(summary.revisao || dados.total_linhas_needs_review || 0),
+    invalid: Number(summary.erros_criticos || summary.invalidas || dados.total_linhas_parse_invalidas || 0),
+    review: Number(summary.avisos || summary.revisao || dados.total_linhas_needs_review || 0),
     metrics: (summary.metricas || {}) as AnyRecord
   };
+}
+
+function domainTableList(rows: AnyRecord[], domain: string, maxRows = 5) {
+  const lines = rows.slice(0, maxRows).map((row) => `- ${domainPreviewLine(row, domain)}`);
+  const extra = rows.length > maxRows ?[`...e mais ${rows.length - maxRows}.`] : [];
+  return [...lines, ...extra].join("\n");
+}
+
+function domainTableIssuesText(rows: AnyRecord[], domain: string, kind: "error" | "warning", maxRows = 5) {
+  const selected = rows.slice(0, maxRows);
+  if (!selected.length) return "";
+  const lines = selected.map((row) => {
+    const issue = kind === "error" ?domainRowIssueText(row) : domainRowWarningText(row);
+    return `- linha ${domainLine(row) || "?"} (${domainPreviewLine(row, domain)}): ${issue}`;
+  });
+  const extra = rows.length > selected.length ?`\n...e mais ${rows.length - selected.length}.` : "";
+  return `${lines.join("\n")}${extra}`;
+}
+
+function domainSpecificMetricLines(summary: ReturnType<typeof domainTableSummary>, readyRows: AnyRecord[]) {
+  if (summary.domain === "FINANCEIRO") {
+    const totals = readyRows.reduce((acc, row) => {
+      const values = domainRowValues(row);
+      const type = normalizeDomainFinanceType(values.tipo);
+      const value = Number(values.valor || 0);
+      if (type === "entrada") acc.in += value;
+      if (type === "saida") acc.out += value;
+      return acc;
+    }, { in: 0, out: 0 });
+    return [
+      `Entradas: ${formatMoney(totals.in)}.`,
+      `Saidas: ${formatMoney(totals.out)}.`,
+      `Resultado: ${formatMoney(totals.in - totals.out)}.`
+    ];
+  }
+
+  if (summary.domain === "PONTO_FUNCIONARIO") {
+    const points = readyRows.reduce((total, row) => {
+      const values = domainRowValues(row);
+      return total + (domainTime(values.entrada) ?1 : 0) + (domainTime(values.saida) ?1 : 0);
+    }, 0);
+    return [`Marcacoes de ponto: ${points}.`];
+  }
+
+  return [];
 }
 
 function domainTableConfirmationText(parsed: ParsedRanchoMessage) {
   const summary = domainTableSummary(parsed);
   const label = tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0]);
-  const metricLines: string[] = [];
+  const rows = domainImportRows(parsed);
+  const readyRows = domainImportReadyRows(parsed);
+  const errorRows = domainImportCriticalRows(parsed);
+  const warningRows = domainImportWarningRows(parsed);
+  const preview = readyRows.length ?domainTableList(readyRows, summary.domain, 5) : "";
+  const errors = domainTableIssuesText(errorRows, summary.domain, "error", 6);
+  const warnings = domainTableIssuesText(warningRows, summary.domain, "warning", 6);
+  const metricLines = domainSpecificMetricLines(summary, readyRows);
+  const noun: Record<string, string> = {
+    LOTES: "lotes para cadastrar",
+    GENEALOGIA: "vinculos genealogicos",
+    FINANCEIRO: "transacoes financeiras",
+    FUNCIONARIOS: "funcionarios para cadastrar",
+    PONTO_FUNCIONARIO: "registros de ponto",
+    SAUDE_SANITARIO: "eventos de saude/sanitario",
+    OBSERVACOES: "observacoes",
+    AGENDA_TAREFAS: "tarefas"
+  };
 
-  if (summary.domain === "FINANCEIRO") {
-    if (summary.metrics.receitas_linhas) metricLines.push(`Receitas: ${formatMoney(summary.metrics.receitas || 0)}`);
-    if (summary.metrics.despesas_linhas) metricLines.push(`Despesas: ${formatMoney(summary.metrics.despesas || 0)}`);
-    if (summary.metrics.tipo_indefinido) metricLines.push(`Linhas sem tipo financeiro claro: ${summary.metrics.tipo_indefinido}.`);
-  } else if (summary.domain === "LOTES") {
-    metricLines.push(`Lotes lidos: ${summary.metrics.lotes || summary.total}.`);
-  } else if (summary.domain === "GENEALOGIA") {
-    metricLines.push(`Vinculos familiares lidos: ${summary.metrics.vinculos || summary.total}.`);
-  } else if (summary.domain === "FUNCIONARIOS") {
-    metricLines.push(`Funcionarios lidos: ${summary.metrics.funcionarios || summary.total}.`);
-  } else if (summary.domain === "PONTO_FUNCIONARIO") {
-    metricLines.push(`Registros de ponto lidos: ${summary.metrics.registros_ponto || summary.total}.`);
-  } else if (summary.domain === "SAUDE_SANITARIO") {
-    metricLines.push(`Eventos de saude/sanitario lidos: ${summary.metrics.eventos_sanitarios || summary.total}.`);
-  } else if (summary.domain === "OBSERVACOES") {
-    metricLines.push(`Observacoes lidas: ${summary.metrics.observacoes || summary.total}.`);
-  } else if (summary.domain === "AGENDA_TAREFAS") {
-    metricLines.push(`Tarefas lidas: ${summary.metrics.tarefas || summary.total}.`);
+  if (errorRows.length) {
+    return [
+      `Encontrei ${summary.total} linha(s) de ${label}.`,
+      `Prontas: ${readyRows.length}.`,
+      `Erros criticos: ${errorRows.length}.`,
+      preview ?`\nLinhas validas:\n${preview}` : "",
+      warnings ?`\nAvisos:\n${warnings}` : "",
+      `\nErros:\n${errors}`,
+      "",
+      "Corrija os erros antes de salvar. Nada foi salvo ainda.",
+      "Envie a tabela corrigida ou responda cancelar."
+    ].filter(Boolean).join("\n");
   }
 
   return [
-    `Li uma tabela de ${label}.`,
-    `Linhas lidas: ${summary.total}.`,
+    `Encontrei ${summary.total} ${noun[summary.domain] || `linha(s) de ${label}`}.`,
     `Prontas: ${summary.ready}.`,
-    summary.review ?`Precisam de revisao: ${summary.review}.` : "",
-    summary.invalid ?`Invalidas: ${summary.invalid}.` : "",
+    summary.review ?`Avisos: ${summary.review}.` : "",
     ...metricLines,
+    preview ?`\nResumo:\n${preview}` : "",
+    warnings ?`\nAvisos:\n${warnings}` : "",
     "",
     "Nenhum dado foi salvo ainda.",
-    "Deseja confirmar esse preview para continuar a importacao desse dominio?",
-    "1 - Confirmar",
+    summary.domain === "AGENDA_TAREFAS"
+      ?"Esse dominio ainda nao possui tabela real segura. Deseja apenas confirmar o preview?"
+      :`Deseja salvar ${summary.ready} linha(s) valida(s) de ${label}?`,
+    "1 - Confirmar salvamento",
     "2 - Cancelar"
   ].filter(Boolean).join("\n");
 }
 
 function ambiguousTableQuestion(parsed: ParsedRanchoMessage) {
   const question = String(parsed.dados?.clarificationQuestion || parsed.dados?.classificacao_tabela?.clarificationQuestion || "").trim();
-  return question || [
-    "Li a tabela, mas nao consegui identificar com seguranca a qual area ela pertence. Ela e sobre:",
-    "1 - Rebanho/animais",
-    "2 - Lotes",
-    "3 - Genealogia",
-    "4 - Reproducao",
-    "5 - Producao de leite",
-    "6 - Estoque",
-    "7 - Financeiro/transacoes",
-    "8 - Funcionarios",
-    "9 - Ponto/folha",
-    "10 - Saude/sanitario",
-    "11 - Observacoes",
-    "12 - Agenda/tarefas"
-  ].join("\n");
+  return question ? `${question}\n\n${manualDomainChoiceOptionsText()}` : manualDomainChoiceOptionsText();
 }
 
 function animalImportPendingFromMissingEventAnimals(parsed: ParsedRanchoMessage) {
@@ -1523,6 +1567,8 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que voce escolha o dominio da tabela antes de continuar.";
   const dados = pending.dados || {};
   if (isDestructiveBulkParsed(pending)) return DESTRUCTIVE_BULK_ACTION_MESSAGE;
+  if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO" && domainImportCriticalRows(pending).length > 0) return "Corrija os erros criticos da tabela antes de salvar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO" && domainTableSummary(pending).ready <= 0 && domainTableSummary(pending).domain !== "AGENDA_TAREFAS") return "Nao encontrei linhas validas nesse dominio para salvar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
@@ -2862,7 +2908,18 @@ function domainImportRows(parsed: ParsedRanchoMessage) {
 }
 
 function domainImportReadyRows(parsed: ParsedRanchoMessage) {
-  return domainImportRows(parsed).filter((row) => row.status_linha === "pronto");
+  return domainImportRows(parsed).filter((row) => row.status_linha === "pronto" && row.status_validacao_dominio !== "erro");
+}
+
+function domainImportCriticalRows(parsed: ParsedRanchoMessage) {
+  return domainImportRows(parsed).filter((row) => row.status_validacao_dominio === "erro" || row.status_linha === "invalido");
+}
+
+function domainImportWarningRows(parsed: ParsedRanchoMessage) {
+  return domainImportRows(parsed).filter((row) => {
+    const warnings = Array.isArray(row.avisos_validacao_dominio) ?row.avisos_validacao_dominio : Array.isArray(row.avisos) ?row.avisos : [];
+    return warnings.length && row.status_validacao_dominio !== "erro";
+  });
 }
 
 function domainRowValues(row: AnyRecord) {
@@ -2909,6 +2966,79 @@ function domainImportFailureText(failed: Array<{ line: number; reason: string }>
   const visible = failed.slice(0, 5).map((item) => `linha ${item.line || "?"}: ${item.reason}`).join("; ");
   const extra = failed.length > 5 ?`; mais ${failed.length - 5}` : "";
   return `\nLinhas nao salvas: ${visible}${extra}.`;
+}
+
+function domainRowIssueText(row: AnyRecord) {
+  const issues = [
+    ...(Array.isArray(row.problemas) ?row.problemas : []),
+    ...(Array.isArray(row.problemas_validacao_dominio) ?row.problemas_validacao_dominio : [])
+  ].map(String);
+  return issues.length ?issues.join(", ") : "erro critico";
+}
+
+function domainRowWarningText(row: AnyRecord) {
+  const warnings = [
+    ...(Array.isArray(row.avisos) ?row.avisos : []),
+    ...(Array.isArray(row.avisos_validacao_dominio) ?row.avisos_validacao_dominio : [])
+  ].map(String);
+  return warnings.length ?warnings.join(", ") : "aviso";
+}
+
+function domainPreviewLine(row: AnyRecord, domain: string) {
+  const values = domainRowValues(row);
+  if (domain === "LOTES") return domainText(values.nome || values.lote || row.rawText || "lote");
+  if (domain === "GENEALOGIA") {
+    const parents = [values.mae_ref ?`mae ${values.mae_ref}` : "", values.pai_ref ?`pai ${values.pai_ref}` : ""].filter(Boolean).join(", ");
+    return `${domainText(values.animal_ref || values.filho_ref || values.cria_codigo || "animal")}${parents ?`: ${parents}` : ""}`;
+  }
+  if (domain === "FINANCEIRO") return `${domainText(values.descricao || values.categoria || "transacao")} - ${formatMoney(Number(values.valor || 0))}`;
+  if (domain === "FUNCIONARIOS") return domainText(values.nome || row.rawText || "funcionario");
+  if (domain === "PONTO_FUNCIONARIO") return `${domainText(values.funcionario_ref || "funcionario")} ${domainText(values.data || "")}`.trim();
+  if (domain === "SAUDE_SANITARIO") return `${domainText(values.animal_ref || "animal")} - ${domainText(values.evento || values.produto || "evento")}`;
+  if (domain === "OBSERVACOES") return `${domainText(values.entidade_ref || "geral")} - ${domainText(values.observacao || "observacao")}`;
+  if (domain === "AGENDA_TAREFAS") return domainText(values.titulo || values.tarefa || row.rawText || "tarefa");
+  return domainText(row.rawText || "linha");
+}
+
+function validDomainStatus(value: unknown) {
+  const normalized = normalizeRanchoText(domainText(value));
+  if (!normalized) return true;
+  return /^(?:ativo|ativa|inativo|inativa|desligado|desligada|cancelado|cancelada|pendente|concluido|concluida|feito|feita|aberto|aberta|false|true|sim|nao|0|1)$/.test(normalized);
+}
+
+function validDomainSex(value: unknown) {
+  const normalized = normalizeRanchoText(domainText(value));
+  if (!normalized) return true;
+  return /^(?:macho|femea|masculino|feminino|nao informado|nao_informado)$/.test(normalized);
+}
+
+function validDomainAnimalCategory(value: unknown) {
+  const normalized = normalizeRanchoText(domainText(value));
+  if (!normalized) return true;
+  return /^(?:vaca|boi|bezerro|bezerra|novilha|touro|outro)$/.test(normalized);
+}
+
+function validCpf(value: unknown) {
+  const digits = domainText(value).replace(/\D/g, "");
+  if (!digits) return true;
+  if (digits.length !== 11 || /^(\d)\1+$/.test(digits)) return false;
+  const calc = (size: number) => {
+    const sum = digits.slice(0, size).split("").reduce((total, digit, index) => total + Number(digit) * (size + 1 - index), 0);
+    const mod = (sum * 10) % 11;
+    return mod === 10 ?0 : mod;
+  };
+  return calc(9) === Number(digits[9]) && calc(10) === Number(digits[10]);
+}
+
+function importKey(parts: unknown[]) {
+  return parts.map((part) => normalizeCatalogText(domainText(part))).join("|");
+}
+
+function domainParsedDate(row: AnyRecord, field = "data") {
+  const values = row.values || {};
+  const parsedValues = row.parsedValues || {};
+  if (!domainText(values[field])) return "";
+  return domainText(parsedValues[field]);
 }
 
 function domainImportResultMessage(label: string, stats: DomainImportSaveStats, noun: string) {
@@ -2980,6 +3110,198 @@ async function existingEventImportKeys(supabase: SupabaseAdmin, owner: WhatsAppO
     String(row.data_evento || "").slice(0, 10),
     normalizeCatalogText(`${row.descricao || ""}|${row.medicamento || ""}`)
   ].join("|")));
+}
+
+async function enrichDomainTableImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const dados = { ...(parsed.dados || {}) };
+  const domain = String(dados.dominio_tabela || "DESCONHECIDO");
+  const rows = domainImportRows(parsed);
+  const animals = ["GENEALOGIA", "SAUDE_SANITARIO", "OBSERVACOES"].includes(domain) ?await listAnimals(supabase, owner) : [];
+  const lots = domain === "LOTES" ?await listLots(supabase, owner) : [];
+  const financeKeys = domain === "FINANCEIRO" ?await existingFinanceImportKeys(supabase, owner) : new Set<string>();
+  const pointKeys = domain === "PONTO_FUNCIONARIO" ?await existingPointImportKeys(supabase, owner) : new Set<string>();
+  const eventKeys = ["SAUDE_SANITARIO", "OBSERVACOES"].includes(domain) ?await existingEventImportKeys(supabase, owner) : new Set<string>();
+  const employeeRows = ["FUNCIONARIOS", "PONTO_FUNCIONARIO", "AGENDA_TAREFAS"].includes(domain)
+    ?((await supabase
+      .from(TABLES.funcionarios)
+      .select("id,nome,cpf,contato_whatsapp,ativo,deleted_at")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(5000)).data || []) as AnyRecord[]
+    : [];
+  const activeEmployees = employeeRows.filter((row) => row.ativo !== false && !row.deleted_at);
+  const whatsappRows = domain === "FUNCIONARIOS"
+    ?((await supabase
+      .from(TABLES.whatsappUsuarios)
+      .select("id,telefone_e164,funcionario_id,nome_exibicao,ativo")
+      .eq("fazenda_id", owner.fazenda_id)
+      .limit(5000)).data || []) as AnyRecord[]
+    : [];
+
+  const tableKeys = new Set<string>();
+  const lotNames = new Set(lots.map((lot) => normalizeCatalogText(lot.nome)));
+  const nextRows = [];
+
+  for (const row of rows) {
+    const next = { ...row };
+    const values = domainRowValues(row);
+    const errors = new Set<string>(Array.isArray(row.problemas) ?row.problemas.map(String) : []);
+    const warnings = new Set<string>(Array.isArray(row.avisos) ?row.avisos.map(String) : []);
+    const line = domainLine(row);
+
+    if (domain === "LOTES") {
+      const name = domainText(values.nome);
+      const key = normalizeCatalogText(name);
+      if (!name) errors.add("nome_lote_obrigatorio");
+      if (values.status && !validDomainStatus(values.status)) errors.add("status_invalido");
+      if (key && tableKeys.has(key)) warnings.add("lote_repetido_na_tabela");
+      if (key && lotNames.has(key)) warnings.add("lote_duplicado_no_rancho");
+      if (key) tableKeys.add(key);
+    } else if (domain === "GENEALOGIA") {
+      const animalRef = domainText(values.animal_ref || values.filho_ref || values.cria_codigo || values.cria_nome);
+      const animal = animalRef ?resolveAnimalIdentifier(animalRef, animals) : null;
+      if (!animalRef) errors.add("animal_principal_obrigatorio");
+      else if (animal?.status === "ambiguous") errors.add("animal_principal_ambiguo");
+      else if (!animal?.row) errors.add("animal_principal_nao_encontrado");
+
+      for (const parent of [
+        { label: "pai", ref: domainText(values.pai_ref) },
+        { label: "mae", ref: domainText(values.mae_ref) }
+      ]) {
+        if (!parent.ref) continue;
+        const found = resolveAnimalIdentifier(parent.ref, animals);
+        if (found.status === "ambiguous") errors.add(`${parent.label}_ambiguo`);
+        else if (!found.row) errors.add(`${parent.label}_nao_encontrado`);
+        else if (animal?.row && String(found.row.id) === String(animal.row.id)) errors.add(`${parent.label}_igual_ao_animal`);
+        else if (animal?.row && collectDescendantIds(String(animal.row.id || ""), animals).has(String(found.row.id || ""))) errors.add("ciclo_genealogico");
+      }
+      if (!values.pai_ref && !values.mae_ref) errors.add("pai_ou_mae_obrigatorio");
+    } else if (domain === "FINANCEIRO") {
+      const type = normalizeDomainFinanceType(values.tipo);
+      const value = Number(values.valor || 0);
+      const description = domainText(values.descricao || values.pessoa || values.observacoes);
+      const date = domainParsedDate(row, "data");
+      const key = [type, date, value, normalizeCatalogText(`${description || "Lancamento importado via WhatsApp"}|${values.categoria || ""}`)].join("|");
+      if (!type) errors.add("tipo_financeiro_invalido");
+      if (!Number.isFinite(value) || value <= 0) errors.add("valor_financeiro_invalido");
+      if (values.data && !date) errors.add("data_invalida");
+      if (!description) warnings.add("descricao_padrao_segura");
+      if (key && financeKeys.has(key)) warnings.add("transacao_duplicada_no_rancho");
+      if (key && tableKeys.has(key)) warnings.add("transacao_repetida_na_tabela");
+      if (key) tableKeys.add(key);
+    } else if (domain === "FUNCIONARIOS") {
+      const name = domainText(values.nome);
+      const phone = normalizeWhatsappNumber(values.telefone);
+      const cpf = domainText((values as AnyRecord).cpf);
+      if (!name) errors.add("nome_funcionario_obrigatorio");
+      if (!isValidBotPhone(phone)) errors.add("whatsapp_invalido");
+      if (cpf && !validCpf(cpf)) errors.add("cpf_invalido");
+      if (values.salario !== null && values.salario !== undefined && values.salario !== "" && (!Number.isFinite(Number(values.salario)) || Number(values.salario) < 0)) errors.add("salario_invalido");
+      if (values.status && !validDomainStatus(values.status)) errors.add("status_invalido");
+      if (phone && activeEmployees.some((employee) => whatsappNumbersMatch(phone, employee.contato_whatsapp))) warnings.add("whatsapp_duplicado_no_rancho");
+      if (phone && whatsappRows.some((item) => item.ativo !== false && whatsappNumbersMatch(phone, item.telefone_e164))) warnings.add("whatsapp_ja_vinculado");
+      if (cpf && activeEmployees.some((employee) => domainText(employee.cpf).replace(/\D/g, "") === cpf.replace(/\D/g, ""))) warnings.add("cpf_duplicado_no_rancho");
+    } else if (domain === "PONTO_FUNCIONARIO") {
+      const employeeRef = domainText(values.funcionario_ref);
+      const employee = employeeRef ?bestMatch(activeEmployees, employeeRef, (item) => [item.nome]) : null;
+      const entry = domainTime(values.entrada);
+      const exit = domainTime(values.saida);
+      const date = domainParsedDate(row, "data");
+      if (!employeeRef) errors.add("funcionario_obrigatorio");
+      else if (!employee?.row || (!employee.exact && employee.score < 0.86)) errors.add("funcionario_nao_encontrado");
+      if (values.data && !date) errors.add("data_invalida");
+      if (values.entrada && !entry) errors.add("entrada_invalida");
+      if (values.saida && !exit) errors.add("saida_invalida");
+      if (!entry && !exit) errors.add("entrada_ou_saida_obrigatoria");
+      if (entry && exit && exit <= entry) errors.add("saida_antes_da_entrada");
+      if (employee?.row) {
+        for (const item of [{ type: "entrada", time: entry }, { type: "saida", time: exit }].filter((item) => item.time)) {
+          const key = [employee.row.id, item.type, domainDateTime(date || values.data, item.time)].join("|");
+          if (pointKeys.has(key)) warnings.add("ponto_duplicado_no_rancho");
+          if (tableKeys.has(key)) warnings.add("ponto_repetido_na_tabela");
+          tableKeys.add(key);
+        }
+      }
+    } else if (domain === "SAUDE_SANITARIO") {
+      const animalRef = domainText(values.animal_ref);
+      const animal = animalRef ?resolveAnimalIdentifier(animalRef, animals) : null;
+      const event = domainText(values.evento || values.produto);
+      const date = domainParsedDate(row, "data");
+      if (!animalRef) errors.add("animal_obrigatorio");
+      else if (animal?.status === "ambiguous") errors.add("animal_ambiguo");
+      else if (!animal?.row) errors.add("animal_nao_encontrado");
+      if (!event) errors.add("evento_ou_produto_obrigatorio");
+      if (values.data && !date) errors.add("data_invalida");
+      if (values.dose && !/\d/.test(domainText(values.dose))) warnings.add("dose_sem_numero");
+      if (animal?.row) {
+        const key = [animal.row.id, normalizeDomainEventType(values.evento, values.produto), date, normalizeCatalogText(`${event}|${values.dose || ""}`)].join("|");
+        if (eventKeys.has(key)) warnings.add("evento_duplicado_no_rancho");
+        if (tableKeys.has(key)) warnings.add("evento_repetido_na_tabela");
+        tableKeys.add(key);
+      }
+    } else if (domain === "OBSERVACOES") {
+      const observation = domainText(values.observacao);
+      const entityRef = domainText(values.entidade_ref);
+      const animal = entityRef ?resolveAnimalIdentifier(entityRef, animals) : null;
+      const date = domainParsedDate(row, "data");
+      if (!observation) errors.add("observacao_obrigatoria");
+      if (entityRef && animal?.status === "ambiguous") errors.add("animal_ambiguo");
+      else if (entityRef && !animal?.row) errors.add("animal_nao_encontrado");
+      if (values.data && !date) errors.add("data_invalida");
+      const key = [animal?.row?.id || "", "observacao", date, normalizeCatalogText(observation)].join("|");
+      if (eventKeys.has(key)) warnings.add("observacao_duplicada_no_rancho");
+      if (tableKeys.has(key)) warnings.add("observacao_repetida_na_tabela");
+      tableKeys.add(key);
+    } else if (domain === "AGENDA_TAREFAS") {
+      const task = domainText(values.titulo || values.tarefa);
+      const date = domainParsedDate(row, "data");
+      const responsible = domainText(values.responsavel);
+      if (!task) errors.add("tarefa_obrigatoria");
+      if (values.data && !date) errors.add("data_invalida");
+      if (date && date < dateOnly()) warnings.add("tarefa_com_data_passada");
+      if (responsible) {
+        const employee = bestMatch(activeEmployees, responsible, (item) => [item.nome]);
+        if (!employee?.row || (!employee.exact && employee.score < 0.86)) warnings.add("responsavel_nao_encontrado");
+      }
+      if (values.status && !validDomainStatus(values.status)) errors.add("status_invalido");
+    } else if (domain === "REBANHO_ANIMAIS") {
+      if (!domainText(values.codigo)) errors.add("codigo_obrigatorio");
+      if (values.categoria && !validDomainAnimalCategory(values.categoria)) errors.add("categoria_invalida");
+      if (values.sexo && !validDomainSex(values.sexo)) errors.add("sexo_invalido");
+      if (values.status && !validDomainStatus(values.status)) errors.add("status_invalido");
+      if (values.peso !== null && values.peso !== undefined && values.peso !== "" && (!Number.isFinite(Number(values.peso)) || Number(values.peso) < 0)) errors.add("peso_invalido");
+    }
+
+    const criticalErrors = Array.from(errors);
+    const warningList = Array.from(warnings);
+    next.problemas_validacao_dominio = criticalErrors;
+    next.avisos_validacao_dominio = warningList;
+    next.status_validacao_dominio = criticalErrors.length || row.status_linha === "invalido" ? "erro" : warningList.length ? "aviso" : "pronto";
+    next.resumo_validacao_dominio = {
+      linha: line,
+      dominio: domain,
+      erros: criticalErrors,
+      avisos: warningList
+    };
+    nextRows.push(next);
+  }
+
+  const criticalRows = nextRows.filter((row) => row.status_validacao_dominio === "erro");
+  const warningRows = nextRows.filter((row) => row.status_validacao_dominio === "aviso");
+  const readyRows = nextRows.filter((row) => row.status_validacao_dominio !== "erro" && row.status_linha === "pronto");
+  dados.linhas = nextRows;
+  dados.linhas_validacao_dominio_erros = criticalRows;
+  dados.linhas_validacao_dominio_avisos = warningRows;
+  dados.resumo_validacao_dominio = {
+    total: nextRows.length,
+    prontas: readyRows.length,
+    erros_criticos: criticalRows.length,
+    avisos: warningRows.length,
+    invalidas: criticalRows.length,
+    revisao: warningRows.length,
+    metricas: (dados.resumo_validacao as AnyRecord | undefined)?.metricas || {}
+  };
+
+  return refreshRanchoMessage(parsed, dados);
 }
 
 async function saveLotesImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
@@ -3866,6 +4188,10 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
   if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
     return enrichTabularStockImport(supabase, owner, parsed);
+  }
+
+  if (parsed.tipo === "IMPORTACAO_TABELA_DOMINIO") {
+    return enrichDomainTableImport(supabase, owner, parsed);
   }
 
   if (parsed.tipo === "LOTE_REGISTROS") {

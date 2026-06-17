@@ -1,4 +1,5 @@
 import type { AnyRecord } from "@/lib/types";
+import type { GeminiTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
 export type GeminiStructuredAction = {
   intent: string;
@@ -21,6 +22,17 @@ export type GeminiStructuredResult = {
   warnings: string[];
   should_confirm: boolean;
   response_hint: string | null;
+  table_import?: {
+    domain: GeminiTableDomain;
+    confidence: number;
+    column_mapping: Record<string, string>;
+    normalized_rows: AnyRecord[];
+    unknown_columns: string[];
+    warnings: string[];
+    errors: string[];
+    ambiguous_domains?: GeminiTableDomain[];
+    needs_manual_choice: boolean;
+  } | null;
 };
 
 export type GeminiInterpreterInput = {

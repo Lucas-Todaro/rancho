@@ -274,6 +274,10 @@ module.exports = function loadBotTestSection(context) {
       "energia;despesa;350;01/06/2026",
       "venda leite;receita;1200;02/06/2026"
     ].join("\n");
+    const invalidFinanceTableMessage = [
+      "descricao;tipo;valor;data",
+      "energia;despesa;abc;32/06/2026"
+    ].join("\n");
     const financePipeShuffledTableMessage = [
       "data|valor|descricao|tipo|categoria",
       "2026-06-01|350|energia|despesa|energia",
@@ -288,6 +292,10 @@ module.exports = function loadBotTestSection(context) {
       "nome;cargo;telefone;salario",
       "Ana;vaqueira;83991234567;2500",
       "Carlos;ordenhador;83992345678;2200"
+    ].join("\n");
+    const invalidEmployeePhoneTableMessage = [
+      "nome;cargo;telefone;salario",
+      "Ana;vaqueira;123;2500"
     ].join("\n");
     const timeClockTableMessage = [
       "funcionario;data;entrada;saida",
@@ -308,6 +316,14 @@ module.exports = function loadBotTestSection(context) {
       "tarefa;data;responsavel;categoria",
       "vacinar lote 1;10/06/2026;Joao;sanitario",
       "comprar racao;12/06/2026;Maria;estoque"
+    ].join("\n");
+    const invalidGenealogyParentTableMessage = [
+      "animal;pai;mae",
+      "B-900;T-999;M-999"
+    ].join("\n");
+    const invalidPointTimeTableMessage = [
+      "funcionario;data;entrada;saida",
+      "Joao;01/06/2026;17:00;07:00"
     ].join("\n");
     const unknownDomainTableMessage = [
       "abc;def;ghi",
@@ -1226,6 +1242,92 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "validacao dominio financeiro bloqueia valor e data ruins",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [invalidFinanceTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Corrija os erros criticos",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "validacao dominio lotes mostra duplicado como aviso",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraLots: [{ id: "lote-piquete-preview", nome: "Piquete 1" }],
+        messages: [lotsTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "lote_duplicado_no_rancho",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "validacao dominio genealogia bloqueia pais inexistentes",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-gene-b900", brinco: "B-900", nome: "Cria 900" }],
+        messages: [invalidGenealogyParentTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Corrija os erros criticos",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "validacao dominio funcionario bloqueia whatsapp invalido",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [invalidEmployeePhoneTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Corrija os erros criticos",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "validacao dominio ponto bloqueia saida antes da entrada",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [invalidPointTimeTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Corrija os erros criticos",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "validacao dominio agenda mostra data passada como aviso",
+        module: "tabela-dominio-validacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [agendaTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "tarefa_com_data_passada",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "importacao por dominio salva lotes reais e ignora duplicados",
         module: "tabela-dominio-save",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -1374,7 +1476,7 @@ module.exports = function loadBotTestSection(context) {
         messages: [unknownDomainTableMessage],
         expected: {
           finalIntent: "IMPORTACAO_TABELA_AMBIGUA",
-          responseIncludes: "1 - Rebanho/animais",
+          responseIncludes: "1. Animais",
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
         }
@@ -1765,6 +1867,19 @@ module.exports = function loadBotTestSection(context) {
         messages: [ambiguousTabularMessage, "1"],
         expected: {
           responseIncludes: "tabela de cadastro de animais",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela ambigua aceita escolha manual de financeiro como opcao 5",
+        module: "tabela-dominio",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [ambiguousTabularMessage, "5"],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "financeiro",
           shouldAskConfirmation: true,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true

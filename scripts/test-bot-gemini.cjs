@@ -37,6 +37,8 @@ require.extensions[".ts"] = function loadTs(module, filename) {
 
 const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
+const { interpretWithGemini } = require("../src/lib/whatsapp/gemini/interpreter.ts");
+const { domainFromUserChoice } = require("../src/lib/whatsapp/nlp-core/tabular-domain-router.ts");
 
 const ADMIN_OWNER = {
   papel_bot: "admin",
@@ -70,9 +72,15 @@ function fixture(intent, fields = {}, options = {}) {
     missing_fields: options.missing_fields || [],
     warnings: options.warnings || [],
     should_confirm: options.should_confirm ?? !intent.startsWith("CONSULTA"),
-    response_hint: options.response_hint || null
+    response_hint: options.response_hint || null,
+    ...(Object.prototype.hasOwnProperty.call(options, "table_import") ? { table_import: options.table_import } : {})
   };
 }
+
+const geminiTableFinanceValid = ["descricao;tipo;valor;data", "energia;despesa;350;01/06/2026"].join("\n");
+const geminiTableStockInventedField = ["item;entrada;unidade;valor;coluna extra", "Racao de boi;10;kg;100;ignorar"].join("\n");
+const geminiTableLowConfidence = ["nome;data;observacao", "Algo;01/06/2026;teste"].join("\n");
+const geminiTableInvalidDomain = ["abc;def", "x;y"].join("\n");
 
 const fixtures = new Map([
   ["vaca 1 deu 15 litros", fixture("PRODUCAO_LEITE", { animal_ref: "1", litros: 15, data: "hoje" })],
@@ -135,6 +143,66 @@ const fixtures = new Map([
       { intent: "PRE_PARTO", fields: { animal_ref: "001", data: "2026-09-20" }, should_confirm: true },
       { intent: "PARTO", fields: { animal_ref: "001", data: "2026-10-10" }, should_confirm: true }
     ]
+  })],
+  [normalize(geminiTableFinanceValid), fixture("DESCONHECIDO", {}, {
+    confidence: 0.82,
+    should_confirm: false,
+    table_import: {
+      domain: "FINANCEIRO",
+      confidence: 0.91,
+      column_mapping: { descricao: "descricao", tipo: "tipo", valor: "valor", data: "data" },
+      normalized_rows: [{ descricao: "energia", tipo: "despesa", valor: 350, data: "2026-06-01" }],
+      unknown_columns: [],
+      warnings: [],
+      errors: [],
+      ambiguous_domains: [],
+      needs_manual_choice: false
+    }
+  })],
+  [normalize(geminiTableStockInventedField), fixture("DESCONHECIDO", {}, {
+    confidence: 0.84,
+    should_confirm: false,
+    table_import: {
+      domain: "ESTOQUE",
+      confidence: 0.9,
+      column_mapping: { item: "item", entrada: "quantidade", unidade: "unidade", valor: "valor_total", "coluna extra": "campo_inventado" },
+      normalized_rows: [{ item: "Racao de boi", quantidade: 10, unidade: "kg", valor_total: 100, campo_inventado: "ignorar" }],
+      unknown_columns: [],
+      warnings: [],
+      errors: [],
+      ambiguous_domains: [],
+      needs_manual_choice: false
+    }
+  })],
+  [normalize(geminiTableLowConfidence), fixture("DESCONHECIDO", {}, {
+    confidence: 0.55,
+    should_confirm: false,
+    table_import: {
+      domain: "OBSERVACOES",
+      confidence: 0.42,
+      column_mapping: { nome: "entidade_ref", data: "data", observacao: "observacao" },
+      normalized_rows: [{ entidade_ref: "Algo", data: "2026-06-01", observacao: "teste" }],
+      unknown_columns: [],
+      warnings: ["baixa confianca"],
+      errors: [],
+      ambiguous_domains: ["OBSERVACOES", "AGENDA_TAREFAS"],
+      needs_manual_choice: true
+    }
+  })],
+  [normalize(geminiTableInvalidDomain), fixture("DESCONHECIDO", {}, {
+    confidence: 0.7,
+    should_confirm: false,
+    table_import: {
+      domain: "TABELA_FAKE",
+      confidence: 0.9,
+      column_mapping: { abc: "fake" },
+      normalized_rows: [],
+      unknown_columns: [],
+      warnings: [],
+      errors: [],
+      ambiguous_domains: [],
+      needs_manual_choice: false
+    }
   })],
   ["boa tarde", fixture("DESCONHECIDO", {}, { confidence: 0.3, should_confirm: false, response_hint: "Pode me dizer o que deseja registrar ou consultar?" })]
 ]);
@@ -229,6 +297,27 @@ const cases = [
     intent: "IMPORTACAO_TABELA_AMBIGUA",
     dados: { dominio_tabela: "DESCONHECIDO", total_linhas: 1 }
   },
+  {
+    message: geminiTableFinanceValid,
+    intent: "IMPORTACAO_TABELA_DOMINIO",
+    dados: { dominio_tabela: "FINANCEIRO", gemini_table_domain: "FINANCEIRO", interpreter_final_usado: "gemini_table_domain_then_local_parser" }
+  },
+  {
+    message: geminiTableStockInventedField,
+    intent: "IMPORTACAO_ESTOQUE_TABELA",
+    dados: { gemini_table_domain: "ESTOQUE", interpreter_final_usado: "gemini_table_domain_then_local_parser" },
+    notMappingKey: "coluna extra"
+  },
+  {
+    message: geminiTableLowConfidence,
+    intent: "IMPORTACAO_TABELA_AMBIGUA",
+    dados: { dominio_tabela: "DESCONHECIDO", interpreter_final_usado: "gemini_table_manual_choice" }
+  },
+  {
+    message: geminiTableInvalidDomain,
+    intent: "IMPORTACAO_TABELA_AMBIGUA",
+    dados: { gemini_failure_reason: "invalid_schema" }
+  },
   { message: "boa tarde", clarify: true }
 ];
 
@@ -254,7 +343,7 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.dados?.origem_parser === "tabela_local" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.dados?.origem_parser === "tabela_local" || parsed.dados?.origem_parser === "gemini_table_guard" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
       if (testCase.route) {
@@ -280,6 +369,12 @@ const cases = [
           `${testCase.message}: dados.${field} esperado ${expectedValue}, recebido ${receivedValue}`
         );
       }
+      if (testCase.notMappingKey) {
+        assert(
+          !parsed.dados?.gemini_column_mapping?.[testCase.notMappingKey],
+          `${testCase.message}: mapeamento inventado nao deveria ser aceito`
+        );
+      }
       results.push({ ok: true, name: testCase.message });
     } catch (error) {
       results.push({
@@ -288,6 +383,66 @@ const cases = [
         error: error instanceof Error ? error.message : String(error)
       });
     }
+  }
+
+  try {
+    const expectedManualChoices = {
+      "1": "REBANHO_ANIMAIS",
+      "2": "LOTES",
+      "3": "GENEALOGIA",
+      "4": "PRODUCAO_LEITE",
+      "5": "FINANCEIRO",
+      "6": "ESTOQUE",
+      "7": "FUNCIONARIOS",
+      "8": "PONTO_FUNCIONARIO",
+      "9": "SAUDE_SANITARIO",
+      "10": "OBSERVACOES",
+      "11": "AGENDA_TAREFAS",
+      "12": "REPRODUCAO"
+    };
+    for (const [choice, expectedDomain] of Object.entries(expectedManualChoices)) {
+      assert(domainFromUserChoice(choice) === expectedDomain, `escolha manual ${choice}: esperado ${expectedDomain}, recebido ${domainFromUserChoice(choice)}`);
+    }
+    results.push({ ok: true, name: "Escolha manual 1..12 mapeia dominios corretos" });
+  } catch (error) {
+    results.push({
+      ok: false,
+      name: "Escolha manual 1..12 mapeia dominios corretos",
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  try {
+    const originalMock = global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
+    const originalFetch = global.fetch;
+    const originalApiKey = process.env.GEMINI_API_KEY;
+    delete global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
+    process.env.GEMINI_API_KEY = "fake-test-key";
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [
+          { content: { parts: [{ text: "{ json invalido" }] } }
+        ]
+      })
+    });
+
+    const invalidJson = await interpretWithGemini({ text: "teste json invalido" });
+    assert(!invalidJson.ok && invalidJson.reason === "invalid_json", `Gemini JSON invalido: esperado invalid_json, recebido ${invalidJson.ok ? "ok" : invalidJson.reason}`);
+    results.push({ ok: true, name: "Gemini retornando JSON invalido" });
+
+    if (originalMock) global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = originalMock;
+    else delete global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalApiKey;
+  } catch (error) {
+    results.push({
+      ok: false,
+      name: "Gemini retornando JSON invalido",
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 
   const failed = results.filter((result) => !result.ok);

@@ -19,6 +19,38 @@ export const TABULAR_TABLE_DOMAINS = [
 export type TabularTableDomain = typeof TABULAR_TABLE_DOMAINS[number];
 export type KnownTabularTableDomain = Exclude<TabularTableDomain, "DESCONHECIDO">;
 
+export const GEMINI_TABLE_DOMAINS = [
+  "ANIMAIS",
+  "LOTES",
+  "GENEALOGIA",
+  "PRODUCAO",
+  "FINANCEIRO",
+  "ESTOQUE",
+  "FUNCIONARIOS",
+  "PONTO_FUNCIONARIO",
+  "SAUDE_SANITARIO",
+  "OBSERVACOES",
+  "AGENDA_TAREFAS",
+  "EVENTOS"
+] as const;
+
+export type GeminiTableDomain = typeof GEMINI_TABLE_DOMAINS[number];
+
+const GEMINI_TABLE_DOMAIN_TO_INTERNAL: Record<GeminiTableDomain, KnownTabularTableDomain> = {
+  ANIMAIS: "REBANHO_ANIMAIS",
+  LOTES: "LOTES",
+  GENEALOGIA: "GENEALOGIA",
+  PRODUCAO: "PRODUCAO_LEITE",
+  FINANCEIRO: "FINANCEIRO",
+  ESTOQUE: "ESTOQUE",
+  FUNCIONARIOS: "FUNCIONARIOS",
+  PONTO_FUNCIONARIO: "PONTO_FUNCIONARIO",
+  SAUDE_SANITARIO: "SAUDE_SANITARIO",
+  OBSERVACOES: "OBSERVACOES",
+  AGENDA_TAREFAS: "AGENDA_TAREFAS",
+  EVENTOS: "REPRODUCAO"
+};
+
 export type TabularDomainSchema = {
   domain: KnownTabularTableDomain;
   intentPerRow: string;
@@ -370,21 +402,7 @@ function scoreDomain(schema: TabularDomainSchema, headers: string[], sampleRows?
 }
 
 function defaultUnknownQuestion() {
-  return [
-    "Li a tabela, mas nao consegui identificar com seguranca a qual area ela pertence. Ela e sobre:",
-    "1 - Rebanho/animais",
-    "2 - Lotes",
-    "3 - Genealogia",
-    "4 - Reproducao",
-    "5 - Producao de leite",
-    "6 - Estoque",
-    "7 - Financeiro/transacoes",
-    "8 - Funcionarios",
-    "9 - Ponto/folha",
-    "10 - Saude/sanitario",
-    "11 - Observacoes",
-    "12 - Agenda/tarefas"
-  ].join("\n");
+  return manualDomainChoiceOptionsText();
 }
 
 function ambiguousQuestion(text: string) {
@@ -483,15 +501,15 @@ export function classifyStructuredTableDomain(input: ClassifyStructuredTableDoma
 
 export function tabularDomainLabel(domain: TabularTableDomain) {
   const labels: Record<TabularTableDomain, string> = {
-    REBANHO_ANIMAIS: "rebanho/animais",
+    REBANHO_ANIMAIS: "animais",
     LOTES: "lotes",
     GENEALOGIA: "genealogia",
-    REPRODUCAO: "reproducao",
-    PRODUCAO_LEITE: "producao de leite",
+    REPRODUCAO: "eventos",
+    PRODUCAO_LEITE: "producao",
     ESTOQUE: "estoque",
-    FINANCEIRO: "financeiro/transacoes",
+    FINANCEIRO: "financeiro",
     FUNCIONARIOS: "funcionarios",
-    PONTO_FUNCIONARIO: "ponto/folha",
+    PONTO_FUNCIONARIO: "ponto de funcionario",
     SAUDE_SANITARIO: "saude/sanitario",
     OBSERVACOES: "observacoes",
     AGENDA_TAREFAS: "agenda/tarefas",
@@ -500,34 +518,70 @@ export function tabularDomainLabel(domain: TabularTableDomain) {
   return labels[domain];
 }
 
+export function manualDomainChoiceOptionsText() {
+  return [
+    "Nao tenho certeza do tipo da tabela. Escolha uma opcao:",
+    "1. Animais",
+    "2. Lotes",
+    "3. Genealogia",
+    "4. Producao",
+    "5. Financeiro",
+    "6. Estoque",
+    "7. Funcionarios",
+    "8. Ponto de funcionario",
+    "9. Saude/Sanitario",
+    "10. Observacoes",
+    "11. Agenda/Tarefas",
+    "12. Eventos"
+  ].join("\n");
+}
+
+export function domainFromGeminiTableDomain(value: string): KnownTabularTableDomain | null {
+  return GEMINI_TABLE_DOMAIN_TO_INTERNAL[value as GeminiTableDomain] || null;
+}
+
+export function allowedFieldsForGeminiTableDomain(value: string): Set<string> {
+  const domain = domainFromGeminiTableDomain(value);
+  return new Set(domain ? TABULAR_DOMAIN_SCHEMAS[domain].fields : []);
+}
+
+export function geminiTableDomainFieldsForPrompt() {
+  return Object.fromEntries(
+    GEMINI_TABLE_DOMAINS.map((domain) => [
+      domain,
+      Array.from(allowedFieldsForGeminiTableDomain(domain))
+    ])
+  ) as Record<GeminiTableDomain, string[]>;
+}
+
 export function domainFromUserChoice(value: string): KnownTabularTableDomain | null {
   const command = normalizeToken(value);
   const byNumber: Record<string, KnownTabularTableDomain> = {
     "1": "REBANHO_ANIMAIS",
     "2": "LOTES",
     "3": "GENEALOGIA",
-    "4": "REPRODUCAO",
-    "5": "PRODUCAO_LEITE",
+    "4": "PRODUCAO_LEITE",
+    "5": "FINANCEIRO",
     "6": "ESTOQUE",
-    "7": "FINANCEIRO",
-    "8": "FUNCIONARIOS",
-    "9": "PONTO_FUNCIONARIO",
-    "10": "SAUDE_SANITARIO",
-    "11": "OBSERVACOES",
-    "12": "AGENDA_TAREFAS"
+    "7": "FUNCIONARIOS",
+    "8": "PONTO_FUNCIONARIO",
+    "9": "SAUDE_SANITARIO",
+    "10": "OBSERVACOES",
+    "11": "AGENDA_TAREFAS",
+    "12": "REPRODUCAO"
   };
   if (byNumber[command]) return byNumber[command];
   if (/\b(?:rebanho|animal|animais|gado)\b/.test(command)) return "REBANHO_ANIMAIS";
   if (/\b(?:lote|lotes|piquete|piquetes|grupo)\b/.test(command)) return "LOTES";
   if (/\b(?:genealogia|pai|mae|linhagem)\b/.test(command)) return "GENEALOGIA";
-  if (/\b(?:reproducao|inseminacao|parto|prenhez|cio)\b/.test(command)) return "REPRODUCAO";
   if (/\b(?:producao|leite|ordenha)\b/.test(command)) return "PRODUCAO_LEITE";
-  if (/\b(?:estoque|insumo|produto|material)\b/.test(command)) return "ESTOQUE";
   if (/\b(?:financeiro|financas|transacao|receita|despesa)\b/.test(command)) return "FINANCEIRO";
+  if (/\b(?:estoque|insumo|produto|material)\b/.test(command)) return "ESTOQUE";
   if (/\b(?:funcionario|funcionarios|colaborador)\b/.test(command)) return "FUNCIONARIOS";
   if (/\b(?:ponto|folha|horas)\b/.test(command)) return "PONTO_FUNCIONARIO";
   if (/\b(?:saude|sanitario|vacina|medicamento|doenca)\b/.test(command)) return "SAUDE_SANITARIO";
   if (/\b(?:observacao|observacoes|nota)\b/.test(command)) return "OBSERVACOES";
   if (/\b(?:agenda|tarefa|tarefas|compromisso)\b/.test(command)) return "AGENDA_TAREFAS";
+  if (/\b(?:evento|eventos|reproducao|inseminacao|parto|prenhez|cio)\b/.test(command)) return "REPRODUCAO";
   return null;
 }

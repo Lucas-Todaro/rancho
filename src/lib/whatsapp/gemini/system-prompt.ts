@@ -1,8 +1,9 @@
 import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiInterpreterInput } from "@/lib/whatsapp/gemini/types";
+import { GEMINI_TABLE_DOMAINS, geminiTableDomainFieldsForPrompt } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
-export const GEMINI_SYSTEM_PROMPT_VERSION = "rancho-gemini-interpreter-v1";
+export const GEMINI_SYSTEM_PROMPT_VERSION = "rancho-gemini-interpreter-v2";
 
 export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
   const allowedIntents = input.allowedIntents?.length ? input.allowedIntents : [...GEMINI_ALLOWED_INTENTS];
@@ -24,6 +25,15 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
     "Se a mensagem tiver multiplas acoes, use LOTE_ACOES.",
     "Se a mensagem for uma tabela clara, use a intent de massa correspondente.",
     "Se estiver ambiguo, retorne DESCONHECIDO ou missing_fields.",
+    "Para tabelas/listas, preencha table_import quando conseguir classificar ou mapear a estrutura.",
+    "Em table_import, use somente os dominios permitidos: " + GEMINI_TABLE_DOMAINS.join(", ") + ".",
+    "Em table_import.column_mapping, mapeie coluna_original -> campo_normalizado do dominio. Nao use nome de tabela ou coluna Supabase.",
+    "Em table_import.normalized_rows, normalize valores quando possivel, sem criar IDs, sem criar animais, sem criar funcionarios e sem resolver referencias.",
+    "Em table_import.unknown_columns, coloque colunas que nao couberem nos campos permitidos.",
+    "Em table_import.warnings/errors, explique ambiguidades de estrutura e valores, nao decisoes de salvamento.",
+    "Se a confianca da tabela for baixa, use needs_manual_choice=true e liste ambiguous_domains.",
+    "Gemini nunca decide salvar importacao de tabela. O backend local decide preview, confirmacao, permissao e persistencia.",
+    "Gemini nunca inventa tabela Supabase, coluna Supabase, insert, update, select, RLS ou service role.",
     "Nunca transforme quantidade fisica em valor financeiro sem preco explicito.",
     "Nunca trate consulta como registro operacional.",
     "Consultas como \"partos recentes\", \"ultimos partos\", \"relatorio dos partos\" e \"quais vacas pariram recentemente?\" sao relatorios/consultas de reproducao com evento PARTO.",
@@ -63,7 +73,24 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
       missing_fields: [],
       warnings: [],
       should_confirm: true,
-      response_hint: null
+      response_hint: null,
+      table_import: {
+        domain: "PRODUCAO",
+        confidence: 0.9,
+        column_mapping: {
+          Animal: "animal_ref",
+          Litros: "litros",
+          Data: "data"
+        },
+        normalized_rows: [
+          { animal_ref: "B-002", litros: 30, data: "hoje" }
+        ],
+        unknown_columns: [],
+        warnings: [],
+        errors: [],
+        ambiguous_domains: [],
+        needs_manual_choice: false
+      }
     }, null, 2),
     "",
     "Para multiplas acoes, use actions com objetos no mesmo formato reduzido: intent, fields, missing_fields, warnings, should_confirm.",
@@ -73,6 +100,9 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
     "",
     "Schemas por intent:",
     JSON.stringify(schemas, null, 2),
+    "",
+    "Campos permitidos por dominio de table_import:",
+    JSON.stringify(geminiTableDomainFieldsForPrompt(), null, 2),
     "",
     `Data atual: ${input.currentDate || new Date().toISOString().slice(0, 10)}`,
     `Timezone: ${input.timezone || "America/Fortaleza"}`,

@@ -3,6 +3,11 @@ import { GEMINI_CONSULT_INTENTS, normalizeGeminiIntent } from "@/lib/whatsapp/ge
 import { allowedFieldsForGeminiIntent, schemaForGeminiIntent } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
 import {
+  allowedFieldsForGeminiTableDomain,
+  GEMINI_TABLE_DOMAINS,
+  type GeminiTableDomain
+} from "@/lib/whatsapp/nlp-core/tabular-domain-router";
+import {
   detectDestructiveBulkAction,
   detectRecentBirthsQuery,
   recentBirthsQueryData
@@ -32,6 +37,8 @@ export type GeminiValidationResult =
 
 const STRING_MAX = 500;
 const MAX_ACTIONS = 12;
+const MAX_TABLE_ROWS = 120;
+const MAX_TABLE_COLUMNS = 30;
 const DANGEROUS_TEXT_PATTERN =
   /\b(?:drop\s+table|truncate|alter\s+table|delete\s+from|insert\s+into|update\s+\w+\s+set|select\s+\*|schema|supabase|api[_-]?key|senha|password|token)\b/i;
 const ANIMAL_NAME_STOPWORDS = new Set(["novo", "nova", "cadastrar", "animal", "adicionar", "criar"]);
@@ -134,6 +141,94 @@ function validateFieldValues(intent: string, fields: AnyRecord, errors: string[]
   if (intent === "VENDA" && hasPhysicalQuantity && !hasValue(fields.valor_total)) {
     warnings.push("venda fisica sem preco deve pedir valor antes de registrar receita");
   }
+}
+
+function isGeminiTableDomain(value: unknown): value is GeminiTableDomain {
+  return GEMINI_TABLE_DOMAINS.includes(value as GeminiTableDomain);
+}
+
+function normalizeTableFieldName(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function sanitizeTableRow(row: AnyRecord, allowedFields: Set<string>) {
+  const output: AnyRecord = {};
+  for (const [key, value] of Object.entries(row).slice(0, MAX_TABLE_COLUMNS)) {
+    const field = normalizeTableFieldName(key);
+    if (!allowedFields.has(field)) continue;
+    if (typeof value === "string") output[field] = value.slice(0, STRING_MAX);
+    else if (typeof value === "number" && Number.isFinite(value)) output[field] = value;
+    else if (typeof value === "boolean" || value === null) output[field] = value;
+  }
+  return output;
+}
+
+function normalizeGeminiTableImport(
+  raw: unknown,
+  errors: string[],
+  warnings: string[]
+): GeminiStructuredResult["table_import"] {
+  if (raw === undefined || raw === null) return null;
+  if (!isPlainObject(raw)) {
+    errors.push("table_import deve ser objeto ou null");
+    return null;
+  }
+
+  const domain = String(raw.domain || "").trim().toUpperCase();
+  if (!isGeminiTableDomain(domain)) {
+    errors.push("table_import.domain fora da lista permitida");
+    return null;
+  }
+
+  const allowedFields = allowedFieldsForGeminiTableDomain(domain);
+  const unknownColumns = new Set(normalizeWarnings(raw.unknown_columns));
+  const columnMapping: Record<string, string> = {};
+  const rawMapping = isPlainObject(raw.column_mapping) ? raw.column_mapping : {};
+
+  for (const [originalColumn, mappedField] of Object.entries(rawMapping).slice(0, MAX_TABLE_COLUMNS)) {
+    const original = String(originalColumn || "").trim().slice(0, STRING_MAX);
+    const field = normalizeTableFieldName(mappedField);
+    if (!original) continue;
+    if (!allowedFields.has(field)) {
+      unknownColumns.add(original);
+      warnings.push(`table_import.column_mapping.${original} descartado`);
+      continue;
+    }
+    columnMapping[original] = field;
+  }
+
+  const rows = Array.isArray(raw.normalized_rows)
+    ? raw.normalized_rows
+      .slice(0, MAX_TABLE_ROWS)
+      .filter(isPlainObject)
+      .map((row) => sanitizeTableRow(row, allowedFields))
+    : [];
+
+  const ambiguousDomains = Array.isArray(raw.ambiguous_domains)
+    ? raw.ambiguous_domains
+      .map((item) => String(item || "").trim().toUpperCase())
+      .filter(isGeminiTableDomain)
+      .slice(0, 12)
+    : [];
+
+  const tableImport = {
+    domain,
+    confidence: numberOrDefault(raw.confidence, 0, 0, 1),
+    column_mapping: columnMapping,
+    normalized_rows: rows,
+    unknown_columns: Array.from(unknownColumns).slice(0, MAX_TABLE_COLUMNS),
+    warnings: normalizeWarnings(raw.warnings),
+    errors: normalizeWarnings(raw.errors),
+    ambiguous_domains: ambiguousDomains,
+    needs_manual_choice: raw.needs_manual_choice === true
+  };
+
+  if (hasDangerousString(tableImport)) errors.push("table_import contem conteudo perigoso");
+  return tableImport;
 }
 
 function destructiveBulkGeminiValue(originalText: string): GeminiStructuredResult {
@@ -254,6 +349,7 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
   if (!topIntent) errors.push("intent inexistente ou nao permitido");
 
   const fields = normalizedFields(result.fields, errors, "fields");
+  const tableImport = normalizeGeminiTableImport(result.table_import, errors, warnings);
   const rawActions = Array.isArray(result.actions) ? result.actions : [];
   if (rawActions.length > MAX_ACTIONS) errors.push("actions excede limite");
 
@@ -329,7 +425,8 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     missing_fields: missingFields,
     warnings: Array.from(new Set([...normalizeWarnings(result.warnings), ...warnings.filter((warning) => !warning.startsWith("missing."))])),
     should_confirm: shouldConfirm || geminiIntentRequiresConfirmation(topIntent),
-    response_hint: typeof result.response_hint === "string" ? result.response_hint.slice(0, STRING_MAX) : null
+    response_hint: typeof result.response_hint === "string" ? result.response_hint.slice(0, STRING_MAX) : null,
+    table_import: tableImport
   });
 
   if (context.originalText && /(?:corrige|cancela|nao era)/i.test(context.originalText) && !["CORRECAO", "CANCELAMENTO", "DESCONHECIDO"].includes(value.intent)) {

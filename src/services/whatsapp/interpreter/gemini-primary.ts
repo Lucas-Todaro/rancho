@@ -7,7 +7,8 @@ import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
 import { calfCategoryForSex, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
-import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { detectStructuredInput, parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { domainFromGeminiTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 import { detectDestructiveBulkAction, destructiveBulkActionParsed } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
@@ -815,6 +816,96 @@ function localFallbackResult(
   };
 }
 
+function geminiTableNeedsManualChoice(
+  input: ParseWithInterpreterInput,
+  interpretation: GeminiStructuredResult,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+): GeminiFallbackParseResult {
+  const table = interpretation.table_import;
+  const parsed = finalize("IMPORTACAO_TABELA_AMBIGUA", {
+    texto_tabela_original: input.text,
+    dominio_tabela: "DESCONHECIDO",
+    total_linhas: structuredDetection.usefulLineCount || 0,
+    origem_parser: "gemini_table_guard",
+    route,
+    structuredDetection,
+    interpreter_final_usado: "gemini_table_manual_choice",
+    gemini_intent: interpretation.intent,
+    gemini_confidence: interpretation.confidence,
+    gemini_table_import: table,
+    classificacao_tabela: {
+      domain: table?.domain || "DESCONHECIDO",
+      confidence: table?.confidence || 0,
+      needsUserClarification: true,
+      warnings: table?.warnings || [],
+      candidateDomains: table?.ambiguous_domains || []
+    }
+  }, [], Math.min(interpretation.confidence || 0.7, table?.confidence || 0.7));
+
+  return {
+    kind: "parsed",
+    threshold: 0.7,
+    parsed,
+    gemini: {
+      confidence: table?.confidence || interpretation.confidence,
+      requiresConfirmation: false,
+      reason: "gemini_table_low_confidence_manual_choice",
+      risk_flags: [...(interpretation.warnings || []), ...(table?.warnings || [])],
+      actions: [],
+      userResponse: interpretation.response_hint || ""
+    }
+  };
+}
+
+function convertGeminiTableImport(
+  input: ParseWithInterpreterInput,
+  interpretation: GeminiStructuredResult,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+): GeminiFallbackParseResult | null {
+  const table = interpretation.table_import;
+  if (!structuredDetection.isStructured || !table) return null;
+
+  if (table.needs_manual_choice || table.confidence < 0.7) {
+    return geminiTableNeedsManualChoice(input, interpretation, route, structuredDetection);
+  }
+
+  const domain = domainFromGeminiTableDomain(table.domain);
+  if (!domain) return localFallbackResult(input, "gemini_table_domain_invalid", route, structuredDetection);
+
+  const parsedTable = parseTabularAnimalEventsMessageAs(input.text, domain);
+  if (!parsedTable) return localFallbackResult(input, "gemini_table_local_reprocess_failed", route, structuredDetection);
+
+  return {
+    kind: "parsed",
+    threshold: 0.7,
+    parsed: {
+      ...parsedTable,
+      dados: {
+        ...(parsedTable.dados || {}),
+        origem_parser: parsedTable.dados?.origem_parser || "tabela_local",
+        route,
+        structuredDetection,
+        interpreter_final_usado: "gemini_table_domain_then_local_parser",
+        gemini_intent: interpretation.intent,
+        gemini_confidence: interpretation.confidence,
+        gemini_table_import: table,
+        gemini_table_domain: table.domain,
+        gemini_column_mapping: table.column_mapping
+      }
+    },
+    gemini: {
+      confidence: table.confidence,
+      requiresConfirmation: true,
+      reason: "gemini_table_domain_then_local_parser",
+      risk_flags: [...(interpretation.warnings || []), ...(table.warnings || [])],
+      actions: [],
+      userResponse: interpretation.response_hint || ""
+    }
+  };
+}
+
 async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise<GeminiFallbackParseResult> {
   const structuredDetection = detectStructuredInput(input.text);
   const route = structuredDetection.isStructured ? "structured_input" : "normal_message";
@@ -907,6 +998,9 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       message: GEMINI_SAFE_FAILURE_MESSAGE
     };
   }
+
+  const tableImportResult = convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
+  if (tableImportResult) return tableImportResult;
 
   return convertPrimaryInterpretation(gemini.interpretation, input.text);
 }
