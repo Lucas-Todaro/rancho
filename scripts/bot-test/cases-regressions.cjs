@@ -965,7 +965,7 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "PRODUCAO_LEITE",
           entities: { animal_codigo: "B-002", litros: 30, estoque_leite_movimentar: true },
-          responseIncludes: "estoque_movimentar: sim",
+          responseIncludes: "Nenhum registro real foi salvo",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
@@ -1021,7 +1021,7 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "PRODUCAO_LEITE",
           entities: { animal_codigo: "B-002", litros: 30, estoque_leite_movimentar: true },
-          responseIncludes: "estoque_movimentar: sim",
+          responseIncludes: "Nenhum registro real foi salvo",
           shouldAskFollowUp: true,
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,

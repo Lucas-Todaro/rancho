@@ -60,25 +60,58 @@ export type ParsedTabularStockImportRow = {
   problemas: string[];
 };
 
+export type ParsedTabularMilkProductionRow = {
+  lineNumber: number;
+  rawText: string;
+  animal_codigo_original: string;
+  animal_codigo: string;
+  litros_original: string;
+  litros: number | null;
+  data_original: string;
+  data_referencia: string | null;
+  observacoes: string;
+  problemas: string[];
+};
+
 type EventTypeResolution = {
   evento_tipo: ParsedTabularAnimalEventRow["evento_tipo"];
   evento_label: string;
   db_tipo: ParsedTabularAnimalEventRow["db_tipo"];
 };
 
-type TableKind = "animal_events" | "animals_import" | "stock_import" | "ambiguous" | null;
+type TableKind = "animal_events" | "animals_import" | "stock_import" | "milk_production" | "ambiguous" | null;
 
 type ParsedLine = {
   text: string;
   lineNumber: number;
 };
 
-type HeaderMap = Record<string, number | undefined>;
+type HeaderMap = {
+  code?: number;
+  eventType?: number;
+  date?: number;
+  notes?: number;
+  name?: number;
+  category?: number;
+  sex?: number;
+  breed?: number;
+  lot?: number;
+  status?: number;
+  weight?: number;
+  birthDate?: number;
+  item?: number;
+  quantity?: number;
+  unit?: number;
+  value?: number;
+  liters?: number;
+  movementType?: number;
+  movementTypeDefault?: "entrada" | "saida" | null;
+};
 
 export type StructuredInputDetection = {
   isStructured: boolean;
   reason: "single_line_message" | "multiple_lines_consistent_separator" | "multiple_lines_consistent_pair_list" | "no_consistent_structure";
-  separator: ";" | "|" | "\t" | ":" | " - " | null;
+  separator: ";" | "|" | "\t" | "," | ":" | " - " | null;
   usefulLineCount: number;
 };
 
@@ -91,6 +124,36 @@ function normalizeAnimalTableCode(value: string) {
 
 function compactHeader(value: string) {
   return normalizeRanchoText(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function splitDelimitedLine(line: string, separator: ";" | "|" | "\t" | ",") {
+  if (separator !== ",") return line.split(separator);
+
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === "\"") {
+      if (inQuotes && line[index + 1] === "\"") {
+        current += "\"";
+        index += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  cells.push(current);
+  return cells;
 }
 
 function splitHeaderCells(line: string) {
@@ -106,11 +169,11 @@ function usefulLinesFromText(text: string) {
     .filter(Boolean);
 }
 
-function countDelimitedCells(line: string, separator: ";" | "|" | "\t") {
-  return line.split(separator).length;
+function countDelimitedCells(line: string, separator: ";" | "|" | "\t" | ",") {
+  return splitDelimitedLine(line, separator).length;
 }
 
-function hasConsistentDelimitedRows(lines: string[], separator: ";" | "|" | "\t") {
+function hasConsistentDelimitedRows(lines: string[], separator: ";" | "|" | "\t" | ",") {
   const matching = lines.filter((line) => line.includes(separator));
   if (matching.length < 2) return false;
   const counts = matching.map((line) => countDelimitedCells(line, separator));
@@ -152,6 +215,9 @@ export function detectStructuredInput(text: string): StructuredInputDetection {
   }
   if (hasConsistentDelimitedRows(lines, "\t")) {
     return { isStructured: true, reason: "multiple_lines_consistent_separator", separator: "\t", usefulLineCount: lines.length };
+  }
+  if (hasConsistentDelimitedRows(lines, ",")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_separator", separator: ",", usefulLineCount: lines.length };
   }
   if (hasConsistentPairList(lines, ":")) {
     return { isStructured: true, reason: "multiple_lines_consistent_pair_list", separator: ":", usefulLineCount: lines.length };
@@ -195,9 +261,9 @@ function normalizedStructuredTableText(text: string) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (detection.separator === "|" || detection.separator === "\t") {
+  if (detection.separator === "|" || detection.separator === "\t" || detection.separator === ",") {
     return lines
-      .map((line) => line.split(detection.separator as "|" | "\t").map((cell) => cell.trim()).join(";"))
+      .map((line) => splitDelimitedLine(line, detection.separator as "|" | "\t" | ",").map((cell) => cell.trim()).join(";"))
       .join("\n");
   }
 
@@ -227,13 +293,54 @@ function headerIndex(cells: string[], patterns: RegExp[]) {
   return index >= 0 ? index : undefined;
 }
 
+function stockMovementDefaultFromHeader(cells: string[]) {
+  const entryIndex = headerIndex(cells, [
+    /^(?:entrada|qtd\s+entrada|qtde\s+entrada|quantidade\s+entrada)$/ ,
+    /^(?:comprado|comprada|recebido|recebida)$/
+  ]);
+  if (entryIndex !== undefined) return { index: entryIndex, movementTypeDefault: "entrada" as const };
+
+  const exitIndex = headerIndex(cells, [
+    /^(?:saida|uso|usado|consumo|baixa)$/ ,
+    /^(?:qtd\s+saida|qtde\s+saida|quantidade\s+saida)$/ 
+  ]);
+  if (exitIndex !== undefined) return { index: exitIndex, movementTypeDefault: "saida" as const };
+
+  return { index: undefined, movementTypeDefault: null };
+}
+
+function columnMappingFromHeader(header: HeaderMap) {
+  const mapping: Record<string, number | string> = {};
+  if (header.code !== undefined) mapping.animal_ref = header.code;
+  if (header.eventType !== undefined) mapping.event_type = header.eventType;
+  if (header.date !== undefined) mapping.date = header.date;
+  if (header.notes !== undefined) mapping.observations = header.notes;
+  if (header.name !== undefined) mapping.name = header.name;
+  if (header.category !== undefined) mapping.category = header.category;
+  if (header.sex !== undefined) mapping.sex = header.sex;
+  if (header.breed !== undefined) mapping.breed = header.breed;
+  if (header.lot !== undefined) mapping.lot = header.lot;
+  if (header.status !== undefined) mapping.status = header.status;
+  if (header.weight !== undefined) mapping.weight = header.weight;
+  if (header.birthDate !== undefined) mapping.birth_date = header.birthDate;
+  if (header.item !== undefined) mapping.item = header.item;
+  if (header.quantity !== undefined) mapping.quantity = header.quantity;
+  if (header.unit !== undefined) mapping.unit = header.unit;
+  if (header.value !== undefined) mapping.value = header.value;
+  if (header.liters !== undefined) mapping.litros = header.liters;
+  if (header.movementType !== undefined) mapping.movement_type = header.movementType;
+  if (header.movementTypeDefault) mapping.default_movement_type = header.movementTypeDefault;
+  return mapping;
+}
+
 function buildHeaderMap(headerLine: string): HeaderMap {
   const cells = splitHeaderCells(headerLine);
+  const stockMovement = stockMovementDefaultFromHeader(cells);
   return {
-    code: headerIndex(cells, [/^(?:codigo|cod|brinco|animal)(?:\s+animal)?$/, /^codigo\s+animal$/]),
-    eventType: headerIndex(cells, [/^(?:status\s+tipo|status|tipo|evento)$/]),
-    date: headerIndex(cells, [/^data$/, /^data\s+evento$/]),
-    notes: headerIndex(cells, [/^(?:observacoes|observacao|obs|nota|notas)$/]),
+    code: headerIndex(cells, [/^(?:codigo|cod|brinco|animal|bicho)(?:\s+animal)?$/, /^(?:codigo|cod)\s+animal$/, /^animal\s+ref$/]),
+    eventType: headerIndex(cells, [/^(?:status\s+tipo|tipo|evento|ocorrencia)$/]),
+    date: headerIndex(cells, [/^data$/, /^data\s+evento$/, /^quando$/]),
+    notes: headerIndex(cells, [/^(?:observacoes|observacao|obs|nota|notas|motivo)$/]),
     name: headerIndex(cells, [/^nome$/]),
     category: headerIndex(cells, [/^(?:categoria|tipo|classe)$/]),
     sex: headerIndex(cells, [/^sexo$/]),
@@ -243,9 +350,12 @@ function buildHeaderMap(headerLine: string): HeaderMap {
     weight: headerIndex(cells, [/^(?:peso|kg)$/]),
     birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]),
     item: headerIndex(cells, [/^(?:item|produto|insumo|material)$/]),
-    quantity: headerIndex(cells, [/^(?:quantidade|qtd|qtde)$/]),
+    quantity: headerIndex(cells, [/^(?:quantidade|qtd|qtde)$/]) ?? stockMovement.index,
     unit: headerIndex(cells, [/^(?:unidade|un|medida)$/]),
-    value: headerIndex(cells, [/^(?:valor|preco|preco\s+unitario|valor\s+unitario|custo)$/])
+    value: headerIndex(cells, [/^(?:valor|preco|preco\s+unitario|valor\s+unitario|valor\s+total|valor_total|custo|total)$/]),
+    liters: headerIndex(cells, [/^(?:litro|litros|producao|producao\s+litros|quantidade\s+litros)$/]),
+    movementType: headerIndex(cells, [/^(?:movimento|tipo\s+movimento|entrada\s+ou\s+saida)$/]),
+    movementTypeDefault: stockMovement.movementTypeDefault
   };
 }
 
@@ -253,46 +363,75 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
   if (!headerLine.includes(";")) return null;
 
   const cells = splitHeaderCells(headerLine);
-  const hasCode = hasAnyHeader(cells, [/^(?:codigo|cod|brinco|animal)(?:\s+animal)?$/, /^codigo\s+animal$/]);
-  const hasDate = hasAnyHeader(cells, [/^data$/, /^data\s+evento$/]);
-  const hasEvent = hasAnyHeader(cells, [/^(?:status\s+tipo|evento)$/]);
-  const hasTypeOrStatus = hasAnyHeader(cells, [/^(?:status|tipo)$/]);
-  const hasAnimalField = hasAnyHeader(cells, [/^nome$/, /^categoria$/, /^sexo$/, /^raca$/, /^lote$/, /^piquete$/, /^pasto$/, /^peso$/, /^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento)$/]);
-  const hasStockField = hasAnyHeader(cells, [/^(?:item|produto|insumo|material)$/, /^(?:quantidade|qtd|qtde)$/, /^(?:unidade|un|medida)$/]);
+  const header = buildHeaderMap(headerLine);
+  const hasCode = header.code !== undefined;
+  const hasDate = header.date !== undefined;
+  const hasEvent = header.eventType !== undefined;
+  const hasTypeOrStatus = header.eventType !== undefined || header.status !== undefined;
+  const hasAnimalField = [header.name, header.category, header.sex, header.breed, header.lot, header.weight, header.birthDate].some((value) => value !== undefined);
+  const hasAnimalRegistrationField = [header.name, header.sex, header.breed, header.lot, header.weight, header.birthDate].some((value) => value !== undefined);
+  const hasStockField = [header.item, header.quantity, header.unit, header.value, header.movementType].some((value) => value !== undefined) || Boolean(header.movementTypeDefault);
+  const hasLiters = header.liters !== undefined;
 
-  const eventScore = (hasDate ? 2 : 0) + (hasEvent ? 2 : 0) + (hasTypeOrStatus ? 1 : 0);
-  const animalScore = (hasAnimalField ? 2 : 0)
-    + (hasAnyHeader(cells, [/^nome$/]) ? 2 : 0)
-    + (hasAnyHeader(cells, [/^categoria$/, /^sexo$/, /^raca$/, /^lote$/]) ? 1 : 0);
-  const stockScore = (hasStockField ? 3 : 0)
-    + (hasAnyHeader(cells, [/^(?:item|produto|insumo|material)$/]) ? 2 : 0)
-    + (hasAnyHeader(cells, [/^(?:quantidade|qtd|qtde)$/]) ? 2 : 0)
-    + (hasAnyHeader(cells, [/^(?:unidade|un|medida)$/]) ? 1 : 0);
+  const eventScore = (hasCode ? 1 : 0) + (hasDate ? 2 : 0) + (hasEvent ? 3 : 0) + (hasTypeOrStatus ? 1 : 0);
+  const animalScore = (hasCode ? 1 : 0) + (hasAnimalField ? 3 : 0) + (header.name !== undefined ? 2 : 0) + (header.category !== undefined ? 2 : 0);
+  const stockScore = (header.item !== undefined ? 3 : 0)
+    + (header.quantity !== undefined ? 3 : 0)
+    + (header.unit !== undefined ? 1 : 0)
+    + (header.value !== undefined ? 1 : 0)
+    + ((header.movementType !== undefined || header.movementTypeDefault) ? 2 : 0);
+  const productionScore = (hasCode ? 2 : 0)
+    + (hasLiters ? 4 : 0)
+    + (hasDate ? 1 : 0)
+    + (header.notes !== undefined ? 1 : 0);
 
-  if (stockScore >= 5 && stockScore > eventScore && stockScore > animalScore) return "stock_import";
-  if (!hasCode) return null;
-  if (eventScore >= 3 && eventScore > animalScore) return "animal_events";
-  if (animalScore >= 3 && animalScore > eventScore) return "animals_import";
-  if (eventScore >= 3 && animalScore >= 3) return "ambiguous";
+  if (productionScore >= 5 && productionScore > stockScore && productionScore > eventScore && productionScore > animalScore) return "milk_production";
+  if (header.item !== undefined && header.quantity !== undefined && stockScore >= 6) return "stock_import";
+  if (header.item !== undefined && stockScore >= 5 && stockScore > eventScore && stockScore > animalScore) return "stock_import";
+  if (!hasCode) return hasStockField || hasDate || hasEvent || hasLiters ? "ambiguous" : null;
+  if (eventScore >= 4 && hasAnimalRegistrationField && hasDate) return "ambiguous";
+  if (eventScore >= 4 && eventScore >= productionScore) return "animal_events";
+  if (animalScore >= 4) return "animals_import";
   if (hasDate && hasTypeOrStatus) return "animal_events";
+  if (hasLiters) return "milk_production";
   if (hasAnimalField) return "animals_import";
   return null;
 }
 
-function isHeaderLine(line: string) {
+function hasStockHeaderShape(line: string) {
   if (!line.includes(";")) return false;
-  return detectTableKindFromHeader(line) === "animal_events";
+  const header = buildHeaderMap(line);
+  return header.item !== undefined && header.quantity !== undefined;
 }
 
-function splitTableRow(line: string) {
+function tableKindFromStructuredLine(line: string): TableKind {
+  return detectTableKindFromHeader(line) || (hasStockHeaderShape(line) ? "stock_import" : null);
+}
+
+function isConcreteStructuredHeaderLine(line: string) {
+  const kind = tableKindFromStructuredLine(line);
+  return Boolean(kind && kind !== "ambiguous");
+}
+
+function isHeaderLine(line: string) {
+  if (!line.includes(";")) return false;
+  return tableKindFromStructuredLine(line) === "animal_events";
+}
+
+function mappedCellCount(header: HeaderMap) {
+  const indexes = Object.values(header).filter((value) => typeof value === "number") as number[];
+  return indexes.length ? Math.max(...indexes) + 1 : 0;
+}
+
+function rowCellsForHeader(line: string, header: HeaderMap) {
   const cells = line.split(";").map((cell) => cell.trim());
-  if (cells.length < 3) return null;
-  return {
-    animal: cells[0] || "",
-    status: cells[1] || "",
-    date: cells[2] || "",
-    notes: cells.slice(3).join(";").trim()
-  };
+  const expectedCount = mappedCellCount(header);
+  if (header.notes !== undefined && header.notes === expectedCount - 1 && cells.length > expectedCount) {
+    const prefix = cells.slice(0, header.notes);
+    const notes = cells.slice(header.notes).join(";").trim();
+    return [...prefix, notes];
+  }
+  return cells;
 }
 
 function validDateParts(day: number, month: number, year: number) {
@@ -305,6 +444,15 @@ function validDateParts(day: number, month: number, year: number) {
 function parseTableDate(value: string) {
   const text = value.trim();
   if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (!validDateParts(day, month, year)) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
 
   const match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})$/);
   if (!match) return null;
@@ -410,19 +558,19 @@ function normalizeStockMovementType(value: string): ParsedTabularStockImportRow[
 }
 
 function parseStockImportLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularStockImportRow | null {
-  const cells = line.split(";").map((cell) => cell.trim());
+  const cells = rowCellsForHeader(line, header);
   if (cells.length < 3) return null;
   if (cells.every((cell) => !cell)) return null;
 
   const itemOriginal = cellAt(cells, header.item ?? 0);
   const quantityOriginal = cellAt(cells, header.quantity);
   const unitOriginal = cellAt(cells, header.unit);
-  const typeOriginal = cellAt(cells, header.eventType ?? header.status);
+  const typeOriginal = cellAt(cells, header.movementType ?? header.eventType ?? header.status);
   const dateOriginal = cellAt(cells, header.date);
   const valueOriginal = cellAt(cells, header.value);
   const quantity = parsePositiveTableNumber(quantityOriginal);
   const unit = normalizeStockUnit(unitOriginal);
-  const movementType = normalizeStockMovementType(typeOriginal);
+  const movementType = normalizeStockMovementType(typeOriginal) || header.movementTypeDefault || null;
   const parsedDate = dateOriginal ?parseTableDate(dateOriginal) : null;
   const value = parseOptionalMoney(valueOriginal);
   const problemas: string[] = [];
@@ -432,7 +580,7 @@ function parseStockImportLine(line: string, lineNumber: number, header: HeaderMa
   else if (quantity === null) problemas.push("quantidade_invalida");
   if (!unitOriginal.trim()) problemas.push("unidade_ausente");
   else if (!unit) problemas.push("unidade_invalida");
-  if (!typeOriginal.trim()) problemas.push("tipo_movimento_ausente");
+  if (!typeOriginal.trim() && !header.movementTypeDefault) problemas.push("tipo_movimento_ausente");
   else if (!movementType) problemas.push("tipo_movimento_desconhecido");
   if (dateOriginal.trim() && !parsedDate) problemas.push("data_invalida");
   if (valueOriginal.trim() && value === null) problemas.push("valor_invalido");
@@ -465,39 +613,43 @@ function cellAt(cells: string[], index?: number) {
   return index === undefined ? "" : (cells[index] || "").trim();
 }
 
-function parseDataLine(line: string, lineNumber: number): ParsedTabularAnimalEventRow | null {
-  const cells = splitTableRow(line);
-  if (!cells) return null;
-  if (!cells.animal && !cells.status && !cells.date && !cells.notes) return null;
+function parseDataLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularAnimalEventRow | null {
+  const cells = rowCellsForHeader(line, header);
+  if (cells.length < 2) return null;
+  const animalOriginal = cellAt(cells, header.code ?? 0);
+  const statusOriginal = cellAt(cells, header.eventType);
+  const dateOriginal = cellAt(cells, header.date);
+  const notes = cellAt(cells, header.notes);
+  if (!animalOriginal && !statusOriginal && !dateOriginal && !notes) return null;
 
   const problemas: string[] = [];
-  const animalCode = normalizeAnimalTableCode(cells.animal);
-  const eventType = resolveEventType(cells.status);
-  const parsedDate = parseTableDate(cells.date);
+  const animalCode = normalizeAnimalTableCode(animalOriginal);
+  const eventType = resolveEventType(statusOriginal);
+  const parsedDate = parseTableDate(dateOriginal);
 
   if (!animalCode) problemas.push("animal_sem_codigo");
   if (!eventType) problemas.push("tipo_evento_desconhecido");
-  if (!cells.date.trim()) problemas.push("data_ausente");
+  if (!dateOriginal.trim()) problemas.push("data_ausente");
   else if (!parsedDate) problemas.push("data_invalida");
 
   return {
     lineNumber,
     rawText: line,
-    animal_codigo_original: cells.animal,
+    animal_codigo_original: animalOriginal,
     animal_codigo: animalCode,
-    status_original: cells.status,
+    status_original: statusOriginal,
     evento_tipo: eventType?.evento_tipo || null,
     evento_label: eventType?.evento_label || null,
     db_tipo: eventType?.db_tipo || null,
-    data_original: cells.date,
+    data_original: dateOriginal,
     data_referencia: parsedDate,
-    observacoes: cells.notes,
+    observacoes: notes,
     problemas
   };
 }
 
 function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularAnimalImportRow | null {
-  const cells = line.split(";").map((cell) => cell.trim());
+  const cells = rowCellsForHeader(line, header);
   if (cells.length < 2) return null;
   if (cells.every((cell) => !cell)) return null;
 
@@ -553,6 +705,39 @@ function parseAnimalImportLine(line: string, lineNumber: number, header: HeaderM
   };
 }
 
+function parseMilkProductionLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularMilkProductionRow | null {
+  const cells = rowCellsForHeader(line, header);
+  if (cells.length < 2) return null;
+  if (cells.every((cell) => !cell)) return null;
+
+  const animalOriginal = cellAt(cells, header.code ?? 0);
+  const litrosOriginal = cellAt(cells, header.liters);
+  const dateOriginal = cellAt(cells, header.date);
+  const notes = cellAt(cells, header.notes);
+  const litros = parsePositiveTableNumber(litrosOriginal);
+  const parsedDate = dateOriginal ? parseTableDate(dateOriginal) : null;
+  const problemas: string[] = [];
+  const animalCode = normalizeAnimalTableCode(animalOriginal);
+
+  if (!animalCode) problemas.push("animal_sem_codigo");
+  if (!litrosOriginal.trim()) problemas.push("litros_ausentes");
+  else if (litros === null) problemas.push("litros_invalidos");
+  if (dateOriginal.trim() && !parsedDate) problemas.push("data_invalida");
+
+  return {
+    lineNumber,
+    rawText: line,
+    animal_codigo_original: animalOriginal,
+    animal_codigo: animalCode,
+    litros_original: litrosOriginal,
+    litros,
+    data_original: dateOriginal,
+    data_referencia: parsedDate,
+    observacoes: notes,
+    problemas
+  };
+}
+
 function eventCounts(rows: ParsedTabularAnimalEventRow[]) {
   return rows.reduce<Record<string, number>>((counts, row) => {
     const key = row.evento_tipo || "desconhecido";
@@ -575,6 +760,19 @@ function stockImportCounts(rows: ParsedTabularStockImportRow[]) {
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
+}
+
+function productionRowsToBatchRecords(rows: ParsedTabularMilkProductionRow[], routeMeta: ReturnType<typeof structuredRouteMeta>, columnMapping: Record<string, number | string>) {
+  return rows
+    .filter((row) => row.problemas.length === 0)
+    .map((row) => finalize("PRODUCAO_LEITE", {
+      animal_codigo: row.animal_codigo,
+      litros: row.litros,
+      data_referencia: row.data_referencia || "hoje",
+      observacoes: row.observacoes || undefined,
+      column_mapping: columnMapping,
+      ...routeMeta
+    }, [], 0.95));
 }
 
 function splitNotesHeaderAndFirstCode(value: string) {
@@ -705,11 +903,13 @@ function structuredRouteMeta(text: string) {
 }
 
 function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const header = buildHeaderMap(lines[headerIndex].text);
+  const columnMapping = columnMappingFromHeader(header);
   const rows: ParsedTabularAnimalEventRow[] = [];
   for (const line of lines.slice(headerIndex + 1)) {
     if (isHeaderLine(line.text)) continue;
     if (!line.text.includes(";")) continue;
-    const row = parseDataLine(line.text, line.lineNumber);
+    const row = parseDataLine(line.text, line.lineNumber, header);
     if (row) rows.push(row);
   }
 
@@ -722,6 +922,7 @@ function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: 
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
     tipo_tabela: "animal_events",
+    column_mapping: columnMapping,
     importacao_tabela_eventos: true,
     tabela_destino: "eventos_animal",
     total_linhas: rows.length,
@@ -736,10 +937,11 @@ function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: 
 
 function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const header = buildHeaderMap(lines[headerIndex].text);
+  const columnMapping = columnMappingFromHeader(header);
   const rows: ParsedTabularAnimalImportRow[] = [];
 
   for (const line of lines.slice(headerIndex + 1)) {
-    if (detectTableKindFromHeader(line.text)) continue;
+    if (isConcreteStructuredHeaderLine(line.text)) continue;
     if (!line.text.includes(";")) continue;
     const row = parseAnimalImportLine(line.text, line.lineNumber, header);
     if (row) rows.push(row);
@@ -754,6 +956,7 @@ function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex:
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
     tipo_tabela: "animals_import",
+    column_mapping: columnMapping,
     importacao_tabela_animais: true,
     tabela_destino: "animais",
     total_linhas: rows.length,
@@ -769,7 +972,7 @@ function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex:
 function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): ParsedRanchoMessage | null {
   const candidateLines = lines.filter((line) => {
     if (!line.text.includes(";")) return false;
-    if (detectTableKindFromHeader(line.text)) return false;
+    if (isConcreteStructuredHeaderLine(line.text)) return false;
     const cells = line.text.split(";").map((cell) => cell.trim());
     if (cells.length < 2 || cells.length > 3) return false;
     if (!cells[0] || !cells[1]) return false;
@@ -780,6 +983,7 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
   if (candidateLines.length < 2) return null;
 
   const header: HeaderMap = { code: 0, category: 1, sex: 2 };
+  const columnMapping = columnMappingFromHeader(header);
   const rows = candidateLines
     .map((line) => parseAnimalImportLine(line.text, line.lineNumber, header))
     .filter(Boolean) as ParsedTabularAnimalImportRow[];
@@ -792,6 +996,7 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
     tipo_tabela: "animals_import",
+    column_mapping: columnMapping,
     importacao_tabela_animais: true,
     tabela_destino: "animais",
     cabecalho_inferido: "Codigo;Categoria;Sexo",
@@ -807,10 +1012,11 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
 
 function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const header = buildHeaderMap(lines[headerIndex].text);
+  const columnMapping = columnMappingFromHeader(header);
   const rows: ParsedTabularStockImportRow[] = [];
 
   for (const line of lines.slice(headerIndex + 1)) {
-    if (detectTableKindFromHeader(line.text)) continue;
+    if (isConcreteStructuredHeaderLine(line.text)) continue;
     if (!line.text.includes(";")) continue;
     const row = parseStockImportLine(line.text, line.lineNumber, header);
     if (row) rows.push(row);
@@ -825,6 +1031,7 @@ function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: n
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
     tipo_tabela: "stock_import",
+    column_mapping: columnMapping,
     importacao_tabela_estoque: true,
     tabela_destino: "estoque_movimentacoes",
     total_linhas: rows.length,
@@ -835,6 +1042,43 @@ function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: n
     linhas_parse_invalidas: invalidParseRows,
     instrucoes_confirmacao: "confirmar_para_importar_estoque_valido"
   }, [], 0.96);
+}
+
+function parseMilkProductionTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
+  const header = buildHeaderMap(lines[headerIndex].text);
+  const columnMapping = columnMappingFromHeader(header);
+  const routeMeta = structuredRouteMeta(text);
+  const rows: ParsedTabularMilkProductionRow[] = [];
+
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (isConcreteStructuredHeaderLine(line.text)) continue;
+    if (!line.text.includes(";")) continue;
+    const row = parseMilkProductionLine(line.text, line.lineNumber, header);
+    if (row) rows.push(row);
+  }
+
+  if (!rows.length) return null;
+
+  const validParseRows = rows.filter((row) => row.problemas.length === 0);
+  const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+  const registros = productionRowsToBatchRecords(rows, routeMeta, columnMapping);
+  const totalLitros = validParseRows.reduce((sum, row) => sum + Number(row.litros || 0), 0);
+
+  return finalize("LOTE_REGISTROS", {
+    origem_parser: "tabela_local",
+    ...routeMeta,
+    tipo_tabela: "milk_production",
+    column_mapping: columnMapping,
+    total_linhas: rows.length,
+    total_linhas_parse_validas: validParseRows.length,
+    total_linhas_parse_invalidas: invalidParseRows.length,
+    total_litros: totalLitros,
+    registros,
+    total_registros: registros.length,
+    tipos: ["PRODUCAO_LEITE"],
+    linhas: rows,
+    linhas_parse_invalidas: invalidParseRows
+  }, [], 0.95);
 }
 
 function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
@@ -852,18 +1096,35 @@ function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: num
   }, [], 0.74);
 }
 
+function parseUnknownStructuredTable(text: string, lines: ParsedLine[]): ParsedRanchoMessage | null {
+  if (!lines.length || !lines[0].text.includes(";")) return null;
+  const dataLines = lines.slice(1).filter((line) => line.text.includes(";"));
+  if (!dataLines.length) return null;
+
+  return finalize("IMPORTACAO_TABELA_AMBIGUA", {
+    origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
+    tipo_tabela: "ambiguous",
+    texto_tabela_original: normalizeTabularAnimalEventsText(text),
+    cabecalho: lines[0].text,
+    total_linhas: dataLines.length,
+    instrucoes_confirmacao: "perguntar_tipo_tabela"
+  }, [], 0.72);
+}
+
 export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
   const structuredDetection = detectStructuredInput(text);
   if (!structuredDetection.isStructured) return null;
 
   const lines = parsedTableLines(text);
-  const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
-  if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines);
+  const headerIndex = lines.findIndex((line) => tableKindFromStructuredLine(line.text));
+  if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines) || parseUnknownStructuredTable(text, lines);
 
-  const kind = detectTableKindFromHeader(lines[headerIndex].text);
+  const kind = tableKindFromStructuredLine(lines[headerIndex].text);
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
   if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
   if (kind === "stock_import") return parseStockImportTable(text, lines, headerIndex);
+  if (kind === "milk_production") return parseMilkProductionTable(text, lines, headerIndex);
   if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
   return null;
 }
@@ -873,7 +1134,7 @@ export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_ev
   if (!structuredDetection.isStructured) return null;
 
   const lines = parsedTableLines(text);
-  const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
+  const headerIndex = lines.findIndex((line) => tableKindFromStructuredLine(line.text));
   if (headerIndex < 0 && kind === "animals_import") return parseHeaderlessAnimalsImportTable(text, lines);
   if (headerIndex < 0) return null;
   if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);

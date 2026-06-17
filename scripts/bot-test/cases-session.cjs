@@ -736,7 +736,7 @@ module.exports = function loadBotTestSection(context) {
               intent: "LOTE_REGISTROS",
               estadoNovo: "livre",
               eventoConfirmado: true,
-              responseIncludes: "estoque_movimentar: sim",
+              responseIncludes: "entrada consolidada",
               responseRawIncludes: "Simulação",
               responseRawNotIncludes: ["Simula\u00c3", "produ\u00c3"]
             }

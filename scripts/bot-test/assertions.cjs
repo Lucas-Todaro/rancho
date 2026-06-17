@@ -14,6 +14,11 @@ module.exports = function loadBotTestSection(context) {
       return normalizeCatalogText(String(value ?? ""));
     }
 
+    function sameValue(received, expected) {
+      if (typeof expected === "number") return Number(received) === expected;
+      return normalize(received) === normalize(expected);
+    }
+
     function parseResolved(phrase) {
       return resolveParsed(parseRanchoMessage(phrase));
     }
@@ -230,6 +235,12 @@ module.exports = function loadBotTestSection(context) {
       if ("total_linhas" in expected && Number(dados.total_linhas) !== Number(expected.total_linhas)) failures.push(`total_linhas esperado ${expected.total_linhas}, recebido ${dados.total_linhas}`);
       if ("total_linhas_parse_validas" in expected && Number(dados.total_linhas_parse_validas) !== Number(expected.total_linhas_parse_validas)) failures.push(`total_linhas_parse_validas esperado ${expected.total_linhas_parse_validas}, recebido ${dados.total_linhas_parse_validas}`);
       if ("total_linhas_parse_invalidas" in expected && Number(dados.total_linhas_parse_invalidas) !== Number(expected.total_linhas_parse_invalidas)) failures.push(`total_linhas_parse_invalidas esperado ${expected.total_linhas_parse_invalidas}, recebido ${dados.total_linhas_parse_invalidas}`);
+      if (expected.columnMapping) {
+        const mapping = dados.column_mapping || {};
+        for (const [field, value] of Object.entries(expected.columnMapping)) {
+          if (sameValue(mapping[field], value) === false) failures.push(`column_mapping ${field} esperado ${value}, recebido ${mapping[field]}`);
+        }
+      }
       if (expected.eventCounts) {
         const counts = dados.contagem_eventos_parse || dados.resumo_validacao?.por_tipo || {};
         for (const [eventType, total] of Object.entries(expected.eventCounts)) {
@@ -255,6 +266,7 @@ module.exports = function loadBotTestSection(context) {
           if (expected.tableRow.status && normalize(row.status) !== normalize(expected.tableRow.status)) failures.push(`linha tabela status esperado ${expected.tableRow.status}, recebido ${row.status}`);
           if (expected.tableRow.item_nome && normalize(row.item_nome) !== normalize(expected.tableRow.item_nome)) failures.push(`linha tabela item esperado ${expected.tableRow.item_nome}, recebido ${row.item_nome}`);
           if ("quantidade" in expected.tableRow && Number(row.quantidade) !== Number(expected.tableRow.quantidade)) failures.push(`linha tabela quantidade esperada ${expected.tableRow.quantidade}, recebida ${row.quantidade}`);
+          if ("litros" in expected.tableRow && Number(row.litros) !== Number(expected.tableRow.litros)) failures.push(`linha tabela litros esperado ${expected.tableRow.litros}, recebido ${row.litros}`);
           if (expected.tableRow.unidade && normalize(row.unidade) !== normalize(expected.tableRow.unidade)) failures.push(`linha tabela unidade esperada ${expected.tableRow.unidade}, recebida ${row.unidade}`);
           if (expected.tableRow.tipo_movimento && normalize(row.tipo_movimento) !== normalize(expected.tableRow.tipo_movimento)) failures.push(`linha tabela movimento esperado ${expected.tableRow.tipo_movimento}, recebido ${row.tipo_movimento}`);
           if (expected.tableRow.problem && !(Array.isArray(row.problemas) && row.problemas.includes(expected.tableRow.problem))) failures.push(`linha tabela deveria conter problema ${expected.tableRow.problem}, recebeu ${row.problemas}`);

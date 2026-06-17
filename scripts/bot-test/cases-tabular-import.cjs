@@ -155,6 +155,58 @@ module.exports = function loadBotTestSection(context) {
       "Racao de boi;10;kg;Entrada;01.06.26;",
       "Arroz;7;kg;Entrada;02.06.26;Item novo"
     ].join("\n");
+    const shuffledAnimalEventsMessage = [
+      "Data;Observacoes;Animal;Evento",
+      "2026-03-01;;A-10;Inseminacao",
+      "2026-03-02;parto normal;B-20;Pariu",
+      "2026-03-03;atencao;C-30;Pre-parto",
+      "2026-03-04;;D-40;Cio"
+    ].join("\n");
+    const alternateHeadersAnimalEventsMessage = [
+      "bicho;tipo;quando;obs",
+      "A-701;Inseminacao;15/07/2026;",
+      "B-702;Pariu;2026-07-15;normal",
+      "C-703;Pre-parto;15.07.26;observar"
+    ].join("\n");
+    const commaAnimalEventsMessage = [
+      "bicho,quando,tipo,obs",
+      "A-711,15/07/2026,Inseminacao,",
+      "B-712,2026-07-15,Pariu,normal",
+      "C-713,15.07.26,Pre-parto,observar"
+    ].join("\n");
+    const alternateDashAnimalEventsMessage = [
+      "A-777 - CIO",
+      "B-888 - INSEMINACAO"
+    ].join("\n");
+    const productionTableMessage = [
+      "animal;litros;data;observacoes",
+      "001;15;01/06/2026;ordenha manha",
+      "002;20;01/06/2026;ordenha manha",
+      "003;18,5;01/06/2026;ordenha tarde"
+    ].join("\n");
+    const shuffledProductionTableMessage = [
+      "data;animal;observacoes;litros",
+      "01/06/2026;001;ordenha manha;15",
+      "01/06/2026;002;ordenha manha;20",
+      "01/06/2026;003;ordenha tarde;18,5"
+    ].join("\n");
+    const pipeProductionTableMessage = [
+      "animal|litros|data|observacoes",
+      "001|15|01/06/2026|ordenha manha",
+      "002|20|01/06/2026|ordenha manha",
+      "003|18,5|01/06/2026|ordenha tarde"
+    ].join("\n");
+    const alternateStockEntryHeadersMessage = [
+      "produto;qtd entrada;un;preco;obs",
+      "racao;10;kg;300;compra semanal",
+      "sal mineral;3;saco;180;",
+      "feno;5;fardo;;sem preco informado"
+    ].join("\n");
+    const alternateStockExitHeadersMessage = [
+      "produto;saida;unidade;motivo",
+      "racao;2;kg;consumo diario",
+      "feno;1;fardo;uso no curral"
+    ].join("\n");
 
     const tabularAnimalCodes = [
       "001", "204", "143", "177", "397", "387", "249", "062", "195", "398",
@@ -314,6 +366,122 @@ module.exports = function loadBotTestSection(context) {
           structuredReason: "multiple_lines_consistent_pair_list",
           eventCounts: { inseminacao: 1, parto: 1, pre_parto: 1, cio: 1 },
           tableRow: { lineNumber: 5, animal: "322", evento_tipo: "cio", problem: "data_ausente" }
+        }
+      },
+      {
+        name: "eventos com colunas embaralhadas usam column mapping e nao posicao fixa",
+        module: "tabela-eventos",
+        phrase: shuffledAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_validas: 4,
+          columnMapping: { date: 0, observations: 1, animal_ref: 2, event_type: 3 },
+          eventCounts: { inseminacao: 1, parto: 1, pre_parto: 1, cio: 1 },
+          tableRow: { lineNumber: 5, animal: "D-40", evento_tipo: "cio", data_referencia: "2026-03-04" }
+        }
+      },
+      {
+        name: "eventos com aliases genericos aceitam bicho tipo quando obs",
+        module: "tabela-eventos",
+        phrase: alternateHeadersAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { animal_ref: 0, event_type: 1, date: 2, observations: 3 },
+          tableRow: { lineNumber: 4, animal: "C-703", evento_tipo: "pre_parto", data_referencia: "2026-07-15", observacoes: "observar" }
+        }
+      },
+      {
+        name: "eventos com csv mantem mapping mesmo com separador virgula",
+        module: "tabela-eventos",
+        phrase: commaAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { animal_ref: 0, date: 1, event_type: 2, observations: 3 },
+          tableRow: { lineNumber: 4, animal: "C-713", evento_tipo: "pre_parto", data_referencia: "2026-07-15", observacoes: "observar" }
+        }
+      },
+      {
+        name: "lista com hifen usa codigos diferentes sem hardcode",
+        module: "tabela-eventos",
+        phrase: alternateDashAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_invalidas: 2,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_pair_list",
+          eventCounts: { cio: 1, inseminacao: 1 },
+          tableRow: { lineNumber: 3, animal: "B-888", evento_tipo: "inseminacao", problem: "data_ausente" }
+        }
+      },
+      {
+        name: "producao tabular soma apenas a coluna de litros",
+        module: "tabela-producao",
+        phrase: productionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          total_litros: 53.5,
+          registros: 3,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_separator",
+          columnMapping: { animal_ref: 0, litros: 1, date: 2, observations: 3 },
+          registroTipos: ["PRODUCAO_LEITE"],
+          registroDetalhes: [
+            { animal: "001", litros: 15 },
+            { animal: "002", litros: 20 },
+            { animal: "003", litros: 18.5 }
+          ],
+          tableRow: { lineNumber: 4, animal: "003", litros: 18.5, data_referencia: "2026-06-01", observacoes: "ordenha tarde" }
+        }
+      },
+      {
+        name: "producao tabular com colunas em outra ordem continua correta",
+        module: "tabela-producao",
+        phrase: shuffledProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          total_litros: 53.5,
+          registros: 3,
+          columnMapping: { date: 0, animal_ref: 1, observations: 2, litros: 3 },
+          registroDetalhes: [
+            { animal: "001", litros: 15 },
+            { animal: "002", litros: 20 },
+            { animal: "003", litros: 18.5 }
+          ]
+        }
+      },
+      {
+        name: "producao tabular com pipe preserva litros e data separados",
+        module: "tabela-producao",
+        phrase: pipeProductionTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "LOTE_REGISTROS",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          total_litros: 53.5,
+          registros: 3,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_separator",
+          columnMapping: { animal_ref: 0, litros: 1, date: 2, observations: 3 }
         }
       },
       {
@@ -535,6 +703,32 @@ module.exports = function loadBotTestSection(context) {
           total_linhas_parse_invalidas: 2,
           tableRow: { lineNumber: 4, item_nome: "Sal Mineral", problem: "quantidade_ausente" }
         }
+      },
+      {
+        name: "estoque com aliases de entrada mapeia quantidade e movimento padrao",
+        module: "tabela-estoque",
+        phrase: alternateStockEntryHeadersMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ESTOQUE_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          columnMapping: { item: 0, quantity: 1, unit: 2, value: 3, observations: 4, default_movement_type: "entrada" },
+          tableRow: { lineNumber: 3, item_nome: "sal mineral", quantidade: 3, unidade: "saco", tipo_movimento: "entrada" }
+        }
+      },
+      {
+        name: "estoque com alias de saida define movimento sem coluna tipo separada",
+        module: "tabela-estoque",
+        phrase: alternateStockExitHeadersMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ESTOQUE_TABELA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { item: 0, quantity: 1, unit: 2, observations: 3, default_movement_type: "saida" },
+          tableRow: { lineNumber: 2, item_nome: "racao", quantidade: 2, unidade: "kg", tipo_movimento: "saida" }
+        }
       }
     ];
 
@@ -666,6 +860,27 @@ module.exports = function loadBotTestSection(context) {
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldClearSession: true,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "producao em tabela confirma total correto sem ler ano como litros",
+        module: "tabela-producao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          { id: "animal-prod-001", brinco: "001", nome: "Animal 001" },
+          { id: "animal-prod-002", brinco: "002", nome: "Animal 002" },
+          { id: "animal-prod-003", brinco: "003", nome: "Animal 003" }
+        ],
+        messages: [productionTableMessage],
+        expected: {
+          finalIntent: "LOTE_REGISTROS",
+          entities: { total_litros: 53.5 },
+          responseIncludes: "53,5",
+          responseNotIncludes: "2.026",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
         }
       },
@@ -938,6 +1153,18 @@ module.exports = function loadBotTestSection(context) {
           savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
           shouldSaveValues: { item_nome: "Aftosa", quantidade: 5 },
           shouldNotSaveValues: { item_nome: "Arroz" },
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "modo teste nao vaza debug tecnico na resposta final",
+        module: "tabela-producao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["B-002 deu 20 litros para venda", "sim"],
+        expected: {
+          finalIntent: "PRODUCAO_LEITE",
+          allResponsesNotInclude: "Debug estoque leite",
+          savedAfterConfirmation: true,
           shouldNotWriteBusiness: true
         }
       },

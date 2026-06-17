@@ -1055,13 +1055,10 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
   if (!parsed) return "Confirmação recebida no modo teste. Nenhum registro real foi salvo.";
 
   const stock = parsed.dados?.estoque_leite as AnyRecord | undefined;
-  const stockDebug = stock
-    ? `\nDebug estoque leite:\n- total_litros: ${stock.total_litros ?? parsed.dados?.total_litros ?? parsed.dados?.litros ?? null}\n- destino_detectado: ${stock.destino_detectado || "nenhum"}\n- item_leite_resolvido: ${stock.item_leite_resolvido || "nenhum"}\n- item_id: ${stock.item_id || "nenhum"}\n- origem: ${stock.origem || "desconhecida"}\n- estoque_movimentar: ${stock.estoque_movimentar ? "sim" : "nao"}`
-    : "";
 
   if (parsed.tipo === "LOTE_REGISTROS") {
     const total = Number(parsed.dados?.total_registros || (Array.isArray(parsed.dados?.registros) ?parsed.dados.registros.length : 0));
-    return `Simulação concluída: ${total} registros seriam salvos${stock?.estoque_movimentar ? " e a entrada consolidada de leite seria lançada no estoque" : ""}. Nenhum registro real foi salvo.${stockDebug}`;
+    return `Simulação concluída: ${total} registros seriam salvos${stock?.estoque_movimentar ? " e a entrada consolidada de leite seria lançada no estoque" : ""}. Nenhum registro real foi salvo.`;
   }
 
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") {
@@ -1085,7 +1082,7 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
     return "Simulação concluída: todos os animais do rebanho seriam excluídos. Nenhum registro real foi salvo.";
   }
 
-  return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.${stockDebug}`;
+  return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`;
 }
 
 function missingText(parsed: ParsedRanchoMessage) {
