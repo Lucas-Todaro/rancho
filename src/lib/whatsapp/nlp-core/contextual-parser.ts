@@ -41,6 +41,7 @@ import {
   normalizeAnimalCandidate,
   removeValueAndCommonWords
 } from "./extractors";
+import { calfCategoryForSex, normalizeCalfSex } from "./birth-child";
 
 export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: string): ParsedRanchoMessage {
   const original = cleanAnswer(answer);
@@ -59,6 +60,43 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (stockPurchaseWithoutFinance) {
     const nextDados = { ...dados, sem_financeiro: true, valor: undefined };
     return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+  }
+
+  if (current.tipo === "PARTO" && expectedField === "cria_sexo") {
+    const sexAnswer = normalizeCalfSex(original);
+    if (sexAnswer) {
+      const nextDados = {
+        ...dados,
+        parto_cria_cadastro: true,
+        cria_sexo: sexAnswer,
+        cria_categoria: calfCategoryForSex(sexAnswer)
+      };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+  }
+
+  if (current.tipo === "PARTO" && expectedField === "cria_codigo") {
+    if (/^(?:2|gerar|gera|temporario|temporario|sem brinco|sem codigo|nao sei|não sei)$/i.test(original)) {
+      const nextDados = { ...dados, gerar_cria_codigo_temporario: true };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+    const childCode = extractAnimalRegistrationCode(normalized) || normalizeAnimalCandidate(original);
+    if (childCode) {
+      const nextDados = { ...dados, cria_codigo: childCode, gerar_cria_codigo_temporario: undefined };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+  }
+
+  if (current.tipo === "PARTO" && expectedField === "pai_ref") {
+    if (/^(?:sem pai|nao sei|não sei|nao informado|não informado|pular|2)$/i.test(original)) {
+      const nextDados = { ...dados, pai_ref: undefined, pai_nome: undefined, pai_id: undefined, pai_nao_informado: true, precisa_pai_ref: undefined };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+    const fatherRef = extractAnimalCode(normalized, "PARTO") || normalizeAnimalCandidate(original);
+    if (fatherRef) {
+      const nextDados = { ...dados, pai_ref: fatherRef, pai_nome: fatherRef, pai_nao_informado: undefined, precisa_pai_ref: undefined };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
   }
 
   if (current.tipo === "CADASTRO_ANIMAL" && expectedField === "sexo") {

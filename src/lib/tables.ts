@@ -58,6 +58,7 @@ const animalCategories = [
   { label: "Vaca", value: "vaca" },
   { label: "Boi", value: "boi" },
   { label: "Bezerro", value: "bezerro" },
+  { label: "Bezerra", value: "bezerra" },
   { label: "Novilha", value: "novilha" },
   { label: "Touro", value: "touro" },
   { label: "Outro", value: "outro" }

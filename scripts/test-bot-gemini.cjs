@@ -119,6 +119,9 @@ const fixtures = new Map([
       { intent: "PARTO", fields: { animal_ref: "Lindona", data: "hoje" }, should_confirm: true }
     ]
   })],
+  ["001 pariu uma femea hoje", fixture("PARTO", { animal_ref: "001", data: "hoje", cria_sexo: "femea", cria_categoria: "bezerra" }, { missing_fields: ["cria_codigo"], should_confirm: false })],
+  ["001 pariu uma femea codigo c-001 hoje", fixture("PARTO", { animal_ref: "001", data: "hoje", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "C-001" })],
+  ["001 pariu macho hoje pai t-001", fixture("PARTO", { animal_ref: "001", data: "hoje", cria_sexo: "macho", cria_categoria: "bezerro", pai_ref: "T-001" }, { missing_fields: ["cria_codigo"], should_confirm: false })],
   ["vaca 001 entrou em pre-parto", fixture("PRE_PARTO", { animal_ref: "001", data: "hoje" })],
   ["lindona nao comeu hoje", fixture("OBSERVACAO_ANIMAL", { animal_ref: "Lindona", observacoes: "nao comeu", data: "hoje" })],
   ["paguei salario do bruno 2500", fixture("PAGAMENTO_FUNCIONARIO", { funcionario: "Bruno", valor: 2500, pagamento_tipo: "salario" })],
@@ -184,6 +187,9 @@ const cases = [
   { message: "cadastrar vaca Mimosa brinco 021 peso 400kg", intent: "CADASTRO_ANIMAL" },
   { message: "001;vaca 002;boi", intent: "IMPORTACAO_ANIMAIS_TABELA" },
   { message: "Mimosa foi inseminada e Lindona pariu", intent: "LOTE_REGISTROS", registros: 2 },
+  { message: "001 pariu uma femea hoje", intent: "PARTO", missing: true, dados: { animal_codigo: "001", cria_sexo: "femea", cria_categoria: "bezerra" } },
+  { message: "001 pariu uma femea codigo C-001 hoje", intent: "PARTO", dados: { animal_codigo: "001", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "C-001" } },
+  { message: "001 pariu macho hoje pai T-001", intent: "PARTO", missing: true, dados: { animal_codigo: "001", cria_sexo: "macho", cria_categoria: "bezerro", pai_ref: "T-001" } },
   { message: "vaca 001 entrou em pre-parto", intent: "ATUALIZACAO_ANIMAL" },
   { message: "Lindona nao comeu hoje", intent: "ATUALIZACAO_ANIMAL" },
   { message: "paguei salario do Bruno 2500", intent: "PAGAMENTO_FUNCIONARIO" },

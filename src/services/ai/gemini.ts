@@ -146,7 +146,7 @@ const GEMINI_OPERATIONS = [
 
 const ACTION_DESCRIPTIONS = [
   "PRODUCAO_LEITE: registrar litros de leite de um animal",
-  "PARTO: registrar parto",
+  "PARTO: registrar parto; se houver cria informada, notes pode conter cria_sexo, cria_codigo, cria_nome e pai_ref, sempre com confirmacao e validacao local",
   "VACINA_MEDICAMENTO: registrar vacina, medicamento ou tratamento",
   "MORTE: registrar morte de animal",
   "DESPESA: registrar gasto, compra paga ou saida financeira",
@@ -227,6 +227,8 @@ function buildPrompt(input: {
     "Para consultas, listagens e relatorios claros, requiresConfirmation deve ser false.",
     "Consultas como \"partos recentes\", \"ultimos partos\", \"relatorio dos partos\" e \"quais vacas pariram recentemente?\" sao consultas/relatorios de eventos de parto, nao registros de parto.",
     "Para consultas de partos recentes, use CONSULTA_REGISTROS_HOJE com operation=report, date=recentes e notes contendo evento_tipo:parto; recentes sem periodo explicito significa ultimos 90 dias.",
+    "Registros de parto com cria continuam sendo PARTO. Se o usuario disser que nasceu cria macho/femea/bezerro/bezerra, preserve isso nas notes e nao tente salvar diretamente.",
+    "Nunca transforme parida ou recem-parida em categoria/fase. A mae continua vaca; recem-parida e status reprodutivo calculado pelo ultimo parto.",
     "Nunca peca confirmacao para consulta.",
     "Comandos para excluir/deletar/apagar/remover/limpar/zerar todo o rebanho, todas as vacas, todos os animais, gado, fazenda ou todos os dados sao ACAO_DESTRUTIVA_EM_MASSA, requiresConfirmation=false.",
     "Nunca transforme exclusao em massa em operacao permitida e nunca peca confirmacao para excluir todo o rebanho pelo WhatsApp.",

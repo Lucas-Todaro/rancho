@@ -198,7 +198,7 @@ export function candidateFromMatch(value?: string | null) {
 
   const cleaned = normalizeRanchoText(value)
     .replace(new RegExp(`\\b${animalWords}\\b`, "g"), "")
-    .replace(/\b(?:da|do|de|na|no|a|o|uma|um|para|pra|producao|ordenha)\b/g, "")
+    .replace(/\b(?:da|do|de|na|no|a|o|uma|um|para|pra|producao|ordenha|hoje|hj|ontem|anteontem|amanha|manha|tarde|noite|dia|semana|mes)\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned || /\s/.test(cleaned) || isForbiddenAnimalCode(cleaned)) return undefined;
@@ -265,7 +265,7 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
   }
 
   const explicitPatterns = [
-    /\b(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)\s+(?:da|do|de|a|o)?\s*([a-z]*\d[a-z0-9-]*|[a-z]+-[a-z0-9]+)\b/g,
+    /\b(?:vaca|animal|gado|boi|touro|bezerro|bezerra|novilha|brinco)\s+(?:(?:da|do|de|a|o)\s+)?([a-z]*\d[a-z0-9-]*|[a-z]+-[a-z0-9]+)\b/g,
     /\b(?:da|do|de|na|no|em|a|o)\s+([a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*)\b/g,
     /\b([a-z]+-\d[a-z0-9-]*|[a-z]+\d[a-z0-9-]*)\b/g
   ];
@@ -281,7 +281,7 @@ export function extractAnimalCode(text: string, intent?: RanchoIntent) {
     }
   }
 
-  const direct = searchable.match(new RegExp(`\\b${animalWords}\\s+(?:da|do|de|a|o)?\\s*([a-z0-9][a-z0-9-]*)\\b`));
+  const direct = searchable.match(new RegExp(`\\b${animalWords}\\s+(?:(?:da|do|de|a|o)\\s+)?([a-z0-9][a-z0-9-]*)\\b`));
   const directCandidate = candidateFromMatch(direct?.[1]);
   if (directCandidate) return normalizeAnimalCandidate(directCandidate) || directCandidate.toUpperCase();
 

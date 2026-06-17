@@ -1,6 +1,6 @@
 "use client";
 
-import { GitBranch, PawPrint, Save, Search } from "lucide-react";
+import { Baby, GitBranch, PawPrint, Plus, Save, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState, ErrorState } from "@/components/ui/AsyncState";
@@ -10,13 +10,15 @@ import { getFriendlyErrorMessage } from "@/lib/errors";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { createRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { withAsyncTimeout } from "@/lib/async";
 
 const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
   boi: "Boi",
   bezerro: "Bezerro",
+  bezerra: "Bezerra",
   novilha: "Novilha",
   touro: "Touro",
   outro: "Outro"
@@ -30,11 +32,16 @@ const GENEALOGY_ANIMAL_SELECT = [
   "categoria",
   "sexo",
   "raca",
+  "fase",
+  "status",
+  "data_nascimento",
   "mae_id",
   "pai_id",
   "genealogia_observacoes",
   "created_at"
 ].join(",");
+
+const GENEALOGY_EVENT_SELECT = "id,animal_id,tipo,data_evento,descricao,created_at";
 
 function animalLabel(animal?: AnyRecord | null) {
   if (!animal) return "Não informado";
@@ -43,6 +50,29 @@ function animalLabel(animal?: AnyRecord | null) {
 
 function categoryLabel(value: unknown) {
   return categoryLabels[String(value || "")] || String(value || "Animal");
+}
+
+function phaseLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    lactacao: "Lactação",
+    seca: "Seca",
+    gestante: "Gestante",
+    vazia: "Vazia",
+    crescimento: "Crescimento",
+    engorda: "Engorda",
+    nao_aplicavel: "Não aplicável"
+  };
+  return labels[String(value || "")] || String(value || "-");
+}
+
+function formatDateLabel(value: unknown) {
+  const date = new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("pt-BR", { timeZone: "America/Fortaleza" });
+}
+
+function todayDateInput() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function normalize(value: unknown) {
@@ -54,7 +84,10 @@ function normalize(value: unknown) {
 }
 
 function realSex(animal?: AnyRecord | null) {
-  return normalize(animal?.sexo || animal?.sex || animal?.genero || animal?.gender);
+  const values = [animal?.sexo, animal?.sex, animal?.genero, animal?.gender, animal?.categoria].map(normalize);
+  if (values.some((value) => ["macho", "m", "male", "masculino", "boi", "touro", "bezerro"].includes(value))) return "macho";
+  if (values.some((value) => ["femea", "f", "female", "feminino", "vaca", "novilha", "bezerra"].includes(value))) return "femea";
+  return "";
 }
 
 function sexInfo(animal?: AnyRecord | null) {
@@ -95,6 +128,25 @@ function sexInfo(animal?: AnyRecord | null) {
     softBox: "bg-white ring-slate-200/70 dark:bg-slate-900/70 dark:ring-slate-800",
     activeRing: "ring-2 ring-emerald-400/80 dark:ring-emerald-500/70"
   };
+}
+
+function animalCodeKey(value: unknown) {
+  return normalize(value).replace(/[^a-z0-9]/g, "");
+}
+
+function isPartoEvent(event: AnyRecord) {
+  return String(event.tipo || "").trim().toLowerCase() === "parto";
+}
+
+function eventDateMs(event: AnyRecord) {
+  const ms = Date.parse(String(event.data_evento || event.created_at || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function daysSince(value: unknown) {
+  const ms = Date.parse(String(value || ""));
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000));
 }
 
 function collectDescendantIds(animalId: string, animals: AnyRecord[]) {
@@ -345,13 +397,23 @@ function AnimalSelectionCard({
 export function GenealogyScreen() {
   const { dataContext } = useAuth();
   const [animals, setAnimals] = useState<AnyRecord[]>([]);
+  const [events, setEvents] = useState<AnyRecord[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [birthSaving, setBirthSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [draft, setDraft] = useState({ mae_id: "", pai_id: "", genealogia_observacoes: "" });
+  const [birthDraft, setBirthDraft] = useState({
+    data_parto: todayDateInput(),
+    cria_sexo: "femea",
+    cria_codigo: "",
+    cria_nome: "",
+    pai_id: "",
+    observacoes: ""
+  });
   const loadRequestRef = useRef(0);
 
   const load = useCallback(async (forceRefresh = false) => {
@@ -359,17 +421,29 @@ export function GenealogyScreen() {
     setLoading(true);
     setError("");
     try {
-      const data = await withAsyncTimeout(listRecords(TABLES.animais, {
-        fazendaId: dataContext.fazendaId,
-        usuarioId: dataContext.usuarioId,
-        select: GENEALOGY_ANIMAL_SELECT,
-        orderBy: "brinco",
-        ascending: true,
-        cache: true,
-        forceRefresh
-      }), "A genealogia demorou para carregar. Tente novamente.");
+      const [data, eventData] = await withAsyncTimeout(Promise.all([
+        listRecords(TABLES.animais, {
+          fazendaId: dataContext.fazendaId,
+          usuarioId: dataContext.usuarioId,
+          select: GENEALOGY_ANIMAL_SELECT,
+          orderBy: "brinco",
+          ascending: true,
+          cache: true,
+          forceRefresh
+        }),
+        listRecords(TABLES.eventosAnimal, {
+          fazendaId: dataContext.fazendaId,
+          usuarioId: dataContext.usuarioId,
+          select: GENEALOGY_EVENT_SELECT,
+          orderBy: "data_evento",
+          ascending: false,
+          cache: true,
+          forceRefresh
+        })
+      ]), "A genealogia demorou para carregar. Tente novamente.");
       if (loadRequestRef.current !== requestId) return;
       setAnimals(data);
+      setEvents(eventData);
     } catch (err) {
       if (loadRequestRef.current === requestId) {
         setError(getFriendlyErrorMessage(err, "Nao foi possivel carregar a genealogia agora."));
@@ -382,9 +456,11 @@ export function GenealogyScreen() {
   useEffect(() => {
     void load();
     const unsubscribe = subscribeTable(TABLES.animais, () => { void load(true); });
+    const unsubscribeEvents = subscribeTable(TABLES.eventosAnimal, () => { void load(true); });
     return () => {
       loadRequestRef.current += 1;
       unsubscribe();
+      unsubscribeEvents();
     };
   }, [load]);
 
@@ -397,6 +473,14 @@ export function GenealogyScreen() {
       mae_id: String(selected.mae_id || ""),
       pai_id: String(selected.pai_id || ""),
       genealogia_observacoes: String(selected.genealogia_observacoes || "")
+    });
+    setBirthDraft({
+      data_parto: todayDateInput(),
+      cria_sexo: "femea",
+      cria_codigo: "",
+      cria_nome: "",
+      pai_id: "",
+      observacoes: ""
     });
     setSuccess("");
   }, [selected]);
@@ -448,6 +532,26 @@ export function GenealogyScreen() {
     };
   }, [animalById, animals, draft.mae_id, draft.pai_id, selected]);
 
+  const directDescendants = useMemo(() => {
+    if (!selected) return [];
+    return animals
+      .filter((animal) => String(animal.mae_id || "") === String(selected.id) || String(animal.pai_id || "") === String(selected.id))
+      .sort((left, right) => {
+        const rightDate = Date.parse(String(right.data_nascimento || right.created_at || ""));
+        const leftDate = Date.parse(String(left.data_nascimento || left.created_at || ""));
+        return (Number.isFinite(rightDate) ? rightDate : 0) - (Number.isFinite(leftDate) ? leftDate : 0);
+      });
+  }, [animals, selected]);
+
+  const selectedEvents = useMemo(() => selected ? events.filter((event) => String(event.animal_id || "") === String(selected.id)) : [], [events, selected]);
+  const lastParto = useMemo(() => selectedEvents.filter(isPartoEvent).sort((left, right) => eventDateMs(right) - eventDateMs(left))[0] || null, [selectedEvents]);
+  const lastPartoDays = lastParto ? daysSince(lastParto.data_evento || lastParto.created_at) : null;
+  const reproductionLabel = lastParto && lastPartoDays !== null && lastPartoDays >= 0 && lastPartoDays <= 45
+    ? "Recém-parida"
+    : selected?.fase === "gestante" ? "Gestante" : selected?.fase === "lactacao" ? "Em lactação" : "Acompanhar";
+  const fatherOptions = useMemo(() => parentOptions.filter((animal) => realSex(animal) !== "femea"), [parentOptions]);
+  const canRegisterBirth = Boolean(selected && realSex(selected) !== "macho" && !["morto", "vendido", "inativo", "excluido"].includes(normalize(selected.status)));
+
   function selectAnimal(animal: AnyRecord) {
     setSelectedId(String(animal.id));
     if (typeof window !== "undefined") window.history.replaceState(null, "", `/genealogia?animal=${animal.id}`);
@@ -486,6 +590,88 @@ export function GenealogyScreen() {
       setError(getFriendlyErrorMessage(err, "Não foi possível salvar a genealogia."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveBirthChild() {
+    if (!selected) return;
+    setBirthSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      if (!canRegisterBirth) {
+        throw new Error("Este animal nao pode ser usado como mae para registrar parto/cria.");
+      }
+
+      const childCode = birthDraft.cria_codigo.trim();
+      if (!childCode) {
+        throw new Error("Informe o codigo/brinco da cria.");
+      }
+
+      const duplicate = animals.find((animal) => animalCodeKey(animal.brinco) === animalCodeKey(childCode));
+      if (duplicate) {
+        throw new Error(`Ja existe um animal com o codigo/brinco ${childCode}.`);
+      }
+
+      const sameDayParto = selectedEvents.some((event) => {
+        if (!isPartoEvent(event)) return false;
+        return String(event.data_evento || "").slice(0, 10) === birthDraft.data_parto;
+      });
+      if (sameDayParto) {
+        throw new Error("Ja existe parto registrado para este animal nessa data.");
+      }
+
+      const sex = birthDraft.cria_sexo === "macho" ? "macho" : "femea";
+      const childCategory = sex === "femea" ? "bezerra" : "bezerro";
+      const father = birthDraft.pai_id ? animalById.get(birthDraft.pai_id) || null : null;
+      const eventDate = new Date(`${birthDraft.data_parto}T12:00:00`).toISOString();
+
+      const eventRecord = await createRecord(TABLES.eventosAnimal, {
+        animal_id: selected.id,
+        tipo: "parto",
+        data_evento: eventDate,
+        descricao: [
+          `Parto registrado pela Genealogia para ${selected.brinco || selected.nome || "animal"}`,
+          `Cria cadastrada: ${childCode}`,
+          father ?`Pai: ${father.brinco || father.nome}` : "Pai nao informado",
+          birthDraft.observacoes.trim()
+        ].filter(Boolean).join(". "),
+        medicamento: null,
+        dose: null,
+        custo: 0
+      }, dataContext);
+
+      await createRecord(TABLES.animais, {
+        brinco: childCode,
+        nome: birthDraft.cria_nome.trim() || null,
+        categoria: childCategory,
+        sexo: sex,
+        fase: "crescimento",
+        data_nascimento: birthDraft.data_parto,
+        status: "ativo",
+        mae_id: selected.id,
+        pai_id: father?.id || null,
+        genealogia_observacoes: `Cadastrado a partir do parto de ${selected.brinco || selected.nome || "mae"}.`,
+        observacoes: "Cadastrado a partir do fluxo de parto/cria da Genealogia."
+      }, dataContext);
+
+      await syncAnimalPhaseAfterEvent(eventRecord || { animal_id: selected.id, tipo: "parto" }, dataContext);
+
+      setBirthDraft({
+        data_parto: todayDateInput(),
+        cria_sexo: "femea",
+        cria_codigo: "",
+        cria_nome: "",
+        pai_id: "",
+        observacoes: ""
+      });
+      setSuccess(`Parto registrado e cria ${childCode} vinculada como descendente direto.`);
+      await load(true);
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, "Nao foi possivel registrar o parto/cria."));
+    } finally {
+      setBirthSaving(false);
     }
   }
 
@@ -563,7 +749,16 @@ export function GenealogyScreen() {
                   <h2 className="mt-1 truncate text-2xl font-black text-slate-950 dark:text-slate-50">{animalLabel(selected)}</h2>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
-                      {categoryLabel(selected.categoria)}
+                      Categoria: {categoryLabel(selected.categoria)}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      Fase: {phaseLabel(selected.fase)}
+                    </span>
+                    <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-black text-violet-700 dark:bg-violet-950 dark:text-violet-200">
+                      Reprodução: {reproductionLabel}
+                    </span>
+                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700 dark:bg-blue-950 dark:text-blue-200">
+                      Último parto: {lastParto ? formatDateLabel(lastParto.data_evento || lastParto.created_at) : "-"}
                     </span>
                     <span className={`rounded-full border px-3 py-1 text-xs font-black ${selectedSex.badge}`}>
                       {selectedSex.label}
@@ -584,6 +779,110 @@ export function GenealogyScreen() {
               <h2 className="mt-1 text-xl font-black">Linhagem familiar</h2>
             </div>
             <GenealogyTreeCanvas selected={selected} tree={tree} />
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 dark:border-slate-800 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Descendentes diretos</p>
+                <h2 className="mt-1 text-xl font-black">{directDescendants.length} cria(s) vinculada(s)</h2>
+              </div>
+              <Badge tone={directDescendants.length ? "success" : "default"}>{lastParto ? `Último parto ${formatDateLabel(lastParto.data_evento || lastParto.created_at)}` : "Sem parto registrado"}</Badge>
+            </div>
+
+            {directDescendants.length ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {directDescendants.map((child) => {
+                  const childSex = sexInfo(child);
+                  const childFather = animalById.get(String(child.pai_id || ""));
+                  return (
+                    <article key={child.id} className={`relative overflow-hidden rounded-lg border p-3 pl-4 ${childSex.card}`}>
+                      <span className={`absolute inset-y-0 left-0 w-1 ${childSex.stripe}`} aria-hidden="true" />
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-black text-slate-950 dark:text-slate-50">{animalLabel(child)}</h3>
+                          <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">Nascimento: {formatDateLabel(child.data_nascimento)}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-black ${childSex.badge}`}>{childSex.label}</span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs">
+                        <div className={`flex justify-between gap-3 rounded-lg p-2 ring-1 ${childSex.softBox}`}>
+                          <span className="text-slate-500 dark:text-slate-400">Categoria</span>
+                          <strong className="truncate text-right text-slate-900 dark:text-slate-50">{categoryLabel(child.categoria)}</strong>
+                        </div>
+                        <div className={`flex justify-between gap-3 rounded-lg p-2 ring-1 ${childSex.softBox}`}>
+                          <span className="text-slate-500 dark:text-slate-400">Pai</span>
+                          <strong className="truncate text-right text-slate-900 dark:text-slate-50">{animalLabel(childFather)}</strong>
+                        </div>
+                        <div className={`flex justify-between gap-3 rounded-lg p-2 ring-1 ${childSex.softBox}`}>
+                          <span className="text-slate-500 dark:text-slate-400">Status</span>
+                          <strong className="truncate text-right text-slate-900 dark:text-slate-50">{String(child.status || "ativo")}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-bold text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                Nenhum descendente direto cadastrado.
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+            <div className="flex flex-col gap-2 border-b border-emerald-200 pb-4 dark:border-emerald-900 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Parto e cria</p>
+                <h2 className="mt-1 text-xl font-black">Registrar parto/cria a partir deste animal</h2>
+              </div>
+              <Baby className="h-6 w-6 text-emerald-700 dark:text-emerald-300" />
+            </div>
+
+            {canRegisterBirth ? (
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <label className="space-y-2">
+                  <span className="text-sm font-bold">Data do parto</span>
+                  <input className="input" type="date" value={birthDraft.data_parto} onChange={(event) => setBirthDraft((current) => ({ ...current, data_parto: event.target.value }))} />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-bold">Sexo da cria</span>
+                  <select className="input" value={birthDraft.cria_sexo} onChange={(event) => setBirthDraft((current) => ({ ...current, cria_sexo: event.target.value }))}>
+                    <option value="femea">Fêmea</option>
+                    <option value="macho">Macho</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-bold">Código/brinco da cria</span>
+                  <input className="input" value={birthDraft.cria_codigo} onChange={(event) => setBirthDraft((current) => ({ ...current, cria_codigo: event.target.value }))} placeholder="Ex: B-123" />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-bold">Nome da cria</span>
+                  <input className="input" value={birthDraft.cria_nome} onChange={(event) => setBirthDraft((current) => ({ ...current, cria_nome: event.target.value }))} />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-bold">Pai</span>
+                  <select className="input" value={birthDraft.pai_id} onChange={(event) => setBirthDraft((current) => ({ ...current, pai_id: event.target.value }))}>
+                    <option value="">Não informado</option>
+                    {fatherOptions.map((option) => <option key={option.id} value={option.id}>{animalLabel(option)}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-2 md:col-span-3">
+                  <span className="text-sm font-bold">Observações do parto</span>
+                  <textarea className="input min-h-24 resize-y" value={birthDraft.observacoes} onChange={(event) => setBirthDraft((current) => ({ ...current, observacoes: event.target.value }))} />
+                </label>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                Registro de parto/cria disponível apenas para mãe ativa e não marcada como macho.
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end border-t border-emerald-200 pt-4 dark:border-emerald-900">
+              <button className="btn btn-primary" type="button" onClick={saveBirthChild} disabled={!canRegisterBirth || birthSaving}>
+                <Plus className="h-4 w-4" /> {birthSaving ? "Salvando..." : "Registrar parto/cria"}
+              </button>
+            </div>
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">

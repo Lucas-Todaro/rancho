@@ -5,6 +5,7 @@ import { BOT_EXAMPLES, animalOptionalFields, questionByField } from "./constants
 import type { ParsedRanchoMessage, RanchoIntent } from "./types";
 import { hasAnimalOptionalValue, hasSkippedAnimalOptionalField, isValidBotPhone } from "./extractors";
 import { reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
+import { hasBirthChildData } from "./birth-child";
 
 function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord) {
   return fields.map((field) => {
@@ -71,7 +72,13 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
     return `registrar produção de leite${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}${hasValue(dados.litros) ?` com ${formatBotNumber(dados.litros)} litros` : ""}${dados.data_referencia ?` (${dados.data_referencia})` : ""}`;
   }
 
-  if (tipo === "PARTO") return `registrar parto${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}${dados.data_referencia ?` (${dados.data_referencia})` : ""}`;
+  if (tipo === "PARTO") {
+    const child = hasBirthChildData(dados)
+      ? ` com cria${dados.cria_sexo ?` ${dados.cria_sexo}` : ""}${dados.cria_codigo ?` ${dados.cria_codigo}` : ""}`
+      : "";
+    const father = dados.pai_ref || dados.pai_nome ?` (pai ${dados.pai_ref || dados.pai_nome})` : "";
+    return `registrar parto${dados.animal_codigo ?` do animal ${dados.animal_codigo}` : ""}${child}${father}${dados.data_referencia ?` (${dados.data_referencia})` : ""}`;
+  }
 
   if (tipo === "VACINA_MEDICAMENTO") {
     const evento = dados.evento_tipo === "vacina" ?"vacina" : "tratamento";
@@ -263,6 +270,11 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   const stockCreateIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo);
   const stockMovementIntent = ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo);
   if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
+  if (tipo === "PARTO" && hasBirthChildData(dados)) {
+    if (dados.precisa_pai_ref && !dados.pai_ref && !dados.pai_nome && !dados.pai_nao_informado) missing.push("pai_ref");
+    if (!dados.cria_sexo) missing.push("cria_sexo");
+    if (dados.cria_sexo && !dados.cria_codigo && !dados.gerar_cria_codigo_temporario) missing.push("cria_codigo");
+  }
   if (tipo === "PRODUCAO_LEITE" && (!hasValue(dados.litros) || Number(dados.litros) <= 0)) missing.push("litros");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.animal_codigo) missing.push("animal_codigo");
   if (tipo === "VACINA_MEDICAMENTO" && !dados.produto) missing.push("produto");

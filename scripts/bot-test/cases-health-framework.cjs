@@ -99,6 +99,54 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto com cria pergunta codigo e vincula descendente sem alterar categoria da mae",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["B-001 pariu uma femea hoje", "C-001", "sim"],
+        expected: {
+          finalIntent: "PARTO",
+          entities: { animal_codigo: "B-001", data_referencia: "hoje", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "C-001" },
+          shouldAskConfirmation: true,
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: {
+            animal_codigo: "B-001",
+            evento_tipo: "PARTO",
+            brinco: "C-001",
+            categoria: "bezerra",
+            sexo: "femea",
+            mae_id: "animal-b-001",
+            mother_categoria: "vaca",
+            mother_fase: "lactacao"
+          },
+          shouldNotSaveValues: { categoria: "parida", fase: "parida", novo_valor: "parida" },
+          shouldNotDuplicate: true,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto com cria e pai vincula pai informado",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["B-001 pariu macho hoje, pai T-001", "C-002", "sim"],
+        expected: {
+          finalIntent: "PARTO",
+          entities: { animal_codigo: "B-001", cria_sexo: "macho", cria_categoria: "bezerro", cria_codigo: "C-002", pai_id: "animal-t-001" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "C-002", categoria: "bezerro", sexo: "macho", mae_id: "animal-b-001", pai_id: "animal-t-001" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "doenca vira evento clinico e salva so apos confirmacao",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,

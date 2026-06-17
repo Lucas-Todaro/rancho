@@ -6,6 +6,7 @@ import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whats
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
+import { calfCategoryForSex, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 import { detectDestructiveBulkAction, destructiveBulkActionParsed } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
@@ -61,11 +62,11 @@ function numberValue(value: unknown) {
 }
 
 function dateReference(fields: AnyRecord) {
-  return cleanText(fields.data || fields.periodo) || undefined;
+  return cleanText(fields.data_parto || fields.data || fields.periodo) || undefined;
 }
 
 function animalRef(fields: AnyRecord) {
-  return cleanText(fields.animal_ref || fields.animal_codigo || fields.codigo || fields.animal);
+  return cleanText(fields.animal_ref || fields.mae_ref || fields.animal_codigo || fields.codigo || fields.animal);
 }
 
 function herdCategoryFromText(text: string) {
@@ -515,16 +516,32 @@ function mapGeminiFieldsToRancho(intent: string, fields: AnyRecord, rawText: str
       };
 
     case "PARTO":
-      return {
-        tipo,
-        dados: {
-          animal_codigo: animalRef(fields),
-          data_referencia: dateReference(fields) || "hoje",
-          observacoes: cleanText(fields.observacoes),
-          cria: cleanText(fields.cria),
-          sexo_cria: cleanText(fields.sexo_cria)
-        }
-      };
+      {
+        const childSex = normalizeCalfSex(fields.cria_sexo || fields.sexo_cria);
+        const childCode = cleanText(fields.cria_codigo || fields.codigo_cria || fields.brinco_cria);
+        const childCategory = cleanText(fields.cria_categoria) || calfCategoryForSex(childSex);
+        const fatherRef = cleanText(fields.pai_ref || fields.pai || fields.touro_ref);
+        const childName = cleanText(fields.cria_nome || fields.nome_cria);
+        const childRegistration = Boolean(childSex || childCode || childCategory || fatherRef || childName || fields.cria);
+        return {
+          tipo,
+          dados: {
+            animal_codigo: animalRef(fields),
+            data_referencia: dateReference(fields) || "hoje",
+            observacoes: cleanText(fields.observacoes),
+            cria: cleanText(fields.cria),
+            sexo_cria: cleanText(fields.sexo_cria),
+            parto_cria_cadastro: childRegistration || undefined,
+            cria_sexo: childSex,
+            cria_categoria: childCategory,
+            cria_codigo: childCode,
+            cria_nome: childName,
+            pai_ref: fatherRef,
+            pai_nome: fatherRef,
+            pai_nao_informado: childRegistration && !fatherRef ? true : undefined
+          }
+        };
+      }
 
     case "INSEMINACAO":
     case "PRENHEZ":

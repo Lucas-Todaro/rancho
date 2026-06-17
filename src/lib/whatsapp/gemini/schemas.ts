@@ -174,7 +174,7 @@ export const GEMINI_INTENT_SCHEMAS: Record<GeminiAllowedIntent, GeminiIntentSche
   },
   PARTO: {
     required: ["animal_ref", "data"],
-    optional: ["observacoes", "resultado", "cria", "sexo_cria"]
+    optional: ["observacoes", "resultado", "cria", "sexo_cria", "mae_ref", "data_parto", "cria_sexo", "cria_categoria", "cria_codigo", "codigo_cria", "brinco_cria", "cria_nome", "nome_cria", "pai_ref", "pai", "touro_ref"]
   },
   CIO: {
     required: ["animal_ref", "data"],

@@ -33,6 +33,7 @@ const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
   boi: "Boi",
   bezerro: "Bezerro",
+  bezerra: "Bezerra",
   novilha: "Novilha",
   touro: "Touro",
   outro: "Outro"
@@ -70,6 +71,16 @@ function startOfCurrentMonth() {
 
 function dateTime(value: unknown) {
   return parseLocalDate(String(value || ""))?.getTime() || 0;
+}
+
+function isPartoEvent(event: AnyRecord) {
+  return String(event.tipo || "").trim().toLowerCase() === "parto";
+}
+
+function daysSince(value: unknown) {
+  const date = parseLocalDate(String(value || ""));
+  if (!date) return null;
+  return Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 const ANIMAL_DETAIL_EVENTS_SELECT = "id,animal_id,tipo,data_evento,descricao,medicamento,dose,custo,created_at";
@@ -245,7 +256,14 @@ export function AnimalDetailModal({
   const fase = labelFromMap(phaseLabels, animal.fase);
   const status = labelFromMap(statusLabels, animal.status, "Ativo");
   const sex = getAnimalSexInfo(animal);
-  const reproductiveStatus = animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactação" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
+  const lastParto = useMemo(() => events.filter(isPartoEvent).sort((a, b) => dateTime(b.data_evento || b.created_at) - dateTime(a.data_evento || a.created_at))[0] || null, [events]);
+  const lastPartoDays = lastParto ? daysSince(lastParto.data_evento || lastParto.created_at) : null;
+  const reproductiveStatus = lastParto && lastPartoDays !== null && lastPartoDays >= 0 && lastPartoDays <= 45
+    ? "Recém-parida"
+    : animal.fase === "gestante" ? "Gestante" : animal.fase === "lactacao" ? "Em lactação" : animal.fase === "vazia" ? "Vazia" : "Acompanhar";
+  const reproductiveStatusDetail = lastParto
+    ? `Último parto: ${formatDate(lastParto.data_evento || lastParto.created_at)}`
+    : "Baseado no histórico de eventos e na fase atual.";
 
   const showDetailPlaceholders = detailsLoading || Boolean(error && !events.length && !productions.length);
 
@@ -356,6 +374,8 @@ export function AnimalDetailModal({
                       ["Categoria", categoria],
                       ["Sexo", sex.label],
                       ["Fase", fase],
+                      ["Reprodução", reproductiveStatus],
+                      ["Último parto", lastParto ? formatDate(lastParto.data_evento || lastParto.created_at) : "-"],
                       ["Raça", animal.raca || "-"],
                       ["Lote", lote],
                       ["Nascimento", formatDate(animal.data_nascimento)],
@@ -380,7 +400,7 @@ export function AnimalDetailModal({
                   <strong>Status reprodutivo atual</strong>
                 </div>
                 <h3 className="mt-4 text-3xl font-black">{reproductiveStatus}</h3>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Baseado na fase atual do cadastro do animal.</p>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{reproductiveStatusDetail}</p>
               </div>
 
               <button className="btn w-full bg-purple-600 text-white" type="button" onClick={() => openEventForm("inseminacao", "Cobertura / inseminação registrada.")}>

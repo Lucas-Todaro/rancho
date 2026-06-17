@@ -1,5 +1,6 @@
 import type { AnyRecord } from "@/lib/types";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import { extractBirthChildData } from "@/lib/whatsapp/nlp-core/birth-child";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import { detectDestructiveBulkAction, destructiveBulkActionParsed, detectRecentBirthsQuery, recentBirthsQueryData } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parserDecisionForParsed, shouldUseGeminiFallback, type ParsedRanchoMessage, type RanchoIntent } from "@/lib/whatsapp/nlp";
@@ -253,7 +254,9 @@ function convertAction(action: GeminiAction, interpretation: GeminiInterpretatio
     case "PARTO":
       dados = {
         animal_codigo: entity,
-        data_referencia: period
+        data_referencia: period,
+        observacoes: notes,
+        ...extractBirthChildData([action.rawText, notes].filter(Boolean).join(" "))
       };
       break;
     case "VACINA_MEDICAMENTO":

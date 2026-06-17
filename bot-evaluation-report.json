@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-17T11:38:59.559Z",
+  "generatedAt": "2026-06-17T12:16:32.152Z",
   "evaluation": "bateria-geral-final-regressao-bot-whatsapp",
   "status": "aprovado",
   "readiness": "pronto_para_uso_real_com_monitoramento",
@@ -25,8 +25,8 @@
     "productionWrites": false
   },
   "totals": {
-    "total": 1385,
-    "passed": 1385,
+    "total": 1392,
+    "passed": 1392,
     "failed": 0,
     "successRate": 100
   },
@@ -97,8 +97,8 @@
     },
     "eventos": {
       "label": "Eventos/vacinas/medicamentos",
-      "total": 215,
-      "passed": 215,
+      "total": 222,
+      "passed": 222,
       "failed": 0,
       "successRate": 100,
       "criticalFailures": []

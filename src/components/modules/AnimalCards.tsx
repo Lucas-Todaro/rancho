@@ -13,6 +13,7 @@ const categoryLabels: Record<string, string> = {
   vaca: "Vaca",
   boi: "Boi",
   bezerro: "Bezerro",
+  bezerra: "Bezerra",
   novilha: "Novilha",
   touro: "Touro",
   outro: "Outro"

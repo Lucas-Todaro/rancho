@@ -529,6 +529,58 @@ module.exports = function loadBotTestSection(context) {
         }];
       }
 
+      if (tipo === "PARTO" && (dados.parto_cria_cadastro || dados.cria_codigo || dados.cria_sexo || dados.cria_categoria)) {
+        const mother = mockAnimals.find((animal) => animal.id === dados.animal_id || sameValue(animal.brinco, dados.animal_codigo)) || {};
+        const childSex = dados.cria_sexo || "nao_informado";
+        const childCategory = dados.cria_categoria || (childSex === "femea" ? "bezerra" : "bezerro");
+        const actions = [{
+          ...base,
+          table: BOT_TEST_TABLES.eventosAnimal,
+          payload: {
+            fazenda_id: fazendaId,
+            animal_id: dados.animal_id || null,
+            animal_codigo: dados.animal_codigo,
+            evento_tipo: "PARTO",
+            tipo: "parto",
+            cria_codigo: dados.cria_codigo || null,
+            cria_sexo: childSex,
+            mother_categoria: mother.categoria || null,
+            mother_fase: mother.fase || null,
+            origem: "whatsapp"
+          }
+        }, {
+          ...base,
+          table: BOT_TEST_TABLES.animais,
+          payload: {
+            fazenda_id: fazendaId,
+            brinco: dados.cria_codigo || null,
+            nome: dados.cria_nome || null,
+            categoria: childCategory,
+            sexo: childSex,
+            fase: "crescimento",
+            status: "ativo",
+            mae_id: dados.animal_id || null,
+            pai_id: dados.pai_id || null,
+            data_nascimento: dados.data_referencia || null,
+            origem: "whatsapp"
+          }
+        }];
+        if (mother.fase === "gestante") {
+          actions.push({
+            ...base,
+            type: "update",
+            table: BOT_TEST_TABLES.animais,
+            payload: {
+              fazenda_id: fazendaId,
+              animal_codigo: dados.animal_codigo,
+              campo_alterado: "fase",
+              novo_valor: "lactacao"
+            }
+          });
+        }
+        return actions;
+      }
+
       if (tipo === "VACINA_MEDICAMENTO" || tipo === "PARTO" || tipo === "MORTE") {
         return [{
           ...base,

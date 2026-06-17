@@ -8,6 +8,7 @@ import {
 } from "./reproductive-events";
 import { buildMissing, finalize } from "./result";
 import { detectDestructiveBulkAction, destructiveBulkActionParsed, recentBirthsQueryData } from "./safety-guards";
+import { extractBirthChildData } from "./birth-child";
 import {
   cleanStockQueryItem,
   extractAnimalBirthDate,
@@ -1662,9 +1663,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
   const isParto = !herdReproductionFilterFromText(normalized)
     && /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|deu cria|teve bezerro|teve bezerra|teve cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
   if (isParto) {
+    const childData = extractBirthChildData(original);
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PARTO"),
-      data_referencia: extractDateReference(normalized)
+      data_referencia: extractDateReference(normalized),
+      ...childData
     };
     return finalize("PARTO", dados, buildMissing("PARTO", dados));
   }

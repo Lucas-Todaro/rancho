@@ -123,6 +123,9 @@ module.exports = function loadBotTestSection(context) {
         horario: /horario|horario|7:30|17:00/.test(text),
         mae_nome: /mae|mãe/.test(text),
         pai_nome: /pai/.test(text),
+        pai_ref: /pai/.test(text),
+        cria_sexo: /cria|macho|femea/.test(text),
+        cria_codigo: /cria|codigo|brinco/.test(text),
         genealogia_campo: /mae|mãe|pai|genealogia/.test(text),
         whatsapp: /whatsapp|ddd/.test(text),
         funcao: /funcao|cargo/.test(text),
@@ -210,6 +213,11 @@ module.exports = function loadBotTestSection(context) {
       if (expected.pai_nome && !normalize(dados.pai_nome).includes(normalize(expected.pai_nome))) failures.push(`pai_nome esperado ${expected.pai_nome}, recebido ${dados.pai_nome}`);
       if (expected.maeId && dados.mae_id !== expected.maeId) failures.push(`mae_id esperado ${expected.maeId}, recebido ${dados.mae_id}`);
       if (expected.paiId && dados.pai_id !== expected.paiId) failures.push(`pai_id esperado ${expected.paiId}, recebido ${dados.pai_id}`);
+      if (expected.cria_sexo && normalize(dados.cria_sexo) !== normalize(expected.cria_sexo)) failures.push(`cria_sexo esperado ${expected.cria_sexo}, recebido ${dados.cria_sexo}`);
+      if (expected.cria_categoria && normalize(dados.cria_categoria) !== normalize(expected.cria_categoria)) failures.push(`cria_categoria esperada ${expected.cria_categoria}, recebida ${dados.cria_categoria}`);
+      if (expected.cria_codigo && normalize(dados.cria_codigo) !== normalize(expected.cria_codigo)) failures.push(`cria_codigo esperado ${expected.cria_codigo}, recebido ${dados.cria_codigo}`);
+      if (expected.pai_ref && normalize(dados.pai_ref) !== normalize(expected.pai_ref)) failures.push(`pai_ref esperado ${expected.pai_ref}, recebido ${dados.pai_ref}`);
+      if ("parto_cria_cadastro" in expected && Boolean(dados.parto_cria_cadastro) !== Boolean(expected.parto_cria_cadastro)) failures.push(`parto_cria_cadastro esperado ${expected.parto_cria_cadastro}, recebido ${dados.parto_cria_cadastro}`);
       if ("remover_mae" in expected && Boolean(dados.remover_mae) !== Boolean(expected.remover_mae)) failures.push(`remover_mae esperado ${expected.remover_mae}, recebido ${dados.remover_mae}`);
       if ("remover_pai" in expected && Boolean(dados.remover_pai) !== Boolean(expected.remover_pai)) failures.push(`remover_pai esperado ${expected.remover_pai}, recebido ${dados.remover_pai}`);
       if ("agora" in expected && Boolean(dados.agora) !== Boolean(expected.agora)) failures.push(`agora esperado ${expected.agora}, recebido ${dados.agora}`);

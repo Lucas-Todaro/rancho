@@ -36,6 +36,7 @@ import {
   detectDestructiveBulkAction,
   destructiveBulkActionParsed
 } from "@/lib/whatsapp/nlp-core/safety-guards";
+import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -181,7 +182,7 @@ const STOCK_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.ordenhas]: new Set(["fazenda_id", "animal_id", "litros", "ordenhado_em", "turno", "destino", "origem", "registrado_por", "observacoes"]),
   [TABLES.eventosAnimal]: new Set(["fazenda_id", "animal_id", "tipo", "data_evento", "descricao", "medicamento", "dose", "custo", "responsavel_usuario_id"]),
-  [TABLES.animais]: new Set(["fazenda_id", "brinco", "nome", "categoria", "sexo", "fase", "raca", "peso", "lote_id", "data_nascimento", "status", "created_by", "observacoes"]),
+  [TABLES.animais]: new Set(["fazenda_id", "brinco", "nome", "categoria", "sexo", "fase", "raca", "peso", "lote_id", "data_nascimento", "status", "created_by", "observacoes", "mae_id", "pai_id", "genealogia_observacoes"]),
   [TABLES.lotes]: new Set(["fazenda_id", "nome", "descricao", "ativo"]),
   [TABLES.transacoesFinanceiras]: new Set(["fazenda_id", "tipo", "data_transacao", "valor", "categoria", "descricao", "metodo_pagamento", "origem", "created_by"]),
   [TABLES.estoqueItens]: new Set(["fazenda_id", "nome", "categoria", "unidade_medida", "quantidade_atual", "quantidade_minima", "valor_unitario", "fornecedor", "ativo", "created_by"]),
@@ -1070,6 +1071,10 @@ function confirmationText(parsed: ParsedRanchoMessage) {
     }
   }
 
+  if (parsed.tipo === "PARTO" && partoWithChild(parsed.dados || {})) {
+    return `${partoChildConfirmationText(parsed)}${postConfirmationConsultationNote(parsed)}`;
+  }
+
   return `Entendi que você quer ${parsed.resumo}.${milkStockStatusText(parsed)}${postConfirmationConsultationNote(parsed)}\n\nEstá correto?\n1 - Confirmar\n2 - Corrigir`;
 }
 
@@ -1106,6 +1111,11 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
 
   if (parsed.tipo === "EXCLUIR_REBANHO") {
     return "Simulação concluída: todos os animais do rebanho seriam excluídos. Nenhum registro real foi salvo.";
+  }
+
+  if (parsed.tipo === "PARTO" && partoWithChild(parsed.dados || {})) {
+    const dados = parsed.dados || {};
+    return `Simulacao concluida: o parto seria registrado e a cria ${dados.cria_codigo || "informada"} seria cadastrada/vinculada como descendente direto. Nenhum registro real foi salvo.`;
   }
 
   return `Confirmação recebida no modo teste. Nenhum registro real foi salvo.\nResumo: ${parsed.resumo}.`;
@@ -1444,7 +1454,7 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   if (pending.tipo === "CADASTRO_ANIMAL" && dados.peso !== undefined && dados.peso !== null && dados.peso !== "" && invalidNonNegativeNumber(dados.peso)) return "Informe um peso válido antes de salvar.";
   if (pending.tipo === "ATUALIZACAO_ANIMAL" && dados.campo_alterado === "peso" && invalidNonNegativeNumber(dados.novo_valor)) return "Informe um peso válido antes de salvar.";
   if (pending.tipo === "ATUALIZACAO_ANIMAL" && dados.campo_alterado === "status" && !["ativo", "vendido", "morto", "inativo"].includes(String(dados.novo_valor || ""))) return "Informe um status válido para o animal.";
-  if (pending.tipo === "CADASTRO_ANIMAL" && dados.categoria && !["vaca", "boi", "bezerro", "novilha", "touro", "outro"].includes(String(dados.categoria))) return "Informe uma categoria válida para o animal.";
+  if (pending.tipo === "CADASTRO_ANIMAL" && dados.categoria && !["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "outro"].includes(String(dados.categoria))) return "Informe uma categoria válida para o animal.";
   return null;
 }
 
@@ -1653,6 +1663,115 @@ function animalLabel(animal?: AnyRecord | null) {
   const nome = String(animal.nome || "").trim();
   if (brinco && nome && normalizeRanchoText(brinco) !== normalizeRanchoText(nome)) return `${nome} (${brinco})`;
   return brinco || nome || String(animal.id || "Animal");
+}
+
+function animalSexKind(animal?: AnyRecord | null) {
+  const values = [animal?.sexo, animal?.categoria].map((value) => normalizeRanchoText(String(value || "")));
+  if (values.some((value) => ["femea", "feminino", "vaca", "novilha", "bezerra"].includes(value))) return "femea";
+  if (values.some((value) => ["macho", "masculino", "boi", "touro", "bezerro"].includes(value))) return "macho";
+  return "";
+}
+
+function partoWithChild(dados: AnyRecord) {
+  return hasBirthChildData(dados);
+}
+
+function calfCodeFromParto(dados: AnyRecord, mother: AnyRecord) {
+  const informed = String(dados.cria_codigo || "").trim();
+  if (informed) return informed;
+  if (!dados.gerar_cria_codigo_temporario) return "";
+  const date = dateOnlyFromReference(String(dados.data_referencia || "hoje")).replace(/-/g, "");
+  const motherCode = String(mother.brinco || mother.nome || mother.id || "MAE").replace(/[^A-Za-z0-9-]/g, "").toUpperCase() || "MAE";
+  return `CRIA-${date}-${motherCode}-1`;
+}
+
+function calfPayloadFromParto(owner: WhatsAppOwner, dados: AnyRecord, mother: AnyRecord, father?: AnyRecord | null) {
+  const sex = normalizeCalfSex(dados.cria_sexo) || "nao_informado";
+  return {
+    fazenda_id: owner.fazenda_id,
+    brinco: calfCodeFromParto(dados, mother),
+    nome: dados.cria_nome || null,
+    categoria: dados.cria_categoria || calfCategoryForSex(sex) || "bezerro",
+    sexo: sex,
+    fase: "crescimento",
+    raca: null,
+    peso: null,
+    lote_id: null,
+    data_nascimento: dateOnlyFromReference(String(dados.data_referencia || "hoje")),
+    status: "ativo",
+    created_by: owner.usuario_id || null,
+    mae_id: mother.id,
+    pai_id: father?.id || null,
+    genealogia_observacoes: `Cadastrado automaticamente a partir de parto da vaca ${mother.brinco || mother.nome || mother.id}`,
+    observacoes: [
+      `Cadastrado automaticamente a partir de parto da vaca ${mother.brinco || mother.nome || mother.id}`,
+      dados.gerar_cria_codigo_temporario ? "Código temporário gerado pelo parto via WhatsApp" : "",
+      dados.cria_observacoes || ""
+    ].filter(Boolean).join(". ")
+  };
+}
+
+function partoChildConfirmationText(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const mother = String(dados.animal_codigo || "informada").trim();
+  const childSex = normalizeCalfSex(dados.cria_sexo) || String(dados.cria_sexo || "nao informado");
+  const childCategory = String(dados.cria_categoria || calfCategoryForSex(childSex) || "cria");
+  const childCode = String(dados.cria_codigo || (dados.gerar_cria_codigo_temporario ? "codigo temporario" : "a informar")).trim();
+  const father = String(dados.pai_nome || dados.pai_ref || (dados.pai_nao_informado ? "nao informado" : "nao informado")).trim();
+  const date = String(dados.data_referencia || "hoje").trim();
+  return [
+    "Entendi:",
+    `- Evento: parto`,
+    `- Mae: ${mother}`,
+    `- Cria: ${childCategory} ${childSex}`,
+    `- Codigo da cria: ${childCode}`,
+    `- Pai: ${father}`,
+    `- Data do parto/nascimento: ${date}`,
+    "",
+    "Isso vai registrar o parto, cadastrar a cria ativa e vincular a cria como descendente direto da mae.",
+    "A categoria e a fase produtiva da mae nao serao trocadas por \"parida\".",
+    "",
+    "Esta correto?",
+    "1 - Confirmar",
+    "2 - Corrigir"
+  ].join("\n");
+}
+
+function partoChildEventDescription(dados: AnyRecord, mother: AnyRecord, childCode: string, father?: AnyRecord | null) {
+  return [
+    `Parto registrado via WhatsApp para o animal ${mother.brinco || mother.nome || mother.id}`,
+    `Cria cadastrada: ${childCode}`,
+    dados.cria_sexo ?`Sexo da cria: ${normalizeCalfSex(dados.cria_sexo) || dados.cria_sexo}` : "",
+    father ?`Pai: ${father.brinco || father.nome || father.id}` : "Pai nao informado",
+    dados.observacoes ?`Observacoes: ${dados.observacoes}` : ""
+  ].filter(Boolean).join(". ");
+}
+
+function partoDuplicateConfirmationMessage(animal: AnyRecord, reference: string) {
+  return [
+    `Ja existe um parto registrado para ${animalLabel(animal)} nesse mesmo dia (${dateOnlyFromReference(reference)}).`,
+    "Isso pode ser duplicidade.",
+    "",
+    "Quer registrar mesmo assim?",
+    "1 - Confirmar",
+    "2 - Corrigir"
+  ].join("\n");
+}
+
+async function existingPartoSameDay(supabase: SupabaseAdmin, owner: WhatsAppOwner, animalId: unknown, reference?: string) {
+  const range = dayRange(reference || "hoje");
+  const { data, error } = await supabase
+    .from(TABLES.eventosAnimal)
+    .select("id,animal_id,tipo,descricao,data_evento,created_at")
+    .eq("fazenda_id", owner.fazenda_id)
+    .eq("animal_id", animalId)
+    .eq("tipo", "parto")
+    .gte("data_evento", range.start)
+    .lt("data_evento", range.end)
+    .limit(5);
+
+  if (error) throw new Error(error.message);
+  return (data || []) as AnyRecord[];
 }
 
 function lotLabel(lot?: AnyRecord | null) {
@@ -2133,7 +2252,8 @@ function animalReportReproductionSummary(animal: AnyRecord, events: AnyRecord[])
   } else if (lastInsemination && !hasLaterAnimalReportOutcome(lastInsemination, sorted)) {
     status = "Inseminada";
   } else if (lastParto) {
-    status = "Pariu";
+    const daysSinceParto = Math.floor((Date.now() - eventDateMs(lastParto)) / (24 * 60 * 60 * 1000));
+    status = daysSinceParto >= 0 && daysSinceParto <= 45 ? "Recém-parida" : "Pariu";
   }
 
   return {
@@ -2253,11 +2373,21 @@ function animalReportGenealogyLines(animal: AnyRecord, animals: AnyRecord[]) {
   const mother = animal.mae_id ?byId.get(String(animal.mae_id)) : null;
   const father = animal.pai_id ?byId.get(String(animal.pai_id)) : null;
   const notes = cleanReportText(animal.genealogia_observacoes);
-  if (!mother && !father && !notes) return [];
+  const descendants = animals
+    .filter((row) => String(row.mae_id || "") === String(animal.id) || String(row.pai_id || "") === String(animal.id))
+    .sort((left, right) => {
+      const rightDate = Date.parse(String(right.data_nascimento || right.created_at || ""));
+      const leftDate = Date.parse(String(left.data_nascimento || left.created_at || ""));
+      return (Number.isFinite(rightDate) ?rightDate : 0) - (Number.isFinite(leftDate) ?leftDate : 0);
+    });
+  const lastChild = descendants[0] || null;
+  if (!mother && !father && !notes && !descendants.length) return [];
   return [
     "Genealogia:",
     mother ?`- Mãe: ${animalLabel(mother)}` : "",
     father ?`- Pai: ${animalLabel(father)}` : "",
+    `- Descendentes diretos: ${descendants.length}`,
+    lastChild ?`- Última cria: ${animalLabel(lastChild)}${lastChild.data_nascimento ?` em ${reportDate(lastChild.data_nascimento)}` : ""}` : "",
     notes ?`- Observação: ${notes}` : ""
   ].filter(Boolean);
 }
@@ -2335,7 +2465,7 @@ function collectDescendantIds(animalId: string, animals: AnyRecord[]) {
 }
 
 function relationBlockMessage(parsed: ParsedRanchoMessage) {
-  return String(parsed.dados?.genealogia_bloqueio || "").trim() || null;
+  return String(parsed.dados?.genealogia_bloqueio || parsed.dados?.parto_bloqueio || "").trim() || null;
 }
 
 function addGenealogyBlock(dados: AnyRecord, message: string) {
@@ -3191,6 +3321,67 @@ async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
   }
 
+  if (parsed.tipo === "PARTO" && partoWithChild(dados)) {
+    const mother = dados.animal_resolvido as AnyRecord | undefined;
+    if (mother && animalSexKind(mother) === "macho") {
+      dados.parto_bloqueio = `O animal ${animalLabel(mother)} está marcado como macho. Para registrar parto com cria, informe uma mãe fêmea. Nada foi salvo.`;
+      changed = true;
+    }
+
+    const childSex = normalizeCalfSex(dados.cria_sexo);
+    if (childSex && childSex !== dados.cria_sexo) {
+      dados.cria_sexo = childSex;
+      changed = true;
+    }
+    if (childSex && !dados.cria_categoria) {
+      dados.cria_categoria = calfCategoryForSex(childSex);
+      changed = true;
+    }
+
+    if (mother && dados.gerar_cria_codigo_temporario && !dados.cria_codigo) {
+      dados.cria_codigo = calfCodeFromParto(dados, mother);
+      changed = true;
+    }
+
+    if (dados.cria_codigo) {
+      const duplicate = await findAnimal(supabase, owner, String(dados.cria_codigo));
+      if (duplicate?.row && duplicate.exact) {
+        dados.cria_codigo_duplicado = duplicate.row.brinco || dados.cria_codigo;
+        dados.cria_codigo = undefined;
+        dados.gerar_cria_codigo_temporario = undefined;
+        changed = true;
+      }
+    }
+
+    const fatherRef = String(dados.pai_ref || dados.pai_nome || "").trim();
+    if (fatherRef && !dados.pai_id) {
+      const father = await findAnimal(supabase, owner, fatherRef);
+      if (father && !father.ambiguousRows?.length && (father.exact || father.score >= 0.86)) {
+        if (animalSexKind(father.row) === "femea") {
+          dados.parto_bloqueio = `O pai informado (${animalLabel(father.row)}) está marcado como fêmea. Corrija o pai ou registre o parto sem pai informado. Nada foi salvo.`;
+        } else {
+          dados.pai_id = father.row.id;
+          dados.pai_ref = father.row.brinco || fatherRef;
+          dados.pai_nome = animalLabel(father.row);
+          dados.pai_resolvido = father.row;
+          dados.pai_nao_informado = undefined;
+          dados.precisa_pai_ref = undefined;
+        }
+        changed = true;
+      } else {
+        dados.pai_referencia_nao_encontrada = fatherRef;
+        dados.pai_opcoes = father?.ambiguousRows?.map((row) => animalLabel(row)) || [];
+        dados.pai_ref = undefined;
+        dados.pai_nome = undefined;
+        dados.pai_id = undefined;
+        dados.precisa_pai_ref = true;
+        changed = true;
+      }
+    } else if (!fatherRef && !dados.pai_id) {
+      dados.pai_nao_informado = true;
+    }
+  }
+
   if (parsed.tipo === "ATUALIZACAO_GENEALOGIA" && dados.animal_id) {
     const resolveParent = async (field: "mae" | "pai") => {
       const valueKey = `${field}_nome`;
@@ -3670,6 +3861,120 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     if (pending.tipo === "PARTO") {
+      if (partoWithChild(dados)) {
+        if (animalSexKind(animal) === "macho") {
+          return { response: `O animal ${animalLabel(animal)} esta marcado como macho. Para registrar parto com cria, informe uma mae femea. Nada foi salvo.` };
+        }
+
+        const childSex = normalizeCalfSex(dados.cria_sexo);
+        if (!childSex) {
+          return {
+            response: "Informe se a cria nasceu macho ou femea antes de salvar.",
+            nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { cria_sexo: undefined }) } }
+          };
+        }
+
+        const childCode = calfCodeFromParto({ ...dados, cria_sexo: childSex }, animal);
+        if (!childCode) {
+          return {
+            response: "Qual e o codigo/brinco da cria? Responda 2 para gerar um codigo temporario.",
+            nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { cria_codigo: undefined }) } }
+          };
+        }
+
+        const duplicateChild = await findAnimal(supabase, owner, childCode);
+        if (duplicateChild?.row && duplicateChild.exact) {
+          return {
+            response: `Ja existe um animal com o codigo/brinco ${childCode}. Me envie outro codigo para a cria ou responda 2 para gerar um codigo temporario.`,
+            nextSession: {
+              etapa: "aguardando_dado",
+              dados: {
+                pending: pendingWithData(pending, {
+                  cria_codigo: undefined,
+                  gerar_cria_codigo_temporario: undefined,
+                  cria_codigo_duplicado: childCode
+                })
+              }
+            }
+          };
+        }
+
+        const duplicatePartos = await existingPartoSameDay(supabase, owner, animal.id, dados.data_referencia);
+        if (duplicatePartos.length && !dados.confirmar_duplicidade_parto) {
+          const nextPending = pendingWithData(pending, { confirmar_duplicidade_parto: true, cria_codigo: childCode, cria_sexo: childSex });
+          return {
+            response: partoDuplicateConfirmationMessage(animal, String(dados.data_referencia || "hoje")),
+            nextSession: { etapa: "aguardando_confirmacao", dados: { pending: nextPending } }
+          };
+        }
+
+        let father: AnyRecord | null = null;
+        if (dados.pai_resolvido && typeof dados.pai_resolvido === "object") {
+          father = dados.pai_resolvido as AnyRecord;
+        } else if (dados.pai_id) {
+          const animals = await listAnimals(supabase, owner);
+          father = animals.find((row) => String(row.id) === String(dados.pai_id)) || null;
+        } else if (dados.pai_ref || dados.pai_nome) {
+          const fatherRef = String(dados.pai_ref || dados.pai_nome || "").trim();
+          const fatherFound = await findAnimal(supabase, owner, fatherRef);
+          if (fatherFound?.ambiguousRows?.length) {
+            return {
+              response: `Encontrei mais de um pai parecido. Me envie o brinco correto ou responda sem pai:\n${animalOptionsText(fatherFound.ambiguousRows)}`,
+              nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { pai_ref: undefined, pai_nome: undefined, pai_id: undefined, precisa_pai_ref: true }) } }
+            };
+          }
+          if (!fatherFound?.row || (!fatherFound.exact && fatherFound.score < 0.86)) {
+            return {
+              response: `Nao encontrei o pai "${fatherRef}". Me envie o brinco do pai ou responda sem pai.`,
+              nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { pai_ref: undefined, pai_nome: undefined, pai_id: undefined, precisa_pai_ref: true }) } }
+            };
+          }
+          father = fatherFound.row;
+        }
+
+        if (father && animalSexKind(father) === "femea") {
+          return { response: `O pai informado (${animalLabel(father)}) esta marcado como femea. Corrija o pai ou registre o parto sem pai informado. Nada foi salvo.` };
+        }
+
+        const normalizedDados = {
+          ...dados,
+          cria_codigo: childCode,
+          cria_sexo: childSex,
+          cria_categoria: dados.cria_categoria || calfCategoryForSex(childSex)
+        };
+
+        await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+          fazenda_id: owner.fazenda_id,
+          animal_id: animal.id,
+          tipo: "parto",
+          data_evento: isoFromReference(dados.data_referencia),
+          descricao: partoChildEventDescription(normalizedDados, animal, childCode, father),
+          medicamento: null,
+          dose: null,
+          custo: 0,
+          responsavel_usuario_id: owner.usuario_id || null
+        });
+
+        await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+
+        const savedTables: string[] = [TABLES.eventosAnimal, TABLES.animais];
+        if (animal.fase === "gestante") {
+          const { error } = await supabase
+            .from(TABLES.animais)
+            .update({ fase: "lactacao" })
+            .eq("id", animal.id)
+            .eq("fazenda_id", owner.fazenda_id);
+          if (error) throw new Error(error.message);
+        }
+
+        return realSaveResult([
+          `Pronto, parto registrado e cria ${childCode} cadastrada.`,
+          `Mae: ${animalLabel(animal)}.`,
+          `Pai: ${father ? animalLabel(father) : "nao informado"}.`,
+          "A mae continua com a categoria/fase produtiva do cadastro; recem-parida sera exibido pelo ultimo evento de parto."
+        ].join("\n"), savedTables);
+      }
+
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
