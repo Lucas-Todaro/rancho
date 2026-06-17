@@ -214,6 +214,21 @@ const cases = [
     intent: "IMPORTACAO_EVENTOS_TABELA",
     dados: { tipo_tabela: "birth_child_events", total_linhas: 1, total_linhas_parse_validas: 1 }
   },
+  {
+    message: ["descricao;tipo;valor;data", "energia;despesa;350;01/06/2026", "venda leite;receita;1200;02/06/2026"].join("\n"),
+    intent: "IMPORTACAO_TABELA_DOMINIO",
+    dados: { dominio_tabela: "FINANCEIRO", total_linhas: 2, total_linhas_parse_validas: 2 }
+  },
+  {
+    message: ["funcionario;data;entrada;saida", "Joao;01/06/2026;07:00;17:00", "Maria;01/06/2026;06:00;15:00"].join("\n"),
+    intent: "IMPORTACAO_TABELA_DOMINIO",
+    dados: { dominio_tabela: "PONTO_FUNCIONARIO", total_linhas: 2, total_linhas_parse_validas: 2 }
+  },
+  {
+    message: ["abc;def;ghi", "x;y;z"].join("\n"),
+    intent: "IMPORTACAO_TABELA_AMBIGUA",
+    dados: { dominio_tabela: "DESCONHECIDO", total_linhas: 1 }
+  },
   { message: "boa tarde", clarify: true }
 ];
 

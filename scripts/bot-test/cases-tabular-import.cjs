@@ -259,6 +259,66 @@ module.exports = function loadBotTestSection(context) {
       "racao;2;kg;consumo diario",
       "feno;1;fardo;uso no curral"
     ].join("\n");
+    const lotsTableMessage = [
+      "lote;capacidade;area;status",
+      "Piquete 1;30;5ha;ativo",
+      "Lactacao;50;10ha;ativo"
+    ].join("\n");
+    const genealogyTableMessage = [
+      "animal;pai;mae",
+      "B-123;T-01;M-09",
+      "B-124;;M-10"
+    ].join("\n");
+    const financeTableMessage = [
+      "descricao;tipo;valor;data",
+      "energia;despesa;350;01/06/2026",
+      "venda leite;receita;1200;02/06/2026"
+    ].join("\n");
+    const financePipeShuffledTableMessage = [
+      "data|valor|descricao|tipo|categoria",
+      "2026-06-01|350|energia|despesa|energia",
+      "02.06.26|1200|venda leite|receita|leite"
+    ].join("\n");
+    const employeesTableMessage = [
+      "nome;cargo;telefone;salario",
+      "Joao;vaqueiro;83999999999;2500",
+      "Maria;ordenha;83888888888;2200"
+    ].join("\n");
+    const timeClockTableMessage = [
+      "funcionario;data;entrada;saida",
+      "Joao;01/06/2026;07:00;17:00",
+      "Maria;01/06/2026;06:00;15:00"
+    ].join("\n");
+    const healthTableMessage = [
+      "animal;procedimento;produto;dose;data",
+      "001;vacina;Brucelose;5ml;01/06/2026",
+      "002;medicacao;Antibiotico;10ml;02/06/2026"
+    ].join("\n");
+    const observationsTableMessage = [
+      "animal;observacao;data",
+      "001;nao comeu bem;01/06/2026",
+      "002;mancando;02/06/2026"
+    ].join("\n");
+    const agendaTableMessage = [
+      "tarefa;data;responsavel;categoria",
+      "vacinar lote 1;10/06/2026;Joao;sanitario",
+      "comprar racao;12/06/2026;Maria;estoque"
+    ].join("\n");
+    const unknownDomainTableMessage = [
+      "abc;def;ghi",
+      "x;y;z"
+    ].join("\n");
+    const ambiguousProtocolTableMessage = [
+      "animal;tipo;data",
+      "001;protocolo;01/01/2026"
+    ].join("\n");
+    const thirtyLineAgendaTableMessage = [
+      "tarefa;data;responsavel;categoria",
+      ...Array.from({ length: 30 }, (_, index) => {
+        const day = String((index % 28) + 1).padStart(2, "0");
+        return `tarefa ${index + 1};${day}/06/2026;Equipe ${index + 1};rotina`;
+      })
+    ].join("\n");
 
     const tabularAnimalCodes = [
       "001", "204", "143", "177", "397", "387", "249", "062", "195", "398",
@@ -944,6 +1004,159 @@ module.exports = function loadBotTestSection(context) {
           columnMapping: { item: 0, quantity: 1, unit: 2, observations: 3, default_movement_type: "saida" },
           tableRow: { lineNumber: 2, item_nome: "racao", quantidade: 2, unidade: "kg", tipo_movimento: "saida" }
         }
+      },
+      {
+        name: "roteador universal classifica lotes sem virar animal",
+        module: "tabela-dominio",
+        phrase: lotsTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "LOTES",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { nome: 0, capacidade: 1, area: 2, status: 3 }
+        }
+      },
+      {
+        name: "roteador universal diferencia genealogia de reproducao",
+        module: "tabela-dominio",
+        phrase: genealogyTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "GENEALOGIA",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { animal_ref: 0, pai_ref: 1, mae_ref: 2 }
+        }
+      },
+      {
+        name: "roteador universal classifica financeiro sem virar evento",
+        module: "tabela-dominio",
+        phrase: financeTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "FINANCEIRO",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { descricao: 0, tipo: 1, valor: 2, data: 3 }
+        }
+      },
+      {
+        name: "financeiro com pipe e colunas embaralhadas usa mapping universal",
+        module: "tabela-dominio",
+        phrase: financePipeShuffledTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "FINANCEIRO",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { data: 0, valor: 1, descricao: 2, tipo: 3, categoria: 4 }
+        }
+      },
+      {
+        name: "roteador universal classifica funcionarios",
+        module: "tabela-dominio",
+        phrase: employeesTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "FUNCIONARIOS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { nome: 0, cargo: 1, telefone: 2, salario: 3 }
+        }
+      },
+      {
+        name: "roteador universal classifica ponto funcionario",
+        module: "tabela-dominio",
+        phrase: timeClockTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "PONTO_FUNCIONARIO",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { funcionario_ref: 0, data: 1, entrada: 2, saida: 3 }
+        }
+      },
+      {
+        name: "roteador universal classifica saude sanitario",
+        module: "tabela-dominio",
+        phrase: healthTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "SAUDE_SANITARIO",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { animal_ref: 0, evento: 1, produto: 2, dose: 3, data: 4 }
+        }
+      },
+      {
+        name: "roteador universal classifica observacoes sem forcar saude",
+        module: "tabela-dominio",
+        phrase: observationsTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "OBSERVACOES",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { entidade_ref: 0, observacao: 1, data: 2 }
+        }
+      },
+      {
+        name: "roteador universal classifica agenda tarefas",
+        module: "tabela-dominio",
+        phrase: agendaTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "AGENDA_TAREFAS",
+          total_linhas: 2,
+          total_linhas_parse_validas: 2,
+          columnMapping: { titulo: 0, data: 1, responsavel: 2, categoria: 3 }
+        }
+      },
+      {
+        name: "roteador universal nao forca tabela desconhecida",
+        module: "tabela-dominio",
+        phrase: unknownDomainTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_AMBIGUA",
+          dominio_tabela: "DESCONHECIDO",
+          total_linhas: 1,
+          needsUserClarification: true
+        }
+      },
+      {
+        name: "protocolo tabular ambiguo pede dominio em vez de inventar",
+        module: "tabela-dominio",
+        phrase: ambiguousProtocolTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_AMBIGUA",
+          dominio_tabela: "DESCONHECIDO",
+          total_linhas: 1,
+          needsUserClarification: true
+        }
+      },
+      {
+        name: "agenda com 30 linhas preserva total sem hardcode",
+        module: "tabela-dominio",
+        phrase: thirtyLineAgendaTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_TABELA_DOMINIO",
+          dominio_tabela: "AGENDA_TAREFAS",
+          total_linhas: 30,
+          total_linhas_parse_validas: 30
+        }
       }
     ];
 
@@ -989,6 +1202,32 @@ module.exports = function loadBotTestSection(context) {
           responseIncludes: "pre-parto: 1",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela financeira pede confirmacao sem virar animal ou evento",
+        module: "tabela-dominio",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [financeTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "financeiro",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela desconhecida pergunta dominio e nao salva",
+        module: "tabela-dominio",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [unknownDomainTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_AMBIGUA",
+          responseIncludes: "1 - Rebanho/animais",
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
         }

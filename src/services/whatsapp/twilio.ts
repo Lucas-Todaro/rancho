@@ -37,6 +37,7 @@ import {
   destructiveBulkActionParsed
 } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
+import { domainFromUserChoice, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -966,14 +967,75 @@ function stockImportConfirmationText(parsed: ParsedRanchoMessage) {
   ].filter((line) => line !== "").join("\n");
 }
 
-function ambiguousTableQuestion(parsed: ParsedRanchoMessage) {
+function domainTableSummary(parsed: ParsedRanchoMessage) {
+  const dados = parsed.dados || {};
+  const summary = (dados.resumo_validacao || {}) as AnyRecord;
+  return {
+    domain: String(dados.dominio_tabela || "DESCONHECIDO"),
+    total: Number(summary.total || dados.total_linhas || 0),
+    ready: Number(summary.prontas || dados.total_linhas_parse_validas || 0),
+    invalid: Number(summary.invalidas || dados.total_linhas_parse_invalidas || 0),
+    review: Number(summary.revisao || dados.total_linhas_needs_review || 0),
+    metrics: (summary.metricas || {}) as AnyRecord
+  };
+}
+
+function domainTableConfirmationText(parsed: ParsedRanchoMessage) {
+  const summary = domainTableSummary(parsed);
+  const label = tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0]);
+  const metricLines: string[] = [];
+
+  if (summary.domain === "FINANCEIRO") {
+    if (summary.metrics.receitas_linhas) metricLines.push(`Receitas: ${formatMoney(summary.metrics.receitas || 0)}`);
+    if (summary.metrics.despesas_linhas) metricLines.push(`Despesas: ${formatMoney(summary.metrics.despesas || 0)}`);
+    if (summary.metrics.tipo_indefinido) metricLines.push(`Linhas sem tipo financeiro claro: ${summary.metrics.tipo_indefinido}.`);
+  } else if (summary.domain === "LOTES") {
+    metricLines.push(`Lotes lidos: ${summary.metrics.lotes || summary.total}.`);
+  } else if (summary.domain === "GENEALOGIA") {
+    metricLines.push(`Vinculos familiares lidos: ${summary.metrics.vinculos || summary.total}.`);
+  } else if (summary.domain === "FUNCIONARIOS") {
+    metricLines.push(`Funcionarios lidos: ${summary.metrics.funcionarios || summary.total}.`);
+  } else if (summary.domain === "PONTO_FUNCIONARIO") {
+    metricLines.push(`Registros de ponto lidos: ${summary.metrics.registros_ponto || summary.total}.`);
+  } else if (summary.domain === "SAUDE_SANITARIO") {
+    metricLines.push(`Eventos de saude/sanitario lidos: ${summary.metrics.eventos_sanitarios || summary.total}.`);
+  } else if (summary.domain === "OBSERVACOES") {
+    metricLines.push(`Observacoes lidas: ${summary.metrics.observacoes || summary.total}.`);
+  } else if (summary.domain === "AGENDA_TAREFAS") {
+    metricLines.push(`Tarefas lidas: ${summary.metrics.tarefas || summary.total}.`);
+  }
+
   return [
-    "Li uma tabela, mas preciso confirmar o tipo antes de continuar.",
-    "Essa tabela e para cadastrar animais ou registrar eventos?",
+    `Li uma tabela de ${label}.`,
+    `Linhas lidas: ${summary.total}.`,
+    `Prontas: ${summary.ready}.`,
+    summary.review ?`Precisam de revisao: ${summary.review}.` : "",
+    summary.invalid ?`Invalidas: ${summary.invalid}.` : "",
+    ...metricLines,
     "",
-    "1 - Cadastrar animais",
-    "2 - Registrar eventos",
-    "3 - Cancelar"
+    "Nenhum dado foi salvo ainda.",
+    "Deseja confirmar esse preview para continuar a importacao desse dominio?",
+    "1 - Confirmar",
+    "2 - Cancelar"
+  ].filter(Boolean).join("\n");
+}
+
+function ambiguousTableQuestion(parsed: ParsedRanchoMessage) {
+  const question = String(parsed.dados?.clarificationQuestion || parsed.dados?.classificacao_tabela?.clarificationQuestion || "").trim();
+  return question || [
+    "Li a tabela, mas nao consegui identificar com seguranca a qual area ela pertence. Ela e sobre:",
+    "1 - Rebanho/animais",
+    "2 - Lotes",
+    "3 - Genealogia",
+    "4 - Reproducao",
+    "5 - Producao de leite",
+    "6 - Estoque",
+    "7 - Financeiro/transacoes",
+    "8 - Funcionarios",
+    "9 - Ponto/folha",
+    "10 - Saude/sanitario",
+    "11 - Observacoes",
+    "12 - Agenda/tarefas"
   ].join("\n");
 }
 
@@ -1054,6 +1116,7 @@ function confirmationText(parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") return tabularImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA") return animalImportConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA") return stockImportConfirmationText(parsed);
+  if (parsed.tipo === "IMPORTACAO_TABELA_DOMINIO") return domainTableConfirmationText(parsed);
   if (parsed.tipo === "IMPORTACAO_TABELA_AMBIGUA") return ambiguousTableQuestion(parsed);
 
   if (parsed.tipo === "LOTE_REGISTROS") {
@@ -1113,6 +1176,11 @@ function dryRunConfirmationText(parsed?: ParsedRanchoMessage) {
     const summary = stockImportSummary(parsed);
     const itemText = summary.createMissingItems && summary.missingItems ?` e ${summary.missingItems} item(ns) seriam criados` : "";
     return `Simulacao concluida: ${summary.ready} movimentacao(oes) de estoque seriam importadas${itemText}. Nenhum registro real foi salvo.`;
+  }
+
+  if (parsed.tipo === "IMPORTACAO_TABELA_DOMINIO") {
+    const summary = domainTableSummary(parsed);
+    return `Simulacao concluida: tabela de ${tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0])} classificada com ${summary.total} linha(s). Nenhum registro real foi salvo.`;
   }
 
   if (parsed.tipo === "EXCLUIR_REBANHO") {
@@ -1208,6 +1276,7 @@ function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
     IMPORTACAO_EVENTOS_TABELA: "importação de eventos por tabela",
     IMPORTACAO_ANIMAIS_TABELA: "cadastro de animais por tabela",
     IMPORTACAO_ESTOQUE_TABELA: "importação de estoque por tabela",
+    IMPORTACAO_TABELA_DOMINIO: "importação tabular por domínio",
     IMPORTACAO_TABELA_AMBIGUA: "tabela enviada",
     AJUDA: "ajuda",
     DESCONHECIDO: "uma mensagem"
@@ -1445,12 +1514,12 @@ function safeBotPayload(table: string, payload: AnyRecord) {
 }
 
 function validatePendingForSave(pending: ParsedRanchoMessage) {
+  if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que voce escolha o dominio da tabela antes de continuar.";
   const dados = pending.dados || {};
   if (isDestructiveBulkParsed(pending)) return DESTRUCTIVE_BULK_ACTION_MESSAGE;
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
-  if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que você confirme se a tabela é de animais ou eventos antes de continuar.";
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
   if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
   if (pending.tipo === "PAGAMENTO_FUNCIONARIO" && invalidPositiveNumber(dados.valor)) return "Informe um valor de pagamento válido antes de salvar.";
@@ -3539,6 +3608,15 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   const dados = pending.dados || {};
   const invalidReason = validatePendingForSave(pending);
   if (invalidReason) return { response: invalidReason };
+
+  if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO") {
+    const summary = domainTableSummary(pending);
+    return {
+      response: `Preview confirmado: tabela de ${tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0])} com ${summary.total} linha(s) pre-validadas. Nenhum registro real foi salvo porque esse dominio ainda precisa de persistencia especifica.`,
+      savedReal: false,
+      savedTables: []
+    };
+  }
 
   if (pending.tipo === "EXCLUIR_REBANHO") {
     logDestructiveBulkBlock(owner, {
@@ -6837,16 +6915,15 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
   if (session.dados?.acao_pendente === "tipo_tabela_ambigua") {
     const command = normalizeRanchoText(text);
-    if (command === "3" || isCancelCommand(command)) {
+    if (isCancelCommand(command)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       return "Cancelado. Nao registrei essa tabela. Nada foi salvo.";
     }
 
-    const kind = command === "1" || isTableTypeAnimalsCommand(command)
-      ? "animals_import"
-      : command === "2" || isTableTypeEventsCommand(command)
-        ? "animal_events"
-        : null;
+    const selectedDomain = domainFromUserChoice(command);
+    const kind = selectedDomain
+      || (isTableTypeAnimalsCommand(command) ? "REBANHO_ANIMAIS" : null)
+      || (isTableTypeEventsCommand(command) ? "REPRODUCAO" : null);
 
     if (!kind) {
       await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending, acao_pendente: "tipo_tabela_ambigua" } });
@@ -7372,7 +7449,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const localParsedPreview = parseRanchoMessage(parserMessage);
     const legacyParserCanDecide = !isGeminiPrimaryMode();
-    const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
+    const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_DOMINIO", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;
     if (originalMessage.includes(";")) {

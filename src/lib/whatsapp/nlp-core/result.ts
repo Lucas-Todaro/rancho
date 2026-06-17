@@ -236,6 +236,9 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "IMPORTACAO_ESTOQUE_TABELA") {
     return `importar ${dados.total_linhas || 0} movimentacoes de estoque por tabela`;
   }
+  if (tipo === "IMPORTACAO_TABELA_DOMINIO") {
+    return `pre-validar ${dados.total_linhas || 0} linhas de tabela de ${dados.dominio_tabela || "dominio"}`;
+  }
   if (tipo === "IMPORTACAO_TABELA_AMBIGUA") {
     return "identificar tipo de tabela enviada";
   }

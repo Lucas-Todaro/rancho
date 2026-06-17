@@ -4,6 +4,15 @@ import { finalize } from "./result";
 import type { ParsedRanchoMessage } from "./types";
 import { normalizeCalfSex } from "./birth-child";
 import { normalizeReproductiveEventType, reproductiveEventDbType, reproductiveEventLabel, type ReproductiveEventKind } from "./reproductive-events";
+import {
+  TABULAR_DOMAIN_SCHEMAS,
+  classifyStructuredTableDomain,
+  mapColumnsForDomain,
+  tabularDomainLabel,
+  type KnownTabularTableDomain,
+  type StructuredTableDomainClassification,
+  type TabularTableDomain
+} from "./tabular-domain-router";
 
 export type ParsedTabularAnimalEventRow = {
   lineNumber: number;
@@ -100,13 +109,23 @@ export type ParsedTabularBirthChildRow = {
   problemas: string[];
 };
 
+export type ParsedGenericTabularDomainRow = {
+  lineNumber: number;
+  rawText: string;
+  values: Record<string, string>;
+  parsedValues: Record<string, string | number | null>;
+  status_linha: "pronto" | "revisao" | "invalido";
+  problemas: string[];
+  avisos: string[];
+};
+
 type EventTypeResolution = {
   evento_tipo: ParsedTabularAnimalEventRow["evento_tipo"];
   evento_label: string;
   db_tipo: ParsedTabularAnimalEventRow["db_tipo"];
 };
 
-type TableKind = "animal_events" | "animals_import" | "stock_import" | "milk_production" | "birth_child_events" | "ambiguous" | null;
+type TableKind = "animal_events" | "animals_import" | "stock_import" | "milk_production" | "birth_child_events" | "domain_preview" | "ambiguous" | null;
 
 type ParsedLine = {
   text: string;
@@ -412,49 +431,54 @@ function buildHeaderMap(headerLine: string): HeaderMap {
   };
 }
 
+function headerCellsForDomain(headerLine: string) {
+  return headerLine.split(";").map((cell) => cell.trim());
+}
+
+function sampleRowsForDomain(lines: ParsedLine[], headerIndex: number, sampleSize = 5) {
+  return lines
+    .slice(headerIndex + 1)
+    .filter((line) => line.text.includes(";"))
+    .slice(0, sampleSize)
+    .map((line) => line.text.split(";").map((cell) => cell.trim()));
+}
+
+function classifyHeaderDomain(headerLine: string, lines?: ParsedLine[], headerIndex = 0, forcedDomain?: KnownTabularTableDomain): StructuredTableDomainClassification {
+  return classifyStructuredTableDomain({
+    headers: headerCellsForDomain(headerLine),
+    sampleRows: lines ? sampleRowsForDomain(lines, headerIndex) : [],
+    rowCount: lines ? Math.max(0, lines.length - headerIndex - 1) : undefined,
+    allowedDomains: forcedDomain ? [forcedDomain] : undefined
+  });
+}
+
+function hasBirthChildHeaderShape(header: HeaderMap) {
+  return header.mother !== undefined
+    && header.date !== undefined
+    && (header.childCode !== undefined || header.childSex !== undefined || header.father !== undefined);
+}
+
+function tableKindFromDomain(domain: TabularTableDomain): TableKind {
+  if (domain === "REBANHO_ANIMAIS") return "animals_import";
+  if (domain === "REPRODUCAO") return "animal_events";
+  if (domain === "PRODUCAO_LEITE") return "milk_production";
+  if (domain === "ESTOQUE") return "stock_import";
+  if (["LOTES", "GENEALOGIA", "FINANCEIRO", "FUNCIONARIOS", "PONTO_FUNCIONARIO", "SAUDE_SANITARIO", "OBSERVACOES", "AGENDA_TAREFAS"].includes(domain)) return "domain_preview";
+  return null;
+}
+
 function detectTableKindFromHeader(headerLine: string): TableKind {
   if (!headerLine.includes(";")) return null;
 
-  const cells = splitHeaderCells(headerLine);
   const header = buildHeaderMap(headerLine);
-  const hasCode = header.code !== undefined;
-  const hasDate = header.date !== undefined;
-  const hasEvent = header.eventType !== undefined;
-  const hasTypeOrStatus = header.eventType !== undefined || header.status !== undefined;
-  const hasAnimalField = [header.name, header.category, header.sex, header.breed, header.lot, header.weight, header.birthDate].some((value) => value !== undefined);
-  const hasAnimalRegistrationField = [header.name, header.sex, header.breed, header.lot, header.weight, header.birthDate].some((value) => value !== undefined);
-  const hasStockField = [header.item, header.quantity, header.unit, header.value, header.movementType].some((value) => value !== undefined) || Boolean(header.movementTypeDefault);
-  const hasLiters = header.liters !== undefined;
-  const hasBirthChildShape = header.mother !== undefined
-    && header.date !== undefined
-    && (header.childCode !== undefined || header.childSex !== undefined || header.father !== undefined);
+  if (hasBirthChildHeaderShape(header)) return "birth_child_events";
 
-  if (hasBirthChildShape) return "birth_child_events";
+  const classified = classifyHeaderDomain(headerLine);
+  if (classified.domain === "DESCONHECIDO" && classified.needsUserClarification) {
+    return classified.warnings.includes("ambiguous_table_domain") ? "ambiguous" : null;
+  }
 
-  const eventScore = (hasCode ? 1 : 0) + (hasDate ? 2 : 0) + (hasEvent ? 3 : 0) + (hasTypeOrStatus ? 1 : 0);
-  const animalScore = (hasCode ? 1 : 0) + (hasAnimalField ? 3 : 0) + (header.name !== undefined ? 2 : 0) + (header.category !== undefined ? 2 : 0);
-  const stockScore = (header.item !== undefined ? 3 : 0)
-    + (header.quantity !== undefined ? 3 : 0)
-    + (header.unit !== undefined ? 1 : 0)
-    + (header.value !== undefined ? 1 : 0)
-    + ((header.movementType !== undefined || header.movementTypeDefault) ? 2 : 0);
-  const productionScore = (hasCode ? 2 : 0)
-    + (hasLiters ? 4 : 0)
-    + (hasDate ? 1 : 0)
-    + (header.notes !== undefined ? 1 : 0);
-
-  if (productionScore >= 5 && productionScore > stockScore && productionScore > eventScore && productionScore > animalScore) return "milk_production";
-  if (header.item !== undefined && header.quantity !== undefined && stockScore >= 6) return "stock_import";
-  if (header.item !== undefined && stockScore >= 5 && stockScore > eventScore && stockScore > animalScore) return "stock_import";
-  if (!hasCode) return hasStockField || hasDate || hasEvent || hasLiters ? "ambiguous" : null;
-  if (eventScore >= 4 && hasAnimalRegistrationField && hasDate) return "ambiguous";
-  if (animalScore >= 4 && animalScore > eventScore) return "animals_import";
-  if (eventScore >= 4 && eventScore >= productionScore) return "animal_events";
-  if (animalScore >= 4) return "animals_import";
-  if (hasDate && hasTypeOrStatus) return "animal_events";
-  if (hasLiters) return "milk_production";
-  if (hasAnimalField) return "animals_import";
-  return null;
+  return tableKindFromDomain(classified.domain);
 }
 
 function hasStockHeaderShape(line: string) {
@@ -467,14 +491,22 @@ function tableKindFromStructuredLine(line: string): TableKind {
   return detectTableKindFromHeader(line) || (hasStockHeaderShape(line) ? "stock_import" : null);
 }
 
+function looksLikeStructuredHeaderLine(line: string) {
+  if (!line.includes(";")) return false;
+  const cells = splitHeaderCells(line);
+  const headerTokens = cells.filter((cell) => /^(?:codigo|cod|brinco|id|animal|animal id|animal ref|nome|apelido|identificacao|categoria|tipo|classe|sexo|genero|raca|lote|piquete|grupo|pasto|nascimento|data nascimento|peso|kg|status|situacao|fase|estagio|pai|pai ref|mae|mae ref|matriz|touro|reprodutor|filho|cria|bezerro|bezerra|codigo cria|brinco cria|sexo cria|nome cria|evento|status tipo|ocorrencia|procedimento|data|dia|quando|horario|hora|turno|ordenha|observacoes|observacao|obs|nota|item|produto|insumo|material|estoque|quantidade|qtd|qtde|entrada|saida|uso|unidade|un|medida|valor|preco|total|fornecedor|destino|descricao|motivo|historico|forma|pagamento|pessoa|cliente|funcionario|colaborador|cargo|funcao|telefone|celular|whatsapp|salario|admissao|intervalo|pausa|almoco|horas|vacina|medicamento|remedio|dose|sintomas|problema|doenca|responsavel|aplicador|tarefa|titulo|atividade|compromisso|recorrencia)$/ .test(cell));
+  return headerTokens.length >= Math.max(2, Math.ceil(cells.length * 0.6));
+}
+
 function isConcreteStructuredHeaderLine(line: string) {
+  if (!looksLikeStructuredHeaderLine(line)) return false;
   const kind = tableKindFromStructuredLine(line);
   return Boolean(kind && kind !== "ambiguous");
 }
 
 function isHeaderLine(line: string) {
   if (!line.includes(";")) return false;
-  return tableKindFromStructuredLine(line) === "animal_events";
+  return looksLikeStructuredHeaderLine(line) && tableKindFromStructuredLine(line) === "animal_events";
 }
 
 function mappedCellCount(header: HeaderMap) {
@@ -1039,6 +1071,223 @@ function structuredRouteMeta(text: string) {
   };
 }
 
+function fieldValue(cells: string[], columnMapping: Record<string, number>, field: string) {
+  const index = columnMapping[field];
+  return index === undefined ? "" : (cells[index] || "").trim();
+}
+
+function isDateLikeField(field: string) {
+  return /(?:^data$|data_|_data$|nascimento|parto|admissao)/.test(field);
+}
+
+function isNumberLikeField(field: string) {
+  return /^(?:litros|quantidade|capacidade|area|peso|valor|valor_total|salario|horas)$/.test(field);
+}
+
+function parseGenericFieldValue(field: string, value: string) {
+  if (!value.trim()) return null;
+  if (isDateLikeField(field)) return parseTableDate(value);
+  if (field === "valor" || field === "valor_total" || field === "salario") return parseOptionalMoney(value);
+  if (isNumberLikeField(field)) return parsePositiveTableNumber(value);
+  return value.trim();
+}
+
+function isInvalidParsedGenericValue(field: string, value: string, parsed: unknown) {
+  if (!value.trim()) return false;
+  return (isDateLikeField(field) || isNumberLikeField(field)) && parsed === null;
+}
+
+function genericRowReviewWarnings(domain: TabularTableDomain, values: Record<string, string>) {
+  const warnings: string[] = [];
+  const normalizedType = normalizeRanchoText(values.tipo || values.tipo_movimento || values.evento || "");
+
+  if (domain === "FINANCEIRO") {
+    if (!normalizedType) warnings.push("tipo_financeiro_precisa_confirmacao");
+    else if (!/^(?:receita|despesa|entrada|saida)$/.test(normalizedType)) warnings.push("tipo_financeiro_ambiguo");
+  }
+
+  if (domain === "REPRODUCAO" && /\bprotocolo\b/.test(normalizedType)) {
+    warnings.push("protocolo_precisa_revisao");
+  }
+
+  if (domain === "OBSERVACOES" && !values.observacao) {
+    warnings.push("observacao_ausente");
+  }
+
+  return warnings;
+}
+
+function parseGenericDomainLine(
+  line: string,
+  lineNumber: number,
+  classification: StructuredTableDomainClassification,
+  domain: TabularTableDomain
+): ParsedGenericTabularDomainRow | null {
+  const cells = line.split(";").map((cell) => cell.trim());
+  if (!cells.length || cells.every((cell) => !cell)) return null;
+
+  const schema = domain !== "DESCONHECIDO" ? TABULAR_DOMAIN_SCHEMAS[domain as KnownTabularTableDomain] : null;
+  const values: Record<string, string> = {};
+  const parsedValues: Record<string, string | number | null> = {};
+  const problemas: string[] = [];
+
+  for (const field of Object.keys(classification.columnMapping)) {
+    const raw = fieldValue(cells, classification.columnMapping, field);
+    const parsed = parseGenericFieldValue(field, raw);
+    values[field] = raw;
+    parsedValues[field] = parsed as string | number | null;
+    if (isInvalidParsedGenericValue(field, raw, parsed)) problemas.push(`${field}_invalido`);
+  }
+
+  for (const field of schema?.requiredFields || []) {
+    if (classification.columnMapping[field] === undefined || !values[field]) problemas.push(`${field}_ausente`);
+  }
+
+  const avisos = genericRowReviewWarnings(domain, values);
+  return {
+    lineNumber,
+    rawText: line,
+    values,
+    parsedValues,
+    status_linha: problemas.length ? "invalido" : avisos.length ? "revisao" : "pronto",
+    problemas: Array.from(new Set(problemas)),
+    avisos: Array.from(new Set(avisos))
+  };
+}
+
+function genericDomainCounts(rows: ParsedGenericTabularDomainRow[]) {
+  return rows.reduce<Record<string, number>>((counts, row) => {
+    counts[row.status_linha] = (counts[row.status_linha] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function genericDomainMetrics(domain: TabularTableDomain, rows: ParsedGenericTabularDomainRow[]) {
+  if (domain === "FINANCEIRO") {
+    return rows.reduce((metrics, row) => {
+      const type = normalizeRanchoText(row.values.tipo || "");
+      const value = Number(row.parsedValues.valor || 0);
+      if (["receita", "entrada"].includes(type)) {
+        metrics.receitas += value;
+        metrics.receitas_linhas += 1;
+      } else if (["despesa", "saida"].includes(type)) {
+        metrics.despesas += value;
+        metrics.despesas_linhas += 1;
+      } else {
+        metrics.tipo_indefinido += 1;
+      }
+      return metrics;
+    }, { receitas: 0, despesas: 0, receitas_linhas: 0, despesas_linhas: 0, tipo_indefinido: 0 });
+  }
+
+  if (domain === "LOTES") {
+    return { lotes: rows.length };
+  }
+
+  if (domain === "GENEALOGIA") {
+    return { vinculos: rows.length };
+  }
+
+  if (domain === "FUNCIONARIOS") {
+    return { funcionarios: rows.length };
+  }
+
+  if (domain === "PONTO_FUNCIONARIO") {
+    return { registros_ponto: rows.length };
+  }
+
+  if (domain === "SAUDE_SANITARIO") {
+    return { eventos_sanitarios: rows.length };
+  }
+
+  if (domain === "OBSERVACOES") {
+    return { observacoes: rows.length };
+  }
+
+  if (domain === "AGENDA_TAREFAS") {
+    return { tarefas: rows.length };
+  }
+
+  return {};
+}
+
+function forcedDomainClassification(headerLine: string, forcedDomain?: KnownTabularTableDomain): StructuredTableDomainClassification | null {
+  if (!forcedDomain) return null;
+  const schema = TABULAR_DOMAIN_SCHEMAS[forcedDomain];
+  return {
+    domain: forcedDomain,
+    confidence: 0.72,
+    intentPerRow: schema.intentPerRow,
+    columnMapping: mapColumnsForDomain(headerCellsForDomain(headerLine), schema),
+    defaultFields: {},
+    needsUserClarification: false,
+    clarificationQuestion: null,
+    warnings: ["domain_selected_by_user"],
+    candidateDomains: [{ domain: forcedDomain, score: 1 }]
+  };
+}
+
+function parseGenericDomainTable(text: string, lines: ParsedLine[], headerIndex: number, forcedDomain?: KnownTabularTableDomain): ParsedRanchoMessage | null {
+  const classification = forcedDomainClassification(lines[headerIndex].text, forcedDomain)
+    || classifyHeaderDomain(lines[headerIndex].text, lines, headerIndex);
+  const domain = classification.domain;
+  const dataLines = lines.slice(headerIndex + 1).filter((line) => line.text.includes(";"));
+  if (!dataLines.length) return null;
+
+  const rows = dataLines
+    .map((line) => parseGenericDomainLine(line.text, line.lineNumber, classification, domain))
+    .filter(Boolean) as ParsedGenericTabularDomainRow[];
+  if (!rows.length) return null;
+
+  const readyRows = rows.filter((row) => row.status_linha === "pronto");
+  const invalidRows = rows.filter((row) => row.status_linha === "invalido");
+  const reviewRows = rows.filter((row) => row.status_linha === "revisao");
+  const commonData = {
+    origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
+    tipo_tabela: domain === "DESCONHECIDO" ? "unknown_structured_table" : `domain_${domain.toLowerCase()}`,
+    dominio_tabela: domain,
+    classificacao_tabela: classification,
+    column_mapping: classification.columnMapping,
+    default_fields: classification.defaultFields,
+    texto_tabela_original: normalizeTabularAnimalEventsText(text),
+    cabecalho: lines[headerIndex].text,
+    total_linhas: rows.length,
+    total_linhas_parse_validas: readyRows.length,
+    total_linhas_parse_invalidas: invalidRows.length,
+    total_linhas_needs_review: reviewRows.length,
+    linhas: rows,
+    linhas_parse_invalidas: invalidRows,
+    linhas_revisao: reviewRows,
+    resumo_validacao: {
+      total: rows.length,
+      prontas: readyRows.length,
+      invalidas: invalidRows.length,
+      revisao: reviewRows.length,
+      por_status: genericDomainCounts(rows),
+      metricas: genericDomainMetrics(domain, rows)
+    }
+  };
+
+  if (domain === "DESCONHECIDO" || classification.needsUserClarification) {
+    return finalize("IMPORTACAO_TABELA_AMBIGUA", {
+      ...commonData,
+      tipo_tabela: "unknown_structured_table",
+      needsUserClarification: true,
+      clarificationQuestion: classification.clarificationQuestion,
+      instrucoes_confirmacao: "perguntar_dominio_tabela"
+    }, [], 0.68);
+  }
+
+  return finalize("IMPORTACAO_TABELA_DOMINIO", {
+    ...commonData,
+    importacao_tabela_dominio: true,
+    tabela_destino: domain,
+    instrucoes_confirmacao: "confirmar_preview_tabela_dominio",
+    preview_only: true
+  }, [], classification.confidence);
+}
+
 function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const header = buildHeaderMap(lines[headerIndex].text);
   const columnMapping = columnMappingFromHeader(header);
@@ -1264,32 +1513,49 @@ function parseMilkProductionTable(text: string, lines: ParsedLine[], headerIndex
 function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
   const dataLines = lines.slice(headerIndex + 1).filter((line) => line.text.includes(";"));
   if (!dataLines.length) return null;
+  const classification = classifyHeaderDomain(lines[headerIndex].text, lines, headerIndex);
 
   return finalize("IMPORTACAO_TABELA_AMBIGUA", {
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
-    tipo_tabela: "ambiguous",
+    tipo_tabela: "ambiguous_structured_table",
+    dominio_tabela: "DESCONHECIDO",
+    classificacao_tabela: classification,
+    column_mapping: classification.columnMapping,
     texto_tabela_original: normalizeTabularAnimalEventsText(text),
     cabecalho: lines[headerIndex].text,
     total_linhas: dataLines.length,
-    instrucoes_confirmacao: "perguntar_tipo_tabela"
+    needsUserClarification: true,
+    clarificationQuestion: classification.clarificationQuestion,
+    instrucoes_confirmacao: "perguntar_dominio_tabela"
   }, [], 0.74);
 }
 
 function parseUnknownStructuredTable(text: string, lines: ParsedLine[]): ParsedRanchoMessage | null {
   if (!lines.length || !lines[0].text.includes(";")) return null;
+  const parsed = parseGenericDomainTable(text, lines, 0);
+  if (parsed) return parsed;
+
   const dataLines = lines.slice(1).filter((line) => line.text.includes(";"));
   if (!dataLines.length) return null;
-
+  const classification = classifyHeaderDomain(lines[0].text, lines, 0);
   return finalize("IMPORTACAO_TABELA_AMBIGUA", {
     origem_parser: "tabela_local",
     ...structuredRouteMeta(text),
-    tipo_tabela: "ambiguous",
+    tipo_tabela: "unknown_structured_table",
+    dominio_tabela: "DESCONHECIDO",
+    classificacao_tabela: classification,
+    column_mapping: classification.columnMapping,
     texto_tabela_original: normalizeTabularAnimalEventsText(text),
     cabecalho: lines[0].text,
     total_linhas: dataLines.length,
-    instrucoes_confirmacao: "perguntar_tipo_tabela"
-  }, [], 0.72);
+    total_linhas_parse_validas: 0,
+    total_linhas_parse_invalidas: 0,
+    total_linhas_needs_review: dataLines.length,
+    needsUserClarification: true,
+    clarificationQuestion: classification.clarificationQuestion,
+    instrucoes_confirmacao: "perguntar_dominio_tabela"
+  }, [], 0.68);
 }
 
 export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
@@ -1297,6 +1563,14 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
   if (!structuredDetection.isStructured) return null;
 
   const lines = parsedTableLines(text);
+  if (lines[0]?.text?.includes(";")) {
+    const firstLineClassification = classifyHeaderDomain(lines[0].text, lines, 0);
+    if (firstLineClassification.domain === "DESCONHECIDO" && firstLineClassification.needsUserClarification) {
+      const headerlessAnimalImport = parseHeaderlessAnimalsImportTable(text, lines);
+      return headerlessAnimalImport || parseUnknownStructuredTable(text, lines);
+    }
+  }
+
   const headerIndex = lines.findIndex((line) => tableKindFromStructuredLine(line.text));
   if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines) || parseUnknownStructuredTable(text, lines);
 
@@ -1306,20 +1580,28 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
   if (kind === "stock_import") return parseStockImportTable(text, lines, headerIndex);
   if (kind === "milk_production") return parseMilkProductionTable(text, lines, headerIndex);
   if (kind === "birth_child_events") return parseBirthChildEventsTable(text, lines, headerIndex);
+  if (kind === "domain_preview") return parseGenericDomainTable(text, lines, headerIndex);
   if (kind === "ambiguous") return parseAmbiguousTable(text, lines, headerIndex);
   return null;
 }
 
-export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import" | "birth_child_events"): ParsedRanchoMessage | null {
+export function parseTabularAnimalEventsMessageAs(
+  text: string,
+  kind: "animal_events" | "animals_import" | "stock_import" | "milk_production" | "birth_child_events" | KnownTabularTableDomain
+): ParsedRanchoMessage | null {
   const structuredDetection = detectStructuredInput(text);
   if (!structuredDetection.isStructured) return null;
 
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => tableKindFromStructuredLine(line.text));
   if (headerIndex < 0 && kind === "animals_import") return parseHeaderlessAnimalsImportTable(text, lines);
-  if (headerIndex < 0) return null;
-  if (kind === "animal_events") return parseAnimalEventsTable(text, lines, headerIndex);
-  if (kind === "animals_import") return parseAnimalsImportTable(text, lines, headerIndex);
-  if (kind === "birth_child_events") return parseBirthChildEventsTable(text, lines, headerIndex);
-  return parseStockImportTable(text, lines, headerIndex);
+  const effectiveHeaderIndex = headerIndex >= 0 ? headerIndex : 0;
+  if (!lines[effectiveHeaderIndex]?.text?.includes(";")) return null;
+
+  if (kind === "animal_events" || kind === "REPRODUCAO") return parseAnimalEventsTable(text, lines, effectiveHeaderIndex);
+  if (kind === "animals_import" || kind === "REBANHO_ANIMAIS") return parseAnimalsImportTable(text, lines, effectiveHeaderIndex);
+  if (kind === "birth_child_events") return parseBirthChildEventsTable(text, lines, effectiveHeaderIndex);
+  if (kind === "stock_import" || kind === "ESTOQUE") return parseStockImportTable(text, lines, effectiveHeaderIndex);
+  if (kind === "milk_production" || kind === "PRODUCAO_LEITE") return parseMilkProductionTable(text, lines, effectiveHeaderIndex);
+  return parseGenericDomainTable(text, lines, effectiveHeaderIndex, kind);
 }

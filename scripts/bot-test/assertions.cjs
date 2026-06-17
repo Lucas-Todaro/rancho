@@ -188,6 +188,8 @@ module.exports = function loadBotTestSection(context) {
       if (expected.financeiro_tipo && normalize(dados.financeiro_tipo) !== normalize(expected.financeiro_tipo)) failures.push(`financeiro_tipo esperado ${expected.financeiro_tipo}, recebido ${dados.financeiro_tipo}`);
       if (expected.filtro_texto && normalize(dados.filtro_texto) !== normalize(expected.filtro_texto)) failures.push(`filtro_texto esperado ${expected.filtro_texto}, recebido ${dados.filtro_texto}`);
       if (expected.tipo_tabela && normalize(dados.tipo_tabela) !== normalize(expected.tipo_tabela)) failures.push(`tipo_tabela esperado ${expected.tipo_tabela}, recebido ${dados.tipo_tabela}`);
+      if (expected.dominio_tabela && normalize(dados.dominio_tabela) !== normalize(expected.dominio_tabela)) failures.push(`dominio_tabela esperado ${expected.dominio_tabela}, recebido ${dados.dominio_tabela}`);
+      if ("needsUserClarification" in expected && Boolean(dados.needsUserClarification) !== Boolean(expected.needsUserClarification)) failures.push(`needsUserClarification esperado ${expected.needsUserClarification}, recebido ${dados.needsUserClarification}`);
       if ("litros" in expected && Number(dados.litros) !== Number(expected.litros)) failures.push(`litros esperado ${expected.litros}, recebido ${dados.litros}`);
       if (expected.produto && normalize(dados.produto) !== normalize(expected.produto)) failures.push(`produto esperado ${expected.produto}, recebido ${dados.produto}`);
       if (expected.item && normalize(dados.item_nome) !== normalize(expected.item)) failures.push(`item esperado ${expected.item}, recebido ${dados.item_nome}`);
