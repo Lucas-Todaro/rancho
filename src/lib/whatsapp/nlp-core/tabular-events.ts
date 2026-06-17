@@ -75,6 +75,13 @@ type ParsedLine = {
 
 type HeaderMap = Record<string, number | undefined>;
 
+export type StructuredInputDetection = {
+  isStructured: boolean;
+  reason: "single_line_message" | "multiple_lines_consistent_separator" | "multiple_lines_consistent_pair_list" | "no_consistent_structure";
+  separator: ";" | "|" | "\t" | ":" | " - " | null;
+  usefulLineCount: number;
+};
+
 function normalizeAnimalTableCode(value: string) {
   return value
     .trim()
@@ -88,6 +95,127 @@ function compactHeader(value: string) {
 
 function splitHeaderCells(line: string) {
   return line.split(";").map((cell) => compactHeader(cell));
+}
+
+function usefulLinesFromText(text: string) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function countDelimitedCells(line: string, separator: ";" | "|" | "\t") {
+  return line.split(separator).length;
+}
+
+function hasConsistentDelimitedRows(lines: string[], separator: ";" | "|" | "\t") {
+  const matching = lines.filter((line) => line.includes(separator));
+  if (matching.length < 2) return false;
+  const counts = matching.map((line) => countDelimitedCells(line, separator));
+  const minimum = Math.min(...counts);
+  const maximum = Math.max(...counts);
+  return minimum >= 2 && maximum - minimum <= 1;
+}
+
+function hasConsistentPairList(lines: string[], separator: ":" | " - ") {
+  if (lines.length < 2) return false;
+  const parts = lines.map((line) => {
+    if (separator === ":") {
+      const index = line.indexOf(":");
+      if (index <= 0) return null;
+      return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
+    }
+    const match = line.match(/^(.+?)\s-\s(.+)$/);
+    return match ? [match[1].trim(), match[2].trim()] : null;
+  });
+  return parts.every((pair) => pair && pair[0] && pair[1]);
+}
+
+export function detectStructuredInput(text: string): StructuredInputDetection {
+  const lines = usefulLinesFromText(normalizeTabularAnimalEventsText(text, { preserveSingleLine: true }));
+  if (lines.length <= 1) {
+    return {
+      isStructured: false,
+      reason: "single_line_message",
+      separator: null,
+      usefulLineCount: lines.length
+    };
+  }
+
+  if (hasConsistentDelimitedRows(lines, ";")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_separator", separator: ";", usefulLineCount: lines.length };
+  }
+  if (hasConsistentDelimitedRows(lines, "|")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_separator", separator: "|", usefulLineCount: lines.length };
+  }
+  if (hasConsistentDelimitedRows(lines, "\t")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_separator", separator: "\t", usefulLineCount: lines.length };
+  }
+  if (hasConsistentPairList(lines, ":")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_pair_list", separator: ":", usefulLineCount: lines.length };
+  }
+  if (hasConsistentPairList(lines, " - ")) {
+    return { isStructured: true, reason: "multiple_lines_consistent_pair_list", separator: " - ", usefulLineCount: lines.length };
+  }
+
+  return {
+    isStructured: false,
+    reason: "no_consistent_structure",
+    separator: null,
+    usefulLineCount: lines.length
+  };
+}
+
+export function looksLikeCollapsedStructuredInput(text: string) {
+  const lines = usefulLinesFromText(normalizeTabularAnimalEventsText(text, { preserveSingleLine: true }));
+  if (lines.length !== 1) return false;
+
+  const line = lines[0];
+  const semicolonCount = (line.match(/;/g) || []).length;
+  if (semicolonCount < 6) return false;
+
+  const normalized = normalizeRanchoText(line);
+  const hasHeaderTokens = /\b(?:codigo|animal|nome|categoria|sexo|raca|lote|nascimento|peso|status|tipo|evento|data|observacoes|observacao|obs|item|produto|quantidade|unidade|valor)\b/.test(normalized);
+  if (!hasHeaderTokens) return false;
+
+  const repeatedCellStarts = (line.match(/(?:^|;)\s*[A-Za-z0-9][A-Za-z0-9\s/-]{0,16}\s*;/g) || []).length;
+  const hasDate = /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/.test(line);
+  return repeatedCellStarts >= 3 && (hasDate || semicolonCount >= 10);
+}
+
+function normalizedStructuredTableText(text: string) {
+  const normalizedBase = normalizeTabularAnimalEventsText(text, { preserveSingleLine: true });
+  const detection = detectStructuredInput(normalizedBase);
+  if (!detection.isStructured || !detection.separator || detection.separator === ";") return normalizedBase;
+
+  const lines = normalizedBase
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (detection.separator === "|" || detection.separator === "\t") {
+    return lines
+      .map((line) => line.split(detection.separator as "|" | "\t").map((cell) => cell.trim()).join(";"))
+      .join("\n");
+  }
+
+  const normalizedLines = lines.map((line) => {
+    if (detection.separator === ":") {
+      const index = line.indexOf(":");
+      const left = index >= 0 ? line.slice(0, index).trim() : line.trim();
+      const right = index >= 0 ? line.slice(index + 1).trim() : "";
+      return [left, right, "", ""].join(";");
+    }
+
+    const match = line.match(/^(.+?)\s-\s(.+)$/);
+    const left = match?.[1]?.trim() || line.trim();
+    const right = match?.[2]?.trim() || "";
+    return [left, right, "", ""].join(";");
+  });
+
+  return ["Codigo;Tipo;Data;Observacoes", ...normalizedLines].join("\n");
 }
 
 function hasAnyHeader(cells: string[], patterns: RegExp[]) {
@@ -539,7 +667,7 @@ function unfoldSingleLineAnimalEventsTable(text: string) {
   return lines.length > 1 ? lines.join("\n") : text;
 }
 
-export function normalizeTabularAnimalEventsText(text: string) {
+export function normalizeTabularAnimalEventsText(text: string, options?: { preserveSingleLine?: boolean }) {
   let normalized = String(text || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
@@ -553,7 +681,7 @@ export function normalizeTabularAnimalEventsText(text: string) {
       .replace(/&#10;|&#x0a;/gi, "\n");
   }
 
-  if (!normalized.includes("\n") && normalized.includes(";")) {
+  if (!options?.preserveSingleLine && !normalized.includes("\n") && normalized.includes(";")) {
     normalized = unfoldSingleLineAnimalEventsTable(normalized);
   }
 
@@ -561,10 +689,19 @@ export function normalizeTabularAnimalEventsText(text: string) {
 }
 
 function parsedTableLines(text: string): ParsedLine[] {
-  return normalizeTabularAnimalEventsText(text)
+  return normalizedStructuredTableText(text)
     .split("\n")
     .map((line, index) => ({ text: line.trim(), lineNumber: index + 1 }))
     .filter((line) => line.text);
+}
+
+function structuredRouteMeta(text: string) {
+  const structuredDetection = detectStructuredInput(text);
+  return {
+    route: "structured_input",
+    structuredDetection,
+    interpreter_final_usado: "local_structured_parser"
+  };
 }
 
 function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: number): ParsedRanchoMessage | null {
@@ -583,6 +720,7 @@ function parseAnimalEventsTable(text: string, lines: ParsedLine[], headerIndex: 
 
   return finalize("IMPORTACAO_EVENTOS_TABELA", {
     origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
     tipo_tabela: "animal_events",
     importacao_tabela_eventos: true,
     tabela_destino: "eventos_animal",
@@ -614,6 +752,7 @@ function parseAnimalsImportTable(text: string, lines: ParsedLine[], headerIndex:
 
   return finalize("IMPORTACAO_ANIMAIS_TABELA", {
     origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
     tipo_tabela: "animals_import",
     importacao_tabela_animais: true,
     tabela_destino: "animais",
@@ -651,6 +790,7 @@ function parseHeaderlessAnimalsImportTable(text: string, lines: ParsedLine[]): P
 
   return finalize("IMPORTACAO_ANIMAIS_TABELA", {
     origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
     tipo_tabela: "animals_import",
     importacao_tabela_animais: true,
     tabela_destino: "animais",
@@ -683,6 +823,7 @@ function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: n
 
   return finalize("IMPORTACAO_ESTOQUE_TABELA", {
     origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
     tipo_tabela: "stock_import",
     importacao_tabela_estoque: true,
     tabela_destino: "estoque_movimentacoes",
@@ -702,6 +843,7 @@ function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: num
 
   return finalize("IMPORTACAO_TABELA_AMBIGUA", {
     origem_parser: "tabela_local",
+    ...structuredRouteMeta(text),
     tipo_tabela: "ambiguous",
     texto_tabela_original: normalizeTabularAnimalEventsText(text),
     cabecalho: lines[headerIndex].text,
@@ -711,6 +853,9 @@ function parseAmbiguousTable(text: string, lines: ParsedLine[], headerIndex: num
 }
 
 export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessage | null {
+  const structuredDetection = detectStructuredInput(text);
+  if (!structuredDetection.isStructured) return null;
+
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
   if (headerIndex < 0) return parseHeaderlessAnimalsImportTable(text, lines);
@@ -724,6 +869,9 @@ export function parseTabularAnimalEventsMessage(text: string): ParsedRanchoMessa
 }
 
 export function parseTabularAnimalEventsMessageAs(text: string, kind: "animal_events" | "animals_import" | "stock_import"): ParsedRanchoMessage | null {
+  const structuredDetection = detectStructuredInput(text);
+  if (!structuredDetection.isStructured) return null;
+
   const lines = parsedTableLines(text);
   const headerIndex = lines.findIndex((line) => detectTableKindFromHeader(line.text));
   if (headerIndex < 0 && kind === "animals_import") return parseHeaderlessAnimalsImportTable(text, lines);

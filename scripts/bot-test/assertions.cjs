@@ -213,6 +213,10 @@ module.exports = function loadBotTestSection(context) {
       if (expected.local && normalize(dados.local) !== normalize(expected.local)) failures.push(`local esperado ${expected.local}, recebido ${dados.local}`);
       if (expected.itemUnresolved && dados.item_id) failures.push(`item deveria ficar sem resolução oficial, recebeu item_id ${dados.item_id}`);
       if (expected.resumoIncludes && !normalize(parsed.resumo).includes(normalize(expected.resumoIncludes))) failures.push(`resumo deveria conter "${expected.resumoIncludes}", recebeu "${parsed.resumo}"`);
+      if (expected.route && dados.route !== expected.route) failures.push(`route esperada ${expected.route}, recebida ${dados.route}`);
+      if ("structuredInput" in expected && Boolean(dados.structuredDetection?.isStructured) !== Boolean(expected.structuredInput)) failures.push(`structuredDetection.isStructured esperado ${expected.structuredInput}, recebido ${dados.structuredDetection?.isStructured}`);
+      if (expected.structuredReason && normalize(dados.structuredDetection?.reason) !== normalize(expected.structuredReason)) failures.push(`structuredDetection.reason esperado ${expected.structuredReason}, recebido ${dados.structuredDetection?.reason}`);
+      if (expected.interpreterFinal && normalize(dados.interpreter_final_usado) !== normalize(expected.interpreterFinal)) failures.push(`interpreter_final_usado esperado ${expected.interpreterFinal}, recebido ${dados.interpreter_final_usado}`);
       if ("registros" in expected) {
         const registros = Array.isArray(dados.registros) ? dados.registros : [];
         if (registros.length !== expected.registros) failures.push(`registros esperados ${expected.registros}, recebidos ${registros.length}`);

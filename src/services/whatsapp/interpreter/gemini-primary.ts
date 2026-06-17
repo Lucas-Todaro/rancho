@@ -6,6 +6,7 @@ import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whats
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
+import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
 
@@ -756,7 +757,33 @@ function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string):
   };
 }
 
+function localFallbackResult(
+  input: ParseWithInterpreterInput,
+  reason: string,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+): GeminiFallbackParseResult {
+  return {
+    kind: "local",
+    threshold: 0.7,
+    parsed: {
+      ...input.localParsed,
+      dados: {
+        ...(input.localParsed.dados || {}),
+        origem_parser: input.localParsed.dados?.origem_parser || "local",
+        route,
+        structuredDetection,
+        interpreter_final_usado: "local_parser_after_gemini_failure",
+        gemini_failure_reason: reason
+      }
+    }
+  };
+}
+
 async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise<GeminiFallbackParseResult> {
+  const structuredDetection = detectStructuredInput(input.text);
+  const route = structuredDetection.isStructured ? "structured_input" : "normal_message";
+
   if (process.env.BOT_GEMINI_MOCK === "legacy_parser") {
     return {
       kind: "parsed",
@@ -766,7 +793,10 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
         dados: {
           ...(input.localParsed.dados || {}),
           origem_parser: "gemini",
-          gemini_mock: "legacy_parser"
+          gemini_mock: "legacy_parser",
+          route,
+          structuredDetection,
+          interpreter_final_usado: "legacy_parser_mock_for_gemini_tests"
         }
       },
       gemini: {
@@ -802,6 +832,11 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
 
     if (botAllowsLegacyRollback()) {
       return legacyRollbackResult(input.localParsed, gemini.reason);
+    }
+
+    const hasUsableLocalInterpretation = input.localParsed.tipo !== "DESCONHECIDO";
+    if (hasUsableLocalInterpretation) {
+      return localFallbackResult(input, gemini.reason, route, structuredDetection);
     }
 
     return {

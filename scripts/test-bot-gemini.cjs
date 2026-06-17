@@ -132,7 +132,7 @@ const fixtures = new Map([
 
 global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = ({ text }) => {
   const result = fixtures.get(normalize(text));
-  if (!result) throw new Error(`Fixture Gemini nao encontrada para: ${text}`);
+  if (!result) return undefined;
   return clone(result);
 };
 
@@ -146,12 +146,14 @@ function assert(condition, message) {
 
 function finalParsed(result) {
   if (result.kind === "parsed") return result.parsed;
+  if (result.kind === "local") return result.parsed;
   if (result.kind === "consultations") return result.consultations[0] || null;
   if (result.kind === "compound") return result.pending;
   return null;
 }
 
 const cases = [
+  { message: "090 deu 15 litros hoje", intent: "PRODUCAO_LEITE", route: "normal_message", structuredInput: false, localFallback: true },
   { message: "vaca 1 deu 15 litros", intent: "PRODUCAO_LEITE" },
   { message: "vaca 1 deu leite", intent: "PRODUCAO_LEITE", missing: true },
   { message: "vaca 1 deu 15 e a 2 20", intent: "LOTE_REGISTROS", registros: 2 },
@@ -203,9 +205,18 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
+      if (testCase.route) {
+        assert(parsed.dados?.route === testCase.route, `${testCase.message}: route esperada ${testCase.route}, recebida ${parsed.dados?.route}`);
+      }
+      if ("structuredInput" in testCase) {
+        assert(Boolean(parsed.dados?.structuredDetection?.isStructured) === Boolean(testCase.structuredInput), `${testCase.message}: structuredDetection.isStructured inesperado`);
+      }
+      if (testCase.localFallback) {
+        assert(result.kind === "local", `${testCase.message}: esperado fallback local, recebido ${result.kind}`);
+      }
       if (testCase.missing) {
         assert(parsed.perguntas_faltantes.length > 0, `${testCase.message}: deveria pedir campo faltante`);
       }

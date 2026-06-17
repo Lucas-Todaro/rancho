@@ -5,6 +5,7 @@ export type ReproductiveEventKind =
   | "prenhez"
   | "pre_parto"
   | "parto"
+  | "cio"
   | "protocolo"
   | "reteste"
   | "observacao";
@@ -43,8 +44,9 @@ export function normalizeReproductiveEventType(rawType: string): ReproductiveEve
   }
 
   if (/\b(?:reteste|novo teste)\b/.test(normalized)) return "reteste";
+  if (/\b(?:cio)\b/.test(normalized)) return "cio";
   if (/\b(?:ultimo protocolo|protocolo|protocolada|protocolado|nao passou)\b/.test(normalized)) return "protocolo";
-  if (/\b(?:cio|aborto|abortou)\b/.test(normalized)) return "observacao";
+  if (/\b(?:aborto|abortou)\b/.test(normalized)) return "observacao";
 
   return undefined;
 }
@@ -68,6 +70,7 @@ export function reproductiveEventLabel(kind?: ReproductiveEventKind) {
   if (kind === "prenhez") return "Prenhez";
   if (kind === "pre_parto") return "Pre-parto";
   if (kind === "parto") return "Parto";
+  if (kind === "cio") return "Cio";
   if (kind === "protocolo") return "Protocolo";
   if (kind === "reteste") return "Reteste de protocolo";
   return "Observacao reprodutiva";

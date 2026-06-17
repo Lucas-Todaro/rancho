@@ -38,6 +38,24 @@ module.exports = function loadBotTestSection(context) {
     const routeSanitizedTabularAnimalEventsMessage = sanitizeWhatsappMessageText(realTabularAnimalEventsMessage);
     const crlfTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, "\r\n");
     const flatSingleLineTabularAnimalEventsMessage = realTabularAnimalEventsMessage.replace(/\n/g, " ");
+    const pipeAnimalEventsMessage = [
+      "Animal|Evento|Data|Obs",
+      "318|Inseminacao|05/05/2026|",
+      "320|Pariu|06/05/2026|normal",
+      "321|Pre-parto|07/05/2026|observar"
+    ].join("\n");
+    const colonAnimalEventsMessage = [
+      "318:Inseminacao",
+      "320:Pariu",
+      "321:Pre-parto",
+      "322:CIO"
+    ].join("\n");
+    const dashAnimalEventsMessage = [
+      "318 - Inseminacao",
+      "320 - Pariu",
+      "321 - Pre-parto",
+      "322 - CIO"
+    ].join("\n");
     const animalRegistrationTableMessage = [
       "Codigo;Nome;Categoria;Sexo;Raca;Lote;Nascimento;Peso;Status;Observacoes",
       "IMP-101;Aurora;vaca;femea;Girolando;Lactacao 1;10/03/2022;480;ativo;linha completa",
@@ -190,16 +208,11 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "tabela real colada em uma linha nao vira atualizacao de animal",
+        name: "tabela real colada em uma linha nao entra como structured input",
         module: "tabela-eventos",
         phrase: flatSingleLineTabularAnimalEventsMessage,
         expected: {
-          exactTipo: true,
-          tipo: "IMPORTACAO_EVENTOS_TABELA",
-          total_linhas: 31,
-          total_linhas_parse_validas: 30,
-          total_linhas_parse_invalidas: 1,
-          tableRow: { lineNumber: 19, animal: "5714 CF", evento_tipo: "inseminacao", data_referencia: "2026-05-06", observacoes: "passou" }
+          tipo: "DESCONHECIDO"
         }
       },
       {
@@ -257,13 +270,110 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela com pipe funciona como eventos reprodutivos",
+        module: "tabela-eventos",
+        phrase: pipeAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 3,
+          total_linhas_parse_validas: 3,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_separator",
+          tableRow: { lineNumber: 4, animal: "321", evento_tipo: "pre_parto", data_referencia: "2026-05-07", observacoes: "observar" }
+        }
+      },
+      {
+        name: "lista com dois pontos reconhece cio sem hardcode",
+        module: "tabela-eventos",
+        phrase: colonAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_invalidas: 4,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_pair_list",
+          eventCounts: { inseminacao: 1, parto: 1, pre_parto: 1, cio: 1 },
+          tableRow: { lineNumber: 5, animal: "322", evento_tipo: "cio", problem: "data_ausente" }
+        }
+      },
+      {
+        name: "lista com hifen reconhece cio sem capturar mensagem simples",
+        module: "tabela-eventos",
+        phrase: dashAnimalEventsMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 4,
+          total_linhas_parse_invalidas: 4,
+          route: "structured_input",
+          structuredInput: true,
+          structuredReason: "multiple_lines_consistent_pair_list",
+          eventCounts: { inseminacao: 1, parto: 1, pre_parto: 1, cio: 1 },
+          tableRow: { lineNumber: 5, animal: "322", evento_tipo: "cio", problem: "data_ausente" }
+        }
+      },
+      {
         name: "mensagem comum nao ativa parser tabular",
         module: "tabela-eventos",
         phrase: "B-002 deu 32 litros",
         expected: {
           tipo: "PRODUCAO_LEITE",
           animal: "B-002",
-          litros: 32
+          litros: 32,
+          route: "normal_message",
+          structuredInput: false,
+          structuredReason: "single_line_message"
+        }
+      },
+      {
+        name: "mensagem simples com codigo numerico nao cai na leitura estruturada",
+        module: "tabela-eventos",
+        phrase: "090 deu 15 litros hoje",
+        expected: {
+          tipo: "PRODUCAO_LEITE",
+          animal: "090",
+          litros: 15,
+          route: "normal_message",
+          structuredInput: false,
+          structuredReason: "single_line_message"
+        }
+      },
+      {
+        name: "mensagem simples de inseminacao continua no fluxo normal",
+        module: "tabela-eventos",
+        phrase: "Mimosa foi inseminada",
+        expected: {
+          tipo: "ATUALIZACAO_ANIMAL",
+          animal: "B-001",
+          route: "normal_message",
+          structuredInput: false,
+          structuredReason: "single_line_message"
+        }
+      },
+      {
+        name: "mensagem simples de compra nao cai na leitura estruturada",
+        module: "tabela-eventos",
+        phrase: "comprei 10kg de racao",
+        expected: {
+          tipo: "ESTOQUE_ENTRADA",
+          route: "normal_message",
+          structuredInput: false,
+          structuredReason: "single_line_message"
+        }
+      },
+      {
+        name: "mensagem simples de uso nao cai na leitura estruturada",
+        module: "tabela-eventos",
+        phrase: "usei 5kg de racao",
+        expected: {
+          tipo: "ESTOQUE_SAIDA",
+          route: "normal_message",
+          structuredInput: false,
+          structuredReason: "single_line_message"
         }
       },
       {
