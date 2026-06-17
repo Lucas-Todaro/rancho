@@ -40,7 +40,7 @@ initialSession: () => ({
 })
 ```
 
-## Expected fields aaaa
+## Expected field
 
 Common checks:
 
