@@ -1,0 +1,27 @@
+{
+  "id": "tabela-financeiro",
+  "description": "Tabela financeira com descricao, tipo, valor e data.",
+  "examples": ["descricao;tipo;valor;data\nenergia;despesa;350;01/06/2026"],
+  "response": {
+    "intent": "DESCONHECIDO",
+    "confidence": 0.84,
+    "riskScore": 0.1,
+    "fields": {},
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null,
+    "table_import": {
+      "domain": "FINANCEIRO",
+      "confidence": 0.91,
+      "column_mapping": { "descricao": "descricao", "tipo": "tipo", "valor": "valor", "data": "data" },
+      "normalized_rows": [{ "descricao": "energia", "tipo": "despesa", "valor": 350, "data": "2026-06-01" }],
+      "unknown_columns": [],
+      "warnings": [],
+      "errors": [],
+      "ambiguous_domains": [],
+      "needs_manual_choice": false
+    }
+  }
+}

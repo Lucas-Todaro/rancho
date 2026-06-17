@@ -1,0 +1,20 @@
+{
+  "id": "acao-destrutiva-massa",
+  "description": "Comando destrutivo em massa bloqueado pelo backend local.",
+  "examples": ["excluir todo o rebanho"],
+  "response": {
+    "intent": "ACAO_DESTRUTIVA_EM_MASSA",
+    "confidence": 0.98,
+    "riskScore": 1,
+    "fields": {
+      "alvo": "rebanho",
+      "blocked": true,
+      "motivo": "acao_destrutiva_em_massa"
+    },
+    "actions": [],
+    "missing_fields": [],
+    "warnings": ["acao_destrutiva_em_massa"],
+    "should_confirm": false,
+    "response_hint": null
+  }
+}

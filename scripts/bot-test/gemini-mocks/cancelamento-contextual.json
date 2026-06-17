@@ -1,0 +1,18 @@
+{
+  "id": "cancelamento-contextual",
+  "description": "Cancelamento contextual de uma acao pendente.",
+  "examples": ["cancela o ultimo registro", "cancelar"],
+  "response": {
+    "intent": "CANCELAMENTO",
+    "confidence": 0.9,
+    "riskScore": 0.2,
+    "fields": {
+      "motivo": "cancelamento_contextual"
+    },
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null
+  }
+}

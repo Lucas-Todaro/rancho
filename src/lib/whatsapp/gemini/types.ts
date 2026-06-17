@@ -45,6 +45,7 @@ export type GeminiInterpreterInput = {
   catalogs?: AnyRecord;
   allowedIntents?: string[];
   schemas?: AnyRecord;
+  geminiMockId?: string | null;
 };
 
 export type GeminiInterpreterFailureReason =

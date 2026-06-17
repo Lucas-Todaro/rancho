@@ -13,7 +13,8 @@
     "test:bot:gemini": "node scripts/test-bot-gemini.cjs",
     "test:bot:fallback-audit": "node scripts/test-bot-fallback-audit.cjs",
     "test:bot:heavy": "node scripts/test-bot-heavy.cjs",
-    "test:gemini-fallback": "node scripts/test-gemini-fallback.cjs"
+    "test:gemini-fallback": "node scripts/test-gemini-fallback.cjs",
+    "smoke:gemini:live": "node scripts/smoke-gemini-live.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",

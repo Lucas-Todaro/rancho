@@ -1,0 +1,27 @@
+{
+  "id": "tabela-desconhecida",
+  "description": "Tabela ambigua que deve pedir escolha manual.",
+  "examples": ["nome;data;observacao\nAlgo;01/06/2026;teste"],
+  "response": {
+    "intent": "DESCONHECIDO",
+    "confidence": 0.55,
+    "riskScore": 0.2,
+    "fields": {},
+    "actions": [],
+    "missing_fields": [],
+    "warnings": ["baixa confianca"],
+    "should_confirm": false,
+    "response_hint": null,
+    "table_import": {
+      "domain": "OBSERVACOES",
+      "confidence": 0.42,
+      "column_mapping": { "nome": "entidade_ref", "data": "data", "observacao": "observacao" },
+      "normalized_rows": [{ "entidade_ref": "Algo", "data": "2026-06-01", "observacao": "teste" }],
+      "unknown_columns": [],
+      "warnings": ["baixa confianca"],
+      "errors": [],
+      "ambiguous_domains": ["OBSERVACOES", "AGENDA_TAREFAS"],
+      "needs_manual_choice": true
+    }
+  }
+}

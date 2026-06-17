@@ -1,0 +1,21 @@
+{
+  "id": "consulta-partos-recentes",
+  "description": "Consulta de partos recentes normalizada para a intent real de relatorio.",
+  "examples": ["partos recentes"],
+  "response": {
+    "intent": "CONSULTA_REGISTROS_HOJE",
+    "confidence": 0.94,
+    "riskScore": 0.05,
+    "fields": {
+      "evento": "PARTO",
+      "evento_tipo": "parto",
+      "periodo": "recentes",
+      "dias": 90
+    },
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null
+  }
+}

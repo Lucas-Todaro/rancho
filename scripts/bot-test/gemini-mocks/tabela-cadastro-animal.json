@@ -1,0 +1,31 @@
+{
+  "id": "tabela-cadastro-animal",
+  "description": "Tabela de cadastro de animais.",
+  "examples": ["Codigo;Categoria;Sexo\n001;vaca;femea"],
+  "response": {
+    "intent": "IMPORTACAO_ANIMAIS_TABELA",
+    "confidence": 0.91,
+    "riskScore": 0.1,
+    "fields": {
+      "linhas": [
+        { "codigo": "001", "categoria": "vaca", "sexo": "femea" }
+      ]
+    },
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": true,
+    "response_hint": null,
+    "table_import": {
+      "domain": "ANIMAIS",
+      "confidence": 0.91,
+      "column_mapping": { "Codigo": "codigo", "Categoria": "categoria", "Sexo": "sexo" },
+      "normalized_rows": [{ "codigo": "001", "categoria": "vaca", "sexo": "femea" }],
+      "unknown_columns": [],
+      "warnings": [],
+      "errors": [],
+      "ambiguous_domains": [],
+      "needs_manual_choice": false
+    }
+  }
+}

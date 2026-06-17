@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, "..");
 
 process.env.BOT_INTERPRETER = "gemini";
 process.env.BOT_ALLOW_LEGACY_ROLLBACK = "false";
+process.env.RANCHO_BOT_TEST = "1";
+if (!process.env.GEMINI_MODE) process.env.GEMINI_MODE = "mock";
 delete process.env.GEMINI_API_KEY;
 delete process.env.BOT_GEMINI_MOCK;
 
@@ -39,6 +41,12 @@ const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { interpretWithGemini } = require("../src/lib/whatsapp/gemini/interpreter.ts");
 const { domainFromUserChoice } = require("../src/lib/whatsapp/nlp-core/tabular-domain-router.ts");
+const {
+  geminiRuntimeReportLines,
+  geminiRuntimeStats,
+  resetGeminiRuntimeStats
+} = require("../src/lib/whatsapp/gemini/runtime.ts");
+resetGeminiRuntimeStats();
 
 const ADMIN_OWNER = {
   papel_bot: "admin",
@@ -230,7 +238,7 @@ function finalParsed(result) {
 }
 
 const cases = [
-  { message: "090 deu 15 litros hoje", intent: "PRODUCAO_LEITE", route: "normal_message", structuredInput: false, localFallback: true },
+  { message: "090 deu 15 litros hoje", intent: "PRODUCAO_LEITE", geminiMockId: "producao-leite-simples" },
   { message: "vaca 1 deu 15 litros", intent: "PRODUCAO_LEITE" },
   { message: "vaca 1 deu leite", intent: "PRODUCAO_LEITE", missing: true },
   { message: "vaca 1 deu 15 e a 2 20", intent: "LOTE_REGISTROS", registros: 2 },
@@ -330,7 +338,8 @@ const cases = [
       const result = await parseWithConfiguredInterpreter({
         text: testCase.message,
         localParsed,
-        owner: ADMIN_OWNER
+        owner: ADMIN_OWNER,
+        geminiMockId: testCase.geminiMockId || null
       });
 
       if (testCase.clarify) {
@@ -413,11 +422,8 @@ const cases = [
   }
 
   try {
-    const originalMock = global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
-    const originalFetch = global.fetch;
-    const originalApiKey = process.env.GEMINI_API_KEY;
-    delete global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
-    process.env.GEMINI_API_KEY = "fake-test-key";
+    const originalMode = process.env.GEMINI_MODE;
+    process.env.GEMINI_MODE = "live";
     global.fetch = async () => ({
       ok: true,
       status: 200,
@@ -428,21 +434,28 @@ const cases = [
       })
     });
 
-    const invalidJson = await interpretWithGemini({ text: "teste json invalido" });
-    assert(!invalidJson.ok && invalidJson.reason === "invalid_json", `Gemini JSON invalido: esperado invalid_json, recebido ${invalidJson.ok ? "ok" : invalidJson.reason}`);
-    results.push({ ok: true, name: "Gemini retornando JSON invalido" });
+    const blockedLive = await interpretWithGemini({ text: "teste live bloqueado" });
+    assert(!blockedLive.ok && blockedLive.message === "Teste tentou chamar Gemini live. Use GEMINI_MODE=mock.", `Gemini live em teste deveria ser bloqueado, recebido ${blockedLive.ok ? "ok" : blockedLive.message}`);
+    results.push({ ok: true, name: "Gemini live bloqueado em teste automatizado" });
 
-    if (originalMock) global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = originalMock;
-    else delete global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
-    global.fetch = originalFetch;
-    if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY;
-    else process.env.GEMINI_API_KEY = originalApiKey;
+    process.env.GEMINI_MODE = originalMode;
   } catch (error) {
     results.push({
       ok: false,
-      name: "Gemini retornando JSON invalido",
+      name: "Gemini live bloqueado em teste automatizado",
       error: error instanceof Error ? error.message : String(error)
     });
+  }
+
+  const stats = geminiRuntimeStats();
+  if (stats.liveCalls !== 0) {
+    results.push({
+      ok: false,
+      name: "Gemini live calls zeradas",
+      error: `Gemini live calls esperado 0, recebido ${stats.liveCalls}`
+    });
+  } else {
+    results.push({ ok: true, name: "Gemini live calls zeradas" });
   }
 
   const failed = results.filter((result) => !result.ok);
@@ -451,6 +464,7 @@ const cases = [
   console.log(`Aprovados: ${results.length - failed.length}`);
   console.log(`Falhos: ${failed.length}`);
   console.log("Gemini: mock estruturado; API real: nao chamada");
+  for (const line of geminiRuntimeReportLines()) console.log(line);
 
   if (failed.length) {
     for (const failure of failed) {

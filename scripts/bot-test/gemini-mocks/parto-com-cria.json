@@ -1,0 +1,24 @@
+{
+  "id": "parto-com-cria",
+  "description": "Parto com sexo da cria informado e codigo da cria faltante.",
+  "examples": ["001 pariu uma femea hoje", "001 pariu uma fêmea hoje"],
+  "response": {
+    "intent": "PARTO",
+    "confidence": 0.95,
+    "riskScore": 0.1,
+    "fields": {
+      "animal_ref": "001",
+      "mae_ref": "001",
+      "data": "hoje",
+      "data_parto": "hoje",
+      "cria_sexo": "femea",
+      "cria_codigo": null,
+      "pai_ref": null
+    },
+    "actions": [],
+    "missing_fields": ["cria_codigo"],
+    "warnings": [],
+    "should_confirm": true,
+    "response_hint": null
+  }
+}

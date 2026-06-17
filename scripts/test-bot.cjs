@@ -5,6 +5,8 @@ const nodeCrypto = require("crypto");
 const ts = require("typescript");
 
 const root = path.resolve(__dirname, "..");
+process.env.RANCHO_BOT_TEST = "1";
+if (!process.env.GEMINI_MODE) process.env.GEMINI_MODE = "mock";
 if (!process.env.BOT_INTERPRETER) process.env.BOT_INTERPRETER = "legacy_parser";
 if (process.env.BOT_INTERPRETER === "gemini" && !process.env.BOT_GEMINI_MOCK && !process.env.GEMINI_API_KEY) {
   process.env.BOT_GEMINI_MOCK = "legacy_parser";
@@ -74,6 +76,8 @@ const {
   sanitizeWhatsappMessageText
 } = require("../src/lib/security.ts");
 const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
+const { geminiRuntimeReportLines, resetGeminiRuntimeStats } = require("../src/lib/whatsapp/gemini/runtime.ts");
+resetGeminiRuntimeStats();
 
 const context = {
   fs,
@@ -186,6 +190,7 @@ async function main() {
   console.log(`Relatorio Markdown: ${BOT_TEST_REPORT_MD}`);
   console.log(`Relatorio final JSON: ${BOT_EVALUATION_REPORT_JSON}`);
   console.log(`Relatorio final Markdown: ${BOT_FINAL_REGRESSION_REPORT_MD}`);
+  for (const line of geminiRuntimeReportLines()) console.log(line);
 
   for (const result of failed) {
     console.log("\n--- Falha", result.index, "---");

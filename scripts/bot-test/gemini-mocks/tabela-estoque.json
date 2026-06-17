@@ -1,0 +1,27 @@
+{
+  "id": "tabela-estoque",
+  "description": "Tabela de estoque com item, quantidade e unidade.",
+  "examples": ["item;entrada;unidade;valor\nRacao de boi;10;kg;100"],
+  "response": {
+    "intent": "DESCONHECIDO",
+    "confidence": 0.86,
+    "riskScore": 0.1,
+    "fields": {},
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null,
+    "table_import": {
+      "domain": "ESTOQUE",
+      "confidence": 0.9,
+      "column_mapping": { "item": "item", "entrada": "quantidade", "unidade": "unidade", "valor": "valor_total" },
+      "normalized_rows": [{ "item": "Racao de boi", "quantidade": 10, "unidade": "kg", "valor_total": 100 }],
+      "unknown_columns": [],
+      "warnings": [],
+      "errors": [],
+      "ambiguous_domains": [],
+      "needs_manual_choice": false
+    }
+  }
+}

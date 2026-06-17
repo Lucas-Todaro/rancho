@@ -1,0 +1,20 @@
+{
+  "id": "producao-leite-simples",
+  "description": "Producao de leite simples com animal, litros e data relativa.",
+  "examples": ["090 deu 15 litros hoje"],
+  "response": {
+    "intent": "PRODUCAO_LEITE",
+    "confidence": 0.95,
+    "riskScore": 0.05,
+    "fields": {
+      "animal_ref": "090",
+      "litros": 15,
+      "data": "hoje"
+    },
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": true,
+    "response_hint": null
+  }
+}

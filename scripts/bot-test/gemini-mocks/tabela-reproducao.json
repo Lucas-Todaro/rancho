@@ -1,0 +1,27 @@
+{
+  "id": "tabela-reproducao",
+  "description": "Tabela de eventos reprodutivos.",
+  "examples": ["animal;evento;data\nB-002;inseminacao;01/06/2026"],
+  "response": {
+    "intent": "DESCONHECIDO",
+    "confidence": 0.84,
+    "riskScore": 0.1,
+    "fields": {},
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null,
+    "table_import": {
+      "domain": "EVENTOS",
+      "confidence": 0.9,
+      "column_mapping": { "animal": "animal_ref", "evento": "evento", "data": "data" },
+      "normalized_rows": [{ "animal_ref": "B-002", "evento": "inseminacao", "data": "2026-06-01" }],
+      "unknown_columns": [],
+      "warnings": [],
+      "errors": [],
+      "ambiguous_domains": [],
+      "needs_manual_choice": false
+    }
+  }
+}

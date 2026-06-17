@@ -1,0 +1,27 @@
+{
+  "id": "tabela-genealogia",
+  "description": "Tabela de genealogia animal.",
+  "examples": ["animal;pai;mae\nB-002;T-001;M-001"],
+  "response": {
+    "intent": "DESCONHECIDO",
+    "confidence": 0.84,
+    "riskScore": 0.1,
+    "fields": {},
+    "actions": [],
+    "missing_fields": [],
+    "warnings": [],
+    "should_confirm": false,
+    "response_hint": null,
+    "table_import": {
+      "domain": "GENEALOGIA",
+      "confidence": 0.9,
+      "column_mapping": { "animal": "animal_ref", "pai": "pai_ref", "mae": "mae_ref" },
+      "normalized_rows": [{ "animal_ref": "B-002", "pai_ref": "T-001", "mae_ref": "M-001" }],
+      "unknown_columns": [],
+      "warnings": [],
+      "errors": [],
+      "ambiguous_domains": [],
+      "needs_manual_choice": false
+    }
+  }
+}

@@ -3,6 +3,15 @@ import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import { buildGeminiSystemPrompt } from "@/lib/whatsapp/gemini/system-prompt";
 import { validateInterpretedAction } from "@/lib/whatsapp/gemini/validator";
+import {
+  findGeminiMockFixture,
+  geminiMode,
+  liveGeminiBlockedResult,
+  recordGeminiLiveCall,
+  recordGeminiMockCall,
+  shouldBlockGeminiLiveCall,
+  unknownGeminiMockResponse
+} from "@/lib/whatsapp/gemini/runtime";
 import type {
   GeminiInterpreterInput,
   GeminiInterpreterResult
@@ -67,25 +76,53 @@ async function mockInterpretation(input: GeminiInterpreterInput) {
   return undefined;
 }
 
-export async function interpretWithGemini(input: GeminiInterpreterInput): Promise<GeminiInterpreterResult> {
-  const mock = await mockInterpretation(input);
-  if (mock !== undefined) {
-    const validation = validateInterpretedAction(mock, {
-      originalText: input.text,
-      currentDate: input.currentDate,
-      timezone: input.timezone
-    });
-    if (!validation.ok) {
-      return { ok: false, reason: validation.reason === "dangerous_response" ? "dangerous_response" : "invalid_schema", message: validation.message };
-    }
-    return {
-      ok: true,
-      interpretation: validation.value,
-      model: "mock",
-      rawText: JSON.stringify(mock),
-      validationStatus: validation.status
-    };
+function validateMockedInterpretation(input: GeminiInterpreterInput, mock: unknown, model = "mock"): GeminiInterpreterResult {
+  const validation = validateInterpretedAction(mock, {
+    originalText: input.text,
+    currentDate: input.currentDate,
+    timezone: input.timezone
+  });
+  if (!validation.ok) {
+    return { ok: false, reason: validation.reason === "dangerous_response" ? "dangerous_response" : "invalid_schema", message: validation.message };
   }
+  return {
+    ok: true,
+    interpretation: validation.value,
+    model,
+    rawText: JSON.stringify(mock),
+    validationStatus: validation.status
+  };
+}
+
+export async function callGeminiInterpreter(input: GeminiInterpreterInput): Promise<GeminiInterpreterResult> {
+  if (geminiMode() === "mock") {
+    if (input.geminiMockId) {
+      const fixture = findGeminiMockFixture({ text: input.text, geminiMockId: input.geminiMockId });
+      if (fixture) {
+        recordGeminiMockCall(fixture.id);
+        return validateMockedInterpretation(input, fixture.response, `mock:${fixture.id}`);
+      }
+      recordGeminiMockCall("fixture-not-found");
+      return validateMockedInterpretation(input, unknownGeminiMockResponse(), "mock:fixture-not-found");
+    }
+
+    const mock = await mockInterpretation(input);
+    if (mock !== undefined) {
+      recordGeminiMockCall("global-or-env-mock");
+      return validateMockedInterpretation(input, mock);
+    }
+
+    const fixture = findGeminiMockFixture({ text: input.text, geminiMockId: input.geminiMockId });
+    if (fixture) {
+      recordGeminiMockCall(fixture.id);
+      return validateMockedInterpretation(input, fixture.response, `mock:${fixture.id}`);
+    }
+
+    recordGeminiMockCall("fixture-not-found");
+    return validateMockedInterpretation(input, unknownGeminiMockResponse(), "mock:fixture-not-found");
+  }
+
+  if (shouldBlockGeminiLiveCall()) return liveGeminiBlockedResult();
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   const model = configuredGeminiModel();
@@ -106,6 +143,7 @@ export async function interpretWithGemini(input: GeminiInterpreterInput): Promis
 
   try {
     geminiInterpreterLog("request", { model, messageLength: input.text.length });
+    recordGeminiLiveCall();
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -204,5 +242,9 @@ export async function interpretWithGemini(input: GeminiInterpreterInput): Promis
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function interpretWithGemini(input: GeminiInterpreterInput): Promise<GeminiInterpreterResult> {
+  return callGeminiInterpreter(input);
 }
 

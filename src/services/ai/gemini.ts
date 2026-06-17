@@ -1,3 +1,11 @@
+import {
+  geminiMode as geminiRuntimeMode,
+  liveGeminiBlockedResult,
+  recordGeminiLiveCall,
+  recordGeminiMockCall,
+  shouldBlockGeminiLiveCall
+} from "@/lib/whatsapp/gemini/runtime";
+
 type GeminiFailureReason =
   | "missing_api_key"
   | "timeout"
@@ -406,6 +414,13 @@ export async function interpretRanchoMessageWithGemini(input: {
   context: GeminiFarmContext;
   currentDate?: string;
 }): Promise<GeminiInterpretationResult> {
+  if (geminiRuntimeMode() === "mock") {
+    recordGeminiMockCall("legacy-fallback-mock");
+    return { ok: false, reason: "missing_api_key", message: "GEMINI_MODE=mock; Gemini live nao chamado." };
+  }
+
+  if (shouldBlockGeminiLiveCall()) return liveGeminiBlockedResult();
+
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   const model = geminiModel();
   const currentDate = input.currentDate || new Date().toISOString().slice(0, 10);
@@ -427,6 +442,7 @@ export async function interpretRanchoMessageWithGemini(input: {
 
   try {
     geminiLog("request", { model, messageLength: input.message.length });
+    recordGeminiLiveCall();
     const response = await fetch(url, {
       method: "POST",
       headers: {

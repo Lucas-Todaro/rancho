@@ -17,6 +17,7 @@ type ParseWithInterpreterInput = {
   text: string;
   localParsed: ParsedRanchoMessage;
   owner: WhatsAppOwner;
+  geminiMockId?: string | null;
 };
 
 const REPRODUCTION_EVENT_BY_INTENT: Record<string, string> = {
@@ -971,7 +972,8 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       fazenda_id: input.owner.fazenda_id
     },
     currentDate: new Date().toISOString().slice(0, 10),
-    timezone: process.env.TZ || "America/Fortaleza"
+    timezone: process.env.TZ || "America/Fortaleza",
+    geminiMockId: input.geminiMockId || null
   });
 
   if (!gemini.ok) {
@@ -997,6 +999,10 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       reason: gemini.reason,
       message: GEMINI_SAFE_FAILURE_MESSAGE
     };
+  }
+
+  if ((gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found") && input.localParsed.tipo !== "DESCONHECIDO") {
+    return localFallbackResult(input, "gemini_mock_fixture_not_found", route, structuredDetection);
   }
 
   const tableImportResult = convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
