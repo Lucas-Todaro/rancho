@@ -181,6 +181,9 @@ const ANIMAL_EVENT_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const STOCK_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "IMPORTACAO_ESTOQUE_TABELA"
 ]);
+const DOMAIN_TABLE_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
+  "IMPORTACAO_TABELA_DOMINIO"
+]);
 
 const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.ordenhas]: new Set(["fazenda_id", "animal_id", "litros", "ordenhado_em", "turno", "destino", "origem", "registrado_por", "observacoes"]),
@@ -403,6 +406,9 @@ function permissionDeniedMessage(owner: WhatsAppOwner, parsed?: ParsedRanchoMess
   }
   if (STOCK_IMPORT_ADMIN_INTENTS.has(parsed.tipo)) {
     return "Você não tem permissão para importar movimentações de estoque.";
+  }
+  if (DOMAIN_TABLE_IMPORT_ADMIN_INTENTS.has(parsed.tipo)) {
+    return "Voce nao tem permissao para importar tabelas desse dominio pelo bot. Peca para um administrador fazer essa importacao.";
   }
   if (ANIMAL_ADMIN_INTENTS.has(parsed.tipo)) {
     return "Você não tem permissão para cadastrar animais.";
@@ -2843,6 +2849,550 @@ async function findEmployee(supabase: SupabaseAdmin, owner: WhatsAppOwner, name:
   return bestMatch(activeRows, name, (row) => [row.nome]);
 }
 
+type DomainImportSaveStats = {
+  domain: string;
+  saved: number;
+  skipped: number;
+  failed: Array<{ line: number; reason: string }>;
+  savedTables: Set<string>;
+};
+
+function domainImportRows(parsed: ParsedRanchoMessage) {
+  return Array.isArray(parsed.dados?.linhas) ?parsed.dados.linhas as AnyRecord[] : [];
+}
+
+function domainImportReadyRows(parsed: ParsedRanchoMessage) {
+  return domainImportRows(parsed).filter((row) => row.status_linha === "pronto");
+}
+
+function domainRowValues(row: AnyRecord) {
+  return {
+    ...((row.values || {}) as AnyRecord),
+    ...((row.parsedValues || {}) as AnyRecord)
+  };
+}
+
+function domainLine(row: AnyRecord) {
+  return Number(row.lineNumber || row.linha || 0) || 0;
+}
+
+function domainText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function domainDateOnly(value: unknown) {
+  const text = domainText(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  return dateOnlyFromReference(text || "hoje");
+}
+
+function domainTime(value: unknown) {
+  const match = domainText(value).match(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/i);
+  if (!match) return "";
+  return `${String(match[1]).padStart(2, "0")}:${match[2]}`;
+}
+
+function domainDateTime(value: unknown, time?: unknown) {
+  const date = domainDateOnly(value);
+  const hour = domainTime(time);
+  return isoFromReference(date, hour || undefined);
+}
+
+function domainStatusActive(value: unknown) {
+  const normalized = normalizeRanchoText(domainText(value));
+  if (!normalized) return true;
+  return !/\b(?:inativo|inativa|desligado|desligada|demitido|demitida|cancelado|cancelada|false|nao|0)\b/.test(normalized);
+}
+
+function domainImportFailureText(failed: Array<{ line: number; reason: string }>) {
+  if (!failed.length) return "";
+  const visible = failed.slice(0, 5).map((item) => `linha ${item.line || "?"}: ${item.reason}`).join("; ");
+  const extra = failed.length > 5 ?`; mais ${failed.length - 5}` : "";
+  return `\nLinhas nao salvas: ${visible}${extra}.`;
+}
+
+function domainImportResultMessage(label: string, stats: DomainImportSaveStats, noun: string) {
+  const skippedText = stats.skipped ?`\nIgnorados: ${stats.skipped}.` : "";
+  const failedText = domainImportFailureText(stats.failed);
+  if (!stats.saved) {
+    return `Nenhum ${noun} foi salvo em ${label}.${skippedText}${failedText}`.trim();
+  }
+  return `Importacao de ${label} concluida: ${stats.saved} ${noun}(s) salvo(s).${skippedText}${failedText}`;
+}
+
+function normalizeDomainFinanceType(value: unknown) {
+  const normalized = normalizeRanchoText(domainText(value));
+  if (/\b(?:receita|entrada|credito|creditos|venda|recebimento)\b/.test(normalized)) return "entrada";
+  if (/\b(?:despesa|saida|debito|debitos|compra|pagamento|custo)\b/.test(normalized)) return "saida";
+  return "";
+}
+
+function normalizeDomainEventType(value: unknown, product?: unknown) {
+  const normalized = normalizeRanchoText(`${domainText(value)} ${domainText(product)}`);
+  if (/\b(?:vacina|vacinacao|aftosa|brucelose|raiva)\b/.test(normalized)) return "vacina";
+  if (/\b(?:doenca|doente|mastite|febre)\b/.test(normalized)) return "doenca";
+  if (/\b(?:inseminacao|cio|prenhez|pre parto|preparto|parto|pariu)\b/.test(normalized)) {
+    return reproductiveEventDbType(detectReproductiveEventKind(normalized) || "observacao");
+  }
+  if (/\b(?:medicacao|medicamento|tratamento|remedio|vermifugo|antibiotico)\b/.test(normalized)) return "tratamento";
+  return "observacao";
+}
+
+async function existingFinanceImportKeys(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.transacoesFinanceiras)
+    .select("id,tipo,data_transacao,valor,descricao,categoria")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  return new Set(((data || []) as AnyRecord[]).map((row) => [
+    row.tipo,
+    domainDateOnly(row.data_transacao),
+    Number(row.valor || 0),
+    normalizeCatalogText(`${row.descricao || ""}|${row.categoria || ""}`)
+  ].join("|")));
+}
+
+async function existingPointImportKeys(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.registrosPonto)
+    .select("id,funcionario_id,tipo,registrado_em")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  return new Set(((data || []) as AnyRecord[]).map((row) => [
+    row.funcionario_id,
+    row.tipo,
+    String(row.registrado_em || "")
+  ].join("|")));
+}
+
+async function existingEventImportKeys(supabase: SupabaseAdmin, owner: WhatsAppOwner) {
+  const { data, error } = await supabase
+    .from(TABLES.eventosAnimal)
+    .select("id,animal_id,tipo,data_evento,descricao,medicamento")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  return new Set(((data || []) as AnyRecord[]).map((row) => [
+    row.animal_id || "",
+    row.tipo || "",
+    String(row.data_evento || "").slice(0, 10),
+    normalizeCatalogText(`${row.descricao || ""}|${row.medicamento || ""}`)
+  ].join("|")));
+}
+
+async function saveLotesImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "LOTES", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const existingNames = new Set((await listLots(supabase, owner)).map((lot) => normalizeCatalogText(lot.nome)));
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const name = domainText(values.nome || values.lote);
+    if (!name) {
+      stats.failed.push({ line: domainLine(row), reason: "nome do lote ausente" });
+      continue;
+    }
+    const key = normalizeCatalogText(name);
+    if (existingNames.has(key)) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    const details = [
+      values.tipo ?`tipo: ${values.tipo}` : "",
+      values.capacidade ?`capacidade: ${values.capacidade}` : "",
+      values.area ?`area: ${values.area}${values.unidade_area ?` ${values.unidade_area}` : ""}` : "",
+      values.observacoes ?domainText(values.observacoes) : ""
+    ].filter(Boolean).join(" | ");
+
+    await insertRealRecord(supabase, owner, TABLES.lotes, {
+      fazenda_id: owner.fazenda_id,
+      nome: name,
+      descricao: details || "Criado via importacao tabular do WhatsApp",
+      ativo: domainStatusActive(values.status)
+    });
+    existingNames.add(key);
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.lotes);
+  }
+
+  return realSaveResult(domainImportResultMessage("lotes", stats, "lote"), Array.from(stats.savedTables));
+}
+
+async function saveGenealogiaImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "GENEALOGIA", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const animals = await listAnimals(supabase, owner);
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const animalRef = domainText(values.animal_ref || values.filho_ref || values.cria_codigo || values.cria_nome);
+    if (!animalRef) {
+      stats.failed.push({ line: domainLine(row), reason: "animal ausente" });
+      continue;
+    }
+
+    const animal = await findAnimal(supabase, owner, animalRef);
+    if (!animal?.row || (!animal.exact && animal.score < 0.86) || animal.ambiguousRows?.length) {
+      stats.failed.push({ line: domainLine(row), reason: `animal ${animalRef} nao encontrado com seguranca` });
+      continue;
+    }
+
+    const payload: AnyRecord = {};
+    const parents = [
+      { field: "pai_id", ref: domainText(values.pai_ref), label: "pai" },
+      { field: "mae_id", ref: domainText(values.mae_ref), label: "mae" }
+    ];
+    let failedParent = "";
+
+    for (const parent of parents) {
+      if (!parent.ref) continue;
+      const found = await findAnimal(supabase, owner, parent.ref);
+      if (!found?.row || (!found.exact && found.score < 0.86) || found.ambiguousRows?.length) {
+        failedParent = `${parent.label} ${parent.ref} nao encontrado com seguranca`;
+        break;
+      }
+      const parentId = String(found.row.id || "");
+      const animalId = String(animal.row.id || "");
+      const descendants = collectDescendantIds(animalId, animals);
+      if (parentId === animalId || descendants.has(parentId)) {
+        failedParent = `${parent.label} geraria autoparentesco ou ciclo`;
+        break;
+      }
+      payload[parent.field] = parentId;
+    }
+
+    if (failedParent) {
+      stats.failed.push({ line: domainLine(row), reason: failedParent });
+      continue;
+    }
+    if (values.observacoes) payload.genealogia_observacoes = domainText(values.observacoes);
+    if (!Object.keys(payload).length) {
+      stats.failed.push({ line: domainLine(row), reason: "pai ou mae ausente" });
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from(TABLES.animais)
+      .update(sanitizePayloadValue(payload) as AnyRecord)
+      .eq("id", animal.row.id)
+      .eq("fazenda_id", owner.fazenda_id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    await logAudit(supabase, owner, TABLES.animais, "update", data || { ...animal.row, ...payload });
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.animais);
+  }
+
+  return realSaveResult(domainImportResultMessage("genealogia", stats, "vinculo"), Array.from(stats.savedTables));
+}
+
+async function saveFinanceiroImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "FINANCEIRO", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const existingKeys = await existingFinanceImportKeys(supabase, owner);
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const type = normalizeDomainFinanceType(values.tipo);
+    const value = Number(values.valor || 0);
+    if (!type) {
+      stats.failed.push({ line: domainLine(row), reason: "tipo financeiro invalido" });
+      continue;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      stats.failed.push({ line: domainLine(row), reason: "valor invalido" });
+      continue;
+    }
+
+    const description = domainText(values.descricao || values.pessoa || values.observacoes || "Lancamento importado via WhatsApp");
+    const category = domainText(values.categoria || (type === "entrada" ?"Receita" : "Despesa"));
+    const date = domainDateOnly(values.data);
+    const key = [type, date, value, normalizeCatalogText(`${description}|${category}`)].join("|");
+    if (existingKeys.has(key)) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+      fazenda_id: owner.fazenda_id,
+      tipo: type,
+      data_transacao: date,
+      valor: value,
+      categoria: category,
+      descricao: description,
+      metodo_pagamento: domainText(values.forma_pagamento || "whatsapp"),
+      origem: "whatsapp",
+      created_by: owner.usuario_id || null
+    });
+    existingKeys.add(key);
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.transacoesFinanceiras);
+  }
+
+  return realSaveResult(domainImportResultMessage("financeiro", stats, "transacao"), Array.from(stats.savedTables));
+}
+
+async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "FUNCIONARIOS", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const { data: employees, error: employeeError } = await supabase
+    .from(TABLES.funcionarios)
+    .select("id,nome,contato_whatsapp,ativo,deleted_at")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(5000);
+  if (employeeError) throw new Error(employeeError.message);
+  const activeEmployees = ((employees || []) as AnyRecord[]).filter((item) => item.ativo !== false && !item.deleted_at);
+
+  const { data: whatsappRows, error: whatsappError } = await supabase
+    .from(TABLES.whatsappUsuarios)
+    .select("id,telefone_e164,funcionario_id,nome_exibicao,ativo")
+    .eq("fazenda_id", owner.fazenda_id)
+    .limit(5000);
+  if (whatsappError) throw new Error(whatsappError.message);
+  const whatsappUsers = (whatsappRows || []) as AnyRecord[];
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const name = domainText(values.nome);
+    const phone = normalizeWhatsappNumber(values.telefone);
+    if (!name) {
+      stats.failed.push({ line: domainLine(row), reason: "nome ausente" });
+      continue;
+    }
+    if (!isValidBotPhone(phone)) {
+      stats.failed.push({ line: domainLine(row), reason: "WhatsApp invalido" });
+      continue;
+    }
+    const duplicateEmployee = activeEmployees.find((item) => whatsappNumbersMatch(phone, String(item.contato_whatsapp || "")));
+    const duplicateWhatsapp = whatsappUsers.find((item) => item.ativo !== false && whatsappNumbersMatch(phone, String(item.telefone_e164 || "")));
+    if (duplicateEmployee || duplicateWhatsapp) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    const employee = await insertRealRecord(supabase, owner, TABLES.funcionarios, {
+      fazenda_id: owner.fazenda_id,
+      nome: name,
+      funcao: domainText(values.cargo || "Funcionario"),
+      contato_whatsapp: phone,
+      salario_base: Number(values.salario || 0),
+      data_admissao: domainDateOnly(values.data_admissao),
+      carga_horaria_mensal: 220,
+      valor_hora_extra: 0,
+      ativo: domainStatusActive(values.status),
+      tipo_acesso: "bot_only",
+      papel_sistema: "bot_only"
+    }) as AnyRecord;
+
+    const whatsappPayload = {
+      fazenda_id: owner.fazenda_id,
+      telefone_e164: phone,
+      funcionario_id: employee.id,
+      usuario_id: null,
+      nome_exibicao: name,
+      ativo: domainStatusActive(values.status),
+      papel: "funcionario",
+      papel_bot: "funcionario"
+    };
+    await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);
+    activeEmployees.push(employee);
+    whatsappUsers.push(whatsappPayload);
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.funcionarios);
+    stats.savedTables.add(TABLES.whatsappUsuarios);
+  }
+
+  return realSaveResult(domainImportResultMessage("funcionarios", stats, "funcionario"), Array.from(stats.savedTables));
+}
+
+async function savePontoFuncionarioImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "PONTO_FUNCIONARIO", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const existingKeys = await existingPointImportKeys(supabase, owner);
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const employeeRef = domainText(values.funcionario_ref);
+    const employee = await findEmployee(supabase, owner, employeeRef);
+    if (!employeeRef || !employee?.row || (!employee.exact && employee.score < 0.86) || employee.ambiguousRows?.length) {
+      stats.failed.push({ line: domainLine(row), reason: `funcionario ${employeeRef || "nao informado"} nao encontrado com seguranca` });
+      continue;
+    }
+
+    const entries = [
+      { type: "entrada", time: values.entrada },
+      { type: "saida", time: values.saida }
+    ].filter((item) => domainTime(item.time));
+
+    if (!entries.length) {
+      stats.failed.push({ line: domainLine(row), reason: "entrada ou saida ausente" });
+      continue;
+    }
+
+    for (const entry of entries) {
+      const timestamp = domainDateTime(values.data, entry.time);
+      const key = [employee.row.id, entry.type, timestamp].join("|");
+      if (existingKeys.has(key)) {
+        stats.skipped += 1;
+        continue;
+      }
+      await insertRealRecord(supabase, owner, TABLES.registrosPonto, {
+        fazenda_id: owner.fazenda_id,
+        funcionario_id: employee.row.id,
+        tipo: entry.type,
+        registrado_em: timestamp,
+        observacao: domainText(values.observacoes || "Importado por tabela via WhatsApp"),
+        origem: "whatsapp",
+        created_by: owner.usuario_id || null
+      });
+      existingKeys.add(key);
+      stats.saved += 1;
+      stats.savedTables.add(TABLES.registrosPonto);
+    }
+  }
+
+  return realSaveResult(domainImportResultMessage("ponto de funcionarios", stats, "registro"), Array.from(stats.savedTables));
+}
+
+async function saveSaudeSanitarioImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "SAUDE_SANITARIO", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const existingKeys = await existingEventImportKeys(supabase, owner);
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const animalRef = domainText(values.animal_ref);
+    const animal = await findAnimal(supabase, owner, animalRef);
+    if (!animalRef || !animal?.row || (!animal.exact && animal.score < 0.86) || animal.ambiguousRows?.length) {
+      stats.failed.push({ line: domainLine(row), reason: `animal ${animalRef || "nao informado"} nao encontrado com seguranca` });
+      continue;
+    }
+    const type = normalizeDomainEventType(values.evento, values.produto);
+    const description = [
+      domainText(values.evento || "Evento sanitario importado via WhatsApp"),
+      values.sintomas ?`sintomas: ${values.sintomas}` : "",
+      values.observacoes ?domainText(values.observacoes) : ""
+    ].filter(Boolean).join(" | ");
+    const date = domainDateOnly(values.data);
+    const key = [animal.row.id, type, date, normalizeCatalogText(`${description}|${values.produto || ""}`)].join("|");
+    if (existingKeys.has(key)) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+      fazenda_id: owner.fazenda_id,
+      animal_id: animal.row.id,
+      tipo: type,
+      data_evento: domainDateTime(date),
+      descricao: description,
+      medicamento: domainText(values.produto) || null,
+      dose: domainText(values.dose) || null,
+      custo: 0,
+      responsavel_usuario_id: owner.usuario_id || null
+    });
+    existingKeys.add(key);
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.eventosAnimal);
+  }
+
+  return realSaveResult(domainImportResultMessage("saude/sanitario", stats, "evento"), Array.from(stats.savedTables));
+}
+
+async function saveObservacoesImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  const stats: DomainImportSaveStats = { domain: "OBSERVACOES", saved: 0, skipped: 0, failed: [], savedTables: new Set() };
+  const existingKeys = await existingEventImportKeys(supabase, owner);
+
+  for (const row of domainImportReadyRows(parsed)) {
+    const values = domainRowValues(row);
+    const observation = domainText(values.observacao);
+    if (!observation) {
+      stats.failed.push({ line: domainLine(row), reason: "observacao ausente" });
+      continue;
+    }
+
+    let animalId: string | null = null;
+    const entityRef = domainText(values.entidade_ref);
+    if (entityRef) {
+      const animal = await findAnimal(supabase, owner, entityRef);
+      if (!animal?.row || (!animal.exact && animal.score < 0.86) || animal.ambiguousRows?.length) {
+        stats.failed.push({ line: domainLine(row), reason: `animal ${entityRef} nao encontrado com seguranca` });
+        continue;
+      }
+      animalId = String(animal.row.id || "");
+    }
+
+    const date = domainDateOnly(values.data);
+    const key = [animalId || "", "observacao", date, normalizeCatalogText(observation)].join("|");
+    if (existingKeys.has(key)) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+      fazenda_id: owner.fazenda_id,
+      animal_id: animalId,
+      tipo: "observacao",
+      data_evento: domainDateTime(date),
+      descricao: observation,
+      medicamento: null,
+      dose: null,
+      custo: 0,
+      responsavel_usuario_id: owner.usuario_id || null
+    });
+    existingKeys.add(key);
+    stats.saved += 1;
+    stats.savedTables.add(TABLES.eventosAnimal);
+  }
+
+  return realSaveResult(domainImportResultMessage("observacoes", stats, "observacao"), Array.from(stats.savedTables));
+}
+
+async function saveDomainTableImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage): Promise<SaveResult> {
+  const summary = domainTableSummary(parsed);
+  const rows = domainImportRows(parsed);
+  const ready = domainImportReadyRows(parsed);
+  const label = tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0]);
+
+  if (summary.domain === "AGENDA_TAREFAS") {
+    return {
+      response: `Preview confirmado: tabela de ${label} com ${rows.length} linha(s). Esse dominio ainda nao possui tabela real segura no Rancho, entao nenhum registro foi salvo.`,
+      savedReal: false,
+      savedTables: []
+    };
+  }
+
+  if (!ready.length) {
+    return {
+      response: `Nao encontrei linhas prontas para salvar em ${label}. Nada foi salvo.`,
+      savedReal: false,
+      savedTables: []
+    };
+  }
+
+  console.log("[BOT DOMAIN IMPORT SAVE]", {
+    domain: summary.domain,
+    total: rows.length,
+    ready: ready.length,
+    review: summary.review,
+    invalid: summary.invalid,
+    fazenda_id: owner.fazenda_id,
+    service: "saveDomainTableImport"
+  });
+
+  if (summary.domain === "LOTES") return saveLotesImport(supabase, owner, parsed);
+  if (summary.domain === "GENEALOGIA") return saveGenealogiaImport(supabase, owner, parsed);
+  if (summary.domain === "FINANCEIRO") return saveFinanceiroImport(supabase, owner, parsed);
+  if (summary.domain === "FUNCIONARIOS") return saveFuncionariosImport(supabase, owner, parsed);
+  if (summary.domain === "PONTO_FUNCIONARIO") return savePontoFuncionarioImport(supabase, owner, parsed);
+  if (summary.domain === "SAUDE_SANITARIO") return saveSaudeSanitarioImport(supabase, owner, parsed);
+  if (summary.domain === "OBSERVACOES") return saveObservacoesImport(supabase, owner, parsed);
+
+  return {
+    response: `Preview confirmado: tabela de ${label} com ${rows.length} linha(s). Esse dominio ainda nao tem persistencia real especifica no Rancho. Nenhum registro foi salvo.`,
+    savedReal: false,
+    savedTables: []
+  };
+}
+
 function stockCategoryFromName(name: string) {
   const normalized = normalizeRanchoText(name);
   if (/\b(?:vacina|aftosa|brucelose|raiva)\b/.test(normalized)) return "vacina";
@@ -3610,12 +4160,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
   if (invalidReason) return { response: invalidReason };
 
   if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO") {
-    const summary = domainTableSummary(pending);
-    return {
-      response: `Preview confirmado: tabela de ${tabularDomainLabel(summary.domain as Parameters<typeof tabularDomainLabel>[0])} com ${summary.total} linha(s) pre-validadas. Nenhum registro real foi salvo porque esse dominio ainda precisa de persistencia especifica.`,
-      savedReal: false,
-      savedTables: []
-    };
+    return saveDomainTableImport(supabase, owner, pending);
   }
 
   if (pending.tipo === "EXCLUIR_REBANHO") {

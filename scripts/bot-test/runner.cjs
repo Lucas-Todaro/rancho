@@ -941,6 +941,23 @@ module.exports = function loadBotTestSection(context) {
       return `${action.type}:${action.table}:${JSON.stringify(action.payload || {})}`;
     }
 
+    function writeActionsForTrace(trace) {
+      const trackedTables = new Set([
+        ...Array.from(BOT_TEST_BUSINESS_TABLES),
+        BOT_TEST_TABLES.lotes,
+        BOT_TEST_TABLES.whatsappUsuarios
+      ]);
+      return (trace.writes || [])
+        .filter((write) => trackedTables.has(write.tableName))
+        .flatMap((write) => (write.rows || []).map((row) => ({
+        type: write.action === "update" ? "update" : write.action === "delete" ? "delete" : "create",
+        dryRun: false,
+        source: "processWhatsappMessage:real-save",
+        table: write.tableName,
+        payload: row || {}
+      })));
+    }
+
     function detectStuckFlow(steps) {
       const failures = [];
       for (let index = 1; index < steps.length; index += 1) {
@@ -964,6 +981,7 @@ module.exports = function loadBotTestSection(context) {
       const finalResult = finalStep?.result || {};
       const finalData = finalResult.dadosExtraidos || {};
       const simulatedActions = trace.simulatedSaveActions || [];
+      const capturedActions = [...simulatedActions, ...writeActionsForTrace(trace)];
       const confirmIndex = firstConfirmationIndex(trace.steps);
 
       if (expected.finalIntent && finalResult.intencaoDetectada !== expected.finalIntent) {
@@ -1017,12 +1035,12 @@ module.exports = function loadBotTestSection(context) {
         if (wroteBeforeConfirm) failures.push("houve tentativa de salvamento antes da confirmacao");
       }
 
-      if (expected.savedAfterConfirmation === true && !simulatedActions.length) {
-        failures.push("esperava acao simulada de salvamento apos confirmacao positiva");
+      if (expected.savedAfterConfirmation === true && !capturedActions.length) {
+        failures.push("esperava acao de salvamento apos confirmacao positiva");
       }
 
-      if (expected.savedAfterConfirmation === false && simulatedActions.length) {
-        failures.push(`nao esperava salvamento simulado, recebeu ${simulatedActions.length}`);
+      if (expected.savedAfterConfirmation === false && capturedActions.length) {
+        failures.push(`nao esperava salvamento, recebeu ${capturedActions.length}`);
       }
 
       if (typeof expected.simulatedSaveCount === "number" && simulatedActions.length !== expected.simulatedSaveCount) {
@@ -1030,20 +1048,20 @@ module.exports = function loadBotTestSection(context) {
       }
 
       for (const table of expected.savedTables || []) {
-        if (!simulatedActions.some((action) => action.table === table)) failures.push(`tabela simulada esperada ${table} nao capturada`);
+        if (!capturedActions.some((action) => action.table === table)) failures.push(`tabela esperada ${table} nao capturada`);
       }
 
       if (expected.shouldNotDuplicate) {
-        const keys = simulatedActions.map(uniqueActionKey);
+        const keys = capturedActions.map(uniqueActionKey);
         if (new Set(keys).size !== keys.length) failures.push("salvamento simulado duplicado detectado");
       }
 
       for (const [field, value] of Object.entries(expected.shouldSaveValues || {})) {
-        if (!actionPayloadHas(simulatedActions, field, value)) failures.push(`acao simulada deveria salvar ${field}=${value}`);
+        if (!actionPayloadHas(capturedActions, field, value)) failures.push(`acao deveria salvar ${field}=${value}`);
       }
 
       for (const [field, value] of Object.entries(expected.shouldNotSaveValues || {})) {
-        if (actionPayloadHas(simulatedActions, field, value)) failures.push(`acao simulada nao deveria salvar ${field}=${value}`);
+        if (actionPayloadHas(capturedActions, field, value)) failures.push(`acao nao deveria salvar ${field}=${value}`);
       }
 
       if (expected.shouldClearSession && finalResult.estadoNovo !== "livre") {
@@ -1051,7 +1069,7 @@ module.exports = function loadBotTestSection(context) {
       }
 
       if (expected.ranchId) {
-        const wrongRanch = simulatedActions.find((action) => action.payload?.fazenda_id && action.payload.fazenda_id !== expected.ranchId);
+        const wrongRanch = capturedActions.find((action) => action.payload?.fazenda_id && action.payload.fazenda_id !== expected.ranchId);
         if (wrongRanch) failures.push(`acao com fazenda_id incorreto: ${wrongRanch.payload.fazenda_id}`);
       }
 
@@ -1117,6 +1135,7 @@ module.exports = function loadBotTestSection(context) {
 
         const trace = {
           steps,
+          writes: clone(supabase.writes),
           businessWrites: supabase.businessWrites(),
           simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions),
           schemaErrors: clone(supabase.schemaErrors),
@@ -1144,6 +1163,7 @@ module.exports = function loadBotTestSection(context) {
           module: test.module || "geral",
           test,
           steps,
+          writes: clone(supabase.writes),
           businessWrites: supabase.businessWrites(),
           simulatedSaveActions: steps.flatMap((step) => step.simulatedSaveActions),
           schemaErrors: clone(supabase.schemaErrors),

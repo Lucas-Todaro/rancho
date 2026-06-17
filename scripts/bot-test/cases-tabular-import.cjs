@@ -284,20 +284,25 @@ module.exports = function loadBotTestSection(context) {
       "Joao;vaqueiro;83999999999;2500",
       "Maria;ordenha;83888888888;2200"
     ].join("\n");
+    const newEmployeesTableMessage = [
+      "nome;cargo;telefone;salario",
+      "Ana;vaqueira;83991234567;2500",
+      "Carlos;ordenhador;83992345678;2200"
+    ].join("\n");
     const timeClockTableMessage = [
       "funcionario;data;entrada;saida",
       "Joao;01/06/2026;07:00;17:00",
-      "Maria;01/06/2026;06:00;15:00"
+      "Bruno;01/06/2026;06:00;15:00"
     ].join("\n");
     const healthTableMessage = [
       "animal;procedimento;produto;dose;data",
-      "001;vacina;Brucelose;5ml;01/06/2026",
-      "002;medicacao;Antibiotico;10ml;02/06/2026"
+      "B-001;vacina;Brucelose;5ml;01/06/2026",
+      "B-002;medicacao;Antibiotico;10ml;02/06/2026"
     ].join("\n");
     const observationsTableMessage = [
       "animal;observacao;data",
-      "001;nao comeu bem;01/06/2026",
-      "002;mancando;02/06/2026"
+      "B-001;nao comeu bem;01/06/2026",
+      "B-002;mancando;02/06/2026"
     ].join("\n");
     const agendaTableMessage = [
       "tarefa;data;responsavel;categoria",
@@ -1214,6 +1219,148 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "IMPORTACAO_TABELA_DOMINIO",
           responseIncludes: "financeiro",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "importacao por dominio salva lotes reais e ignora duplicados",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraLots: [{ id: "lote-piquete-1", nome: "Piquete 1" }],
+        messages: [lotsTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { nome: "Lactacao" },
+          shouldNotSaveValues: { nome: "Piquete 1" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva genealogia real",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          { id: "animal-gene-b123", brinco: "B-123", nome: "Cria 123" },
+          { id: "animal-gene-b124", brinco: "B-124", nome: "Cria 124" },
+          { id: "animal-gene-t01", brinco: "T-01", nome: "Touro 01", sexo: "macho", categoria: "touro" },
+          { id: "animal-gene-m09", brinco: "M-09", nome: "Mae 09", sexo: "femea", categoria: "vaca" },
+          { id: "animal-gene-m10", brinco: "M-10", nome: "Mae 10", sexo: "femea", categoria: "vaca" }
+        ],
+        messages: [genealogyTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais],
+          shouldSaveValues: { pai_id: "animal-gene-t01" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva financeiro real",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [financeTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { descricao: "venda leite", valor: 1200 },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva funcionarios e vinculo whatsapp",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [newEmployeesTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.funcionarios, BOT_TEST_TABLES.whatsappUsuarios],
+          shouldSaveValues: { nome: "Ana", telefone_e164: "5583991234567" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva ponto real",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [timeClockTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.registrosPonto],
+          shouldSaveValues: { funcionario_id: "func-joao", tipo: "entrada" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva saude sanitario real",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [healthTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { medicamento: "Brucelose", tipo: "vacina" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio salva observacoes reais",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [observationsTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { descricao: "nao comeu bem", tipo: "observacao" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "importacao por dominio agenda fica preview only sem tabela real",
+        module: "tabela-dominio-save",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [agendaTableMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "ainda nao possui tabela real segura",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
