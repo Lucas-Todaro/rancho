@@ -15,6 +15,14 @@ export function botAllowsLegacyRollback() {
   return String(process.env.BOT_ALLOW_LEGACY_ROLLBACK || "").trim().toLowerCase() === "true";
 }
 
+export function geminiActionPlanEnabled() {
+  return String(process.env.GEMINI_ACTION_PLAN_ENABLED || "").trim().toLowerCase() === "true";
+}
+
+export function geminiTableActionPlanEnabled() {
+  return String(process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED || "").trim().toLowerCase() === "true";
+}
+
 export function botTestVerbose() {
   return process.env.BOT_TEST_VERBOSE === "1";
 }

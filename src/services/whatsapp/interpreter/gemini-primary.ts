@@ -1,5 +1,9 @@
 import type { AnyRecord } from "@/lib/types";
-import { botAllowsLegacyRollback, botInterpreterMode, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
+import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/action-plan/execute-action-plan";
+import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
+import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
+import type { ActionPlanSupabaseLike } from "@/lib/whatsapp/action-plan/execute-query-action-plan";
+import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
@@ -18,6 +22,7 @@ type ParseWithInterpreterInput = {
   localParsed: ParsedRanchoMessage;
   owner: WhatsAppOwner;
   geminiMockId?: string | null;
+  supabase?: ActionPlanSupabaseLike | null;
 };
 
 const REPRODUCTION_EVENT_BY_INTENT: Record<string, string> = {
@@ -817,6 +822,147 @@ function localFallbackResult(
   };
 }
 
+function actionPlanEnabledFor(plan: ActionPlan | null | undefined) {
+  if (!plan) return false;
+  if (plan.action === "import_table") return geminiTableActionPlanEnabled();
+  if (plan.action === "block") return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+  return geminiActionPlanEnabled();
+}
+
+function anyActionPlanFlagEnabled() {
+  return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+}
+
+function logActionPlan(event: string, details: AnyRecord) {
+  console.log("[BOT ACTION PLAN]", {
+    event,
+    ...details
+  });
+}
+
+function actionPlanGeminiMeta(interpretation: GeminiStructuredResult, result: ExecuteActionPlanResult) {
+  return {
+    confidence: interpretation.action_plan?.action === "block" ? 1 : interpretation.confidence,
+    requiresConfirmation: result.ok
+      ? result.logEvent === "action_plan_blocked" ? false : !CONSULT_RANCHO_INTENTS.has(result.parsed.tipo)
+      : false,
+    reason: result.ok ? result.logEvent : result.reason,
+    risk_flags: interpretation.warnings || [],
+    actions: [],
+    userResponse: result.ok ? result.response || "" : result.message
+  };
+}
+
+async function convertActionPlanInterpretation(
+  input: ParseWithInterpreterInput,
+  interpretation: GeminiStructuredResult,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+): Promise<GeminiFallbackParseResult | null> {
+  const plan = interpretation.action_plan || null;
+  const error = interpretation.action_plan_error || null;
+
+  if (!plan && !error) {
+    if (anyActionPlanFlagEnabled()) {
+      recordActionPlanRuntime("legacyFallback");
+      logActionPlan(route === "structured_input" ? "table_action_plan_fallback_legacy" : "action_plan_fallback_legacy", {
+        reason: "action_plan_absent",
+        route,
+        legacyIntent: input.localParsed.tipo
+      });
+    }
+    return null;
+  }
+
+  if (error) {
+    if (!anyActionPlanFlagEnabled()) {
+      recordActionPlanRuntime("legacyFallback");
+      logActionPlan("action_plan_fallback_legacy", {
+        reason: "feature_flag_disabled",
+        action: plan?.action || null,
+        legacyIntent: input.localParsed.tipo
+      });
+      return null;
+    }
+
+    recordActionPlanRuntime(error.status === "blocked" ? "blocked" : "invalid");
+    logActionPlan(error.status === "blocked" ? "action_plan_blocked" : "action_plan_invalid", {
+      reason: error.reason,
+      action: plan?.action || null,
+      route
+    });
+    return {
+      kind: "clarify",
+      threshold: 0.7,
+      reason: error.reason,
+      message: error.status === "blocked"
+        ? "Nao posso executar esse pedido com seguranca."
+        : "Preciso revisar esse plano antes de executar. Pode reformular?"
+    };
+  }
+
+  if (!actionPlanEnabledFor(plan)) {
+    recordActionPlanRuntime("legacyFallback");
+    logActionPlan(plan?.action === "import_table" ? "table_action_plan_fallback_legacy" : "action_plan_fallback_legacy", {
+      reason: "feature_flag_disabled",
+      action: plan?.action || null,
+      legacyIntent: input.localParsed.tipo
+    });
+    return null;
+  }
+
+  if (!plan) return null;
+
+  const result = await executeActionPlan({
+    plan,
+    text: input.text,
+    owner: {
+      fazenda_id: input.owner.fazenda_id,
+      usuario_id: input.owner.usuario_id
+    },
+    supabase: input.supabase || null,
+    currentDate: new Date().toISOString().slice(0, 10)
+  });
+
+  if (!result.ok) {
+    recordActionPlanRuntime(result.status === "blocked" ? "blocked" : "invalid");
+    logActionPlan(result.logEvent, {
+      reason: result.reason,
+      action: plan.action,
+      domain: "domain" in plan ? plan.domain : null,
+      route
+    });
+    return {
+      kind: "clarify",
+      threshold: 0.7,
+      reason: result.reason,
+      message: result.message
+    };
+  }
+
+  recordActionPlanRuntime(result.logEvent === "table_action_plan_used" ? "tableActionPlanUsed" : result.logEvent === "action_plan_blocked" ? "blocked" : "actionPlanUsed");
+  logActionPlan(result.logEvent, {
+    action: plan.action,
+    domain: "domain" in plan ? plan.domain : null,
+    route,
+    finalIntent: result.parsed.tipo
+  });
+
+  return {
+    kind: "parsed",
+    threshold: 0.7,
+    parsed: {
+      ...result.parsed,
+      dados: {
+        ...(result.parsed.dados || {}),
+        route,
+        structuredDetection
+      }
+    },
+    gemini: actionPlanGeminiMeta(interpretation, result)
+  };
+}
+
 function geminiTableNeedsManualChoice(
   input: ParseWithInterpreterInput,
   interpretation: GeminiStructuredResult,
@@ -1004,6 +1150,9 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   if ((gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found") && input.localParsed.tipo !== "DESCONHECIDO") {
     return localFallbackResult(input, "gemini_mock_fixture_not_found", route, structuredDetection);
   }
+
+  const actionPlanResult = await convertActionPlanInterpretation(input, gemini.interpretation, route, structuredDetection);
+  if (actionPlanResult) return actionPlanResult;
 
   const tableImportResult = convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
   if (tableImportResult) return tableImportResult;

@@ -1,4 +1,6 @@
 import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
+import { buildActionPlanPromptFragment } from "@/lib/whatsapp/gemini/action-plan-prompt";
+import { geminiActionPlanEnabled, geminiTableActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
 import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiInterpreterInput } from "@/lib/whatsapp/gemini/types";
 import { GEMINI_TABLE_DOMAINS, geminiTableDomainFieldsForPrompt } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
@@ -8,6 +10,7 @@ export const GEMINI_SYSTEM_PROMPT_VERSION = "rancho-gemini-interpreter-v2";
 export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
   const allowedIntents = input.allowedIntents?.length ? input.allowedIntents : [...GEMINI_ALLOWED_INTENTS];
   const schemas = input.schemas || allGeminiSchemasForPrompt();
+  const includeActionPlan = geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
 
   return [
     `Prompt version: ${GEMINI_SYSTEM_PROMPT_VERSION}`,
@@ -56,6 +59,15 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
     "Em CONSULTA_REBANHO, use categoria para vaca/boi/touro/bezerro/bezerra/novilha, reproducao para prenhe/pre_parto/inseminada/sem_evento e modo para lista/resumo/contagem.",
     "Nunca trate correcao/cancelamento como registro novo.",
     "Retorne apenas JSON valido.",
+    includeActionPlan
+      ? "Quando usar ActionPlan, retorne action/domain no topo ou action_plan junto do formato legado. Nao remova suporte ao formato legado intent + fields."
+      : "",
+    includeActionPlan
+      ? buildActionPlanPromptFragment({
+        currentDate: input.currentDate,
+        timezone: input.timezone
+      })
+      : "",
     "",
     "Formato de saida obrigatorio:",
     JSON.stringify({
