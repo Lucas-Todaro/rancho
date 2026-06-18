@@ -1,0 +1,38 @@
+{
+  "id": "import-table-producao-leite-turno-observacoes",
+  "input": "animal;litros;data;turno;observações\nMimosa;18;2026-04-10;manhã;\nMimosa;20;2026-04-11;manhã;\nMimosa;19,5;2026-05-03;tarde;\nMimosa;21;2026-05-20;manhã;\nMimosa;22;2026-06-01;manhã;",
+  "inputExamples": [
+    "animal;litros;data;turno;observações\nMimosa;18;2026-04-10;manhã;\nMimosa;20;2026-04-11;manhã;",
+    "animal;litros;data;turno;observacoes\nMimosa;18;2026-04-10;manha;\nMimosa;20;2026-04-11;manha;"
+  ],
+  "parsedTable": {
+    "headers": ["animal", "litros", "data", "turno", "observações"],
+    "rows": [
+      ["Mimosa", "18", "2026-04-10", "manhã", ""],
+      ["Mimosa", "20", "2026-04-11", "manhã", ""],
+      ["Mimosa", "19,5", "2026-05-03", "tarde", ""],
+      ["Mimosa", "21", "2026-05-20", "manhã", ""],
+      ["Mimosa", "22", "2026-06-01", "manhã", ""]
+    ]
+  },
+  "response": {
+    "action": "import_table",
+    "domain": "producao_leite",
+    "confidence": 0.95,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "animal_ref": "animal",
+        "litros": "litros",
+        "data": "data",
+        "turno": "turno",
+        "observacoes": "observações"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

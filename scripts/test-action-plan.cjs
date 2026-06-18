@@ -49,6 +49,7 @@ const {
 } = require("../src/lib/whatsapp/gemini/action-plan-validator.ts");
 const { buildActionPlanPromptFragment } = require("../src/lib/whatsapp/gemini/action-plan-prompt.ts");
 const {
+  findGeminiMockFixture,
   geminiRuntimeStats,
   resetGeminiRuntimeStats
 } = require("../src/lib/whatsapp/gemini/runtime.ts");
@@ -78,6 +79,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const VISIBLE_TECHNICAL_TERMS = /ActionPlan|action_plan|route|domain|legacy|fallback|fixture|mock/i;
+
+function assertCleanVisibleText(text, label) {
+  const value = String(text || "");
+  assert(!VISIBLE_TECHNICAL_TERMS.test(value), `${label}: texto visivel contem termo tecnico: ${value}`);
+}
+
 function assertValid(name, plan, parsedTable) {
   const result = validateActionPlan(clone(plan), { parsedTable });
   assert(result.ok, `${name}: esperado valido, recebido ${result.reason}`);
@@ -101,10 +109,14 @@ function loadFixtures() {
   return fs.readdirSync(fixtureDir)
     .filter((file) => file.endsWith(".json"))
     .sort()
-    .map((file) => ({
-      name: file.replace(/\.json$/, ""),
-      ...JSON.parse(fs.readFileSync(path.join(fixtureDir, file), "utf8"))
-    }));
+    .map((file) => {
+      const parsed = JSON.parse(fs.readFileSync(path.join(fixtureDir, file), "utf8"));
+      return {
+        name: file.replace(/\.json$/, ""),
+        ...parsed,
+        plan: parsed.plan || parsed.response
+      };
+    });
 }
 
 function fixtureByName(name) {
@@ -446,7 +458,8 @@ test("executor query financeiro ultimos 6 meses usa periodo ActionPlan", async (
   });
   assert(result.ok, `query financeiro deveria executar: ${result.reason}`);
   assert(result.rows.length === 3, `esperado 3 linhas no periodo, recebido ${result.rows.length}`);
-  assert(result.response.includes("ActionPlan"), "resposta sem marcador ActionPlan");
+  assert(result.response.includes("Relatório financeiro dos últimos 6 meses:"), "resposta financeira sem titulo limpo esperado");
+  assertCleanVisibleText(result.response, "resposta query financeiro");
   assert(result.parsed.dados?.resultado?.metrics?.byMonth, "agrupamento mensal ausente");
 });
 
@@ -468,6 +481,7 @@ test("executor query gasto com racao 90 dias nao vira mes atual", async () => {
   assert(result.ok, `query racao deveria executar: ${result.reason}`);
   assert(result.rows.length === 2, `esperado 2 gastos com racao, recebido ${result.rows.length}`);
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_gasto || 0) === 1400, "total_gasto deveria somar apenas saidas no periodo");
+  assertCleanVisibleText(result.response, "resposta query racao");
 });
 
 test("executor query producao Mimosa desde janeiro usa relacao animal", async () => {
@@ -491,6 +505,8 @@ test("executor query producao Mimosa desde janeiro usa relacao animal", async ()
   assert(result.ok, `query producao deveria executar: ${result.reason}`);
   assert(result.rows.length === 2, `esperado 2 registros da Mimosa, recebido ${result.rows.length}`);
   assert(result.response.includes("Mimosa"), "resposta deveria citar Mimosa");
+  assert(result.response.includes("Produção de leite da Mimosa:"), "resposta de producao sem titulo limpo esperado");
+  assertCleanVisibleText(result.response, "resposta query producao");
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_litros || 0) === 35, "total_litros deveria ser 35");
 });
 
@@ -504,7 +520,8 @@ test("executor import_table producao gera preview sem salvar", async () => {
   assert(result.parsed.tipo === "LOTE_REGISTROS", `intent esperado LOTE_REGISTROS, recebido ${result.parsed.tipo}`);
   assert(result.parsed.dados?.total_registros === 2, "deveria ter 2 registros");
   assert(result.parsed.dados?.total_litros === 35, "total_litros deveria ser 35");
-  assert(result.preview.includes("ActionPlan"), "preview deveria indicar ActionPlan");
+  assert(result.preview.includes("Li a tabela e preparei a importação"), "preview deveria ser texto final limpo");
+  assertCleanVisibleText(result.preview, "preview import producao");
 });
 
 test("executor import_table estoque aceita defaultFields seguros", async () => {
@@ -567,7 +584,8 @@ test("parse flags true usa ActionPlan query com Supabase mockado", async () => {
       });
       const parsed = finalParsed(result);
       assert(parsed?.dados?.action_plan_used === true, "ActionPlan query deveria ser usado");
-      assert(parsed.dados.action_plan_response.includes("ActionPlan"), "resposta ActionPlan ausente");
+      assert(parsed.dados.action_plan_response.includes("Resumo financeiro"), "resposta financeira ausente");
+      assertCleanVisibleText(parsed.dados.action_plan_response, "action_plan_response");
     });
   });
   const after = actionStatsSnapshot();
@@ -588,6 +606,7 @@ test("parse flags true usa ActionPlan import_table", async () => {
       const parsed = finalParsed(result);
       assert(parsed?.tipo === "LOTE_REGISTROS", `import ActionPlan deveria gerar LOTE_REGISTROS, recebido ${parsed?.tipo}`);
       assert(parsed.dados?.table_action_plan_used === true, "table_action_plan_used ausente");
+      assertCleanVisibleText(parsed.dados?.action_plan_preview, "action_plan_preview");
     });
   });
   const after = actionStatsSnapshot();
@@ -648,6 +667,159 @@ test("ActionPlan block fica bloqueado e sem confirmacao", async () => {
     supabase: createActionPlanSupabase({})
   });
   assert(direct.ok && direct.parsed.tipo === "ACAO_DESTRUTIVA_EM_MASSA", "executor direto deve bloquear");
+});
+
+test("runtime encontra fixture ActionPlan financeiro por inputExamples acentuado", async () => {
+  const text = "relatório financeiro dos últimos 6 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-financeiro-ultimos-6-meses", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] })
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.action_plan_used === true, "fixture ActionPlan deveria ser usada");
+  assert(parsed.dados.action_plan_domain === "financeiro", "domain financeiro ausente");
+  assert(parsed.dados.action_plan?.filters?.[0]?.op === "last_months", "filtro last_months ausente");
+  assert(parsed.dados.action_plan?.filters?.[0]?.value === 6, "filtro last_months deveria ser 6");
+  assert(parsed.dados.periodo !== "mes", "nao deveria cair no periodo mes do legado");
+});
+
+test("runtime encontra fixture ActionPlan racao 90 dias por texto normalizado", async () => {
+  const text = "quanto gastei com ração nos últimos 90 dias";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-financeiro-racao-90-dias", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "financeiro", "domain financeiro ausente");
+  assert(filters.some((filter) => filter.field === "descricao" && filter.op === "contains" && /ra[cç]ão|ra[cç]ao/i.test(filter.value)), "filtro contains racao ausente");
+  assert(filters.some((filter) => filter.field === "data" && filter.op === "last_days" && filter.value === 90), "filtro last_days 90 ausente");
+});
+
+test("runtime encontra fixture ActionPlan producao Mimosa sem animal_codigo LEITE", async () => {
+  const text = "produção de leite da Mimosa desde janeiro";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-producao-mimosa-desde-janeiro", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({
+      [TABLES.animais]: [{ id: "animal-mimosa", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "001", nome: "Mimosa", categoria: "vaca" }],
+      [TABLES.ordenhas]: []
+    })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "producao_leite", "domain producao_leite ausente");
+  assert(filters.some((filter) => filter.field === "animal_ref" && filter.value === "Mimosa"), "filtro Mimosa ausente");
+  assert(parsed.dados?.animal_codigo !== "LEITE", "nao deveria interpretar LEITE como animal_codigo");
+});
+
+test("runtime encontra fixture ActionPlan partos ultimos 6 meses", async () => {
+  const text = "partos dos últimos 6 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-partos-ultimos-6-meses", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "reproducao", "domain reproducao ausente");
+  assert(filters.some((filter) => filter.field === "evento" && filter.value === "PARTO"), "filtro PARTO ausente");
+  assert(filters.some((filter) => filter.field === "data" && filter.op === "last_months" && filter.value === 6), "filtro last_months 6 ausente");
+});
+
+test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback legado", async () => {
+  const text = "relatorio financeiro dos ultimos 7 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(!fixture, "entrada sem fixture nao deveria casar");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  assert(result.kind === "clarify", "sem fixture deveria retornar clarify, recebido " + result.kind);
+  assert(result.reason === "mock_fixture_missing", "reason esperado mock_fixture_missing, recebido " + result.reason);
+  assert(result.message.includes("resposta de teste"), "mensagem deveria orientar ambiente de teste");
+  assertCleanVisibleText(result.message, "mensagem sem fixture");
+});
+
+test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {
+  const text = "animal;litros;data;turno;observações\nMimosa;18;2026-04-10;manhã;\nMimosa;20;2026-04-11;manhã;";
+  const fixture = findGeminiMockFixture({ text });
+  const mapping = fixture?.response?.table?.columnMapping || {};
+  assert(fixture?.id === "import-table-producao-leite-turno-observacoes", "fixture de producao com turno nao encontrada");
+  assert(fixture.response.action === "import_table", "action deveria ser import_table");
+  assert(fixture.response.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(mapping.animal_ref === "animal", "mapping animal_ref incorreto");
+  assert(mapping.litros === "litros", "mapping litros incorreto");
+  assert(mapping.data === "data", "mapping data incorreto");
+  assert(mapping.turno === "turno", "mapping turno incorreto");
+  assert(mapping.observacoes === "observações", "mapping observacoes incorreto");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "ActionPlan import_table deveria ser usado");
+  assert(parsed.dados?.action_plan?.domain === "producao_leite", "parsed deveria manter domain producao_leite");
+});
+
+test("runtime reconhece tabela producao com colunas embaralhadas por cabecalho", async () => {
+  const text = "Data;Animal;Litros\n2026-06-01;001;15\n2026-06-01;002;20";
+  const fixture = findGeminiMockFixture({ text });
+  const mapping = fixture?.response?.table?.columnMapping || {};
+  assert(fixture?.response?.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(mapping.data === "Data", "mapping data deveria usar cabecalho Data");
+  assert(mapping.animal_ref === "Animal", "mapping animal_ref deveria usar cabecalho Animal");
+  assert(mapping.litros === "Litros", "mapping litros deveria usar cabecalho Litros");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "tabela embaralhada deveria usar ActionPlan");
+});
+
+test("runtime reconhece tabela producao com separador pipe", async () => {
+  const text = "animal|litros|data\n001|15|01/06/2026\n002|20|01/06/2026";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.response?.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(fixture.response.table?.separator === "|", "separator deveria ser pipe");
+  assert(fixture.response.table?.columnMapping?.animal_ref === "animal", "mapping animal pipe incorreto");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "tabela pipe deveria usar ActionPlan");
 });
 
 test("Gemini live calls permanecem zeradas", () => {

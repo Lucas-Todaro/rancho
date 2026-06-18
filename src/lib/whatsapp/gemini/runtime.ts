@@ -16,8 +16,10 @@ type GeminiMockFixture = {
   id: string;
   description?: string;
   examples?: string[];
+  input?: string;
+  inputExamples?: string[];
   response: AnyRecord;
-  actionPlan?: boolean;
+  sourcePath?: string;
 };
 
 type GeminiRuntimeGlobal = typeof globalThis & {
@@ -26,7 +28,6 @@ type GeminiRuntimeGlobal = typeof globalThis & {
 };
 
 const FIXTURE_DIR = path.join(process.cwd(), "scripts", "bot-test", "gemini-mocks");
-const ACTION_PLAN_FIXTURE_DIR = path.join(FIXTURE_DIR, "action-plan");
 const LIVE_TEST_BLOCK_MESSAGE = "Teste tentou chamar Gemini live. Use GEMINI_MODE=mock.";
 
 function runtimeGlobal() {
@@ -38,8 +39,167 @@ function normalizeText(value: unknown) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[.,!?;:()[\]{}"']/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isPlainObject(value: unknown): value is AnyRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isActionPlanFixture(fixture: GeminiMockFixture) {
+  return isPlainObject(fixture.response) && typeof fixture.response.action === "string";
+}
+
+function actionPlanFixtureEnabled(fixture: GeminiMockFixture) {
+  if (!isActionPlanFixture(fixture)) return true;
+  const action = String(fixture.response.action || "").trim();
+  if (action === "import_table") return geminiTableActionPlanEnabled();
+  if (action === "block") return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+  return geminiActionPlanEnabled();
+}
+
+function anyActionPlanFixtureEnabled() {
+  return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+}
+
+function isMilkImportActionPlanFixture(fixture: GeminiMockFixture) {
+  return fixture.response.action === "import_table" && fixture.response.domain === "producao_leite";
+}
+
+function listFixtureFiles(directory: string): string[] {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) return listFixtureFiles(fullPath);
+      return entry.isFile() && entry.name.endsWith(".json") ? [fullPath] : [];
+    });
+}
+
+function normalizeFixture(filePath: string): GeminiMockFixture | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as AnyRecord;
+    const response = isPlainObject(parsed.response)
+      ? parsed.response
+      : isPlainObject(parsed.plan) ? parsed.plan : null;
+    if (!response) return null;
+
+    const id = String(parsed.id || path.basename(filePath, ".json")).trim();
+    if (!id) return null;
+
+    return {
+      ...parsed,
+      id,
+      response,
+      sourcePath: path.relative(FIXTURE_DIR, filePath).replace(/\\/g, "/")
+    } as GeminiMockFixture;
+  } catch {
+    return null;
+  }
+}
+
+function fixtureExamples(fixture: GeminiMockFixture) {
+  return [
+    ...(Array.isArray(fixture.examples) ? fixture.examples : []),
+    ...(Array.isArray(fixture.inputExamples) ? fixture.inputExamples : []),
+    fixture.input
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function normalizedHeader(value: unknown) {
+  return normalizeText(value).replace(/[^a-z0-9_ ]/g, "").replace(/\s+/g, "_");
+}
+
+function splitStructuredHeader(text: unknown) {
+  const lines = String(text || "")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const separators = [";", "|", "\t"];
+  const scored = separators
+    .map((separator) => ({
+      separator,
+      headers: lines[0].split(separator).map((cell) => cell.trim()).filter(Boolean)
+    }))
+    .filter((candidate) => candidate.headers.length >= 3)
+    .sort((left, right) => right.headers.length - left.headers.length);
+  return scored[0] || null;
+}
+
+function findHeader(headers: string[], aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizedHeader);
+  return headers.find((header) => normalizedAliases.includes(normalizedHeader(header))) || null;
+}
+
+function milkTableMapping(text: unknown) {
+  const header = splitStructuredHeader(text);
+  if (!header) return null;
+
+  const animal = findHeader(header.headers, ["animal", "vaca", "codigo", "código", "brinco"]);
+  const litros = findHeader(header.headers, ["litros", "litro", "leite", "producao", "produção"]);
+  const data = findHeader(header.headers, ["data", "dia"]);
+  if (!animal || !litros || !data) return null;
+
+  const turno = findHeader(header.headers, ["turno"]);
+  const observacoes = findHeader(header.headers, ["observacoes", "observações", "observacao", "observação", "obs"]);
+  return {
+    separator: header.separator,
+    columnMapping: {
+      animal_ref: animal,
+      litros,
+      data,
+      ...(turno ? { turno } : {}),
+      ...(observacoes ? { observacoes } : {})
+    }
+  };
+}
+
+function adaptMilkImportFixture(fixture: GeminiMockFixture, text: unknown): GeminiMockFixture {
+  const mapping = milkTableMapping(text);
+  if (!mapping || !isMilkImportActionPlanFixture(fixture)) return fixture;
+
+  return {
+    ...fixture,
+    response: {
+      ...fixture.response,
+      table: {
+        ...(isPlainObject(fixture.response.table) ? fixture.response.table : {}),
+        hasHeader: true,
+        separator: mapping.separator,
+        columnMapping: mapping.columnMapping,
+        defaultFields: {},
+        ignoredColumns: [],
+        ambiguousColumns: []
+      }
+    }
+  };
+}
+
+function structuredMilkFixture(fixtures: GeminiMockFixture[], text: unknown) {
+  const mapping = milkTableMapping(text);
+  if (!mapping) return null;
+
+  const candidates = fixtures.filter((fixture) => (
+    isMilkImportActionPlanFixture(fixture) && actionPlanFixtureEnabled(fixture)
+  ));
+  if (!candidates.length) return null;
+
+  const needsOptional = Boolean(mapping.columnMapping.turno || mapping.columnMapping.observacoes);
+  const preferred = candidates.find((fixture) => {
+    const columnMapping = isPlainObject(fixture.response.table) && isPlainObject(fixture.response.table.columnMapping)
+      ? fixture.response.table.columnMapping
+      : {};
+    const hasOptional = Boolean(columnMapping.turno || columnMapping.observacoes);
+    return needsOptional ? hasOptional : !hasOptional;
+  }) || candidates[0];
+
+  return adaptMilkImportFixture(preferred, text);
 }
 
 export function geminiMode(): GeminiMode {
@@ -90,41 +250,6 @@ export function liveGeminiBlockedResult() {
   };
 }
 
-function jsonFixtureFiles(dir: string) {
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .map((file) => path.join(dir, file));
-}
-
-function fixtureFromFile(file: string, actionPlan = false): GeminiMockFixture[] {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as AnyRecord;
-    if (parsed?.id && parsed?.response) {
-      return [{ ...parsed, actionPlan }] as GeminiMockFixture[];
-    }
-    if (actionPlan && parsed?.plan) {
-      const id = path.basename(file, ".json");
-      const examples = [
-        parsed.input,
-        ...(Array.isArray(parsed.inputExamples) ? parsed.inputExamples : [])
-      ]
-        .map((item) => String(item || "").trim())
-        .filter(Boolean);
-      return [{
-        id,
-        description: parsed.description,
-        examples,
-        response: parsed.plan as AnyRecord,
-        actionPlan: true
-      }];
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
 function loadFixtures() {
   const holder = runtimeGlobal();
   if (holder.__RANCHO_GEMINI_MOCK_FIXTURES__) return holder.__RANCHO_GEMINI_MOCK_FIXTURES__;
@@ -133,34 +258,37 @@ function loadFixtures() {
     return holder.__RANCHO_GEMINI_MOCK_FIXTURES__;
   }
 
-  const fixtures = [
-    ...jsonFixtureFiles(FIXTURE_DIR).flatMap((file) => fixtureFromFile(file)),
-    ...jsonFixtureFiles(ACTION_PLAN_FIXTURE_DIR).flatMap((file) => fixtureFromFile(file, true))
-  ];
+  const fixtures = listFixtureFiles(FIXTURE_DIR)
+    .map(normalizeFixture)
+    .filter((fixture): fixture is GeminiMockFixture => Boolean(fixture));
 
   holder.__RANCHO_GEMINI_MOCK_FIXTURES__ = fixtures;
   return fixtures;
 }
 
-function actionPlanFixtureEnabled(fixture: GeminiMockFixture) {
-  if (!fixture.actionPlan) return true;
-  const action = String(fixture.response?.action || "").trim();
-  if (action === "import_table") return geminiTableActionPlanEnabled();
-  if (action === "block") return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
-  return geminiActionPlanEnabled();
-}
-
 export function findGeminiMockFixture(input: { text?: string; geminiMockId?: string | null }) {
   const fixtures = loadFixtures();
   const explicitId = String(input.geminiMockId || "").trim();
-  if (explicitId) return fixtures.find((fixture) => fixture.id === explicitId && actionPlanFixtureEnabled(fixture)) || null;
+  if (explicitId) {
+    return fixtures.find((fixture) => fixture.id === explicitId && actionPlanFixtureEnabled(fixture)) || null;
+  }
 
   const normalizedText = normalizeText(input.text);
-  const matches = fixtures.filter((fixture) => (fixture.examples || []).some((example) => normalizeText(example) === normalizedText));
-  if (!matches.length) return null;
-  const actionPlanMatch = matches.find((fixture) => fixture.actionPlan && actionPlanFixtureEnabled(fixture));
-  if (actionPlanMatch) return actionPlanMatch;
-  return matches.find((fixture) => !fixture.actionPlan) || null;
+  const matches = fixtures.filter((fixture) => fixtureExamples(fixture).some((example) => normalizeText(example) === normalizedText));
+  if (!matches.length) {
+    if (geminiMode() === "mock" && geminiTableActionPlanEnabled()) {
+      return structuredMilkFixture(fixtures, input.text);
+    }
+    return null;
+  }
+
+  if (anyActionPlanFixtureEnabled()) {
+    const fixture = matches.find((item) => isActionPlanFixture(item) && actionPlanFixtureEnabled(item))
+      || matches.find((item) => !isActionPlanFixture(item));
+    return fixture ? adaptMilkImportFixture(fixture, input.text) : null;
+  }
+
+  return matches.find((fixture) => !isActionPlanFixture(fixture)) || null;
 }
 
 export function unknownGeminiMockResponse() {
@@ -171,9 +299,9 @@ export function unknownGeminiMockResponse() {
     fields: {},
     actions: [],
     missing_fields: [],
-    warnings: ["gemini_mock_fixture_not_found"],
+    warnings: ["gemini_mock_fixture_not_found", "mock_fixture_missing"],
     should_confirm: false,
-    response_hint: "Nao encontrei fixture mockada para essa mensagem."
+    response_hint: "Nao encontrei uma resposta de teste para esta mensagem. Tente uma das mensagens cobertas neste ambiente."
   };
 }
 

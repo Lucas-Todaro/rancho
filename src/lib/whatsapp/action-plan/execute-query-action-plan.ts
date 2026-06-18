@@ -298,14 +298,29 @@ function numberText(value: number) {
   return Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
 
+function periodText(plan: QueryActionPlan) {
+  const filter = plan.filters.find((item) => ["last_months", "last_days", "current_month", "current_year", "since", "between"].includes(item.op));
+  if (!filter) return "";
+  if (filter.op === "last_months") return `dos últimos ${filter.value} meses`;
+  if (filter.op === "last_days") return `dos últimos ${filter.value} dias`;
+  if (filter.op === "current_month") return "do mês atual";
+  if (filter.op === "current_year") return "do ano atual";
+  if (filter.op === "since") return `desde ${filter.value}`;
+  if (filter.op === "between") return "do período informado";
+  return "";
+}
+
 function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: AnyRecord, plan: QueryActionPlan) {
   if (domain.domain === "financeiro") {
     const entradas = rows.filter((row) => normalizeFinanceType(row.tipo) === "entrada").reduce((sum, row) => sum + Number(row.valor || 0), 0);
     const saidas = rows.filter((row) => normalizeFinanceType(row.tipo) === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
     const total = Number(Object.values(metrics.totals || {})[0] || entradas + saidas);
-    const title = plan.filters.some((filter) => filter.op === "contains") ? "Consulta financeira filtrada" : "Relatorio financeiro";
+    const period = periodText(plan);
+    const title = plan.filters.some((filter) => filter.op === "contains")
+      ? "Resumo financeiro"
+      : period ? `Relatório financeiro ${period}` : "Resumo financeiro";
     return [
-      `${title} via ActionPlan.`,
+      `${title}:`,
       `Registros: ${rows.length}.`,
       `Entradas: ${money(entradas)}.`,
       `Saidas: ${money(saidas)}.`,
@@ -318,14 +333,14 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
     const total = Number(metrics.totals?.total_litros || metrics.totals?.sum_litros || 0);
     const animal = plan.filters.find((filter) => filter.field === "animal_ref")?.value;
     return [
-      `Producao de leite via ActionPlan${animal ? ` para ${animal}` : ""}.`,
+      `Produção de leite${animal ? ` da ${animal}` : ""}:`,
       `Registros: ${rows.length}.`,
       `Total: ${numberText(total)} litros.`
     ].join("\n");
   }
 
   return [
-    `Consulta de ${domain.label.toLowerCase()} via ActionPlan.`,
+    `Consulta de ${domain.label.toLowerCase()}:`,
     `Registros encontrados: ${rows.length}.`
   ].join("\n");
 }
@@ -376,7 +391,7 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
       ok: false,
       status: "clarify",
       reason: "domain_without_safe_table_mapping",
-      message: "Ainda nao tenho um mapeamento seguro para consultar esse dominio por ActionPlan."
+      message: "Ainda não tenho um mapeamento seguro para consultar esse tipo de informação."
     };
   }
 
@@ -401,7 +416,7 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
     return {
       ok: true,
       parsed,
-      response: "ActionPlan de consulta validado, mas sem contexto de dados para executar agora.",
+      response: "Consulta preparada, mas sem contexto de dados para executar agora.",
       rows: []
     };
   }

@@ -115,7 +115,7 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
     ok: false,
     status: "clarify",
     reason: "action_plan_mutation_not_integrated",
-    message: "Esse tipo de ActionPlan ainda nao esta habilitado para execucao segura.",
+    message: "Esse tipo de pedido ainda não está habilitado para execução segura.",
     logEvent: "action_plan_invalid"
   };
 }
