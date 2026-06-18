@@ -286,7 +286,7 @@ export function unknownGeminiMockResponse() {
     missing_fields: [],
     warnings: ["gemini_mock_fixture_not_found", "mock_fixture_missing"],
     should_confirm: false,
-    response_hint: "mock_fixture_missing: crie uma fixture em scripts/bot-test/gemini-mocks ou use GEMINI_MODE=live fora dos testes."
+    response_hint: "Não encontrei uma resposta de teste para esta mensagem. Tente uma das mensagens cobertas neste ambiente."
   };
 }
 

@@ -79,6 +79,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const VISIBLE_TECHNICAL_TERMS = /ActionPlan|action_plan|route|domain|legacy|fallback|fixture|mock/i;
+
+function assertCleanVisibleText(text, label) {
+  const value = String(text || "");
+  assert(!VISIBLE_TECHNICAL_TERMS.test(value), `${label}: texto visivel contem termo tecnico: ${value}`);
+}
+
 function assertValid(name, plan, parsedTable) {
   const result = validateActionPlan(clone(plan), { parsedTable });
   assert(result.ok, `${name}: esperado valido, recebido ${result.reason}`);
@@ -451,7 +458,8 @@ test("executor query financeiro ultimos 6 meses usa periodo ActionPlan", async (
   });
   assert(result.ok, `query financeiro deveria executar: ${result.reason}`);
   assert(result.rows.length === 3, `esperado 3 linhas no periodo, recebido ${result.rows.length}`);
-  assert(result.response.includes("ActionPlan"), "resposta sem marcador ActionPlan");
+  assert(result.response.includes("Relatório financeiro dos últimos 6 meses:"), "resposta financeira sem titulo limpo esperado");
+  assertCleanVisibleText(result.response, "resposta query financeiro");
   assert(result.parsed.dados?.resultado?.metrics?.byMonth, "agrupamento mensal ausente");
 });
 
@@ -473,6 +481,7 @@ test("executor query gasto com racao 90 dias nao vira mes atual", async () => {
   assert(result.ok, `query racao deveria executar: ${result.reason}`);
   assert(result.rows.length === 2, `esperado 2 gastos com racao, recebido ${result.rows.length}`);
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_gasto || 0) === 1400, "total_gasto deveria somar apenas saidas no periodo");
+  assertCleanVisibleText(result.response, "resposta query racao");
 });
 
 test("executor query producao Mimosa desde janeiro usa relacao animal", async () => {
@@ -496,6 +505,8 @@ test("executor query producao Mimosa desde janeiro usa relacao animal", async ()
   assert(result.ok, `query producao deveria executar: ${result.reason}`);
   assert(result.rows.length === 2, `esperado 2 registros da Mimosa, recebido ${result.rows.length}`);
   assert(result.response.includes("Mimosa"), "resposta deveria citar Mimosa");
+  assert(result.response.includes("Produção de leite da Mimosa:"), "resposta de producao sem titulo limpo esperado");
+  assertCleanVisibleText(result.response, "resposta query producao");
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_litros || 0) === 35, "total_litros deveria ser 35");
 });
 
@@ -509,7 +520,8 @@ test("executor import_table producao gera preview sem salvar", async () => {
   assert(result.parsed.tipo === "LOTE_REGISTROS", `intent esperado LOTE_REGISTROS, recebido ${result.parsed.tipo}`);
   assert(result.parsed.dados?.total_registros === 2, "deveria ter 2 registros");
   assert(result.parsed.dados?.total_litros === 35, "total_litros deveria ser 35");
-  assert(result.preview.includes("ActionPlan"), "preview deveria indicar ActionPlan");
+  assert(result.preview.includes("Li a tabela e preparei a importação"), "preview deveria ser texto final limpo");
+  assertCleanVisibleText(result.preview, "preview import producao");
 });
 
 test("executor import_table estoque aceita defaultFields seguros", async () => {
@@ -572,7 +584,8 @@ test("parse flags true usa ActionPlan query com Supabase mockado", async () => {
       });
       const parsed = finalParsed(result);
       assert(parsed?.dados?.action_plan_used === true, "ActionPlan query deveria ser usado");
-      assert(parsed.dados.action_plan_response.includes("ActionPlan"), "resposta ActionPlan ausente");
+      assert(parsed.dados.action_plan_response.includes("Resumo financeiro"), "resposta financeira ausente");
+      assertCleanVisibleText(parsed.dados.action_plan_response, "action_plan_response");
     });
   });
   const after = actionStatsSnapshot();
@@ -593,6 +606,7 @@ test("parse flags true usa ActionPlan import_table", async () => {
       const parsed = finalParsed(result);
       assert(parsed?.tipo === "LOTE_REGISTROS", `import ActionPlan deveria gerar LOTE_REGISTROS, recebido ${parsed?.tipo}`);
       assert(parsed.dados?.table_action_plan_used === true, "table_action_plan_used ausente");
+      assertCleanVisibleText(parsed.dados?.action_plan_preview, "action_plan_preview");
     });
   });
   const after = actionStatsSnapshot();
@@ -744,7 +758,8 @@ test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback le
   });
   assert(result.kind === "clarify", "sem fixture deveria retornar clarify, recebido " + result.kind);
   assert(result.reason === "mock_fixture_missing", "reason esperado mock_fixture_missing, recebido " + result.reason);
-  assert(result.message.includes("mock_fixture_missing"), "mensagem deveria explicar mock_fixture_missing");
+  assert(result.message.includes("resposta de teste"), "mensagem deveria orientar ambiente de teste");
+  assertCleanVisibleText(result.message, "mensagem sem fixture");
 });
 
 test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {

@@ -827,7 +827,7 @@ function mockFixtureMissingResult(): GeminiFallbackParseResult {
     kind: "clarify",
     threshold: 0.7,
     reason: "mock_fixture_missing",
-    message: "mock_fixture_missing: nao encontrei fixture Gemini mock para esta mensagem. Crie uma fixture em scripts/bot-test/gemini-mocks ou use GEMINI_MODE=live fora dos testes."
+    message: "Não encontrei uma resposta de teste para esta mensagem. Tente uma das mensagens cobertas neste ambiente."
   };
 }
 
