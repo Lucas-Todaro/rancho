@@ -1,12 +1,18 @@
 {
-  "input": "quanto gastei com racao nos ultimos 90 dias",
-  "plan": {
+  "id": "query-financeiro-racao-90-dias",
+  "input": "quanto gastei com ração nos últimos 90 dias",
+  "inputExamples": [
+    "quanto gastei com ração nos últimos 90 dias",
+    "quanto gastei com racao nos ultimos 90 dias",
+    "gastos com ração nos últimos 90 dias"
+  ],
+  "response": {
     "action": "query",
     "domain": "financeiro",
-    "confidence": 0.91,
+    "confidence": 0.94,
     "filters": [
       { "field": "tipo", "op": "eq", "value": "despesa" },
-      { "field": "descricao", "op": "contains", "value": "racao" },
+      { "field": "descricao", "op": "contains", "value": "ração" },
       { "field": "data", "op": "last_days", "value": 90 }
     ],
     "aggregations": [

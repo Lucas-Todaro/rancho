@@ -49,6 +49,7 @@ const {
 } = require("../src/lib/whatsapp/gemini/action-plan-validator.ts");
 const { buildActionPlanPromptFragment } = require("../src/lib/whatsapp/gemini/action-plan-prompt.ts");
 const {
+  findGeminiMockFixture,
   geminiRuntimeStats,
   resetGeminiRuntimeStats
 } = require("../src/lib/whatsapp/gemini/runtime.ts");
@@ -101,10 +102,14 @@ function loadFixtures() {
   return fs.readdirSync(fixtureDir)
     .filter((file) => file.endsWith(".json"))
     .sort()
-    .map((file) => ({
-      name: file.replace(/\.json$/, ""),
-      ...JSON.parse(fs.readFileSync(path.join(fixtureDir, file), "utf8"))
-    }));
+    .map((file) => {
+      const parsed = JSON.parse(fs.readFileSync(path.join(fixtureDir, file), "utf8"));
+      return {
+        name: file.replace(/\.json$/, ""),
+        ...parsed,
+        plan: parsed.plan || parsed.response
+      };
+    });
 }
 
 function fixtureByName(name) {
@@ -648,6 +653,98 @@ test("ActionPlan block fica bloqueado e sem confirmacao", async () => {
     supabase: createActionPlanSupabase({})
   });
   assert(direct.ok && direct.parsed.tipo === "ACAO_DESTRUTIVA_EM_MASSA", "executor direto deve bloquear");
+});
+
+test("runtime encontra fixture ActionPlan financeiro por inputExamples acentuado", async () => {
+  const text = "relatório financeiro dos últimos 6 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-financeiro-ultimos-6-meses", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] })
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.action_plan_used === true, "fixture ActionPlan deveria ser usada");
+  assert(parsed.dados.action_plan_domain === "financeiro", "domain financeiro ausente");
+  assert(parsed.dados.action_plan?.filters?.[0]?.op === "last_months", "filtro last_months ausente");
+  assert(parsed.dados.action_plan?.filters?.[0]?.value === 6, "filtro last_months deveria ser 6");
+  assert(parsed.dados.periodo !== "mes", "nao deveria cair no periodo mes do legado");
+});
+
+test("runtime encontra fixture ActionPlan racao 90 dias por texto normalizado", async () => {
+  const text = "quanto gastei com ração nos últimos 90 dias";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-financeiro-racao-90-dias", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "financeiro", "domain financeiro ausente");
+  assert(filters.some((filter) => filter.field === "descricao" && filter.op === "contains" && /ra[cç]ão|ra[cç]ao/i.test(filter.value)), "filtro contains racao ausente");
+  assert(filters.some((filter) => filter.field === "data" && filter.op === "last_days" && filter.value === 90), "filtro last_days 90 ausente");
+});
+
+test("runtime encontra fixture ActionPlan producao Mimosa sem animal_codigo LEITE", async () => {
+  const text = "produção de leite da Mimosa desde janeiro";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-producao-mimosa-desde-janeiro", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({
+      [TABLES.animais]: [{ id: "animal-mimosa", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "001", nome: "Mimosa", categoria: "vaca" }],
+      [TABLES.ordenhas]: []
+    })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "producao_leite", "domain producao_leite ausente");
+  assert(filters.some((filter) => filter.field === "animal_ref" && filter.value === "Mimosa"), "filtro Mimosa ausente");
+  assert(parsed.dados?.animal_codigo !== "LEITE", "nao deveria interpretar LEITE como animal_codigo");
+});
+
+test("runtime encontra fixture ActionPlan partos ultimos 6 meses", async () => {
+  const text = "partos dos últimos 6 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "query-partos-ultimos-6-meses", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+  const parsed = finalParsed(result);
+  const filters = parsed?.dados?.action_plan?.filters || [];
+  assert(parsed?.dados?.action_plan_domain === "reproducao", "domain reproducao ausente");
+  assert(filters.some((filter) => filter.field === "evento" && filter.value === "PARTO"), "filtro PARTO ausente");
+  assert(filters.some((filter) => filter.field === "data" && filter.op === "last_months" && filter.value === 6), "filtro last_months 6 ausente");
+});
+
+test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback legado", async () => {
+  const text = "relatorio financeiro dos ultimos 7 meses";
+  const fixture = findGeminiMockFixture({ text });
+  assert(!fixture, "entrada sem fixture nao deveria casar");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  assert(result.kind === "clarify", "sem fixture deveria retornar clarify, recebido " + result.kind);
+  assert(result.reason === "mock_fixture_missing", "reason esperado mock_fixture_missing, recebido " + result.reason);
+  assert(result.message.includes("mock_fixture_missing"), "mensagem deveria explicar mock_fixture_missing");
 });
 
 test("Gemini live calls permanecem zeradas", () => {

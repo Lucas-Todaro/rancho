@@ -822,6 +822,15 @@ function localFallbackResult(
   };
 }
 
+function mockFixtureMissingResult(): GeminiFallbackParseResult {
+  return {
+    kind: "clarify",
+    threshold: 0.7,
+    reason: "mock_fixture_missing",
+    message: "mock_fixture_missing: nao encontrei fixture Gemini mock para esta mensagem. Crie uma fixture em scripts/bot-test/gemini-mocks ou use GEMINI_MODE=live fora dos testes."
+  };
+}
+
 function actionPlanEnabledFor(plan: ActionPlan | null | undefined) {
   if (!plan) return false;
   if (plan.action === "import_table") return geminiTableActionPlanEnabled();
@@ -1147,7 +1156,12 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
     };
   }
 
-  if ((gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found") && input.localParsed.tipo !== "DESCONHECIDO") {
+  const geminiMockFixtureMissing = (gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found");
+  if (geminiMockFixtureMissing && anyActionPlanFlagEnabled() && !botAllowsLegacyRollback()) {
+    return mockFixtureMissingResult();
+  }
+
+  if (geminiMockFixtureMissing && input.localParsed.tipo !== "DESCONHECIDO") {
     return localFallbackResult(input, "gemini_mock_fixture_not_found", route, structuredDetection);
   }
 

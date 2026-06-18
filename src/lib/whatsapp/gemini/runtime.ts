@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 
+import { geminiActionPlanEnabled, geminiTableActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
 import type { AnyRecord } from "@/lib/types";
 
 export type GeminiMode = "mock" | "live";
@@ -15,7 +16,10 @@ type GeminiMockFixture = {
   id: string;
   description?: string;
   examples?: string[];
+  input?: string;
+  inputExamples?: string[];
   response: AnyRecord;
+  sourcePath?: string;
 };
 
 type GeminiRuntimeGlobal = typeof globalThis & {
@@ -35,8 +39,62 @@ function normalizeText(value: unknown) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[.,!?;:()[\]{}"']/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isPlainObject(value: unknown): value is AnyRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isActionPlanFixture(fixture: GeminiMockFixture) {
+  return isPlainObject(fixture.response) && typeof fixture.response.action === "string";
+}
+
+function actionPlanFixturesEnabled() {
+  return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+}
+
+function listFixtureFiles(directory: string): string[] {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) return listFixtureFiles(fullPath);
+      return entry.isFile() && entry.name.endsWith(".json") ? [fullPath] : [];
+    });
+}
+
+function normalizeFixture(filePath: string): GeminiMockFixture | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as AnyRecord;
+    const response = isPlainObject(parsed.response)
+      ? parsed.response
+      : isPlainObject(parsed.plan) ? parsed.plan : null;
+    if (!response) return null;
+
+    const id = String(parsed.id || path.basename(filePath, ".json")).trim();
+    if (!id) return null;
+
+    return {
+      ...parsed,
+      id,
+      response,
+      sourcePath: path.relative(FIXTURE_DIR, filePath).replace(/\\/g, "/")
+    } as GeminiMockFixture;
+  } catch {
+    return null;
+  }
+}
+
+function fixtureExamples(fixture: GeminiMockFixture) {
+  return [
+    ...(Array.isArray(fixture.examples) ? fixture.examples : []),
+    ...(Array.isArray(fixture.inputExamples) ? fixture.inputExamples : []),
+    fixture.input
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 }
 
 export function geminiMode(): GeminiMode {
@@ -95,16 +153,9 @@ function loadFixtures() {
     return holder.__RANCHO_GEMINI_MOCK_FIXTURES__;
   }
 
-  const fixtures = fs.readdirSync(FIXTURE_DIR)
-    .filter((file) => file.endsWith(".json"))
-    .flatMap((file) => {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, file), "utf8")) as GeminiMockFixture;
-        return parsed?.id && parsed?.response ? [parsed] : [];
-      } catch {
-        return [];
-      }
-    });
+  const fixtures = listFixtureFiles(FIXTURE_DIR)
+    .map(normalizeFixture)
+    .filter((fixture): fixture is GeminiMockFixture => Boolean(fixture));
 
   holder.__RANCHO_GEMINI_MOCK_FIXTURES__ = fixtures;
   return fixtures;
@@ -116,7 +167,10 @@ export function findGeminiMockFixture(input: { text?: string; geminiMockId?: str
   if (explicitId) return fixtures.find((fixture) => fixture.id === explicitId) || null;
 
   const normalizedText = normalizeText(input.text);
-  return fixtures.find((fixture) => (fixture.examples || []).some((example) => normalizeText(example) === normalizedText)) || null;
+  const matches = fixtures.filter((fixture) => fixtureExamples(fixture).some((example) => normalizeText(example) === normalizedText));
+  if (!matches.length) return null;
+  if (actionPlanFixturesEnabled()) return matches.find(isActionPlanFixture) || matches[0];
+  return matches.find((fixture) => !isActionPlanFixture(fixture)) || null;
 }
 
 export function unknownGeminiMockResponse() {
@@ -127,9 +181,9 @@ export function unknownGeminiMockResponse() {
     fields: {},
     actions: [],
     missing_fields: [],
-    warnings: ["gemini_mock_fixture_not_found"],
+    warnings: ["gemini_mock_fixture_not_found", "mock_fixture_missing"],
     should_confirm: false,
-    response_hint: "Nao encontrei fixture mockada para essa mensagem."
+    response_hint: "mock_fixture_missing: crie uma fixture em scripts/bot-test/gemini-mocks ou use GEMINI_MODE=live fora dos testes."
   };
 }
 
