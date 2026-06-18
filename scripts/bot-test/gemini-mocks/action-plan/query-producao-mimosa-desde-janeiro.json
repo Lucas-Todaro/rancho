@@ -1,9 +1,15 @@
 {
-  "input": "producao de leite da Mimosa desde janeiro",
-  "plan": {
+  "id": "query-producao-mimosa-desde-janeiro",
+  "input": "produção de leite da Mimosa desde janeiro",
+  "inputExamples": [
+    "produção de leite da Mimosa desde janeiro",
+    "producao de leite da Mimosa desde janeiro",
+    "produção da Mimosa desde janeiro"
+  ],
+  "response": {
     "action": "query",
     "domain": "producao_leite",
-    "confidence": 0.88,
+    "confidence": 0.94,
     "filters": [
       { "field": "animal_ref", "op": "contains", "value": "Mimosa" },
       { "field": "data", "op": "since", "value": "janeiro" }
@@ -11,7 +17,8 @@
     "aggregations": [
       { "field": "litros", "op": "sum", "as": "total_litros" }
     ],
-    "limit": 200,
+    "groupBy": ["month"],
+    "limit": 100,
     "requiresConfirmation": false
   }
 }

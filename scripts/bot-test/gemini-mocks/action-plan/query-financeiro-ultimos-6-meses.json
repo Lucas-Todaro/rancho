@@ -1,18 +1,23 @@
 {
-  "input": "relatorio financeiro dos ultimos 6 meses",
-  "plan": {
+  "id": "query-financeiro-ultimos-6-meses",
+  "input": "relatório financeiro dos últimos 6 meses",
+  "inputExamples": [
+    "relatório financeiro dos últimos 6 meses",
+    "relatorio financeiro dos ultimos 6 meses",
+    "resumo financeiro dos últimos 6 meses"
+  ],
+  "response": {
     "action": "query",
     "domain": "financeiro",
-    "confidence": 0.9,
+    "confidence": 0.94,
     "filters": [
       { "field": "data", "op": "last_months", "value": 6 }
     ],
     "aggregations": [
-      { "field": "valor", "op": "sum", "as": "total_valor" }
+      { "field": "valor", "op": "sum", "as": "total" }
     ],
     "groupBy": ["month"],
-    "orderBy": { "field": "data", "direction": "desc" },
-    "limit": 500,
+    "limit": 100,
     "requiresConfirmation": false
   }
 }

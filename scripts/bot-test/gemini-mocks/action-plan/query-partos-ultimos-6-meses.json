@@ -1,16 +1,20 @@
 {
-  "input": "partos dos ultimos 6 meses",
-  "plan": {
+  "id": "query-partos-ultimos-6-meses",
+  "input": "partos dos últimos 6 meses",
+  "inputExamples": [
+    "partos dos últimos 6 meses",
+    "partos dos ultimos 6 meses",
+    "relatório de partos dos últimos 6 meses"
+  ],
+  "response": {
     "action": "query",
     "domain": "reproducao",
-    "confidence": 0.89,
+    "confidence": 0.94,
     "filters": [
       { "field": "evento", "op": "eq", "value": "PARTO" },
       { "field": "data", "op": "last_months", "value": 6 }
     ],
-    "select": ["animal_ref", "evento", "data", "observacoes"],
-    "orderBy": { "field": "data", "direction": "desc" },
-    "limit": 200,
+    "limit": 100,
     "requiresConfirmation": false
   }
 }

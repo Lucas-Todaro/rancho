@@ -185,15 +185,15 @@ function metricsFor(domain: string, rows: AnyRecord[]) {
 function previewText(domain: string, rows: AnyRecord[], metrics: AnyRecord) {
   if (domain === "financeiro") {
     const saldo = Number(metrics.receitas || 0) - Number(metrics.despesas || 0);
-    return `Preview financeiro via ActionPlan: ${rows.length} linha(s). Receitas R$ ${Number(metrics.receitas || 0).toFixed(2)}, despesas R$ ${Number(metrics.despesas || 0).toFixed(2)}, saldo R$ ${saldo.toFixed(2)}.`;
+    return `Li a tabela e preparei a importação financeira: ${rows.length} linha(s). Receitas R$ ${Number(metrics.receitas || 0).toFixed(2)}, despesas R$ ${Number(metrics.despesas || 0).toFixed(2)}, saldo R$ ${saldo.toFixed(2)}.`;
   }
   if (domain === "producao_leite") {
-    return `Preview de producao via ActionPlan: ${rows.length} registro(s), total ${Number(metrics.total_litros || 0)} litros.`;
+    return `Li a tabela e preparei a importação de produção: ${rows.length} registro(s), total ${Number(metrics.total_litros || 0)} litros.`;
   }
   if (domain === "estoque") {
-    return `Preview de estoque via ActionPlan: ${rows.length} linha(s), entradas ${metrics.entradas || 0}, saidas ${metrics.saidas || 0}, sem valor financeiro ${metrics.itens_sem_valor_financeiro || 0}.`;
+    return `Li a tabela e preparei a importação de estoque: ${rows.length} linha(s), entradas ${metrics.entradas || 0}, saidas ${metrics.saidas || 0}, sem valor financeiro ${metrics.itens_sem_valor_financeiro || 0}.`;
   }
-  return `Preview de ${domain} via ActionPlan: ${rows.length} linha(s).`;
+  return `Li a tabela e preparei a importação: ${rows.length} linha(s).`;
 }
 
 function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
@@ -291,7 +291,7 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       ok: false,
       status: "clarify",
       reason: "domain_without_manifest",
-      message: "Ainda nao tenho um mapeamento seguro para importar esse dominio por ActionPlan."
+      message: "Ainda não tenho um mapeamento seguro para importar esse tipo de tabela."
     };
   }
   const rows = mappedRows(plan, domain, parsedTable);
