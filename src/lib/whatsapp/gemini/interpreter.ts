@@ -1,5 +1,5 @@
-import { configuredGeminiModel, botTestVerbose } from "@/lib/whatsapp/gemini/config";
-import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
+import { configuredGeminiModel, botTestVerbose, geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
+import { GEMINI_ALLOWED_INTENTS, GEMINI_CONSULT_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import { buildGeminiSystemPrompt } from "@/lib/whatsapp/gemini/system-prompt";
 import { validateInterpretedAction } from "@/lib/whatsapp/gemini/validator";
@@ -211,6 +211,22 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
         rawText,
         validationStatus: validation.status,
         warnings: validation.warnings
+      });
+    }
+
+    if (validation.value.action_plan) {
+      const plan = validation.value.action_plan;
+      geminiInterpreterLog("action_plan_success", {
+        model,
+        action: plan.action,
+        domain: "domain" in plan ? plan.domain : null,
+        confidence: validation.value.confidence
+      });
+    } else if (geminiActionPlanEnabled() && GEMINI_CONSULT_INTENTS.has(validation.value.intent)) {
+      geminiInterpreterLog("legacy_intent_returned_while_action_plan_enabled", {
+        model,
+        intent: validation.value.intent,
+        messageLength: input.text.length
       });
     }
 

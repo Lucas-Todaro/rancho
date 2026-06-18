@@ -40,6 +40,8 @@ require.extensions[".ts"] = function loadTs(module, filename) {
 const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { interpretWithGemini } = require("../src/lib/whatsapp/gemini/interpreter.ts");
+const { buildGeminiSystemPrompt } = require("../src/lib/whatsapp/gemini/system-prompt.ts");
+const { validateInterpretedAction } = require("../src/lib/whatsapp/gemini/validator.ts");
 const { domainFromUserChoice } = require("../src/lib/whatsapp/nlp-core/tabular-domain-router.ts");
 const {
   geminiRuntimeReportLines,
@@ -229,6 +231,21 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function withActionPlanFlags(actionEnabled, tableEnabled, fn) {
+  const previousAction = process.env.GEMINI_ACTION_PLAN_ENABLED;
+  const previousTable = process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED;
+  process.env.GEMINI_ACTION_PLAN_ENABLED = actionEnabled ? "true" : "false";
+  process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED = tableEnabled ? "true" : "false";
+  try {
+    return await fn();
+  } finally {
+    if (previousAction === undefined) delete process.env.GEMINI_ACTION_PLAN_ENABLED;
+    else process.env.GEMINI_ACTION_PLAN_ENABLED = previousAction;
+    if (previousTable === undefined) delete process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED;
+    else process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED = previousTable;
+  }
+}
+
 function finalParsed(result) {
   if (result.kind === "parsed") return result.parsed;
   if (result.kind === "local") return result.parsed;
@@ -392,6 +409,138 @@ const cases = [
         error: error instanceof Error ? error.message : String(error)
       });
     }
+  }
+
+  const actionPlanCases = [
+    {
+      message: "relatório financeiro dos últimos 6 meses",
+      domain: "financeiro",
+      checks: (parsed) => {
+        const filters = parsed.dados?.action_plan?.filters || [];
+        assert(filters.some((filter) => filter.field === "data" && filter.op === "last_months" && filter.value === 6), "financeiro 6 meses: filtro last_months 6 ausente");
+        assert(parsed.dados?.periodo !== "mes", "financeiro 6 meses: nao deve cair no periodo mes legado");
+      }
+    },
+    {
+      message: "quanto gastei com ração nos últimos 90 dias",
+      domain: "financeiro",
+      notIntent: "CONSULTA_ESTOQUE_ITEM",
+      checks: (parsed) => {
+        const filters = parsed.dados?.action_plan?.filters || [];
+        assert(filters.some((filter) => filter.field === "descricao" && filter.op === "contains" && /ra[cç][aã]o/i.test(String(filter.value || ""))), "racao 90 dias: contains racao ausente");
+        assert(filters.some((filter) => filter.field === "data" && filter.op === "last_days" && filter.value === 90), "racao 90 dias: last_days 90 ausente");
+      }
+    },
+    {
+      message: "produção de leite da Mimosa desde janeiro",
+      domain: "producao_leite",
+      checks: (parsed) => {
+        const filters = parsed.dados?.action_plan?.filters || [];
+        assert(filters.some((filter) => filter.field === "animal_ref" && filter.value === "Mimosa"), "producao Mimosa: animal_ref Mimosa ausente");
+        assert(parsed.dados?.animal_codigo !== "LEITE", "producao Mimosa: nao deve interpretar LEITE como animal_codigo");
+      }
+    },
+    {
+      message: "partos dos últimos 6 meses",
+      domain: "reproducao",
+      checks: (parsed) => {
+        const filters = parsed.dados?.action_plan?.filters || [];
+        assert(filters.some((filter) => filter.field === "evento" && String(filter.value).toUpperCase() === "PARTO"), "partos 6 meses: evento PARTO ausente");
+        assert(filters.some((filter) => filter.field === "data" && filter.op === "last_months" && filter.value === 6), "partos 6 meses: last_months 6 ausente");
+        assert(parsed.dados?.dias !== 90, "partos 6 meses: nao deve cair em recentes/90 dias");
+      }
+    }
+  ];
+
+  for (const actionPlanCase of actionPlanCases) {
+    try {
+      await withActionPlanFlags(true, true, async () => {
+        const result = await parseWithConfiguredInterpreter({
+          text: actionPlanCase.message,
+          localParsed: parseRanchoMessage(actionPlanCase.message),
+          owner: ADMIN_OWNER
+        });
+        const parsed = finalParsed(result);
+        assert(parsed, `${actionPlanCase.message}: resultado sem parsed`);
+        assert(parsed.tipo !== actionPlanCase.notIntent, `${actionPlanCase.message}: caiu na intent legada errada ${parsed.tipo}`);
+        assert(parsed.dados?.action_plan_used === true, `${actionPlanCase.message}: action_plan_used ausente`);
+        assert(parsed.dados?.consulta_executada === "action_plan", `${actionPlanCase.message}: consulta_executada action_plan ausente`);
+        assert(parsed.dados?.action_plan_domain === actionPlanCase.domain, `${actionPlanCase.message}: domain esperado ${actionPlanCase.domain}, recebido ${parsed.dados?.action_plan_domain}`);
+        actionPlanCase.checks(parsed);
+      });
+      results.push({ ok: true, name: `ActionPlan query: ${actionPlanCase.message}` });
+    } catch (error) {
+      results.push({
+        ok: false,
+        name: `ActionPlan query: ${actionPlanCase.message}`,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  try {
+    await withActionPlanFlags(false, false, async () => {
+      const text = "vaca 1 deu 15 litros";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER
+      });
+      const parsed = finalParsed(result);
+      assert(parsed?.tipo === "PRODUCAO_LEITE", `flags false: legado deveria continuar PRODUCAO_LEITE, recebido ${parsed?.tipo}`);
+      assert(!parsed.dados?.action_plan_used, "flags false: nao deveria marcar action_plan_used");
+    });
+    results.push({ ok: true, name: "Flags ActionPlan false preservam fluxo legado" });
+  } catch (error) {
+    results.push({
+      ok: false,
+      name: "Flags ActionPlan false preservam fluxo legado",
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  try {
+    await withActionPlanFlags(true, true, async () => {
+      const prompt = buildGeminiSystemPrompt({
+        text: "relatório financeiro dos últimos 6 meses",
+        currentDate: "2026-06-18",
+        timezone: "America/Fortaleza"
+      });
+      assert(prompt.includes("Formato de saida preferido para consultas/relatorios ActionPlan"), "prompt nao declara formato ActionPlan preferido");
+      assert(prompt.includes("Nao retorne somente intent legado"), "prompt nao bloqueia intent legado como resposta unica para consulta");
+      assert(prompt.includes('"action": "query"'), "prompt sem exemplo action=query");
+      assert(prompt.includes("relatório financeiro dos últimos 6 meses"), "prompt sem exemplo financeiro obrigatorio");
+    });
+    results.push({ ok: true, name: "Prompt Gemini prefere ActionPlan com flag ligada" });
+  } catch (error) {
+    results.push({
+      ok: false,
+      name: "Prompt Gemini prefere ActionPlan com flag ligada",
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  try {
+    const validation = validateInterpretedAction({
+      action: "query",
+      domain: "financeiro",
+      confidence: 0.94,
+      filters: [{ field: "data", op: "last_months", value: 6 }],
+      aggregations: [{ field: "valor", op: "sum", as: "total" }],
+      groupBy: ["month"],
+      limit: 100,
+      requiresConfirmation: false
+    }, { originalText: "relatório financeiro dos últimos 6 meses" });
+    assert(validation.ok, `ActionPlan puro deveria validar: ${validation.message || validation.reason}`);
+    assert(validation.value.action_plan?.action === "query", "ActionPlan validado nao ficou em value.action_plan");
+    assert(validation.value.action_plan?.domain === "financeiro", "ActionPlan validado sem domain financeiro");
+    results.push({ ok: true, name: "Validador aceita ActionPlan puro" });
+  } catch (error) {
+    results.push({
+      ok: false,
+      name: "Validador aceita ActionPlan puro",
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 
   try {

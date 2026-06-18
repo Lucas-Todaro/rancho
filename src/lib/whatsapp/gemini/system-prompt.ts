@@ -5,12 +5,63 @@ import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiInterpreterInput } from "@/lib/whatsapp/gemini/types";
 import { GEMINI_TABLE_DOMAINS, geminiTableDomainFieldsForPrompt } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
-export const GEMINI_SYSTEM_PROMPT_VERSION = "rancho-gemini-interpreter-v2";
+export const GEMINI_SYSTEM_PROMPT_VERSION = "rancho-gemini-interpreter-v3";
+
+const LEGACY_OUTPUT_EXAMPLE = {
+  intent: "PRODUCAO_LEITE",
+  confidence: 0.92,
+  riskScore: 0.12,
+  fields: {
+    animal_ref: "B-002",
+    litros: 30,
+    data: "hoje",
+    horario: null,
+    observacoes: null
+  },
+  actions: [],
+  missing_fields: [],
+  warnings: [],
+  should_confirm: true,
+  response_hint: null,
+  table_import: {
+    domain: "PRODUCAO",
+    confidence: 0.9,
+    column_mapping: {
+      Animal: "animal_ref",
+      Litros: "litros",
+      Data: "data"
+    },
+    normalized_rows: [
+      { animal_ref: "B-002", litros: 30, data: "hoje" }
+    ],
+    unknown_columns: [],
+    warnings: [],
+    errors: [],
+    ambiguous_domains: [],
+    needs_manual_choice: false
+  }
+};
+
+const ACTION_PLAN_OUTPUT_EXAMPLE = {
+  action: "query",
+  domain: "financeiro",
+  confidence: 0.94,
+  filters: [
+    { field: "data", op: "last_months", value: 6 }
+  ],
+  aggregations: [
+    { field: "valor", op: "sum", as: "total" }
+  ],
+  groupBy: ["month"],
+  limit: 100,
+  requiresConfirmation: false
+};
 
 export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
   const allowedIntents = input.allowedIntents?.length ? input.allowedIntents : [...GEMINI_ALLOWED_INTENTS];
   const schemas = input.schemas || allGeminiSchemasForPrompt();
-  const includeActionPlan = geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
+  const queryActionPlanEnabled = geminiActionPlanEnabled();
+  const includeActionPlan = queryActionPlanEnabled || geminiTableActionPlanEnabled();
 
   return [
     `Prompt version: ${GEMINI_SYSTEM_PROMPT_VERSION}`,
@@ -60,7 +111,19 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
     "Nunca trate correcao/cancelamento como registro novo.",
     "Retorne apenas JSON valido.",
     includeActionPlan
-      ? "Quando usar ActionPlan, retorne action/domain no topo ou action_plan junto do formato legado. Nao remova suporte ao formato legado intent + fields."
+      ? "ActionPlan esta habilitado. Retorne action/domain no topo para planos ActionPlan ou action_plan junto do formato legado quando precisar manter compatibilidade."
+      : "",
+    queryActionPlanEnabled
+      ? "Para consultas, relatorios e perguntas analiticas cobertas por ActionPlan, o formato preferido e obrigatorio e ActionPlan top-level com action=query. Nao retorne somente intent legado para esses casos."
+      : "",
+    queryActionPlanEnabled
+      ? "Use legado intent/fields apenas para acoes ainda nao cobertas por ActionPlan, quando ActionPlan estiver desabilitado, ou quando o backend exigir fluxo legado."
+      : "",
+    queryActionPlanEnabled
+      ? "Nunca retorne SQL. Nunca invente numeros de relatorio; o backend consulta os dados a partir do plano."
+      : "",
+    queryActionPlanEnabled
+      ? "Para create/update/import_table, use requiresConfirmation=true. Para delete ou update em massa, retorne action=block."
       : "",
     includeActionPlan
       ? buildActionPlanPromptFragment({
@@ -69,41 +132,10 @@ export function buildGeminiSystemPrompt(input: GeminiInterpreterInput) {
       })
       : "",
     "",
-    "Formato de saida obrigatorio:",
-    JSON.stringify({
-      intent: "PRODUCAO_LEITE",
-      confidence: 0.92,
-      riskScore: 0.12,
-      fields: {
-        animal_ref: "B-002",
-        litros: 30,
-        data: "hoje",
-        horario: null,
-        observacoes: null
-      },
-      actions: [],
-      missing_fields: [],
-      warnings: [],
-      should_confirm: true,
-      response_hint: null,
-      table_import: {
-        domain: "PRODUCAO",
-        confidence: 0.9,
-        column_mapping: {
-          Animal: "animal_ref",
-          Litros: "litros",
-          Data: "data"
-        },
-        normalized_rows: [
-          { animal_ref: "B-002", litros: 30, data: "hoje" }
-        ],
-        unknown_columns: [],
-        warnings: [],
-        errors: [],
-        ambiguous_domains: [],
-        needs_manual_choice: false
-      }
-    }, null, 2),
+    queryActionPlanEnabled ? "Formato de saida preferido para consultas/relatorios ActionPlan:" : "Formato de saida obrigatorio:",
+    JSON.stringify(queryActionPlanEnabled ? ACTION_PLAN_OUTPUT_EXAMPLE : LEGACY_OUTPUT_EXAMPLE, null, 2),
+    queryActionPlanEnabled ? "Formato legado permitido somente quando ActionPlan nao cobrir a acao:" : "",
+    queryActionPlanEnabled ? JSON.stringify(LEGACY_OUTPUT_EXAMPLE, null, 2) : "",
     "",
     "Para multiplas acoes, use actions com objetos no mesmo formato reduzido: intent, fields, missing_fields, warnings, should_confirm.",
     "",

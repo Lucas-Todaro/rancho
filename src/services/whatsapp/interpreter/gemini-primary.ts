@@ -649,6 +649,18 @@ function makeBatchParsed(registros: ParsedRanchoMessage[], interpretation: Gemin
   }, [], interpretation.confidence);
 }
 
+function markLegacyIntentAfterGemini(parsed: ParsedRanchoMessage) {
+  if (!anyActionPlanFlagEnabled()) return parsed;
+  return {
+    ...parsed,
+    dados: {
+      ...(parsed.dados || {}),
+      action_plan_used: false,
+      interpreter_final_usado: parsed.dados?.interpreter_final_usado || "legacy_intent_after_gemini"
+    }
+  };
+}
+
 function attachPostConfirmationConsultations(pending: ParsedRanchoMessage, consultations: ParsedRanchoMessage[]) {
   if (!consultations.length) return pending;
   return {
@@ -698,7 +710,7 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
     };
   }
 
-  const parsed = parsedActions as ParsedRanchoMessage[];
+  const parsed = (parsedActions as ParsedRanchoMessage[]).map(markLegacyIntentAfterGemini);
   const consultations = parsed.filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
   const mutations = parsed.filter((item) => !CONSULT_RANCHO_INTENTS.has(item.tipo));
 
@@ -738,7 +750,7 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
     return {
       kind: "parsed",
       threshold: 0.7,
-      parsed: makeBatchParsed(mutations, interpretation),
+      parsed: markLegacyIntentAfterGemini(makeBatchParsed(mutations, interpretation)),
       gemini: {
         confidence: interpretation.confidence,
         requiresConfirmation: true,
@@ -763,7 +775,7 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
   const immediateConsultations = parsed.slice(0, firstMutationIndex).filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
   const postConfirmationConsultations = parsed.slice(firstMutationIndex + 1).filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
   const pending = attachPostConfirmationConsultations(
-    mutations.length === 1 ? mutations[0] : makeBatchParsed(mutations, interpretation),
+    mutations.length === 1 ? mutations[0] : markLegacyIntentAfterGemini(makeBatchParsed(mutations, interpretation)),
     postConfirmationConsultations
   );
 
@@ -955,6 +967,7 @@ async function convertActionPlanInterpretation(
       ...result.parsed,
       dados: {
         ...(result.parsed.dados || {}),
+        ...(result.logEvent === "action_plan_used" ? { consulta_executada: "action_plan" } : {}),
         route,
         structuredDetection
       }
