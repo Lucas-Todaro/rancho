@@ -1,0 +1,18 @@
+{
+  "input": "quanto gastei com racao nos ultimos 90 dias",
+  "plan": {
+    "action": "query",
+    "domain": "financeiro",
+    "confidence": 0.91,
+    "filters": [
+      { "field": "tipo", "op": "eq", "value": "despesa" },
+      { "field": "descricao", "op": "contains", "value": "racao" },
+      { "field": "data", "op": "last_days", "value": 90 }
+    ],
+    "aggregations": [
+      { "field": "valor", "op": "sum", "as": "total_gasto" }
+    ],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

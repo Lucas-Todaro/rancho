@@ -1,0 +1,25 @@
+{
+  "input": "nome;funcao;telefone;data_admissao\nBruno;vaqueiro;558899999999;01/06/2026",
+  "parsedTable": {
+    "headers": ["nome", "funcao", "telefone", "data_admissao"],
+    "rows": [
+      ["Bruno", "vaqueiro", "558899999999", "01/06/2026"]
+    ]
+  },
+  "plan": {
+    "action": "import_table",
+    "domain": "funcionarios",
+    "confidence": 0.9,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "nome": "nome",
+        "funcao": "funcao",
+        "contato_whatsapp": "telefone",
+        "data_admissao": "data_admissao"
+      }
+    },
+    "requiresConfirmation": true
+  }
+}

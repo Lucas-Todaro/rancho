@@ -1,0 +1,27 @@
+{
+  "input": "item;quantidade;unidade;tipo_movimento;valor_total;data\nRacao;10;kg;entrada;1200;01/06/2026",
+  "parsedTable": {
+    "headers": ["item", "quantidade", "unidade", "tipo_movimento", "valor_total", "data"],
+    "rows": [
+      ["Racao", "10", "kg", "entrada", "1200", "01/06/2026"]
+    ]
+  },
+  "plan": {
+    "action": "import_table",
+    "domain": "estoque",
+    "confidence": 0.9,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "item": "item",
+        "quantidade": "quantidade",
+        "unidade": "unidade",
+        "tipo_movimento": "tipo_movimento",
+        "valor_total": "valor_total",
+        "data": "data"
+      }
+    },
+    "requiresConfirmation": true
+  }
+}

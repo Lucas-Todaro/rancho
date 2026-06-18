@@ -1,0 +1,8 @@
+{
+  "input": "apagar todos os animais da fazenda",
+  "plan": {
+    "action": "block",
+    "reason": "destructive_bulk_action",
+    "userMessage": "Nao posso montar um plano para apagar dados em massa pelo WhatsApp."
+  }
+}
