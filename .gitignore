@@ -11,3 +11,23 @@ coverage
 .next-layout.js
 bot-test-report.json
 bot-test-report.md
+
+# Bot/test generated reports
+bot-*-report.md
+bot-*-report.json
+bot-evaluation-report.json
+bot-final-regression-report.md
+bot-heavy-report.json
+bot-period-query-report.md
+bot-reproduction-event-fix-report.md
+bot-reproductive-list-query-report.md
+bot-tabular-import-report.md
+bot-tabular-prevalidation-report.md
+bot-animal-individual-report.md
+
+# Bot/test temporary outputs
+test-bot-output.tmp
+*.tmp
+
+# Logs
+*.log
