@@ -1,0 +1,18 @@
+{
+  "input": "relatorio financeiro dos ultimos 6 meses",
+  "plan": {
+    "action": "query",
+    "domain": "financeiro",
+    "confidence": 0.9,
+    "filters": [
+      { "field": "data", "op": "last_months", "value": 6 }
+    ],
+    "aggregations": [
+      { "field": "valor", "op": "sum", "as": "total_valor" }
+    ],
+    "groupBy": ["month"],
+    "orderBy": { "field": "data", "direction": "desc" },
+    "limit": 500,
+    "requiresConfirmation": false
+  }
+}

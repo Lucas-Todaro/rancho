@@ -1,4 +1,6 @@
 import type { AnyRecord } from "@/lib/types";
+import { validateActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
+import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { GEMINI_CONSULT_INTENTS, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allowedFieldsForGeminiIntent, schemaForGeminiIntent } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
@@ -49,6 +51,68 @@ const GEMINI_BLOCKED_INTENTS = new Set(["ACAO_DESTRUTIVA_EM_MASSA"]);
 
 function isPlainObject(value: unknown): value is AnyRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasActionPlanShape(value: unknown) {
+  return isPlainObject(value) && typeof value.action === "string";
+}
+
+function extractActionPlan(result: AnyRecord) {
+  if (hasActionPlanShape(result)) return result;
+  if (hasActionPlanShape(result.action_plan)) return result.action_plan;
+  return null;
+}
+
+function actionPlanConfidence(plan: unknown) {
+  return isPlainObject(plan) && typeof plan.confidence === "number" && Number.isFinite(plan.confidence)
+    ? Math.max(0, Math.min(1, plan.confidence))
+    : 0.8;
+}
+
+function actionPlanShell(
+  plan: ActionPlan | null,
+  error: { status: "invalid" | "blocked"; reason: string } | null,
+  warnings: string[]
+): GeminiStructuredResult {
+  return {
+    intent: "DESCONHECIDO",
+    confidence: actionPlanConfidence(plan),
+    riskScore: error?.status === "blocked" || plan?.action === "block" ? 1 : 0.2,
+    fields: {},
+    actions: [],
+    missing_fields: [],
+    warnings,
+    should_confirm: false,
+    response_hint: null,
+    action_plan: plan,
+    action_plan_error: error,
+    table_import: null
+  };
+}
+
+function parsedTableForActionPlan(plan: unknown, originalText?: string): ParsedTableForValidation | null {
+  if (!isPlainObject(plan) || plan.action !== "import_table" || !originalText) return null;
+  const lines = String(originalText || "")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+  const table = isPlainObject(plan.table) ? plan.table : {};
+  const separator = typeof table.separator === "string"
+    ? table.separator
+    : lines[0].includes(";") ? ";" : lines[0].includes("\t") ? "\t" : ",";
+  const rows = lines.map((line) => line.split(separator).map((cell) => cell.trim()));
+  return {
+    headers: rows[0] || [],
+    rows: rows.slice(1)
+  };
+}
+
+function validateRawActionPlan(plan: unknown, context: GeminiValidationContext) {
+  return validateActionPlan(plan, {
+    parsedTable: parsedTableForActionPlan(plan, context.originalText)
+  });
 }
 
 function numberOrDefault(value: unknown, fallback: number, min: number, max: number) {
@@ -345,6 +409,39 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     };
   }
 
+  const rawActionPlan = extractActionPlan(result);
+  if (rawActionPlan) {
+    const actionPlanValidation = validateRawActionPlan(rawActionPlan, context);
+    if (!actionPlanValidation.ok) {
+      const blocked = actionPlanValidation.status === "blocked";
+      const value = actionPlanShell(null, {
+        status: blocked ? "blocked" : "invalid",
+        reason: actionPlanValidation.reason
+      }, [
+        blocked ? "action_plan_blocked" : "action_plan_invalid",
+        actionPlanValidation.reason
+      ]);
+      return {
+        ok: true,
+        status: "valid",
+        value,
+        warnings: value.warnings,
+        missingFields: []
+      };
+    }
+
+    if (hasActionPlanShape(result) && !result.intent) {
+      const value = actionPlanShell(actionPlanValidation.value, null, ["action_plan_detected"]);
+      return {
+        ok: true,
+        status: "valid",
+        value,
+        warnings: value.warnings,
+        missingFields: []
+      };
+    }
+  }
+
   const topIntent = normalizeGeminiIntent(String(result.intent || ""));
   if (!topIntent) errors.push("intent inexistente ou nao permitido");
 
@@ -415,6 +512,7 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
       .filter((warning) => warning.startsWith("missing."))
       .map((warning) => warning.replace("missing.", ""))
   ]));
+  const nestedActionPlanValidation = rawActionPlan ? validateRawActionPlan(rawActionPlan, context) : null;
 
   const value: GeminiStructuredResult = normalizeGeminiReproductionQuery(context.originalText, {
     intent: topIntent,
@@ -426,6 +524,10 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     warnings: Array.from(new Set([...normalizeWarnings(result.warnings), ...warnings.filter((warning) => !warning.startsWith("missing."))])),
     should_confirm: shouldConfirm || geminiIntentRequiresConfirmation(topIntent),
     response_hint: typeof result.response_hint === "string" ? result.response_hint.slice(0, STRING_MAX) : null,
+    action_plan: nestedActionPlanValidation?.ok
+      ? (nestedActionPlanValidation as { ok: true; value: ActionPlan }).value
+      : null,
+    action_plan_error: null,
     table_import: tableImport
   });
 

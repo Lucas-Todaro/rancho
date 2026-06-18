@@ -1,0 +1,14 @@
+{
+  "input": "abc;def;ghi\nx;y;z",
+  "parsedTable": {
+    "headers": ["abc", "def", "ghi"],
+    "rows": [
+      ["x", "y", "z"]
+    ]
+  },
+  "plan": {
+    "action": "clarify",
+    "question": "Nao tenho certeza do tipo da tabela. Voce quer importar como animais, financeiro, estoque, funcionarios, lotes ou outro dominio?",
+    "options": ["animais", "financeiro", "estoque", "funcionarios", "lotes"]
+  }
+}

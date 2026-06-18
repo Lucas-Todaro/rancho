@@ -1,0 +1,24 @@
+{
+  "input": "nome;descricao;ativo\nLactacao 1;vacas em producao;true",
+  "parsedTable": {
+    "headers": ["nome", "descricao", "ativo"],
+    "rows": [
+      ["Lactacao 1", "vacas em producao", "true"]
+    ]
+  },
+  "plan": {
+    "action": "import_table",
+    "domain": "lotes",
+    "confidence": 0.89,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "nome": "nome",
+        "descricao": "descricao",
+        "ativo": "ativo"
+      }
+    },
+    "requiresConfirmation": true
+  }
+}

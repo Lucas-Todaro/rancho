@@ -1,0 +1,25 @@
+{
+  "input": "animal;litros;data\n001;15;01/06/2026\n002;20;01/06/2026",
+  "parsedTable": {
+    "headers": ["animal", "litros", "data"],
+    "rows": [
+      ["001", "15", "01/06/2026"],
+      ["002", "20", "01/06/2026"]
+    ]
+  },
+  "plan": {
+    "action": "import_table",
+    "domain": "producao_leite",
+    "confidence": 0.93,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "animal_ref": "animal",
+        "litros": "litros",
+        "data": "data"
+      }
+    },
+    "requiresConfirmation": true
+  }
+}

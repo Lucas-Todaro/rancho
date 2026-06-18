@@ -6887,6 +6887,12 @@ async function saveMilkStockMovementIfNeeded(
 async function handleConsultation(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   if (parsed.tipo === "AJUDA") return helpText();
 
+  if (parsed.dados?.action_plan_response) {
+    parsed.dados.consulta_executada = parsed.dados.consulta_executada || "action_plan";
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return String(parsed.dados.action_plan_response);
+  }
+
   if (parsed.tipo === "CONSULTA_REBANHO") {
     return handleHerdConsultation(supabase, owner, parsed);
   }
@@ -8487,7 +8493,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         const fallback = await parseWithConfiguredInterpreter({
           text: parserMessage,
           localParsed,
-          owner
+          owner,
+          supabase
         });
 
         if (fallback.kind === "clarify") {

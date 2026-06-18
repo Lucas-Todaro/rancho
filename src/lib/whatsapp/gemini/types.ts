@@ -1,4 +1,5 @@
 import type { AnyRecord } from "@/lib/types";
+import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { GeminiTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
 export type GeminiStructuredAction = {
@@ -22,6 +23,11 @@ export type GeminiStructuredResult = {
   warnings: string[];
   should_confirm: boolean;
   response_hint: string | null;
+  action_plan?: ActionPlan | null;
+  action_plan_error?: {
+    status: "invalid" | "blocked";
+    reason: string;
+  } | null;
   table_import?: {
     domain: GeminiTableDomain;
     confidence: number;
