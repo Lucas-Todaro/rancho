@@ -747,6 +747,66 @@ test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback le
   assert(result.message.includes("mock_fixture_missing"), "mensagem deveria explicar mock_fixture_missing");
 });
 
+test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {
+  const text = "animal;litros;data;turno;observações\nMimosa;18;2026-04-10;manhã;\nMimosa;20;2026-04-11;manhã;";
+  const fixture = findGeminiMockFixture({ text });
+  const mapping = fixture?.response?.table?.columnMapping || {};
+  assert(fixture?.id === "import-table-producao-leite-turno-observacoes", "fixture de producao com turno nao encontrada");
+  assert(fixture.response.action === "import_table", "action deveria ser import_table");
+  assert(fixture.response.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(mapping.animal_ref === "animal", "mapping animal_ref incorreto");
+  assert(mapping.litros === "litros", "mapping litros incorreto");
+  assert(mapping.data === "data", "mapping data incorreto");
+  assert(mapping.turno === "turno", "mapping turno incorreto");
+  assert(mapping.observacoes === "observações", "mapping observacoes incorreto");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "ActionPlan import_table deveria ser usado");
+  assert(parsed.dados?.action_plan?.domain === "producao_leite", "parsed deveria manter domain producao_leite");
+});
+
+test("runtime reconhece tabela producao com colunas embaralhadas por cabecalho", async () => {
+  const text = "Data;Animal;Litros\n2026-06-01;001;15\n2026-06-01;002;20";
+  const fixture = findGeminiMockFixture({ text });
+  const mapping = fixture?.response?.table?.columnMapping || {};
+  assert(fixture?.response?.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(mapping.data === "Data", "mapping data deveria usar cabecalho Data");
+  assert(mapping.animal_ref === "Animal", "mapping animal_ref deveria usar cabecalho Animal");
+  assert(mapping.litros === "Litros", "mapping litros deveria usar cabecalho Litros");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "tabela embaralhada deveria usar ActionPlan");
+});
+
+test("runtime reconhece tabela producao com separador pipe", async () => {
+  const text = "animal|litros|data\n001|15|01/06/2026\n002|20|01/06/2026";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.response?.domain === "producao_leite", "domain deveria ser producao_leite");
+  assert(fixture.response.table?.separator === "|", "separator deveria ser pipe");
+  assert(fixture.response.table?.columnMapping?.animal_ref === "animal", "mapping animal pipe incorreto");
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.dados?.table_action_plan_used === true, "tabela pipe deveria usar ActionPlan");
+});
+
 test("Gemini live calls permanecem zeradas", () => {
   const stats = geminiRuntimeStats();
   assert(stats.liveCalls === 0, `Gemini live calls esperado 0, recebido ${stats.liveCalls}`);

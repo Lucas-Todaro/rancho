@@ -56,6 +56,10 @@ function actionPlanFixturesEnabled() {
   return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
 }
 
+function isMilkImportActionPlanFixture(fixture: GeminiMockFixture) {
+  return fixture.response.action === "import_table" && fixture.response.domain === "producao_leite";
+}
+
 function listFixtureFiles(directory: string): string[] {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true })
@@ -95,6 +99,97 @@ function fixtureExamples(fixture: GeminiMockFixture) {
     ...(Array.isArray(fixture.inputExamples) ? fixture.inputExamples : []),
     fixture.input
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function normalizedHeader(value: unknown) {
+  return normalizeText(value).replace(/[^a-z0-9_ ]/g, "").replace(/\s+/g, "_");
+}
+
+function splitStructuredHeader(text: unknown) {
+  const lines = String(text || "")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const separators = [";", "|", "\t"];
+  const scored = separators
+    .map((separator) => ({
+      separator,
+      headers: lines[0].split(separator).map((cell) => cell.trim()).filter(Boolean)
+    }))
+    .filter((candidate) => candidate.headers.length >= 3)
+    .sort((left, right) => right.headers.length - left.headers.length);
+  return scored[0] || null;
+}
+
+function findHeader(headers: string[], aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizedHeader);
+  return headers.find((header) => normalizedAliases.includes(normalizedHeader(header))) || null;
+}
+
+function milkTableMapping(text: unknown) {
+  const header = splitStructuredHeader(text);
+  if (!header) return null;
+
+  const animal = findHeader(header.headers, ["animal", "vaca", "codigo", "código", "brinco"]);
+  const litros = findHeader(header.headers, ["litros", "litro", "leite", "producao", "produção"]);
+  const data = findHeader(header.headers, ["data", "dia"]);
+  if (!animal || !litros || !data) return null;
+
+  const turno = findHeader(header.headers, ["turno"]);
+  const observacoes = findHeader(header.headers, ["observacoes", "observações", "observacao", "observação", "obs"]);
+  return {
+    separator: header.separator,
+    columnMapping: {
+      animal_ref: animal,
+      litros,
+      data,
+      ...(turno ? { turno } : {}),
+      ...(observacoes ? { observacoes } : {})
+    }
+  };
+}
+
+function adaptMilkImportFixture(fixture: GeminiMockFixture, text: unknown): GeminiMockFixture {
+  const mapping = milkTableMapping(text);
+  if (!mapping || !isMilkImportActionPlanFixture(fixture)) return fixture;
+
+  return {
+    ...fixture,
+    response: {
+      ...fixture.response,
+      table: {
+        ...(isPlainObject(fixture.response.table) ? fixture.response.table : {}),
+        hasHeader: true,
+        separator: mapping.separator,
+        columnMapping: mapping.columnMapping,
+        defaultFields: {},
+        ignoredColumns: [],
+        ambiguousColumns: []
+      }
+    }
+  };
+}
+
+function structuredMilkFixture(fixtures: GeminiMockFixture[], text: unknown) {
+  const mapping = milkTableMapping(text);
+  if (!mapping) return null;
+
+  const candidates = fixtures.filter((fixture) => isActionPlanFixture(fixture) && isMilkImportActionPlanFixture(fixture));
+  if (!candidates.length) return null;
+
+  const needsOptional = Boolean(mapping.columnMapping.turno || mapping.columnMapping.observacoes);
+  const preferred = candidates.find((fixture) => {
+    const columnMapping = isPlainObject(fixture.response.table) && isPlainObject(fixture.response.table.columnMapping)
+      ? fixture.response.table.columnMapping
+      : {};
+    const hasOptional = Boolean(columnMapping.turno || columnMapping.observacoes);
+    return needsOptional ? hasOptional : !hasOptional;
+  }) || candidates[0];
+
+  return adaptMilkImportFixture(preferred, text);
 }
 
 export function geminiMode(): GeminiMode {
@@ -168,8 +263,16 @@ export function findGeminiMockFixture(input: { text?: string; geminiMockId?: str
 
   const normalizedText = normalizeText(input.text);
   const matches = fixtures.filter((fixture) => fixtureExamples(fixture).some((example) => normalizeText(example) === normalizedText));
-  if (!matches.length) return null;
-  if (actionPlanFixturesEnabled()) return matches.find(isActionPlanFixture) || matches[0];
+  if (!matches.length) {
+    if (geminiMode() === "mock" && geminiTableActionPlanEnabled()) {
+      return structuredMilkFixture(fixtures, input.text);
+    }
+    return null;
+  }
+  if (actionPlanFixturesEnabled()) {
+    const fixture = matches.find(isActionPlanFixture) || matches[0];
+    return adaptMilkImportFixture(fixture, input.text);
+  }
   return matches.find((fixture) => !isActionPlanFixture(fixture)) || null;
 }
 
