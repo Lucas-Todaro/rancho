@@ -340,8 +340,7 @@ const cases = [
   },
   {
     message: geminiTableInvalidDomain,
-    intent: "IMPORTACAO_TABELA_AMBIGUA",
-    dados: { gemini_failure_reason: "invalid_schema" }
+    clarify: true
   },
   { message: "boa tarde", clarify: true }
 ];
@@ -349,6 +348,9 @@ const cases = [
 (async () => {
   const results = [];
 
+  // Mantem as fixtures de contrato legado como regressao de compatibilidade em shadow.
+  // O bloco ActionPlan abaixo volta explicitamente ao modo Gemini-first.
+  process.env.BOT_INTERPRETER = "shadow";
   for (const testCase of cases) {
     try {
       const localParsed = parseRanchoMessage(testCase.message);
@@ -410,6 +412,7 @@ const cases = [
       });
     }
   }
+  process.env.BOT_INTERPRETER = "gemini";
 
   const actionPlanCases = [
     {
@@ -478,23 +481,65 @@ const cases = [
     }
   }
 
+  const geminiFirstCases = [
+    { name: "create producao", text: "090 deu 15 litros ontem as 18h", fixture: "create-producao-090", intent: "PRODUCAO_LEITE" },
+    { name: "create compra estoque", text: "comprei 10kg de racao por 300 reais", fixture: "create-compra-estoque", intent: "ESTOQUE_ENTRADA" },
+    { name: "create uso estoque", text: "usei 5kg de racao no lote lactacao", fixture: "create-uso-estoque", intent: "ESTOQUE_SAIDA" },
+    { name: "create financeiro", text: "paguei 300 reais de energia", fixture: "create-financeiro", intent: "DESPESA" },
+    { name: "create animal", text: "cadastrar touro T-900", fixture: "create-animal", intent: "CADASTRO_ANIMAL" },
+    { name: "query vacas paridas", text: "vacas paridas", fixture: "query-vacas-paridas", intent: "CONSULTA_REGISTROS_HOJE" },
+    { name: "query vacas protocolo", text: "vacas em protocolo", fixture: "query-vacas-protocolo", intent: "CONSULTA_REGISTROS_HOJE" },
+    { name: "query vacas reteste", text: "vacas em reteste", fixture: "query-vacas-reteste", intent: "CONSULTA_REGISTROS_HOJE" },
+    { name: "query estoque", text: "quanto tem de racao no estoque", fixture: "query-estoque", intent: "CONSULTA_ESTOQUE_GERAL" },
+    { name: "query animais", text: "listar vacas ativas", fixture: "query-animais", intent: "CONSULTA_REBANHO" },
+    { name: "query genealogia", text: "genealogia da B-123", fixture: "query-genealogia", intent: "CONSULTA_GENEALOGIA" },
+    { name: "import animais", text: "codigo;categoria\nT-187;touro\nT-234;touro\nT-419;touro", fixture: "import-table-animais", intent: "IMPORTACAO_ANIMAIS_TABELA" },
+    { name: "import estoque saida", text: "item;saida;unidade;destino\nracao;5;kg;lote lactacao", fixture: "import-table-estoque-saida", intent: "IMPORTACAO_ESTOQUE_TABELA" },
+    { name: "import genealogia", text: "animal;pai;mae\nB-123;T-01;777\nB-124;;777", fixture: "import-table-genealogia", intent: "IMPORTACAO_TABELA_DOMINIO" },
+    { name: "import agenda", text: "tarefa;data;responsavel\nvacinar lote bezerros;25/06/2026;Joao", fixture: "import-table-agenda", intent: "IMPORTACAO_TABELA_DOMINIO" },
+    { name: "parto sem cria", text: "777 pariu", fixture: "create-parto-777-sem-cria", intent: "PARTO" },
+    { name: "parto com cria", text: "777 pariu macho codigo B-555 hoje", fixture: "create-parto-777-macho-codigo", intent: "PARTO" }
+  ];
+
+  for (const testCase of geminiFirstCases) {
+    try {
+      const result = await parseWithConfiguredInterpreter({
+        text: testCase.text,
+        localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
+        owner: ADMIN_OWNER,
+        geminiMockId: testCase.fixture
+      });
+      const parsed = finalParsed(result);
+      assert(parsed?.tipo === testCase.intent, `${testCase.name}: esperado ${testCase.intent}, recebido ${parsed?.tipo}`);
+      assert(
+        parsed.dados?.origem_parser === "gemini_action_plan",
+        `${testCase.name}: origem deve ser Gemini/ActionPlan, recebida ${parsed.dados?.origem_parser}`
+      );
+      assert(parsed.dados?.action_plan_used === true || parsed.dados?.table_action_plan_used === true, `${testCase.name}: plano nao marcado`);
+      results.push({ ok: true, name: `Gemini-first: ${testCase.name}` });
+    } catch (error) {
+      results.push({ ok: false, name: `Gemini-first: ${testCase.name}`, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   try {
     await withActionPlanFlags(false, false, async () => {
-      const text = "vaca 1 deu 15 litros";
+      const text = "relatÃ³rio financeiro dos Ãºltimos 6 meses";
       const result = await parseWithConfiguredInterpreter({
         text,
         localParsed: parseRanchoMessage(text),
-        owner: ADMIN_OWNER
+        owner: ADMIN_OWNER,
+        geminiMockId: "query-financeiro-ultimos-6-meses"
       });
       const parsed = finalParsed(result);
-      assert(parsed?.tipo === "PRODUCAO_LEITE", `flags false: legado deveria continuar PRODUCAO_LEITE, recebido ${parsed?.tipo}`);
-      assert(!parsed.dados?.action_plan_used, "flags false: nao deveria marcar action_plan_used");
+      assert(parsed?.tipo === "CONSULTA_FINANCEIRO", `modo Gemini deveria usar ActionPlan, recebido ${parsed?.tipo}`);
+      assert(parsed.dados?.action_plan_used === true, "modo Gemini deveria marcar action_plan_used");
     });
-    results.push({ ok: true, name: "Flags ActionPlan false preservam fluxo legado" });
+    results.push({ ok: true, name: "BOT_INTERPRETER=gemini independe de flags antigas" });
   } catch (error) {
     results.push({
       ok: false,
-      name: "Flags ActionPlan false preservam fluxo legado",
+      name: "BOT_INTERPRETER=gemini independe de flags antigas",
       error: error instanceof Error ? error.message : String(error)
     });
   }
@@ -506,16 +551,16 @@ const cases = [
         currentDate: "2026-06-18",
         timezone: "America/Fortaleza"
       });
-      assert(prompt.includes("Formato de saida preferido para consultas/relatorios ActionPlan"), "prompt nao declara formato ActionPlan preferido");
-      assert(prompt.includes("Nao retorne somente intent legado"), "prompt nao bloqueia intent legado como resposta unica para consulta");
+      assert(prompt.includes("Retorne somente um objeto JSON ActionPlan"), "prompt nao declara ActionPlan obrigatorio");
+      assert(prompt.includes("Nao retorne markdown, texto livre, intent legado ou SQL"), "prompt nao bloqueia intent legado");
       assert(prompt.includes('"action": "query"'), "prompt sem exemplo action=query");
-      assert(prompt.includes("relatório financeiro dos últimos 6 meses"), "prompt sem exemplo financeiro obrigatorio");
+      assert(prompt.includes("relatorio financeiro dos ultimos 6 meses"), "prompt sem exemplo financeiro obrigatorio");
     });
-    results.push({ ok: true, name: "Prompt Gemini prefere ActionPlan com flag ligada" });
+    results.push({ ok: true, name: "Prompt Gemini exige ActionPlan" });
   } catch (error) {
     results.push({
       ok: false,
-      name: "Prompt Gemini prefere ActionPlan com flag ligada",
+      name: "Prompt Gemini exige ActionPlan",
       error: error instanceof Error ? error.message : String(error)
     });
   }

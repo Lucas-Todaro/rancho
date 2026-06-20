@@ -1,7 +1,7 @@
 export type BotInterpreterMode = "gemini" | "legacy_parser" | "shadow";
 
 export const GEMINI_SAFE_FAILURE_MESSAGE =
-  "Nao consegui interpretar com seguranca agora. Pode enviar novamente de forma mais direta?";
+  "Estou com instabilidade para interpretar essa mensagem agora. Tente novamente em instantes.";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -16,10 +16,12 @@ export function botAllowsLegacyRollback() {
 }
 
 export function geminiActionPlanEnabled() {
+  if (botInterpreterMode() === "gemini") return true;
   return String(process.env.GEMINI_ACTION_PLAN_ENABLED || "").trim().toLowerCase() === "true";
 }
 
 export function geminiTableActionPlanEnabled() {
+  if (botInterpreterMode() === "gemini") return true;
   return String(process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED || "").trim().toLowerCase() === "true";
 }
 

@@ -60,7 +60,10 @@ const {
 } = require("../src/lib/whatsapp/action-plan/runtime.ts");
 const { executeActionPlan } = require("../src/lib/whatsapp/action-plan/execute-action-plan.ts");
 const { executeQueryActionPlan } = require("../src/lib/whatsapp/action-plan/execute-query-action-plan.ts");
-const { executeImportTableActionPlan } = require("../src/lib/whatsapp/action-plan/execute-import-table-action-plan.ts");
+const {
+  executeImportTableActionPlan,
+  parseStructuredTableForActionPlan
+} = require("../src/lib/whatsapp/action-plan/execute-import-table-action-plan.ts");
 const {
   normalizeDate,
   normalizeReproductionEvent,
@@ -297,24 +300,28 @@ test("manifest nao expoe campos de escopo interno", () => {
   }
 });
 
-test("prompt fragment fica disponivel sem substituir prompt principal", () => {
+test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   const prompt = buildActionPlanPromptFragment({ currentDate: "2026-06-18" });
   assert(prompt.includes("ActionPlan prompt version"), "prompt sem versao");
-  assert(prompt.includes("Domain manifest resumido"), "prompt sem manifest");
-  assert(prompt.includes("Nunca proponha delete"), "prompt sem regra de delete");
+  assert(prompt.includes("Domain manifest"), "prompt sem manifest");
+  assert(prompt.includes("delete ou update em massa"), "prompt sem regra de delete");
   assert(prompt.includes("columnMapping"), "prompt sem regra de tabela");
+  assert(prompt.includes("Nao retorne markdown, texto livre, intent legado ou SQL"), "prompt ainda permite formato legado");
 });
 
 test("fixtures ActionPlan obrigatorias validam ou bloqueiam corretamente", () => {
   const fixtures = loadFixtures();
   assert(fixtures.length >= 11, `fixtures insuficientes: ${fixtures.length}`);
   for (const fixture of fixtures) {
-    const result = assertValid(fixture.name, fixture.plan, fixture.parsedTable);
+    const parsedTable = fixture.parsedTable || (fixture.plan.action === "import_table" && fixture.input
+      ? parseStructuredTableForActionPlan(fixture.input, fixture.plan.table?.separator)
+      : undefined);
+    const result = assertValid(fixture.name, fixture.plan, parsedTable);
     if (fixture.plan.action === "clarify" || fixture.plan.action === "block") {
       assert(result.executable === false, `${fixture.name}: clarify/block nao deve ser executavel`);
     }
     if (fixture.plan.action === "import_table") {
-      const importResult = validateImportTableActionPlan(clone(fixture.plan), fixture.parsedTable);
+      const importResult = validateImportTableActionPlan(clone(fixture.plan), parsedTable);
       assert(importResult.ok, `${fixture.name}: validateImportTableActionPlan falhou`);
     }
   }
@@ -545,8 +552,8 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
     text: "item;quantidade;unidade;valor_total;data\nRacao;10;kg;1200;01/06/2026"
   });
   assert(result.ok, `import estoque deveria executar: ${result.reason}`);
-  assert(result.parsed.tipo === "IMPORTACAO_TABELA_DOMINIO", `intent esperado IMPORTACAO_TABELA_DOMINIO, recebido ${result.parsed.tipo}`);
-  assert(result.parsed.dados?.resumo_validacao?.metricas?.entradas === 1, "defaultFields deveria marcar entrada");
+  assert(result.parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent esperado IMPORTACAO_ESTOQUE_TABELA, recebido ${result.parsed.tipo}`);
+  assert(result.rows[0]?.parsedValues?.tipo_movimento === "entrada", "defaultFields deveria marcar entrada");
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
 });
 
@@ -644,7 +651,7 @@ test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async 
   assert(result.rows[2].animal_codigo === "143" && result.rows[2].evento_tipo === "prenhez", "linha 143 mapeada incorretamente");
 });
 
-test("parse flags false ignora ActionPlan e usa legado", async () => {
+test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", async () => {
   const fixture = fixtureByName("query-financeiro-ultimos-6-meses");
   const before = actionStatsSnapshot();
   await withActionPlanFlags(false, false, async () => {
@@ -658,12 +665,13 @@ test("parse flags false ignora ActionPlan e usa legado", async () => {
       });
       const parsed = finalParsed(result);
       assert(parsed, "resultado sem parsed");
-      assert(parsed.tipo === "PRODUCAO_LEITE", `flags false deveria manter legado, recebido ${parsed.tipo}`);
-      assert(!parsed.dados?.action_plan_used, "flags false nao deveria usar ActionPlan");
+      assert(parsed.tipo === "CONSULTA_FINANCEIRO", `modo Gemini deveria usar ActionPlan, recebido ${parsed.tipo}`);
+      assert(parsed.dados?.action_plan_used === true, "modo Gemini deveria marcar ActionPlan");
     });
   });
   const after = actionStatsSnapshot();
-  assert(after.legacyFallback === before.legacyFallback + 1, "fallback legado deveria ser contabilizado");
+  assert(after.legacyFallback === before.legacyFallback, "modo Gemini nao deveria contabilizar fallback legado");
+  assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
 });
 
 test("parse flags true usa ActionPlan query com Supabase mockado", async () => {

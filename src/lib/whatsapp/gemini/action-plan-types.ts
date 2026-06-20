@@ -38,6 +38,15 @@ export type QueryActionPlan = {
   orderBy?: { field: string; direction: "asc" | "desc" };
   limit?: number;
   requiresConfirmation: false;
+  operation?: string;
+  missingFields?: string[];
+  userQuestion?: string | null;
+  safety?: ActionPlanSafety;
+};
+
+export type ActionPlanSafety = {
+  risk: "low" | "medium" | "high";
+  reason?: string | null;
 };
 
 export type ImportTableActionPlan = {
@@ -53,6 +62,10 @@ export type ImportTableActionPlan = {
     ambiguousColumns?: Array<string | number>;
   };
   requiresConfirmation: true;
+  operation?: string;
+  missingFields?: string[];
+  userQuestion?: string | null;
+  safety?: ActionPlanSafety;
 };
 
 export type CreateActionPlan = {
@@ -61,6 +74,10 @@ export type CreateActionPlan = {
   confidence: number;
   data: Record<string, unknown>;
   requiresConfirmation: true;
+  operation?: string;
+  missingFields?: string[];
+  userQuestion?: string | null;
+  safety?: ActionPlanSafety;
 };
 
 export type UpdateActionPlan = {
@@ -70,18 +87,35 @@ export type UpdateActionPlan = {
   data: Record<string, unknown>;
   filters?: FilterPlan[];
   requiresConfirmation: true;
+  operation?: string;
+  missingFields?: string[];
+  userQuestion?: string | null;
+  safety?: ActionPlanSafety;
 };
 
 export type ClarifyActionPlan = {
   action: "clarify";
-  question: string;
+  domain?: string;
+  operation?: string;
+  confidence?: number;
+  data?: Record<string, unknown>;
+  missingFields?: string[];
+  question?: string;
+  userQuestion?: string;
   options?: string[];
+  requiresConfirmation?: false;
+  safety?: ActionPlanSafety;
 };
 
 export type BlockActionPlan = {
   action: "block";
-  reason: string;
-  userMessage: string;
+  domain?: string;
+  operation?: string;
+  confidence?: number;
+  reason?: string;
+  userMessage?: string;
+  requiresConfirmation?: false;
+  safety?: ActionPlanSafety;
 };
 
 export type ActionPlan =

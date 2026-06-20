@@ -1,0 +1,12 @@
+{
+  "id": "create-compra-estoque",
+  "inputExamples": ["comprei 10kg de racao por 300 reais", "comprei 10kg de ração por 300 reais"],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "compra_estoque",
+    "confidence": 0.96,
+    "data": { "item": "racao", "quantidade": 10, "unidade": "kg", "valor_total": 300, "tipo_movimento": "entrada" },
+    "requiresConfirmation": true
+  }
+}

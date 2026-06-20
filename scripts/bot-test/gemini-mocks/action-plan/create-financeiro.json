@@ -1,0 +1,11 @@
+{
+  "id": "create-financeiro",
+  "input": "paguei 300 reais de energia",
+  "response": {
+    "action": "create",
+    "domain": "financeiro",
+    "confidence": 0.96,
+    "data": { "tipo": "despesa", "valor": 300, "categoria": "energia", "descricao": "energia", "data": "hoje" },
+    "requiresConfirmation": true
+  }
+}

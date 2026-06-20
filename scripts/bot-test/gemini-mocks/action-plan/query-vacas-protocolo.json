@@ -1,0 +1,12 @@
+{
+  "id": "query-vacas-protocolo",
+  "input": "vacas em protocolo",
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "evento", "op": "eq", "value": "em_protocolo" }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

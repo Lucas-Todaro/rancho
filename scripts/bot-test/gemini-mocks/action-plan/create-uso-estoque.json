@@ -1,0 +1,12 @@
+{
+  "id": "create-uso-estoque",
+  "inputExamples": ["usei 5kg de racao no lote lactacao", "usei 5kg de ração no lote lactação"],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "uso_estoque",
+    "confidence": 0.95,
+    "data": { "item": "racao", "quantidade": 5, "unidade": "kg", "tipo_movimento": "saida", "destino": "lote lactacao" },
+    "requiresConfirmation": true
+  }
+}

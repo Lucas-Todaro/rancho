@@ -39,7 +39,7 @@ export type ExecuteActionPlanResult =
     };
 
 function blockParsed(plan: ActionPlan) {
-  const reason = plan.action === "block" ? plan.reason : "action_plan_blocked";
+  const reason = plan.action === "block" ? plan.safety?.reason || plan.reason || "action_plan_blocked" : "action_plan_blocked";
   return finalize("ACAO_DESTRUTIVA_EM_MASSA", {
     blocked: true,
     bloqueado: true,
@@ -50,6 +50,132 @@ function blockParsed(plan: ActionPlan) {
     action_plan_used: true,
     action_plan: plan
   }, [], 1);
+}
+
+function actionPlanMetadata(plan: ActionPlan) {
+  return {
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "action_plan",
+    action_plan_used: true,
+    action_plan_domain: "domain" in plan ? plan.domain : undefined,
+    action_plan: plan
+  };
+}
+
+function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {
+  if (plan.action !== "create" && plan.action !== "update") return null;
+  const data = plan.data || {};
+  const metadata = actionPlanMetadata(plan);
+  const date = normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje";
+
+  if (plan.domain === "producao_leite") {
+    const dados = {
+      animal_codigo: data.animal_ref || data.animal_id,
+      litros: data.litros,
+      data_referencia: date,
+      horario: data.hora || undefined,
+      turno: data.turno || undefined,
+      destino_leite: data.destino || undefined,
+      observacoes: data.observacoes || undefined,
+      ...metadata
+    };
+    return finalize("PRODUCAO_LEITE", dados, buildMissing("PRODUCAO_LEITE", dados), plan.confidence);
+  }
+
+  if (plan.domain === "estoque") {
+    const movement = String(data.tipo_movimento || data.tipo || plan.operation || "").toLowerCase();
+    const isOut = ["saida", "uso", "consumo", "venda", "venda_estoque"].some((value) => movement.includes(value));
+    const isPurchase = movement.includes("compra") || plan.operation === "compra_estoque";
+    const isSale = movement.includes("venda") || plan.operation === "venda_estoque";
+    const tipo = isOut ? "ESTOQUE_SAIDA" : "ESTOQUE_ENTRADA";
+    const dados = {
+      item_nome: data.item || data.item_ref || data.nome,
+      quantidade: data.quantidade,
+      unidade: data.unidade || data.unidade_medida,
+      valor: data.valor_total,
+      data_referencia: date,
+      compra: isPurchase || undefined,
+      venda: isSale || undefined,
+      destino: data.destino || undefined,
+      motivo: data.motivo || data.observacoes || undefined,
+      ...metadata
+    };
+    return finalize(tipo, dados, buildMissing(tipo, dados), plan.confidence);
+  }
+
+  if (plan.domain === "financeiro") {
+    const financialType = String(data.tipo || "").toLowerCase();
+    const tipo = ["receita", "entrada", "credito"].includes(financialType) ? "RECEITA_VENDA" : "DESPESA";
+    const dados = {
+      valor: data.valor,
+      descricao: data.descricao || data.categoria,
+      categoria: data.categoria || undefined,
+      forma_pagamento: data.forma_pagamento || data.metodo_pagamento || undefined,
+      data_referencia: date,
+      ...metadata
+    };
+    return finalize(tipo, dados, buildMissing(tipo, dados), plan.confidence);
+  }
+
+  if (plan.domain === "animais") {
+    const optional = ["sexo", "nome", "peso", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
+    const dados = {
+      animal_codigo: data.brinco || data.animal_ref,
+      nome: data.nome || undefined,
+      categoria: data.categoria,
+      sexo: data.sexo || undefined,
+      fase: data.fase || undefined,
+      raca: data.raca || undefined,
+      peso: data.peso,
+      lote_nome: data.lote_ref || undefined,
+      data_nascimento: data.data_nascimento || undefined,
+      observacoes: data.observacoes || undefined,
+      campos_opcionais_pulados: optional.filter((field) => {
+        const source = field === "lote_animal" ? data.lote_ref : data[field];
+        return source === undefined || source === null || String(source).trim() === "";
+      }),
+      ...metadata
+    };
+    return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados), plan.confidence);
+  }
+
+  if (plan.domain === "lotes") {
+    const dados = {
+      lote_nome: data.nome,
+      descricao: data.descricao || undefined,
+      ...metadata
+    };
+    return finalize("CRIAR_LOTE", dados, buildMissing("CRIAR_LOTE", dados), plan.confidence);
+  }
+
+  if (plan.domain === "observacoes" && data.animal_ref) {
+    const observation = data.observacao || data.observacoes;
+    const dados = {
+      animal_codigo: data.animal_ref,
+      campo_alterado: "observacoes",
+      novo_valor: observation,
+      descricao: observation,
+      registro_evento_animal: true,
+      evento_tipo: "observacao",
+      data_referencia: date,
+      ...metadata
+    };
+    return finalize("ATUALIZACAO_ANIMAL", dados, buildMissing("ATUALIZACAO_ANIMAL", dados), plan.confidence);
+  }
+
+  if (plan.domain === "agenda_tarefas") {
+    const dados = {
+      descricao: data.titulo || data.tarefa,
+      data_referencia: date,
+      horario: data.horario || undefined,
+      responsavel: data.responsavel || undefined,
+      observacoes: data.observacoes || undefined,
+      ...metadata
+    };
+    return finalize("ORDEM_SERVICO", dados, [], plan.confidence);
+  }
+
+  return reproductionMutationParsed(plan, currentDate);
 }
 
 function reproductionMutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {
@@ -126,7 +252,7 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
       ok: false,
       status: "clarify",
       reason: "action_plan_clarify",
-      message: input.plan.question,
+      message: input.plan.userQuestion || input.plan.question || "Pode informar o dado que faltou?",
       logEvent: "action_plan_invalid"
     };
   }
@@ -191,7 +317,7 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
         logEvent: validation.status === "blocked" ? "action_plan_blocked" : "action_plan_invalid"
       };
     }
-    const parsed = reproductionMutationParsed(validation.value, input.currentDate);
+    const parsed = mutationParsed(validation.value, input.currentDate);
     if (parsed) {
       return {
         ok: true,

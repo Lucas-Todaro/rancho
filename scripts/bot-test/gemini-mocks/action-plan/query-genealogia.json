@@ -1,0 +1,12 @@
+{
+  "id": "query-genealogia",
+  "input": "genealogia da B-123",
+  "response": {
+    "action": "query",
+    "domain": "genealogia",
+    "confidence": 0.95,
+    "filters": [{ "field": "animal_ref", "op": "contains", "value": "B-123" }],
+    "limit": 20,
+    "requiresConfirmation": false
+  }
+}

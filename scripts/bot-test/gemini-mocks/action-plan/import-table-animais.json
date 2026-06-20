@@ -1,0 +1,12 @@
+{
+  "id": "import-table-animais",
+  "input": "codigo;categoria\nT-187;touro\nT-234;touro\nT-419;touro",
+  "inputExamples": ["codigo;categoria\nT-187;touro\nT-234;touro\nT-419;touro", "categoria;codigo\ntouro;T-999\nvaca;V-888"],
+  "response": {
+    "action": "import_table",
+    "domain": "animais",
+    "confidence": 0.96,
+    "table": { "hasHeader": true, "separator": ";", "columnMapping": { "brinco": "codigo", "categoria": "categoria" }, "defaultFields": {}, "ignoredColumns": [], "ambiguousColumns": [] },
+    "requiresConfirmation": true
+  }
+}

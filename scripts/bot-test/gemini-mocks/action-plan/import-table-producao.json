@@ -2,8 +2,7 @@
   "id": "import-table-producao",
   "input": "animal;litros;data\n001;15;01/06/2026\n002;20;01/06/2026",
   "inputExamples": [
-    "animal;litros;data\n001;15;01/06/2026\n002;20;01/06/2026",
-    "Data;Animal;Litros\n2026-06-01;001;15\n2026-06-01;002;20"
+    "animal;litros;data\n001;15;01/06/2026\n002;20;01/06/2026"
   ],
   "parsedTable": {
     "headers": ["animal", "litros", "data"],

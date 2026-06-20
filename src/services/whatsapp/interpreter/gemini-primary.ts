@@ -843,6 +843,19 @@ function mockFixtureMissingResult(): GeminiFallbackParseResult {
   };
 }
 
+function geminiFailureMessage(result: { reason: string; status?: number }) {
+  if (result.status === 429 || result.reason === "rate_limit") {
+    return "O limite de interpretacao foi atingido agora. Tente novamente em alguns instantes.";
+  }
+  if (result.status === 403 || result.reason === "missing_api_key") {
+    return "O interpretador do Rancho precisa de configuracao. Fale com o administrador.";
+  }
+  if (result.status === 400 || result.reason === "invalid_json" || result.reason === "invalid_schema") {
+    return "Nao consegui interpretar essa mensagem com seguranca. Pode reformular?";
+  }
+  return GEMINI_SAFE_FAILURE_MESSAGE;
+}
+
 function actionPlanEnabledFor(plan: ActionPlan | null | undefined) {
   if (!plan) return false;
   if (plan.action === "import_table") return geminiTableActionPlanEnabled();
@@ -884,6 +897,16 @@ async function convertActionPlanInterpretation(
   const error = interpretation.action_plan_error || null;
 
   if (!plan && !error) {
+    if (botInterpreterMode() === "gemini") {
+      recordActionPlanRuntime("invalid");
+      logActionPlan("action_plan_invalid", { reason: "action_plan_absent", route });
+      return {
+        kind: "clarify",
+        threshold: 0.7,
+        reason: "action_plan_absent",
+        message: GEMINI_SAFE_FAILURE_MESSAGE
+      };
+    }
     if (anyActionPlanFlagEnabled()) {
       recordActionPlanRuntime("legacyFallback");
       logActionPlan(route === "structured_input" ? "table_action_plan_fallback_legacy" : "action_plan_fallback_legacy", {
@@ -1105,7 +1128,7 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
     };
   }
 
-  if (process.env.BOT_GEMINI_MOCK === "legacy_parser") {
+  if (botInterpreterMode() !== "gemini" && process.env.BOT_GEMINI_MOCK === "legacy_parser") {
     return {
       kind: "parsed",
       threshold: 0.7,
@@ -1149,23 +1172,18 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       event: "failure",
       interpreter: "gemini",
       reason: gemini.reason,
-      rollbackAllowed: botAllowsLegacyRollback()
+      rollbackAllowed: botInterpreterMode() !== "gemini" && botAllowsLegacyRollback()
     });
 
-    if (botAllowsLegacyRollback()) {
+    if (botInterpreterMode() !== "gemini" && botAllowsLegacyRollback()) {
       return legacyRollbackResult(input.localParsed, gemini.reason);
-    }
-
-    const hasUsableLocalInterpretation = input.localParsed.tipo !== "DESCONHECIDO";
-    if (hasUsableLocalInterpretation) {
-      return localFallbackResult(input, gemini.reason, route, structuredDetection);
     }
 
     return {
       kind: "clarify",
       threshold: 0.7,
       reason: gemini.reason,
-      message: GEMINI_SAFE_FAILURE_MESSAGE
+      message: geminiFailureMessage(gemini)
     };
   }
 
@@ -1183,6 +1201,15 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
 
   const tableImportResult = convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
   if (tableImportResult) return tableImportResult;
+
+  if (botInterpreterMode() === "gemini") {
+    return {
+      kind: "clarify",
+      threshold: 0.7,
+      reason: "action_plan_required",
+      message: GEMINI_SAFE_FAILURE_MESSAGE
+    };
+  }
 
   return convertPrimaryInterpretation(gemini.interpretation, input.text);
 }

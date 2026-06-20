@@ -1,0 +1,11 @@
+{
+  "id": "import-table-producao-shuffled",
+  "input": "Data;Animal;Litros\n2026-06-01;001;15\n2026-06-01;002;20",
+  "response": {
+    "action": "import_table",
+    "domain": "producao_leite",
+    "confidence": 0.95,
+    "table": { "hasHeader": true, "separator": ";", "columnMapping": { "data": "Data", "animal_ref": "Animal", "litros": "Litros" }, "defaultFields": {}, "ignoredColumns": [], "ambiguousColumns": [] },
+    "requiresConfirmation": true
+  }
+}

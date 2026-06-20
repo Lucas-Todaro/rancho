@@ -1,0 +1,12 @@
+{
+  "id": "query-estoque",
+  "input": "quanto tem de racao no estoque",
+  "response": {
+    "action": "query",
+    "domain": "estoque",
+    "confidence": 0.95,
+    "filters": [{ "field": "item", "op": "contains", "value": "racao" }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

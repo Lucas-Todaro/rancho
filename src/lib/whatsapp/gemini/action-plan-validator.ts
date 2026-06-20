@@ -94,6 +94,12 @@ function normalizeReproductionValue(fieldName: string, value: unknown) {
 function normalizeReproductionData(data: unknown) {
   if (!isPlainObject(data)) return data;
   const normalized: AnyRecord = { ...data };
+  if (isPlainObject(normalized.cria)) {
+    if (!hasValue(normalized.cria_sexo) && hasValue(normalized.cria.sexo)) normalized.cria_sexo = normalized.cria.sexo;
+    if (!hasValue(normalized.cria_codigo) && hasValue(normalized.cria.codigo)) normalized.cria_codigo = normalized.cria.codigo;
+    if (!hasValue(normalized.cria_nome) && hasValue(normalized.cria.nome)) normalized.cria_nome = normalized.cria.nome;
+    delete normalized.cria;
+  }
   if (!hasValue(normalized.animal_ref) && hasValue(normalized.mae_ref)) normalized.animal_ref = normalized.mae_ref;
   if (!hasValue(normalized.evento) && hasValue(normalized.tipo)) normalized.evento = normalized.tipo;
   if (!hasValue(normalized.cria_sexo) && hasValue(normalized.sexo_cria)) normalized.cria_sexo = normalized.sexo_cria;
@@ -538,20 +544,46 @@ function invalid(reason: string, warnings: string[] = [], blocked = false): Acti
 
 function validateClarify(plan: AnyRecord, warnings: string[]): ActionPlanValidationResult {
   const errors: string[] = [];
-  if (typeof plan.question !== "string" || !plan.question.trim()) errors.push("clarify.question obrigatorio");
+  const question = typeof plan.userQuestion === "string" && plan.userQuestion.trim()
+    ? plan.userQuestion.trim()
+    : typeof plan.question === "string" ? plan.question.trim() : "";
+  if (!question) errors.push("clarify.userQuestion obrigatorio");
   if (plan.options !== undefined && (!Array.isArray(plan.options) || plan.options.some((item) => typeof item !== "string" || !item.trim()))) {
     errors.push("clarify.options deve ser array de textos");
   }
   if (errors.length) return invalid(errors.join("; "), warnings);
-  return { ok: true, status: "clarify", value: plan as ActionPlan, warnings, executable: false };
+  return {
+    ok: true,
+    status: "clarify",
+    value: { ...plan, question, userQuestion: question, requiresConfirmation: false } as ActionPlan,
+    warnings,
+    executable: false
+  };
 }
 
 function validateBlock(plan: AnyRecord, warnings: string[]): ActionPlanValidationResult {
   const errors: string[] = [];
-  if (typeof plan.reason !== "string" || !plan.reason.trim()) errors.push("block.reason obrigatorio");
-  if (typeof plan.userMessage !== "string" || !plan.userMessage.trim()) errors.push("block.userMessage obrigatorio");
+  const reason = typeof plan.safety?.reason === "string" && plan.safety.reason.trim()
+    ? plan.safety.reason.trim()
+    : typeof plan.reason === "string" ? plan.reason.trim() : "";
+  const userMessage = typeof plan.userMessage === "string" && plan.userMessage.trim()
+    ? plan.userMessage.trim()
+    : "Nao posso executar esse pedido com seguranca.";
+  if (!reason) errors.push("block.safety.reason obrigatorio");
   if (errors.length) return invalid(errors.join("; "), warnings, true);
-  return { ok: true, status: "blocked", value: plan as ActionPlan, warnings, executable: false };
+  return {
+    ok: true,
+    status: "blocked",
+    value: {
+      ...plan,
+      reason,
+      userMessage,
+      requiresConfirmation: false,
+      safety: { risk: "high", ...(isPlainObject(plan.safety) ? plan.safety : {}), reason }
+    } as ActionPlan,
+    warnings,
+    executable: false
+  };
 }
 
 export function validateImportTableActionPlan(

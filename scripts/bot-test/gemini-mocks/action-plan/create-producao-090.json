@@ -1,0 +1,11 @@
+{
+  "id": "create-producao-090",
+  "inputExamples": ["090 deu 15 litros ontem as 18h", "090 deu 15 litros ontem às 18h"],
+  "response": {
+    "action": "create",
+    "domain": "producao_leite",
+    "confidence": 0.96,
+    "data": { "animal_ref": "090", "litros": 15, "data": "ontem", "hora": "18:00" },
+    "requiresConfirmation": true
+  }
+}

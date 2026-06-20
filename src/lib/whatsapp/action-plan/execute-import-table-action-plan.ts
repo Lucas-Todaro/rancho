@@ -4,7 +4,11 @@ import { validateImportTableActionPlan, type ParsedTableForValidation } from "@/
 import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
-import { parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
+import {
+  normalizeReproductiveEventType,
+  reproductiveEventDbType,
+  reproductiveEventLabel
+} from "@/lib/whatsapp/nlp-core/reproductive-events";
 
 export type ExecuteImportTableActionPlanInput = {
   plan: ImportTableActionPlan;
@@ -80,7 +84,7 @@ function parseDate(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  const dateMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  const dateMatch = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
   if (dateMatch) {
     const day = dateMatch[1].padStart(2, "0");
     const month = dateMatch[2].padStart(2, "0");
@@ -224,44 +228,60 @@ function reproductionPreview(rows: AnyRecord[]) {
   return `Li uma tabela de reproducao com ${rows.length} registro(s)${summary ? `: ${summary}` : "."}.${warning}`.replace("..", ".");
 }
 
-function reproductionTableParsed(plan: ImportTableActionPlan, text: string) {
-  const parsed = parseTabularAnimalEventsMessageAs(text, "REPRODUCAO");
-  if (!parsed || parsed.tipo !== "IMPORTACAO_EVENTOS_TABELA") return null;
-  const rows = (Array.isArray(parsed.dados?.linhas) ? parsed.dados.linhas : []).map((rawRow) => {
-    const row = rawRow as AnyRecord;
-    const avisos = Array.isArray(row.avisos) ? [...row.avisos] : [];
-    if (row.evento_tipo === "parto" && !row.parto_cria_cadastro && !avisos.includes("dados_da_cria_ausentes")) {
-      avisos.push("dados_da_cria_ausentes");
-    }
+function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[], text: string) {
+  const normalizedRows = rows.map((row) => {
+    const animalRef = String(row.parsedValues?.animal_ref || row.values?.animal_ref || "").trim();
+    const eventOriginal = String(row.values?.evento || row.parsedValues?.evento || "").trim();
+    const eventKind = normalizeReproductiveEventType(eventOriginal);
+    const dateOriginal = String(row.values?.data || row.parsedValues?.data || "").trim();
+    const date = parseDate(dateOriginal);
+    const problems: string[] = [];
+    const warnings: string[] = [];
+    if (!animalRef) problems.push("animal_sem_codigo");
+    if (!eventKind) problems.push("tipo_evento_desconhecido");
+    if (!dateOriginal) problems.push("data_ausente");
+    else if (!date) problems.push("data_invalida");
+    if (eventKind === "parto") warnings.push("dados_da_cria_ausentes");
     return {
-      ...row,
-      evento_normalizado: row.evento_tipo ? String(row.evento_tipo).toUpperCase() : null,
-      status_linha: Array.isArray(row.problemas) && row.problemas.length ? "invalido" : "pronto",
-      avisos
+      lineNumber: row.lineNumber,
+      rawText: row.rawText,
+      animal_codigo_original: animalRef,
+      animal_codigo: animalRef,
+      status_original: eventOriginal,
+      evento_tipo: eventKind || null,
+      evento_normalizado: eventKind ? eventKind.toUpperCase() : null,
+      evento_label: reproductiveEventLabel(eventKind),
+      db_tipo: reproductiveEventDbType(eventKind),
+      data_original: dateOriginal,
+      data_referencia: date,
+      observacoes: String(row.parsedValues?.observacoes || row.values?.observacoes || "").trim(),
+      problemas: problems,
+      avisos: warnings,
+      status_linha: problems.length ? "invalido" : "pronto"
     };
   });
-  const invalidRows = rows.filter((row) => row.status_linha === "invalido");
-  const reviewRows = rows.filter((row) => Array.isArray(row.avisos) && row.avisos.length > 0);
-  const preview = reproductionPreview(rows);
-  parsed.dados = {
-    ...parsed.dados,
+  const rowsWithStatus = normalizedRows;
+  const invalidRows = rowsWithStatus.filter((row) => row.status_linha === "invalido");
+  const reviewRows = rowsWithStatus.filter((row) => row.avisos.length > 0);
+  const preview = reproductionPreview(rowsWithStatus);
+  const parsed = finalize("IMPORTACAO_EVENTOS_TABELA", {
     origem_parser: "gemini_action_plan",
     interpreter_final_usado: "table_action_plan",
     table_action_plan_used: true,
     column_mapping: plan.table.columnMapping,
     texto_tabela_original: text,
-    linhas: rows,
+    linhas: rowsWithStatus,
     linhas_parse_invalidas: invalidRows,
     linhas_revisao: reviewRows,
-    total_linhas: rows.length,
-    total_linhas_parse_validas: rows.length - invalidRows.length,
+    total_linhas: rowsWithStatus.length,
+    total_linhas_parse_validas: rowsWithStatus.length - invalidRows.length,
     total_linhas_parse_invalidas: invalidRows.length,
     total_linhas_needs_review: reviewRows.length,
     preview_only: true,
     action_plan: plan,
     action_plan_preview: preview
-  };
-  return { parsed, rows, preview };
+  }, [], plan.confidence);
+  return { parsed, rows: rowsWithStatus, preview };
 }
 
 function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
@@ -280,6 +300,105 @@ function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], p
     origem_parser: "gemini_action_plan",
     interpreter_final_usado: "table_action_plan",
     table_action_plan_used: true,
+    action_plan: plan,
+    action_plan_preview: preview
+  }, [], plan.confidence);
+}
+
+function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
+  const normalizedRows = rows.map((row) => {
+    const values = row.parsedValues || {};
+    const code = String(values.brinco || values.animal_ref || "").trim();
+    const category = String(values.categoria || "").trim().toLowerCase();
+    const problems = [...(row.problemas || [])];
+    if (!code) problems.push("animal_sem_codigo");
+    if (!category) problems.push("categoria_ausente");
+    return {
+      lineNumber: row.lineNumber,
+      rawText: row.rawText,
+      animal_codigo_original: code,
+      animal_codigo: code,
+      nome: values.nome || null,
+      categoria_original: values.categoria || "",
+      categoria: category || null,
+      sexo: values.sexo || "nao_informado",
+      fase: values.fase || "nao_aplicavel",
+      raca: values.raca || null,
+      lote_nome: values.lote_ref || null,
+      status: values.status || "ativo",
+      peso: values.peso ?? null,
+      data_nascimento: values.data_nascimento || null,
+      observacoes: values.observacoes || "",
+      problemas: problems
+    };
+  });
+  const invalid = normalizedRows.filter((row) => row.problemas.length > 0);
+  return finalize("IMPORTACAO_ANIMAIS_TABELA", {
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "table_action_plan",
+    table_action_plan_used: true,
+    column_mapping: plan.table.columnMapping,
+    linhas: normalizedRows,
+    total_linhas: normalizedRows.length,
+    total_linhas_parse_validas: normalizedRows.length - invalid.length,
+    total_linhas_parse_invalidas: invalid.length,
+    linhas_parse_invalidas: invalid,
+    preview_only: true,
+    action_plan: plan,
+    action_plan_preview: preview
+  }, [], plan.confidence);
+}
+
+function stockMovement(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["entrada", "compra", "recebimento"].includes(normalized)) return "entrada";
+  if (["saida", "uso", "consumo", "venda", "baixa"].includes(normalized)) return "saida";
+  return null;
+}
+
+function stockImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
+  const normalizedRows = rows.map((row) => {
+    const values = row.parsedValues || {};
+    const item = String(values.item || values.nome || "").trim();
+    const quantity = parseNumber(values.quantidade);
+    const unit = String(values.unidade || values.unidade_medida || "").trim();
+    const movement = stockMovement(values.tipo_movimento || values.tipo);
+    const problems: string[] = [];
+    if (!item) problems.push("item_ausente");
+    if (quantity === null || quantity <= 0) problems.push("quantidade_invalida");
+    if (!unit) problems.push("unidade_ausente");
+    if (!movement) problems.push("tipo_movimento_desconhecido");
+    return {
+      lineNumber: row.lineNumber,
+      rawText: row.rawText,
+      item_original: item,
+      item_nome: item,
+      quantidade_original: values.quantidade,
+      quantidade: quantity,
+      unidade_original: unit,
+      unidade: unit || null,
+      tipo_original: values.tipo_movimento || values.tipo || "",
+      tipo_movimento: movement,
+      data_original: values.data || "",
+      data_referencia: values.data || null,
+      valor_original: values.valor_total || values.valor_unitario || "",
+      valor: parseNumber(values.valor_total),
+      observacoes: values.observacoes || values.motivo || "",
+      problemas: problems
+    };
+  });
+  const invalid = normalizedRows.filter((row) => row.problemas.length > 0);
+  return finalize("IMPORTACAO_ESTOQUE_TABELA", {
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "table_action_plan",
+    table_action_plan_used: true,
+    column_mapping: plan.table.columnMapping,
+    linhas: normalizedRows,
+    total_linhas: normalizedRows.length,
+    total_linhas_parse_validas: normalizedRows.length - invalid.length,
+    total_linhas_parse_invalidas: invalid.length,
+    linhas_parse_invalidas: invalid,
+    preview_only: true,
     action_plan: plan,
     action_plan_preview: preview
   }, [], plan.confidence);
@@ -362,16 +481,9 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       message: "Ainda não tenho um mapeamento seguro para importar esse tipo de tabela."
     };
   }
+  const rows = mappedRows(plan, domain, parsedTable);
   if (plan.domain === "reproducao") {
-    const reproduction = reproductionTableParsed(plan, input.text);
-    if (!reproduction) {
-      return {
-        ok: false,
-        status: "clarify",
-        reason: "reproduction_table_parse_failed",
-        message: "Nao consegui ler as linhas dessa tabela de reproducao com seguranca."
-      };
-    }
+    const reproduction = reproductionTableParsed(plan, rows, input.text);
     return {
       ok: true,
       parsed: reproduction.parsed,
@@ -381,13 +493,16 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
     };
   }
 
-  const rows = mappedRows(plan, domain, parsedTable);
   const normalizedRows = genericRows(rows, domain);
   const metrics = metricsFor(plan.domain, normalizedRows);
   const preview = previewText(plan.domain, normalizedRows, metrics);
   const parsed = plan.domain === "producao_leite"
     ? productionBatchParsed(plan, normalizedRows, preview)
-    : genericDomainParsed(plan, normalizedRows, preview);
+    : plan.domain === "animais"
+      ? animalImportParsed(plan, normalizedRows, preview)
+      : plan.domain === "estoque"
+        ? stockImportParsed(plan, normalizedRows, preview)
+        : genericDomainParsed(plan, normalizedRows, preview);
   parsed.dados.texto_tabela_original = input.text;
 
   return { ok: true, parsed, preview, rows: normalizedRows, parsedTable };

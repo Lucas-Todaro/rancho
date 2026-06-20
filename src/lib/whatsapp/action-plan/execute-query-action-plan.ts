@@ -50,6 +50,7 @@ const SAFE_SELECT_FIELDS: Record<string, string[]> = {
   funcionarios: ["id", "nome", "funcao", "cpf", "salario_base", "data_admissao", "contato_whatsapp", "ativo", "created_at"],
   ponto_funcionario: ["id", "funcionario_id", "tipo", "registrado_em", "observacao", "created_at"],
   observacoes: ["id", "animal_id", "tipo", "data_evento", "descricao", "created_at"],
+  genealogia: ["id", "brinco", "nome", "pai_id", "mae_id", "data_nascimento", "observacoes"],
   agenda_tarefas: ["id", "titulo", "mensagem", "created_at"]
 };
 
@@ -168,6 +169,7 @@ function sourceField(domain: DomainManifestEntry, fieldName: string) {
 function queryTable(domain: DomainManifestEntry) {
   if (domain.tableName) return domain.tableName;
   if (domain.domain === "estoque") return TABLES.estoqueMovimentacoes;
+  if (domain.domain === "genealogia") return TABLES.animais;
   return null;
 }
 
@@ -180,6 +182,7 @@ function normalizeFinanceType(value: unknown) {
 
 function rowValue(row: AnyRecord, domain: DomainManifestEntry, fieldName: string, relations: AnyRecord) {
   if (fieldName === "animal_ref") {
+    if (domain.domain === "genealogia") return [row.brinco, row.nome].filter(Boolean).join(" ");
     const animal = relations.animalsById?.get(String(row.animal_id || ""));
     return [animal?.brinco, animal?.nome, animal?.categoria].filter(Boolean).join(" ");
   }

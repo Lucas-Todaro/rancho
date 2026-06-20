@@ -1,0 +1,12 @@
+{
+  "id": "query-animais",
+  "input": "listar vacas ativas",
+  "response": {
+    "action": "query",
+    "domain": "animais",
+    "confidence": 0.95,
+    "filters": [{ "field": "categoria", "op": "eq", "value": "vaca" }, { "field": "status", "op": "eq", "value": "ativo" }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

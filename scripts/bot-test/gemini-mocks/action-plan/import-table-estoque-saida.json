@@ -1,0 +1,11 @@
+{
+  "id": "import-table-estoque-saida",
+  "input": "item;saida;unidade;destino\nracao;5;kg;lote lactacao",
+  "response": {
+    "action": "import_table",
+    "domain": "estoque",
+    "confidence": 0.95,
+    "table": { "hasHeader": true, "separator": ";", "columnMapping": { "item": "item", "quantidade": "saida", "unidade": "unidade", "destino": "destino" }, "defaultFields": { "tipo_movimento": "saida" }, "ignoredColumns": [], "ambiguousColumns": [] },
+    "requiresConfirmation": true
+  }
+}

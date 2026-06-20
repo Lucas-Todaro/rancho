@@ -1,0 +1,11 @@
+{
+  "id": "import-table-genealogia",
+  "input": "animal;pai;mae\nB-123;T-01;777\nB-124;;777",
+  "response": {
+    "action": "import_table",
+    "domain": "genealogia",
+    "confidence": 0.95,
+    "table": { "hasHeader": true, "separator": ";", "columnMapping": { "animal_ref": "animal", "pai_ref": "pai", "mae_ref": "mae" }, "defaultFields": {}, "ignoredColumns": [], "ambiguousColumns": [] },
+    "requiresConfirmation": true
+  }
+}

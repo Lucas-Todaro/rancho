@@ -1,0 +1,12 @@
+{
+  "id": "query-vacas-reteste",
+  "input": "vacas em reteste",
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "evento", "op": "eq", "value": "em_reteste" }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

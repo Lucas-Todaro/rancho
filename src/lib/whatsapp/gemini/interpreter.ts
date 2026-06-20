@@ -144,25 +144,22 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
   try {
     geminiInterpreterLog("request", { model, messageLength: input.text.length });
     recordGeminiLiveCall();
-    const response = await fetch(url, {
+    const requestInit = {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json"
-        }
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
       }),
       signal: controller.signal
-    });
+    } satisfies RequestInit;
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(url, requestInit);
+      if (response.status < 500 || attempt === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (!response) return { ok: false, reason: "network_error", message: "Erro de rede ao chamar Gemini." };
 
     const data = await response.json().catch(() => ({})) as GeminiApiResponse;
     if (!response.ok) {

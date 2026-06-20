@@ -1,0 +1,13 @@
+{
+  "id": "query-vacas-paridas",
+  "input": "vacas paridas",
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "evento", "op": "eq", "value": "parto" }],
+    "orderBy": { "field": "data", "direction": "desc" },
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

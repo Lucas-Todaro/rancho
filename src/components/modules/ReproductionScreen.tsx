@@ -116,7 +116,7 @@ const statusFilters: Array<{ value: ReproductionFilter; label: string }> = [
   { value: "prenhe", label: "Prenhas" },
   { value: "inseminada", label: "Inseminadas" },
   { value: "pre_parto", label: "Pre-parto" },
-  { value: "parto", label: "Partos" },
+  { value: "parto", label: "Paridas" },
   { value: "sem_info", label: "Sem info" }
 ];
 

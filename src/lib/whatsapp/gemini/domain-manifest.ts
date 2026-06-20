@@ -138,8 +138,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
     fields: {
       animal_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
       animal_id: field("relation", { relationDomain: "animais" }),
-      evento: field("enum", { sourceField: "tipo", enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"] }),
-      tipo: field("enum", { enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"] }),
+      evento: field("enum", { sourceField: "tipo", enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"] }),
+      tipo: field("enum", { enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"] }),
       data: field("date", { sourceField: "data_evento" }),
       data_evento: field("datetime"),
       mae_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
@@ -164,8 +164,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
     dateFields: ["data", "data_evento"],
     relationFields: ["animal_ref", "animal_id", "mae_ref", "pai_ref", "cria_ref"],
     enumFields: {
-      evento: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"],
-      tipo: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"],
+      evento: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"],
+      tipo: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"],
       cria_sexo: ["femea", "macho", "nao_informado"],
       sexo_cria: ["femea", "macho", "nao_informado"]
     },
@@ -181,6 +181,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
       animal_id: field("relation", { relationDomain: "animais" }),
       litros: field("number"),
       data: field("date", { sourceField: "ordenhado_em" }),
+      hora: field("string"),
       ordenhado_em: field("datetime"),
       turno: field("enum", { enumValues: ["manha", "tarde", "noite"] }),
       destino: field("enum", { enumValues: ["tanque", "venda", "consumo", "descarte"] }),
@@ -407,7 +408,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
     domain: "agenda_tarefas",
     label: "Agenda e tarefas",
     sourceName: TABLES.notificacoes,
-    allowedActions: queryCreate,
+    allowedActions: queryCreateImport,
     fields: {
       titulo: field("string"),
       tarefa: field("string", { sourceField: "titulo" }),

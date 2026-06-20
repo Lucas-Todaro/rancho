@@ -8,7 +8,9 @@ export type NormalizedReproductionEvent =
   | "PRENHEZ"
   | "PRE_PARTO"
   | "CIO"
-  | "ABORTO";
+  | "ABORTO"
+  | "EM_PROTOCOLO"
+  | "EM_RETESTE";
 
 const EVENT_BY_KIND: Record<string, NormalizedReproductionEvent> = {
   parto: "PARTO",
@@ -16,7 +18,9 @@ const EVENT_BY_KIND: Record<string, NormalizedReproductionEvent> = {
   prenhez: "PRENHEZ",
   pre_parto: "PRE_PARTO",
   cio: "CIO",
-  aborto: "ABORTO"
+  aborto: "ABORTO",
+  protocolo: "EM_PROTOCOLO",
+  reteste: "EM_RETESTE"
 };
 
 function validDateParts(year: number, month: number, day: number) {

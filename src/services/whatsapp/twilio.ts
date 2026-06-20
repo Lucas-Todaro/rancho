@@ -37,6 +37,7 @@ import {
   destructiveBulkActionParsed
 } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
+import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import { domainFromUserChoice, manualDomainChoiceOptionsText, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -8345,8 +8346,10 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       suppressPreviousPending = true;
     } else {
     const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
-    const localParsedPreview = parseRanchoMessage(parserMessage);
     const legacyParserCanDecide = !isGeminiPrimaryMode();
+    const localParsedPreview = legacyParserCanDecide
+      ? parseRanchoMessage(parserMessage)
+      : finalize("DESCONHECIDO", {}, [], 0.2);
     const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_DOMINIO", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;

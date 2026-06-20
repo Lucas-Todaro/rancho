@@ -1,0 +1,11 @@
+{
+  "id": "create-animal",
+  "input": "cadastrar touro T-900",
+  "response": {
+    "action": "create",
+    "domain": "animais",
+    "confidence": 0.96,
+    "data": { "brinco": "T-900", "categoria": "touro", "sexo": "macho" },
+    "requiresConfirmation": true
+  }
+}

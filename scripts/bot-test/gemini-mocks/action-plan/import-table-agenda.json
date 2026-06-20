@@ -1,0 +1,11 @@
+{
+  "id": "import-table-agenda",
+  "input": "tarefa;data;responsavel\nvacinar lote bezerros;25/06/2026;Joao",
+  "response": {
+    "action": "import_table",
+    "domain": "agenda_tarefas",
+    "confidence": 0.94,
+    "table": { "hasHeader": true, "separator": ";", "columnMapping": { "titulo": "tarefa", "data": "data", "responsavel": "responsavel" }, "defaultFields": {}, "ignoredColumns": [], "ambiguousColumns": [] },
+    "requiresConfirmation": true
+  }
+}
