@@ -9,6 +9,9 @@ import { hasBirthChildData } from "./birth-child";
 
 function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord) {
   return fields.map((field) => {
+    if (field === "parto_cria_decisao" && tipo === "PARTO") {
+      return `A vaca ${dados.animal_codigo || dados.mae_ref || "informada"} pariu. Deseja cadastrar a cria como descendente? Se sim, me informe sexo e codigo/nome da cria.`;
+    }
     if (field === "animal_codigo" && dados.animal_referencia_nao_encontrada) {
       if (Array.isArray(dados.animal_opcoes) && dados.animal_opcoes.length) {
         return `Encontrei mais de um animal parecido com ${dados.animal_referencia_nao_encontrada}. Qual é o brinco correto?${dados.animal_opcoes.slice(0, 5).join(", ")}`;
@@ -273,7 +276,9 @@ export function buildMissing(tipo: RanchoIntent, dados: AnyRecord) {
   const stockCreateIntent = ["ESTOQUE_CADASTRO", "CRIAR_ITEM_ESTOQUE"].includes(tipo);
   const stockMovementIntent = ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(tipo);
   if (["PRODUCAO_LEITE", "PARTO", "MORTE", "ATUALIZACAO_ANIMAL", "CONSULTA_ANIMAL", "ATUALIZACAO_GENEALOGIA", "CONSULTA_GENEALOGIA"].includes(tipo) && !dados.animal_codigo) missing.push("animal_codigo");
-  if (tipo === "PARTO" && hasBirthChildData(dados)) {
+  if (tipo === "PARTO" && dados.parto_cria_decisao_pendente) {
+    missing.push("parto_cria_decisao");
+  } else if (tipo === "PARTO" && hasBirthChildData(dados)) {
     if (dados.precisa_pai_ref && !dados.pai_ref && !dados.pai_nome && !dados.pai_nao_informado) missing.push("pai_ref");
     if (!dados.cria_sexo) missing.push("cria_sexo");
     if (dados.cria_sexo && !dados.cria_codigo && !dados.gerar_cria_codigo_temporario) missing.push("cria_codigo");

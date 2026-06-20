@@ -705,7 +705,7 @@ function tabularImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
 
 function normalizedReproductiveEventKind(dados: AnyRecord, description: string): NlpReproductiveEventKind | undefined {
   const explicitKind = String(dados.evento_reprodutivo_tipo || "");
-  if (["inseminacao", "prenhez", "pre_parto", "parto", "protocolo", "reteste", "observacao"].includes(explicitKind)) {
+  if (["inseminacao", "prenhez", "pre_parto", "parto", "cio", "aborto", "protocolo", "reteste", "observacao"].includes(explicitKind)) {
     return explicitKind as NlpReproductiveEventKind;
   }
   if (dados.evento_tipo === "reprodutivo") return detectReproductiveEventKind(description) || "observacao";
@@ -4898,7 +4898,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           cria_categoria: dados.cria_categoria || calfCategoryForSex(childSex)
         };
 
-        await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+        const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
           fazenda_id: owner.fazenda_id,
           animal_id: animal.id,
           tipo: "parto",
@@ -4910,7 +4910,28 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           responsavel_usuario_id: owner.usuario_id || null
         });
 
-        await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+        try {
+          await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+        } catch (error) {
+          let compensationError: string | null = null;
+          if (birthEvent?.id) {
+            const rollback = await supabase
+              .from(TABLES.eventosAnimal)
+              .delete()
+              .eq("id", birthEvent.id)
+              .eq("fazenda_id", owner.fazenda_id);
+            compensationError = rollback.error?.message || null;
+          }
+          console.error("[rancho-bot] parto_child_save_failed", {
+            fazenda_id: owner.fazenda_id,
+            mother_id: animal.id,
+            child_code: childCode,
+            birth_event_id: birthEvent?.id || null,
+            compensation_error: compensationError,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          throw error;
+        }
 
         const savedTables: string[] = [TABLES.eventosAnimal, TABLES.animais];
         if (animal.fase === "gestante") {

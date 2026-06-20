@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node scripts/test-action-plan.cjs",
     "test:bot": "node scripts/test-bot.cjs",
     "test:bot:gemini": "node scripts/test-bot-gemini.cjs",
     "test:bot:fallback-audit": "node scripts/test-bot-fallback-audit.cjs",

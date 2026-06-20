@@ -1,0 +1,35 @@
+{
+  "id": "import-table-reproducao",
+  "input": "Código / Animal;Status / Tipo;Data;Observações\n777;Pariu;20.6.26;\n204;Inseminação;19.06.26;\n143;Emprenhou;18.06.26;Reteste",
+  "inputExamples": [
+    "Código / Animal;Status / Tipo;Data;Observações\n777;Pariu;20.6.26;\n204;Inseminação;19.06.26;\n143;Emprenhou;18.06.26;Reteste",
+    "Data;Observações;Animal;Evento\n2026-06-20;;777;Pariu\n2026-06-19;;204;Inseminação\n2026-06-18;Reteste;143;Prenha"
+  ],
+  "parsedTable": {
+    "headers": ["Código / Animal", "Status / Tipo", "Data", "Observações"],
+    "rows": [
+      ["777", "Pariu", "20.6.26", ""],
+      ["204", "Inseminação", "19.06.26", ""],
+      ["143", "Emprenhou", "18.06.26", "Reteste"]
+    ]
+  },
+  "response": {
+    "action": "import_table",
+    "domain": "reproducao",
+    "confidence": 0.97,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "animal_ref": "Código / Animal",
+        "evento": "Status / Tipo",
+        "data": "Data",
+        "observacoes": "Observações"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

@@ -17,6 +17,11 @@ import {
   type DomainManifest,
   type DomainManifestEntry
 } from "@/lib/whatsapp/gemini/domain-manifest";
+import {
+  normalizeDate,
+  normalizeReproductionEvent,
+  normalizeSex
+} from "@/lib/whatsapp/nlp-core/reproduction-normalizers";
 
 export type ParsedTableForValidation = {
   headers: Array<string | number>;
@@ -77,6 +82,59 @@ function normalizedHeader(value: unknown) {
 
 function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function normalizeReproductionValue(fieldName: string, value: unknown) {
+  if (["evento", "tipo"].includes(fieldName)) return normalizeReproductionEvent(value) || value;
+  if (["data", "data_evento"].includes(fieldName)) return normalizeDate(value) || value;
+  if (["cria_sexo", "sexo_cria"].includes(fieldName)) return normalizeSex(value) || value;
+  return value;
+}
+
+function normalizeReproductionData(data: unknown) {
+  if (!isPlainObject(data)) return data;
+  const normalized: AnyRecord = { ...data };
+  if (!hasValue(normalized.animal_ref) && hasValue(normalized.mae_ref)) normalized.animal_ref = normalized.mae_ref;
+  if (!hasValue(normalized.evento) && hasValue(normalized.tipo)) normalized.evento = normalized.tipo;
+  if (!hasValue(normalized.cria_sexo) && hasValue(normalized.sexo_cria)) normalized.cria_sexo = normalized.sexo_cria;
+  for (const [fieldName, value] of Object.entries(normalized)) {
+    normalized[fieldName] = normalizeReproductionValue(fieldName, value);
+  }
+  return normalized;
+}
+
+function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPlan {
+  if (domainName !== "reproducao") return plan;
+
+  if (plan.action === "query") {
+    return {
+      ...plan,
+      filters: plan.filters.map((filter) => ({
+        ...filter,
+        value: normalizeReproductionValue(filter.field, filter.value)
+      }))
+    };
+  }
+
+  if (plan.action === "create" || plan.action === "update") {
+    return { ...plan, data: normalizeReproductionData(plan.data) as Record<string, unknown> };
+  }
+
+  if (plan.action === "import_table") {
+    const columnMapping = { ...(plan.table.columnMapping || {}) };
+    if (!columnMapping.animal_ref && columnMapping.mae_ref) columnMapping.animal_ref = columnMapping.mae_ref;
+    if (!columnMapping.evento && columnMapping.tipo) columnMapping.evento = columnMapping.tipo;
+    return {
+      ...plan,
+      table: {
+        ...plan.table,
+        columnMapping,
+        defaultFields: normalizeReproductionData(plan.table.defaultFields || {}) as Record<string, unknown>
+      }
+    };
+  }
+
+  return plan;
 }
 
 function pushUnique(target: string[], message: string) {
@@ -533,7 +591,7 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
   validateConfidence(plan, minConfidence, errors);
   if (errors.length || !domain) return invalid(errors.join("; "), warnings);
 
-  const normalizedPlan = { ...plan } as ActionPlan;
+  const normalizedPlan = normalizePlanForDomain({ ...plan } as ActionPlan, domainName);
   if (action === "query") validateQueryPlan(normalizedPlan as QueryActionPlan, domain, errors, warnings);
   if (action === "create") validateCreatePlan(normalizedPlan as CreateActionPlan, domain, errors);
   if (action === "update") validateUpdatePlan(normalizedPlan as UpdateActionPlan, domain, errors);

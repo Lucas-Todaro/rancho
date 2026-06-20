@@ -14,6 +14,7 @@ module.exports = function loadBotTestSection(context) {
       { id: "animal-2", brinco: "2" },
       { id: "animal-3", brinco: "3" },
       { id: "animal-15", brinco: "15" },
+      { id: "animal-777", brinco: "777", nome: "Vaca 777", sexo: "femea", categoria: "vaca", fase: "gestante" },
       { id: "animal-n-01", brinco: "N-01" },
       { id: "animal-malhada", brinco: "MALHADA" },
       { id: "animal-preta", brinco: "PRETA" },

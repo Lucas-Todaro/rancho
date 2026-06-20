@@ -147,6 +147,30 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto da 777 com codigo na frase cadastra cria e genealogia apos confirmacao",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["777 pariu macho codigo B-555 hoje", "sim"],
+        expected: {
+          finalIntent: "PARTO",
+          entities: { animal_codigo: "777", cria_sexo: "macho", cria_categoria: "bezerro", cria_codigo: "B-555" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 3,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: {
+            brinco: "B-555",
+            categoria: "bezerro",
+            sexo: "macho",
+            mae_id: "animal-777",
+            pai_id: null
+          },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "doenca vira evento clinico e salva so apos confirmacao",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,

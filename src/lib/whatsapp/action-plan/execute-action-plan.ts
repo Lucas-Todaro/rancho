@@ -1,7 +1,14 @@
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
-import { finalize } from "@/lib/whatsapp/nlp-core/result";
+import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import { executeImportTableActionPlan } from "@/lib/whatsapp/action-plan/execute-import-table-action-plan";
+import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator";
+import { calfCategoryForSex } from "@/lib/whatsapp/nlp-core/birth-child";
+import {
+  normalizeDate,
+  normalizeReproductionEvent,
+  normalizeSex
+} from "@/lib/whatsapp/nlp-core/reproduction-normalizers";
 import {
   executeQueryActionPlan,
   type ActionPlanOwnerContext,
@@ -43,6 +50,66 @@ function blockParsed(plan: ActionPlan) {
     action_plan_used: true,
     action_plan: plan
   }, [], 1);
+}
+
+function reproductionMutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {
+  if ((plan.action !== "create" && plan.action !== "update") || plan.domain !== "reproducao") return null;
+  const data = plan.data || {};
+  const event = normalizeReproductionEvent(data.evento || data.tipo);
+  const animalRef = String(data.animal_ref || data.mae_ref || "").trim();
+  const date = normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje";
+  if (!event || !animalRef) return null;
+
+  const actionPlanData = {
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "action_plan",
+    action_plan_used: true,
+    action_plan_domain: "reproducao",
+    action_plan: plan
+  };
+
+  if (event === "PARTO") {
+    const childSex = normalizeSex(data.cria_sexo || data.sexo_cria);
+    const childCode = String(data.cria_codigo || "").trim() || undefined;
+    const childName = String(data.cria_nome || "").trim() || undefined;
+    const fatherRef = String(data.pai_ref || "").trim() || undefined;
+    const hasChildData = Boolean(childSex || childCode || childName || data.cria_ref || fatherRef);
+    const dados = {
+      animal_codigo: animalRef,
+      mae_ref: animalRef,
+      evento_reprodutivo_tipo: "parto",
+      data_referencia: date,
+      observacoes: data.observacoes || data.descricao || undefined,
+      parto_cria_decisao_pendente: hasChildData ? undefined : true,
+      parto_cria_cadastro: hasChildData || undefined,
+      cria_ref: data.cria_ref || undefined,
+      cria_codigo: childCode,
+      cria_nome: childName,
+      cria_sexo: childSex,
+      cria_categoria: calfCategoryForSex(childSex),
+      pai_ref: fatherRef,
+      pai_nome: fatherRef,
+      pai_nao_informado: hasChildData && !fatherRef ? true : undefined,
+      ...actionPlanData
+    };
+    return finalize("PARTO", dados, buildMissing("PARTO", dados), plan.confidence);
+  }
+
+  const eventKind = event.toLowerCase();
+  const description = String(data.observacoes || data.descricao || event.replace(/_/g, " ")).trim();
+  const dados = {
+    animal_codigo: animalRef,
+    campo_alterado: "observacoes",
+    novo_valor: description,
+    descricao: description,
+    registro_evento_animal: true,
+    evento_tipo: "reprodutivo",
+    evento_reprodutivo_tipo: eventKind,
+    data_referencia: date,
+    custo: data.custo,
+    ...actionPlanData
+  };
+  return finalize("ATUALIZACAO_ANIMAL", dados, buildMissing("ATUALIZACAO_ANIMAL", dados), plan.confidence);
 }
 
 export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<ExecuteActionPlanResult> {
@@ -109,6 +176,29 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
       response: result.preview,
       logEvent: "table_action_plan_used"
     };
+  }
+
+  if (input.plan.action === "create" || input.plan.action === "update") {
+    const validation = validateActionPlan(input.plan);
+    if (!validation.ok) {
+      return {
+        ok: false,
+        status: validation.status === "blocked" ? "blocked" : "clarify",
+        reason: validation.reason,
+        message: validation.status === "blocked"
+          ? "Nao posso executar esse pedido com seguranca."
+          : "Preciso revisar os dados antes de continuar.",
+        logEvent: validation.status === "blocked" ? "action_plan_blocked" : "action_plan_invalid"
+      };
+    }
+    const parsed = reproductionMutationParsed(validation.value, input.currentDate);
+    if (parsed) {
+      return {
+        ok: true,
+        parsed,
+        logEvent: "action_plan_used"
+      };
+    }
   }
 
   return {

@@ -68,6 +68,10 @@ function isMilkImportActionPlanFixture(fixture: GeminiMockFixture) {
   return fixture.response.action === "import_table" && fixture.response.domain === "producao_leite";
 }
 
+function isReproductionImportActionPlanFixture(fixture: GeminiMockFixture) {
+  return fixture.response.action === "import_table" && fixture.response.domain === "reproducao";
+}
+
 function listFixtureFiles(directory: string): string[] {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true })
@@ -160,6 +164,35 @@ function milkTableMapping(text: unknown) {
   };
 }
 
+function reproductionTableMapping(text: unknown) {
+  const header = splitStructuredHeader(text);
+  if (!header) return null;
+
+  const animal = findHeader(header.headers, [
+    "animal",
+    "vaca",
+    "codigo",
+    "cÃ³digo",
+    "brinco",
+    "codigo animal",
+    "cÃ³digo / animal"
+  ]);
+  const event = findHeader(header.headers, ["evento", "tipo", "status tipo", "status / tipo", "ocorrencia"]);
+  const date = findHeader(header.headers, ["data", "dia"]);
+  if (!animal || !event || !date) return null;
+
+  const observations = findHeader(header.headers, ["observacoes", "observaÃ§Ãµes", "observacao", "observaÃ§Ã£o", "obs"]);
+  return {
+    separator: header.separator,
+    columnMapping: {
+      animal_ref: animal,
+      evento: event,
+      data: date,
+      ...(observations ? { observacoes: observations } : {})
+    }
+  };
+}
+
 function adaptMilkImportFixture(fixture: GeminiMockFixture, text: unknown): GeminiMockFixture {
   const mapping = milkTableMapping(text);
   if (!mapping || !isMilkImportActionPlanFixture(fixture)) return fixture;
@@ -181,6 +214,31 @@ function adaptMilkImportFixture(fixture: GeminiMockFixture, text: unknown): Gemi
   };
 }
 
+function adaptReproductionImportFixture(fixture: GeminiMockFixture, text: unknown): GeminiMockFixture {
+  const mapping = reproductionTableMapping(text);
+  if (!mapping || !isReproductionImportActionPlanFixture(fixture)) return fixture;
+
+  return {
+    ...fixture,
+    response: {
+      ...fixture.response,
+      table: {
+        ...(isPlainObject(fixture.response.table) ? fixture.response.table : {}),
+        hasHeader: true,
+        separator: mapping.separator,
+        columnMapping: mapping.columnMapping,
+        defaultFields: {},
+        ignoredColumns: [],
+        ambiguousColumns: []
+      }
+    }
+  };
+}
+
+function adaptStructuredImportFixture(fixture: GeminiMockFixture, text: unknown) {
+  return adaptReproductionImportFixture(adaptMilkImportFixture(fixture, text), text);
+}
+
 function structuredMilkFixture(fixtures: GeminiMockFixture[], text: unknown) {
   const mapping = milkTableMapping(text);
   if (!mapping) return null;
@@ -200,6 +258,16 @@ function structuredMilkFixture(fixtures: GeminiMockFixture[], text: unknown) {
   }) || candidates[0];
 
   return adaptMilkImportFixture(preferred, text);
+}
+
+function structuredReproductionFixture(fixtures: GeminiMockFixture[], text: unknown) {
+  const mapping = reproductionTableMapping(text);
+  if (!mapping) return null;
+
+  const fixture = fixtures.find((item) => (
+    isReproductionImportActionPlanFixture(item) && actionPlanFixtureEnabled(item)
+  ));
+  return fixture ? adaptReproductionImportFixture(fixture, text) : null;
 }
 
 export function geminiMode(): GeminiMode {
@@ -277,7 +345,7 @@ export function findGeminiMockFixture(input: { text?: string; geminiMockId?: str
   const matches = fixtures.filter((fixture) => fixtureExamples(fixture).some((example) => normalizeText(example) === normalizedText));
   if (!matches.length) {
     if (geminiMode() === "mock" && geminiTableActionPlanEnabled()) {
-      return structuredMilkFixture(fixtures, input.text);
+      return structuredReproductionFixture(fixtures, input.text) || structuredMilkFixture(fixtures, input.text);
     }
     return null;
   }
@@ -285,7 +353,7 @@ export function findGeminiMockFixture(input: { text?: string; geminiMockId?: str
   if (anyActionPlanFixtureEnabled()) {
     const fixture = matches.find((item) => isActionPlanFixture(item) && actionPlanFixtureEnabled(item))
       || matches.find((item) => !isActionPlanFixture(item));
-    return fixture ? adaptMilkImportFixture(fixture, input.text) : null;
+    return fixture ? adaptStructuredImportFixture(fixture, input.text) : null;
   }
 
   return matches.find((fixture) => !isActionPlanFixture(fixture)) || null;

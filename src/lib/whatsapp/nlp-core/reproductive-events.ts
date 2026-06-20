@@ -6,6 +6,7 @@ export type ReproductiveEventKind =
   | "pre_parto"
   | "parto"
   | "cio"
+  | "aborto"
   | "protocolo"
   | "reteste"
   | "observacao";
@@ -34,19 +35,19 @@ export function normalizeReproductiveEventType(rawType: string): ReproductiveEve
     return "parto";
   }
 
-  if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|inseminar|inseminaram|recebeu ia|ia|iatf|cobert[ao]s?|cobertura|cobertas?|cobertos?|semen)\b/.test(normalized)) {
+  if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|inseminar|inseminou|inseminaram|recebeu ia|ia|iatf|cobert[ao]s?|cobertura|cobertas?|cobertos?|semen)\b/.test(normalized)) {
     return "inseminacao";
   }
 
   if (!/\b(?:nao esta prenha|nao ficou prenha|prenhez negativa|diagnostico negativo de prenhez)\b/.test(normalized)
-    && /\b(?:confirmar prenhez|prenhez confirmada|prenhez positiva|diagnostico positivo|emprenhou|esta gestante|esta prenha|ficou prenha|pegou cria|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(normalized)) {
+    && /\b(?:confirmar prenhez|prenhez confirmada|prenhez positiva|diagnostico positivo|emprenhou|emprenhada|emprenhado|esta gestante|esta prenha|ficou prenha|pegou cria|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(normalized)) {
     return "prenhez";
   }
 
   if (/\b(?:reteste|novo teste)\b/.test(normalized)) return "reteste";
   if (/\b(?:cio)\b/.test(normalized)) return "cio";
   if (/\b(?:ultimo protocolo|protocolo|protocolada|protocolado|nao passou)\b/.test(normalized)) return "protocolo";
-  if (/\b(?:aborto|abortou)\b/.test(normalized)) return "observacao";
+  if (/\b(?:aborto|abortou)\b/.test(normalized)) return "aborto";
 
   return undefined;
 }
@@ -71,6 +72,7 @@ export function reproductiveEventLabel(kind?: ReproductiveEventKind) {
   if (kind === "pre_parto") return "Pre-parto";
   if (kind === "parto") return "Parto";
   if (kind === "cio") return "Cio";
+  if (kind === "aborto") return "Aborto";
   if (kind === "protocolo") return "Protocolo";
   if (kind === "reteste") return "Reteste de protocolo";
   return "Observacao reprodutiva";

@@ -1,0 +1,20 @@
+{
+  "id": "create-parto-777-estrela",
+  "input": "777 pariu uma bezerra chamada Estrela hoje",
+  "inputExamples": [
+    "777 pariu uma bezerra chamada Estrela hoje"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "confidence": 0.97,
+    "data": {
+      "animal_ref": "777",
+      "evento": "nasceu",
+      "data": "hoje",
+      "cria_sexo": "bezerra",
+      "cria_nome": "Estrela"
+    },
+    "requiresConfirmation": true
+  }
+}

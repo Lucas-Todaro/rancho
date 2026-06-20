@@ -4,6 +4,7 @@ import { validateImportTableActionPlan, type ParsedTableForValidation } from "@/
 import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
+import { parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
 
 export type ExecuteImportTableActionPlanInput = {
   plan: ImportTableActionPlan;
@@ -196,6 +197,73 @@ function previewText(domain: string, rows: AnyRecord[], metrics: AnyRecord) {
   return `Li a tabela e preparei a importação: ${rows.length} linha(s).`;
 }
 
+function reproductionPreview(rows: AnyRecord[]) {
+  const counts = rows.reduce<Record<string, number>>((result, row) => {
+    const key = String(row.evento_tipo || "desconhecido");
+    result[key] = (result[key] || 0) + 1;
+    return result;
+  }, {});
+  const labels: Record<string, string> = {
+    parto: "parto",
+    inseminacao: "inseminacao",
+    prenhez: "prenhez",
+    pre_parto: "pre-parto",
+    cio: "cio",
+    aborto: "aborto"
+  };
+  const summary = Object.entries(counts)
+    .filter(([kind]) => kind !== "desconhecido")
+    .map(([kind, count]) => `${count} ${labels[kind] || kind}`)
+    .join(", ");
+  const birthsWithoutChild = rows.filter((row) => (
+    row.evento_tipo === "parto" && Array.isArray(row.avisos) && row.avisos.includes("dados_da_cria_ausentes")
+  )).length;
+  const warning = birthsWithoutChild
+    ? ` ${birthsWithoutChild === 1 ? "O parto nao tem" : `${birthsWithoutChild} partos nao tem`} dados da cria; posso registrar o evento agora e cadastrar a cria depois.`
+    : "";
+  return `Li uma tabela de reproducao com ${rows.length} registro(s)${summary ? `: ${summary}` : "."}.${warning}`.replace("..", ".");
+}
+
+function reproductionTableParsed(plan: ImportTableActionPlan, text: string) {
+  const parsed = parseTabularAnimalEventsMessageAs(text, "REPRODUCAO");
+  if (!parsed || parsed.tipo !== "IMPORTACAO_EVENTOS_TABELA") return null;
+  const rows = (Array.isArray(parsed.dados?.linhas) ? parsed.dados.linhas : []).map((rawRow) => {
+    const row = rawRow as AnyRecord;
+    const avisos = Array.isArray(row.avisos) ? [...row.avisos] : [];
+    if (row.evento_tipo === "parto" && !row.parto_cria_cadastro && !avisos.includes("dados_da_cria_ausentes")) {
+      avisos.push("dados_da_cria_ausentes");
+    }
+    return {
+      ...row,
+      evento_normalizado: row.evento_tipo ? String(row.evento_tipo).toUpperCase() : null,
+      status_linha: Array.isArray(row.problemas) && row.problemas.length ? "invalido" : "pronto",
+      avisos
+    };
+  });
+  const invalidRows = rows.filter((row) => row.status_linha === "invalido");
+  const reviewRows = rows.filter((row) => Array.isArray(row.avisos) && row.avisos.length > 0);
+  const preview = reproductionPreview(rows);
+  parsed.dados = {
+    ...parsed.dados,
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "table_action_plan",
+    table_action_plan_used: true,
+    column_mapping: plan.table.columnMapping,
+    texto_tabela_original: text,
+    linhas: rows,
+    linhas_parse_invalidas: invalidRows,
+    linhas_revisao: reviewRows,
+    total_linhas: rows.length,
+    total_linhas_parse_validas: rows.length - invalidRows.length,
+    total_linhas_parse_invalidas: invalidRows.length,
+    total_linhas_needs_review: reviewRows.length,
+    preview_only: true,
+    action_plan: plan,
+    action_plan_preview: preview
+  };
+  return { parsed, rows, preview };
+}
+
 function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
   const registros = rows.map((row) => finalize("PRODUCAO_LEITE", {
     animal_codigo: row.parsedValues.animal_ref || row.values.animal_ref,
@@ -294,6 +362,25 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       message: "Ainda não tenho um mapeamento seguro para importar esse tipo de tabela."
     };
   }
+  if (plan.domain === "reproducao") {
+    const reproduction = reproductionTableParsed(plan, input.text);
+    if (!reproduction) {
+      return {
+        ok: false,
+        status: "clarify",
+        reason: "reproduction_table_parse_failed",
+        message: "Nao consegui ler as linhas dessa tabela de reproducao com seguranca."
+      };
+    }
+    return {
+      ok: true,
+      parsed: reproduction.parsed,
+      preview: reproduction.preview,
+      rows: reproduction.rows,
+      parsedTable
+    };
+  }
+
   const rows = mappedRows(plan, domain, parsedTable);
   const normalizedRows = genericRows(rows, domain);
   const metrics = metricsFor(plan.domain, normalizedRows);

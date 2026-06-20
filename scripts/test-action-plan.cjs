@@ -61,6 +61,11 @@ const {
 const { executeActionPlan } = require("../src/lib/whatsapp/action-plan/execute-action-plan.ts");
 const { executeQueryActionPlan } = require("../src/lib/whatsapp/action-plan/execute-query-action-plan.ts");
 const { executeImportTableActionPlan } = require("../src/lib/whatsapp/action-plan/execute-import-table-action-plan.ts");
+const {
+  normalizeDate,
+  normalizeReproductionEvent,
+  normalizeSex
+} = require("../src/lib/whatsapp/nlp-core/reproduction-normalizers.ts");
 const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
@@ -545,6 +550,100 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
 });
 
+test("normalizadores de reproducao aceitam aliases, datas curtas e sexo abreviado", () => {
+  assert(normalizeReproductionEvent("Pariu") === "PARTO", "Pariu deveria normalizar para PARTO");
+  assert(normalizeReproductionEvent("Inseminação") === "INSEMINACAO", "Inseminacao deveria normalizar");
+  assert(normalizeReproductionEvent("Emprenhada") === "PRENHEZ", "Emprenhada deveria normalizar");
+  assert(normalizeReproductionEvent("pré-parto") === "PRE_PARTO", "Pre-parto deveria normalizar");
+  assert(normalizeReproductionEvent("abortou") === "ABORTO", "Abortou deveria normalizar");
+  assert(normalizeDate("20.6.26", "2026-06-20") === "2026-06-20", "data pontuada curta incorreta");
+  assert(normalizeDate("ontem", "2026-06-20") === "2026-06-19", "ontem incorreto");
+  assert(normalizeSex("f") === "femea", "sexo f deveria normalizar");
+  assert(normalizeSex("bezerro") === "macho", "bezerro deveria normalizar para macho");
+});
+
+test("ActionPlan create 777 pariu cria pendencia sem rejeitar", async () => {
+  const fixture = fixtureByName("create-parto-777-sem-cria");
+  const validation = assertValid("create parto sem cria", fixture.plan);
+  assert(validation.value.data.animal_ref === "777", "mae_ref deveria preencher animal_ref");
+  assert(validation.value.data.evento === "PARTO", "alias Pariu deveria normalizar para PARTO");
+
+  const result = await executeActionPlan({
+    plan: clone(fixture.plan),
+    text: fixture.input,
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-20"
+  });
+  assert(result.ok, `parto sem cria deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "PARTO", `intent esperado PARTO, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.animal_codigo === "777", "mae 777 ausente");
+  assert(result.parsed.dados?.parto_cria_decisao_pendente === true, "pendencia de cadastro da cria ausente");
+  assert(result.parsed.perguntas_faltantes[0]?.includes("Deseja cadastrar a cria"), "pergunta sobre descendente ausente");
+});
+
+test("ActionPlan create parto com sexo pede codigo e com codigo fica pronto para confirmar", async () => {
+  const female = fixtureByName("create-parto-777-femea");
+  const femaleResult = await executeActionPlan({
+    plan: clone(female.plan),
+    text: female.input,
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-20"
+  });
+  assert(femaleResult.ok, `parto com femea deveria executar: ${femaleResult.reason}`);
+  assert(femaleResult.parsed.dados?.cria_sexo === "femea", "sexo da cria incorreto");
+  assert(femaleResult.parsed.perguntas_faltantes.some((question) => /codigo|código/i.test(question)), "deveria pedir codigo da cria");
+
+  const male = fixtureByName("create-parto-777-macho-codigo");
+  const maleResult = await executeActionPlan({
+    plan: clone(male.plan),
+    text: male.input,
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-20"
+  });
+  assert(maleResult.ok, `parto com codigo deveria executar: ${maleResult.reason}`);
+  assert(maleResult.parsed.dados?.cria_sexo === "macho", "sexo macho nao normalizado");
+  assert(maleResult.parsed.dados?.cria_codigo === "B-555", "codigo da cria ausente");
+  assert(maleResult.parsed.perguntas_faltantes.length === 0, "parto completo deveria ficar pronto para confirmacao");
+});
+
+test("ActionPlan import_table reproducao normaliza eventos datas e avisa parto sem cria", async () => {
+  const fixture = fixtureByName("import-table-reproducao");
+  const result = await executeImportTableActionPlan({
+    plan: clone(fixture.plan),
+    text: fixture.input
+  });
+  assert(result.ok, `tabela de reproducao deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_EVENTOS_TABELA", `intent incorreto: ${result.parsed.tipo}`);
+  assert(result.rows.length === 3, `esperadas 3 linhas, recebidas ${result.rows.length}`);
+  assert(result.rows[0].evento_tipo === "parto" && result.rows[0].data_referencia === "2026-06-20", "parto/data nao normalizados");
+  assert(result.rows[0].evento_normalizado === "PARTO", "evento normalizado PARTO ausente");
+  assert(result.rows[1].evento_tipo === "inseminacao" && result.rows[1].data_referencia === "2026-06-19", "inseminacao/data nao normalizadas");
+  assert(result.rows[1].evento_normalizado === "INSEMINACAO", "evento normalizado INSEMINACAO ausente");
+  assert(result.rows[2].evento_tipo === "prenhez" && result.rows[2].data_referencia === "2026-06-18", "prenhez/data nao normalizadas");
+  assert(result.rows[2].evento_normalizado === "PRENHEZ", "evento normalizado PRENHEZ ausente");
+  assert(result.rows[0].avisos.includes("dados_da_cria_ausentes"), "aviso de cria ausente nao registrado");
+  assert(result.rows.every((row) => row.status_linha === "pronto"), "parto sem cria nao deve invalidar a tabela");
+  assert(result.parsed.dados?.total_linhas_needs_review === 1, "linha de parto deveria ficar separada para revisao");
+  assert(result.preview.includes("3 registro"), "preview sem total de registros");
+});
+
+test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async () => {
+  const text = "Data;Observações;Animal;Evento\n2026-06-20;;777;Pariu\n2026-06-19;;204;Inseminação\n2026-06-18;Reteste;143;Prenha";
+  const fixture = findGeminiMockFixture({ text });
+  const mapping = fixture?.response?.table?.columnMapping || {};
+  assert(fixture?.id === "import-table-reproducao", `fixture de reproducao nao encontrada: ${fixture?.id || "nenhuma"}`);
+  assert(mapping.data === "Data", "mapping de data deveria seguir cabecalho");
+  assert(mapping.observacoes === "Observações", "mapping de observacoes deveria seguir cabecalho");
+  assert(mapping.animal_ref === "Animal", "mapping de animal deveria seguir cabecalho");
+  assert(mapping.evento === "Evento", "mapping de evento deveria seguir cabecalho");
+
+  const result = await executeImportTableActionPlan({ plan: clone(fixture.response), text });
+  assert(result.ok, `tabela embaralhada deveria executar: ${result.reason}`);
+  assert(result.rows.length === 3, "tabela embaralhada perdeu linhas");
+  assert(result.rows[0].animal_codigo === "777" && result.rows[0].evento_tipo === "parto", "linha 777 mapeada por posicao");
+  assert(result.rows[2].animal_codigo === "143" && result.rows[2].evento_tipo === "prenhez", "linha 143 mapeada incorretamente");
+});
+
 test("parse flags false ignora ActionPlan e usa legado", async () => {
   const fixture = fixtureByName("query-financeiro-ultimos-6-meses");
   const before = actionStatsSnapshot();
@@ -611,6 +710,25 @@ test("parse flags true usa ActionPlan import_table", async () => {
   });
   const after = actionStatsSnapshot();
   assert(after.tableActionPlanUsed === before.tableActionPlanUsed + 1, "table_action_plan_used deveria ser contabilizado");
+});
+
+test("parse flags true usa ActionPlan para 777 pariu sem mensagem de revisao", async () => {
+  const text = "777 pariu";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "create-parto-777-sem-cria", `fixture de parto incorreta: ${fixture?.id || "nenhuma"}`);
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(result.kind === "parsed", `parto deveria retornar parsed, recebido ${result.kind}`);
+  assert(parsed?.tipo === "PARTO", `intent esperado PARTO, recebido ${parsed?.tipo}`);
+  assert(parsed.dados?.animal_codigo === "777", "animal 777 ausente");
+  assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria ser marcado internamente");
+  assert(parsed.perguntas_faltantes[0]?.includes("Deseja cadastrar a cria"), "pergunta de cadastro da cria ausente");
 });
 
 test("ActionPlan invalido com flags true nao faz fallback legado", async () => {

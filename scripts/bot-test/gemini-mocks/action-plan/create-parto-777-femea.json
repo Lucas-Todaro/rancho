@@ -1,0 +1,20 @@
+{
+  "id": "create-parto-777-femea",
+  "input": "777 pariu uma femea hoje",
+  "inputExamples": [
+    "777 pariu uma femea hoje",
+    "777 pariu uma fêmea hoje"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "confidence": 0.97,
+    "data": {
+      "animal_ref": "777",
+      "evento": "PARTO",
+      "data": "hoje",
+      "cria_sexo": "femea"
+    },
+    "requiresConfirmation": true
+  }
+}

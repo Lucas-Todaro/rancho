@@ -1,0 +1,19 @@
+{
+  "id": "create-parto-777-sem-cria",
+  "input": "777 pariu",
+  "inputExamples": [
+    "777 pariu",
+    "animal 777 pariu"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "confidence": 0.97,
+    "data": {
+      "mae_ref": "777",
+      "evento": "Pariu",
+      "data": "hoje"
+    },
+    "requiresConfirmation": true
+  }
+}

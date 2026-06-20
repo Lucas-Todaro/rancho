@@ -41,7 +41,7 @@ import {
   normalizeAnimalCandidate,
   removeValueAndCommonWords
 } from "./extractors";
-import { calfCategoryForSex, normalizeCalfSex } from "./birth-child";
+import { calfCategoryForSex, extractBirthChildData, normalizeCalfSex } from "./birth-child";
 
 export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: string): ParsedRanchoMessage {
   const original = cleanAnswer(answer);
@@ -60,6 +60,29 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (stockPurchaseWithoutFinance) {
     const nextDados = { ...dados, sem_financeiro: true, valor: undefined };
     return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+  }
+
+  if (current.tipo === "PARTO" && expectedField === "parto_cria_decisao") {
+    if (/^(?:nao|n|2|so parto|apenas parto|registrar so o parto|sem cadastrar cria)\b/.test(normalized)) {
+      const nextDados = {
+        ...dados,
+        parto_cria_decisao_pendente: undefined,
+        parto_sem_cadastro_cria: true
+      };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+
+    const childData = extractBirthChildData(original);
+    if (/^(?:sim|s|1|quero|pode)\b/.test(normalized) || childData.parto_cria_cadastro) {
+      const nextDados = {
+        ...dados,
+        ...childData,
+        parto_cria_decisao_pendente: undefined,
+        parto_cria_cadastro: true,
+        parto_sem_cadastro_cria: undefined
+      };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
   }
 
   if (current.tipo === "PARTO" && expectedField === "cria_sexo") {

@@ -142,9 +142,13 @@ export const RANCHO_DOMAIN_MANIFEST = {
       tipo: field("enum", { enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"] }),
       data: field("date", { sourceField: "data_evento" }),
       data_evento: field("datetime"),
+      mae_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
       pai_ref: field("relation", { relationDomain: "animais" }),
       resultado: field("string"),
       cria_ref: field("relation", { relationDomain: "animais" }),
+      cria_codigo: field("string"),
+      cria_nome: field("string"),
+      cria_sexo: field("enum", { enumValues: ["femea", "macho", "nao_informado"] }),
       sexo_cria: field("enum", { enumValues: ["femea", "macho", "nao_informado"] }),
       descricao: field("string"),
       observacoes: field("string"),
@@ -155,13 +159,14 @@ export const RANCHO_DOMAIN_MANIFEST = {
       update: ["animal_ref"],
       import_table: ["animal_ref", "evento"]
     },
-    searchableFields: ["animal_ref", "evento", "tipo", "resultado", "cria_ref", "descricao", "observacoes"],
+    searchableFields: ["animal_ref", "mae_ref", "evento", "tipo", "resultado", "cria_ref", "cria_codigo", "cria_nome", "descricao", "observacoes"],
     aggregatableFields: ["custo"],
     dateFields: ["data", "data_evento"],
-    relationFields: ["animal_ref", "animal_id", "pai_ref", "cria_ref"],
+    relationFields: ["animal_ref", "animal_id", "mae_ref", "pai_ref", "cria_ref"],
     enumFields: {
       evento: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"],
       tipo: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "observacao"],
+      cria_sexo: ["femea", "macho", "nao_informado"],
       sexo_cria: ["femea", "macho", "nao_informado"]
     },
     maxLimit: 500
