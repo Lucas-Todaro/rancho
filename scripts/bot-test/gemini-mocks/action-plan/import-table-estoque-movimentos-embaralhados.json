@@ -1,0 +1,22 @@
+{
+  "input": "Unidade;Produto;Movimento;Quantidade\nsacos;Ração;entrada;10\nkg;Sal mineral;saída;20\nlitros;Diesel;entrada;30",
+  "plan": {
+    "action": "import_table",
+    "domain": "estoque",
+    "confidence": 0.96,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "unidade": "Unidade",
+        "item": "Produto",
+        "tipo_movimento": "Movimento",
+        "quantidade": "Quantidade"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

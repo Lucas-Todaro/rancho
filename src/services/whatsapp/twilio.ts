@@ -3433,14 +3433,15 @@ async function saveLotesImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, pa
       values.tipo ?`tipo: ${values.tipo}` : "",
       values.capacidade ?`capacidade: ${values.capacidade}` : "",
       values.area ?`area: ${values.area}${values.unidade_area ?` ${values.unidade_area}` : ""}` : "",
-      values.observacoes ?domainText(values.observacoes) : ""
+      values.descricao ?domainText(values.descricao) : "",
+      values.observacoes && values.observacoes !== values.descricao ?domainText(values.observacoes) : ""
     ].filter(Boolean).join(" | ");
 
     await insertRealRecord(supabase, owner, TABLES.lotes, {
       fazenda_id: owner.fazenda_id,
       nome: name,
       descricao: details || "Criado via importacao tabular do WhatsApp",
-      ativo: domainStatusActive(values.status)
+      ativo: domainStatusActive(values.ativo ?? values.status)
     });
     existingNames.add(key);
     stats.saved += 1;

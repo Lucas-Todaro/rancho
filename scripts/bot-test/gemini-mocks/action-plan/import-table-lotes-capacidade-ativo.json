@@ -1,0 +1,22 @@
+{
+  "input": "Capacidade;Nome;Descrição;Ativo\n30;Lactação Teste;Vacas em produção;sim\n20;Piquete Teste;Animais em crescimento;sim",
+  "plan": {
+    "action": "import_table",
+    "domain": "lotes",
+    "confidence": 0.95,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "capacidade": "Capacidade",
+        "nome": "Nome",
+        "descricao": "Descrição",
+        "ativo": "Ativo"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

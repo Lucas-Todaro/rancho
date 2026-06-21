@@ -557,6 +557,102 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
 });
 
+test("ActionPlan de estoque entende saida acentuada com colunas embaralhadas", async () => {
+  const fixture = fixtureByName("import-table-estoque-movimentos-embaralhados");
+  const result = await executeImportTableActionPlan({
+    plan: clone(fixture.plan),
+    text: fixture.input
+  });
+  assert(result.ok, `tabela de estoque embaralhada deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent incorreto: ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.table_action_plan_used === true, "tabela deveria usar ActionPlan");
+  assert(result.parsed.dados?.total_linhas_parse_validas === 3, "as 3 linhas deveriam ser validas");
+  const stockRows = result.parsed.dados?.linhas || [];
+  assert(stockRows[1]?.item_nome === "Sal mineral", "produto da segunda linha foi mapeado incorretamente");
+  assert(stockRows[1]?.quantidade === 20, "quantidade da saida foi mapeada incorretamente");
+  assert(stockRows[1]?.unidade === "kg", "unidade da saida foi mapeada incorretamente");
+  assert(stockRows[1]?.tipo_movimento === "saida", "saida acentuada deveria normalizar para saida");
+  assert(result.preview.includes("entradas 2, saidas 1"), "resumo deveria contar uma saida");
+});
+
+test("ActionPlan de estoque normaliza variacoes gerais de entrada e saida", async () => {
+  const text = [
+    "Movimento;Quantidade;Produto;Unidade",
+    "Reposição;8;Feno;fardos",
+    "Retirada;3;Ração;kg",
+    "descarte;2;Sal mineral;sacos",
+    "recebido;12;Diesel;litros"
+  ].join("\n");
+  const plan = {
+    action: "import_table",
+    domain: "estoque",
+    confidence: 0.95,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        tipo_movimento: "Movimento",
+        quantidade: "Quantidade",
+        item: "Produto",
+        unidade: "Unidade"
+      }
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({ plan, text });
+  assert(result.ok, `variacoes de estoque deveriam executar: ${result.reason}`);
+  const stockRows = result.parsed.dados?.linhas || [];
+  assert(stockRows.every((row) => row.problemas.length === 0), "nenhuma variacao deveria ficar invalida");
+  assert(stockRows.map((row) => row.tipo_movimento).join(",") === "entrada,saida,saida,entrada", "movimentos normalizados incorretamente");
+});
+
+test("ActionPlan de lotes aceita capacidade descricao e ativo", async () => {
+  const fixture = fixtureByName("import-table-lotes-capacidade-ativo");
+  const result = await executeImportTableActionPlan({
+    plan: clone(fixture.plan),
+    text: fixture.input
+  });
+  assert(result.ok, `tabela de lotes deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_TABELA_DOMINIO", `intent incorreto: ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.dominio_tabela === "LOTES", "dominio LOTES ausente");
+  assert(result.parsed.dados?.table_action_plan_used === true, "tabela deveria usar ActionPlan");
+  assert(result.parsed.dados?.total_linhas_parse_validas === 2, "as 2 linhas deveriam ser validas");
+  assert(result.rows[0]?.parsedValues?.capacidade === 30, "capacidade deveria ser numerica");
+  assert(result.rows[0]?.parsedValues?.descricao === "Vacas em produção", "descricao deveria ser preservada");
+  assert(result.rows[0]?.parsedValues?.ativo === true, "sim deveria normalizar para ativo");
+});
+
+test("ActionPlan de lotes aceita area situacao e ordem variada", async () => {
+  const text = [
+    "Situação;Área;Nome;Descrição;Capacidade",
+    "inativo;5 ha;Piquete Descanso;Área em recuperação;15",
+    "ativo;8,5 ha;Lactação 2;Vacas em produção;40"
+  ].join("\n");
+  const plan = {
+    action: "import_table",
+    domain: "lotes",
+    confidence: 0.94,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        status: "Situação",
+        area: "Área",
+        nome: "Nome",
+        descricao: "Descrição",
+        capacidade: "Capacidade"
+      }
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({ plan, text });
+  assert(result.ok, `variacao de lotes deveria executar: ${result.reason}`);
+  assert(result.rows.every((row) => row.status_linha === "pronto"), "todas as linhas de lotes deveriam ficar prontas");
+  assert(result.rows[0]?.parsedValues?.status === false, "inativo deveria normalizar para false");
+  assert(result.rows[1]?.parsedValues?.status === true, "ativo deveria normalizar para true");
+  assert(result.rows[1]?.parsedValues?.area === 8.5, "area decimal deveria ser preservada");
+});
+
 test("normalizadores de reproducao aceitam aliases, datas curtas e sexo abreviado", () => {
   assert(normalizeReproductionEvent("Pariu") === "PARTO", "Pariu deveria normalizar para PARTO");
   assert(normalizeReproductionEvent("Inseminação") === "INSEMINACAO", "Inseminacao deveria normalizar");
@@ -729,6 +825,37 @@ test("parse flags true usa ActionPlan import_table", async () => {
   });
   const after = actionStatsSnapshot();
   assert(after.tableActionPlanUsed === before.tableActionPlanUsed + 1, "table_action_plan_used deveria ser contabilizado");
+});
+
+test("fluxo Gemini-first usa ActionPlan na tabela de estoque com saida acentuada", async () => {
+  const fixture = fixtureByName("import-table-estoque-movimentos-embaralhados");
+  const result = await parseWithConfiguredInterpreter({
+    text: fixture.input,
+    localParsed: parseRanchoMessage(fixture.input),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent incorreto: ${parsed?.tipo}`);
+  assert(parsed.dados?.table_action_plan_used === true, "estoque deveria usar ActionPlan");
+  assert(parsed.dados?.action_plan?.domain === "estoque", "domain estoque ausente no plano");
+  assert(parsed.dados?.linhas?.[1]?.tipo_movimento === "saida", "saida acentuada nao chegou normalizada ao preview");
+});
+
+test("fluxo Gemini-first usa ActionPlan na tabela de lotes", async () => {
+  const fixture = fixtureByName("import-table-lotes-capacidade-ativo");
+  const result = await parseWithConfiguredInterpreter({
+    text: fixture.input,
+    localParsed: parseRanchoMessage(fixture.input),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.tipo === "IMPORTACAO_TABELA_DOMINIO", `intent incorreto: ${parsed?.tipo}`);
+  assert(parsed.dados?.dominio_tabela === "LOTES", "dominio LOTES ausente");
+  assert(parsed.dados?.table_action_plan_used === true, "lotes deveria usar ActionPlan");
+  assert(parsed.dados?.action_plan?.domain === "lotes", "domain lotes ausente no plano");
+  assert(parsed.dados?.linhas?.[0]?.parsedValues?.ativo === true, "ativo nao chegou normalizado ao preview");
 });
 
 test("parse flags true usa ActionPlan para 777 pariu sem mensagem de revisao", async () => {

@@ -9,6 +9,7 @@ import {
   reproductiveEventDbType,
   reproductiveEventLabel
 } from "@/lib/whatsapp/nlp-core/reproductive-events";
+import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 
 export type ExecuteImportTableActionPlanInput = {
   plan: ImportTableActionPlan;
@@ -101,7 +102,7 @@ function parseValue(domain: DomainManifestEntry, field: string, value: unknown) 
   if (definition.type === "number") return parseNumber(value);
   if (definition.type === "date" || definition.type === "datetime") return parseDate(value);
   if (definition.type === "boolean") {
-    const text = String(value || "").trim().toLowerCase();
+    const text = normalizeRanchoText(String(value || "").trim());
     if (["true", "sim", "1", "ativo"].includes(text)) return true;
     if (["false", "nao", "não", "0", "inativo"].includes(text)) return false;
   }
@@ -171,7 +172,7 @@ function metricsFor(domain: string, rows: AnyRecord[]) {
   }
   if (domain === "estoque") {
     return rows.reduce((metrics, row) => {
-      const type = String(row.parsedValues?.tipo_movimento || row.values?.tipo_movimento || "").toLowerCase();
+      const type = stockMovement(row.parsedValues?.tipo_movimento || row.values?.tipo_movimento);
       if (type === "entrada") metrics.entradas += 1;
       else if (type === "saida") metrics.saidas += 1;
       if (!row.parsedValues?.valor_total) metrics.itens_sem_valor_financeiro += 1;
@@ -355,9 +356,13 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
 }
 
 function stockMovement(value: unknown) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["entrada", "compra", "recebimento"].includes(normalized)) return "entrada";
-  if (["saida", "uso", "consumo", "venda", "baixa"].includes(normalized)) return "saida";
+  const normalized = normalizeRanchoText(String(value || "").trim());
+  if (["entrada", "compra", "comprado", "recebido", "recebimento", "reposicao", "abastecimento", "adicao"].includes(normalized)) {
+    return "entrada";
+  }
+  if (["saida", "uso", "usado", "consumo", "venda", "vendido", "baixa", "retirada", "descarte", "perda", "quebra"].includes(normalized)) {
+    return "saida";
+  }
   return null;
 }
 

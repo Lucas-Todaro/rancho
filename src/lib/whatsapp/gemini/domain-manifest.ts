@@ -85,8 +85,14 @@ export const RANCHO_DOMAIN_MANIFEST = {
     allowedActions: allActions,
     fields: {
       nome: field("string"),
+      tipo: field("string"),
+      capacidade: field("number"),
+      area: field("number"),
+      unidade_area: field("string"),
       descricao: field("string"),
-      ativo: field("boolean")
+      observacoes: field("string", { sourceField: "descricao" }),
+      ativo: field("boolean"),
+      status: field("boolean", { sourceField: "ativo" })
     },
     requiredFieldsByAction: {
       create: ["nome"],
