@@ -72,6 +72,10 @@ const {
 const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
+const {
+  polishBotResponse,
+  userFacingCodeLabel
+} = require("../src/lib/whatsapp/user-facing-text.ts");
 
 resetGeminiRuntimeStats();
 resetActionPlanRuntimeStats();
@@ -555,6 +559,19 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
   assert(result.parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent esperado IMPORTACAO_ESTOQUE_TABELA, recebido ${result.parsed.tipo}`);
   assert(result.rows[0]?.parsedValues?.tipo_movimento === "entrada", "defaultFields deveria marcar entrada");
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
+});
+
+test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () => {
+  assert(userFacingCodeLabel("tarefa_com_data_passada") === "tarefa com data no passado", "codigo de tarefa deveria ser traduzido");
+  assert(userFacingCodeLabel("novo_codigo_interno") === "novo codigo interno", "codigo desconhecido deveria perder underlines");
+  const polished = polishBotResponse("Aviso: lote_duplicado_no_rancho. Corrija os erros criticos. Nao ha linhas validas. Esta correto?");
+  assert(polished.includes("lote já cadastrado no rancho"), "aviso de lote deveria ser amigavel");
+  assert(polished.includes("erros críticos"), "ortografia de criticos deveria ser corrigida");
+  assert(polished.includes("Não"), "ortografia de nao deveria ser corrigida");
+  assert(polished.includes("Não há"), "frase nao ha deveria ser corrigida");
+  assert(polished.includes("linhas válidas"), "ortografia de validas deveria ser corrigida");
+  assert(polished.includes("Está correto?"), "pergunta de confirmacao deveria ter acento");
+  assert(polishBotResponse("Animal B_002 preservado.") === "Animal B_002 preservado.", "codigo de animal nao deve ser alterado");
 });
 
 test("ActionPlan de estoque entende saida acentuada com colunas embaralhadas", async () => {

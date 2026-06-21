@@ -1263,7 +1263,8 @@ module.exports = function loadBotTestSection(context) {
         messages: [lotsTableMessage],
         expected: {
           finalIntent: "IMPORTACAO_TABELA_DOMINIO",
-          responseIncludes: "lote_duplicado_no_rancho",
+          responseIncludes: "lote já cadastrado no rancho",
+          allResponsesNotInclude: "lote_duplicado_no_rancho",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
@@ -1320,7 +1321,8 @@ module.exports = function loadBotTestSection(context) {
         messages: [agendaTableMessage],
         expected: {
           finalIntent: "IMPORTACAO_TABELA_DOMINIO",
-          responseIncludes: "tarefa_com_data_passada",
+          responseIncludes: "tarefa com data no passado",
+          allResponsesNotInclude: "tarefa_com_data_passada",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,

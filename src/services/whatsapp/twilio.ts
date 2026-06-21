@@ -41,6 +41,7 @@ import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/w
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import { domainFromUserChoice, manualDomainChoiceOptionsText, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { polishBotResponse, userFacingCodeLabel } from "@/lib/whatsapp/user-facing-text";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -694,7 +695,7 @@ function tabularImportIssueLabel(issue: string) {
     animal_inativo: "animal inativo",
     duplicado: "possivel duplicado"
   };
-  return labels[issue] || issue;
+  return labels[issue] || userFacingCodeLabel(issue);
 }
 
 function tabularImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
@@ -858,7 +859,7 @@ function animalImportIssueLabel(issue: string) {
     duplicado_na_tabela: "codigo repetido na tabela",
     lote_nao_encontrado: "lote nao encontrado"
   };
-  return labels[issue] || issue;
+  return labels[issue] || userFacingCodeLabel(issue);
 }
 
 function animalImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
@@ -951,7 +952,7 @@ function stockImportIssueLabel(issue: string) {
     valor_invalido: "valor inválido",
     duplicado_na_tabela: "linha repetida na tabela"
   };
-  return labels[issue] || issue;
+  return labels[issue] || userFacingCodeLabel(issue);
 }
 
 function stockImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
@@ -3071,7 +3072,7 @@ function domainStatusActive(value: unknown) {
 
 function domainImportFailureText(failed: Array<{ line: number; reason: string }>) {
   if (!failed.length) return "";
-  const visible = failed.slice(0, 5).map((item) => `linha ${item.line || "?"}: ${item.reason}`).join("; ");
+  const visible = failed.slice(0, 5).map((item) => `linha ${item.line || "?"}: ${userFacingCodeLabel(item.reason)}`).join("; ");
   const extra = failed.length > 5 ?`; mais ${failed.length - 5}` : "";
   return `\nLinhas nao salvas: ${visible}${extra}.`;
 }
@@ -3081,7 +3082,7 @@ function domainRowIssueText(row: AnyRecord) {
     ...(Array.isArray(row.problemas) ?row.problemas : []),
     ...(Array.isArray(row.problemas_validacao_dominio) ?row.problemas_validacao_dominio : [])
   ].map(String);
-  return issues.length ?issues.join(", ") : "erro critico";
+  return issues.length ?issues.map(userFacingCodeLabel).join(", ") : "erro crítico";
 }
 
 function domainRowWarningText(row: AnyRecord) {
@@ -3089,7 +3090,7 @@ function domainRowWarningText(row: AnyRecord) {
     ...(Array.isArray(row.avisos) ?row.avisos : []),
     ...(Array.isArray(row.avisos_validacao_dominio) ?row.avisos_validacao_dominio : [])
   ].map(String);
-  return warnings.length ?warnings.join(", ") : "aviso";
+  return warnings.length ?warnings.map(userFacingCodeLabel).join(", ") : "aviso";
 }
 
 function domainPreviewLine(row: AnyRecord, domain: string) {
@@ -8476,7 +8477,7 @@ function buildProcessResult(input: {
 }): ProcessWhatsappMessageResult {
   const detected = pendingFromSession(input.nextSession) || input.parsed || (input.suppressPreviousPending ?undefined : pendingFromSession(input.previousSession));
   return {
-    respostaTexto: input.response,
+    respostaTexto: polishBotResponse(input.response),
     intencaoDetectada: detected?.tipo || null,
     confianca: typeof detected?.confianca === "number" ?detected.confianca : null,
     dadosExtraidos: detected?.dados || null,
@@ -8541,7 +8542,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           phone,
           messageSid: input.messageSid,
           direction: "saida",
-          body: response,
+          body: polishBotResponse(response),
           raw: {
             provider: input.provider,
             modoTeste: Boolean(input.modoTeste),
@@ -8808,7 +8809,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         phone,
         messageSid: input.messageSid,
         direction: "saida",
-        body: response,
+        body: polishBotResponse(response),
         raw: {
           provider: input.provider,
           modoTeste: Boolean(input.modoTeste),
@@ -8841,7 +8842,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         phone,
         messageSid: input.messageSid,
         direction: "saida",
-        body: response,
+        body: polishBotResponse(response),
         raw: {
           provider: input.provider,
           modoTeste: Boolean(input.modoTeste),
