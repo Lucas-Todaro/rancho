@@ -69,7 +69,7 @@ const {
   normalizeReproductionEvent,
   normalizeSex
 } = require("../src/lib/whatsapp/nlp-core/reproduction-normalizers.ts");
-const { parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
+const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
 
@@ -569,11 +569,14 @@ test("normalizadores de reproducao aceitam aliases, datas curtas e sexo abreviad
   assert(normalizeSex("bezerro") === "macho", "bezerro deveria normalizar para macho");
 });
 
-test("ActionPlan create 777 pariu cria pendencia sem rejeitar", async () => {
+test("ActionPlan clarify 777 pariu cria pendencia e pergunta sexo", async () => {
   const fixture = fixtureByName("create-parto-777-sem-cria");
-  const validation = assertValid("create parto sem cria", fixture.plan);
-  assert(validation.value.data.animal_ref === "777", "mae_ref deveria preencher animal_ref");
-  assert(validation.value.data.evento === "PARTO", "alias Pariu deveria normalizar para PARTO");
+  const validation = assertValid("clarify parto sem cria", fixture.plan);
+  assert(validation.value.action === "clarify", "parto sem sexo deveria manter action clarify");
+  assert(validation.value.domain === "reproducao", "domain reproducao ausente");
+  assert(validation.value.operation === "parto", "operation parto ausente");
+  assert(validation.value.data.mae_ref === "777", "mae_ref 777 ausente");
+  assert(validation.value.missingFields.includes("cria_sexo"), "missingFields deveria incluir cria_sexo");
 
   const result = await executeActionPlan({
     plan: clone(fixture.plan),
@@ -584,8 +587,16 @@ test("ActionPlan create 777 pariu cria pendencia sem rejeitar", async () => {
   assert(result.ok, `parto sem cria deveria executar: ${result.reason}`);
   assert(result.parsed.tipo === "PARTO", `intent esperado PARTO, recebido ${result.parsed.tipo}`);
   assert(result.parsed.dados?.animal_codigo === "777", "mae 777 ausente");
-  assert(result.parsed.dados?.parto_cria_decisao_pendente === true, "pendencia de cadastro da cria ausente");
-  assert(result.parsed.perguntas_faltantes[0]?.includes("Deseja cadastrar a cria"), "pergunta sobre descendente ausente");
+  assert(result.parsed.dados?.parto_cria_cadastro === true, "fluxo de cadastro da cria deveria estar ativo");
+  assert(result.parsed.perguntas_faltantes[0]?.includes("Qual foi o sexo da cria"), "pergunta direta de sexo ausente");
+
+  const withSex = mergeRanchoMessageData(result.parsed, "femea");
+  assert(withSex.dados?.cria_sexo === "femea", "resposta femea nao foi acumulada");
+  assert(withSex.perguntas_faltantes.some((question) => /c[oó]digo/i.test(question)), "deveria perguntar o codigo depois do sexo");
+
+  const withoutCode = mergeRanchoMessageData(withSex, "sem codigo");
+  assert(withoutCode.dados?.gerar_cria_codigo_temporario === true, "sem codigo deveria ativar codigo temporario suportado");
+  assert(withoutCode.perguntas_faltantes.length === 0, "fluxo completo deveria seguir para confirmacao");
 });
 
 test("ActionPlan create parto com sexo pede codigo e com codigo fica pronto para confirmar", async () => {
@@ -736,7 +747,8 @@ test("parse flags true usa ActionPlan para 777 pariu sem mensagem de revisao", a
   assert(parsed?.tipo === "PARTO", `intent esperado PARTO, recebido ${parsed?.tipo}`);
   assert(parsed.dados?.animal_codigo === "777", "animal 777 ausente");
   assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria ser marcado internamente");
-  assert(parsed.perguntas_faltantes[0]?.includes("Deseja cadastrar a cria"), "pergunta de cadastro da cria ausente");
+  assert(parsed.dados?.action_plan?.action === "clarify", "ActionPlan original deveria permanecer clarify");
+  assert(parsed.perguntas_faltantes[0]?.includes("Qual foi o sexo da cria"), "pergunta direta de sexo ausente");
 });
 
 test("ActionPlan invalido com flags true nao faz fallback legado", async () => {

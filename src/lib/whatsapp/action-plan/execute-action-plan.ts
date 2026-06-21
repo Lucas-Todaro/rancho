@@ -238,6 +238,26 @@ function reproductionMutationParsed(plan: ActionPlan, currentDate?: string): Par
   return finalize("ATUALIZACAO_ANIMAL", dados, buildMissing("ATUALIZACAO_ANIMAL", dados), plan.confidence);
 }
 
+function reproductionPartoClarifyParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {
+  if (plan.action !== "clarify" || plan.domain !== "reproducao") return null;
+  const data = plan.data || {};
+  const event = normalizeReproductionEvent(data.evento || data.tipo || plan.operation);
+  const animalRef = String(data.animal_ref || data.mae_ref || "").trim();
+  if (event !== "PARTO" || !animalRef) return null;
+
+  const dados = {
+    animal_codigo: animalRef,
+    mae_ref: animalRef,
+    evento_reprodutivo_tipo: "parto",
+    data_referencia: normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje",
+    parto_cria_cadastro: true,
+    parto_perguntar_sexo_direto: true,
+    pai_nao_informado: true,
+    ...actionPlanMetadata(plan)
+  };
+  return finalize("PARTO", dados, buildMissing("PARTO", dados), plan.confidence || 0.65);
+}
+
 export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<ExecuteActionPlanResult> {
   if (input.plan.action === "block") {
     return {
@@ -248,6 +268,14 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
   }
 
   if (input.plan.action === "clarify") {
+    const parsed = reproductionPartoClarifyParsed(input.plan, input.currentDate);
+    if (parsed) {
+      return {
+        ok: true,
+        parsed,
+        logEvent: "action_plan_used"
+      };
+    }
     return {
       ok: false,
       status: "clarify",

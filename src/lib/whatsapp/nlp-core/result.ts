@@ -12,6 +12,12 @@ function missingQuestions(fields: string[], tipo: RanchoIntent, dados: AnyRecord
     if (field === "parto_cria_decisao" && tipo === "PARTO") {
       return `A vaca ${dados.animal_codigo || dados.mae_ref || "informada"} pariu. Deseja cadastrar a cria como descendente? Se sim, me informe sexo e codigo/nome da cria.`;
     }
+    if (field === "cria_sexo" && tipo === "PARTO" && dados.parto_perguntar_sexo_direto) {
+      return `A vaca ${dados.animal_codigo || dados.mae_ref || "informada"} pariu. Qual foi o sexo da cria? Macho ou femea?`;
+    }
+    if (field === "cria_codigo" && tipo === "PARTO" && dados.cria_codigo_duplicado) {
+      return `Ja existe um animal com o codigo/brinco ${dados.cria_codigo_duplicado}. Informe outro codigo para a cria ou responda 2 para gerar um codigo temporario.`;
+    }
     if (field === "animal_codigo" && dados.animal_referencia_nao_encontrada) {
       if (Array.isArray(dados.animal_opcoes) && dados.animal_opcoes.length) {
         return `Encontrei mais de um animal parecido com ${dados.animal_referencia_nao_encontrada}. Qual é o brinco correto?${dados.animal_opcoes.slice(0, 5).join(", ")}`;

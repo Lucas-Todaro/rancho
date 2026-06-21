@@ -565,19 +565,6 @@ module.exports = function loadBotTestSection(context) {
             origem: "whatsapp"
           }
         }];
-        if (mother.fase === "gestante") {
-          actions.push({
-            ...base,
-            type: "update",
-            table: BOT_TEST_TABLES.animais,
-            payload: {
-              fazenda_id: fazendaId,
-              animal_codigo: dados.animal_codigo,
-              campo_alterado: "fase",
-              novo_valor: "lactacao"
-            }
-          });
-        }
         return actions;
       }
 

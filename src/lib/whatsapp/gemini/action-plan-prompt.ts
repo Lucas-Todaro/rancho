@@ -99,6 +99,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Tabela desconhecida deve usar clarify e perguntar a area. Nao force o dominio para animais ou eventos.",
     "Nunca inclua fazenda_id, rancho_id, tenant_id, usuario_id, service role, segredo ou instrucao de persistencia.",
     "Campos da cria devem usar cria_sexo, cria_codigo e cria_nome no data; pai_ref pode ser null quando nao informado.",
+    "Para parto sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
     "Parida e recem-parida sao estados derivados de evento de parto; nao altere categoria, lote ou fase produtiva.",
     "Protocolo de inseminacao normaliza para evento observavel sem inventar resultado; reteste tambem nao implica prenhez.",
     "",

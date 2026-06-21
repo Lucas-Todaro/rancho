@@ -379,7 +379,7 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
   if (partoDate && daysBetween(partoDate) <= 45) {
     return {
       key: "parto" as ReproductionFilter,
-      label: "Parto recente",
+      label: "Recém-parida",
       detail: `Parto em ${formatDate(lastParto?.data_evento)}`,
       tone: "info" as const,
       lastEvent: lastParto,

@@ -6,14 +6,17 @@
     "animal 777 pariu"
   ],
   "response": {
-    "action": "create",
+    "action": "clarify",
     "domain": "reproducao",
-    "confidence": 0.97,
+    "operation": "parto",
+    "confidence": 0.65,
     "data": {
       "mae_ref": "777",
-      "evento": "Pariu",
+      "evento": "PARTO",
       "data": "hoje"
     },
-    "requiresConfirmation": true
+    "missingFields": ["cria_sexo"],
+    "userQuestion": "A vaca 777 pariu. Qual foi o sexo da cria? Macho ou femea?",
+    "requiresConfirmation": false
   }
 }

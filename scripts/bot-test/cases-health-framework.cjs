@@ -157,7 +157,7 @@ module.exports = function loadBotTestSection(context) {
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
-          simulatedSaveCount: 3,
+          simulatedSaveCount: 2,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
           shouldSaveValues: {
             brinco: "B-555",
@@ -166,6 +166,50 @@ module.exports = function loadBotTestSection(context) {
             mae_id: "animal-777",
             pai_id: null
           },
+          shouldNotSaveValues: { novo_valor: "lactacao" },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto completo da 777 salva cria genealogia e evento sem alterar fase da mae",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["777 pariu femea codigo B-777 hoje", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          entities: { animal_codigo: "777", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-777" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: {
+            brinco: "B-777",
+            categoria: "bezerra",
+            sexo: "femea",
+            mae_id: "animal-777",
+            pai_id: null,
+            tipo: "parto"
+          },
+          shouldNotSaveValues: { novo_valor: "lactacao" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto com codigo de cria existente pede outro codigo sem erro interno",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-b-777-existente", brinco: "B-777", nome: "Cria existente", sexo: "femea", categoria: "bezerra" }],
+        messages: ["777 pariu femea codigo B-777 hoje"],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Ja existe um animal com o codigo/brinco",
+          responseNotIncludes: "Erro interno no Rancho",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID
         }

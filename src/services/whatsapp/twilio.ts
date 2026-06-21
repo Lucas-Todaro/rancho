@@ -449,6 +449,15 @@ function botTabularImportLog(event: string, owner: WhatsAppOwner, details: AnyRe
   });
 }
 
+function botPartoSaveLog(event: string, owner: WhatsAppOwner, details: AnyRecord = {}) {
+  console.log("[BOT PARTO SAVE]", {
+    event,
+    phone: maskPhone(owner.telefone_e164),
+    fazenda_id: owner.fazenda_id,
+    ...details
+  });
+}
+
 function stockResolutionDebug(input: unknown, found?: StockLookupResult) {
   return {
     item_extraido: String(input || ""),
@@ -1574,6 +1583,8 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
+  if (pending.tipo === "PARTO" && partoWithChild(dados) && !normalizeCalfSex(dados.cria_sexo)) return "Informe se a cria nasceu macho ou femea antes de salvar.";
+  if (pending.tipo === "PARTO" && partoWithChild(dados) && !dados.cria_codigo && !dados.gerar_cria_codigo_temporario) return "Informe o codigo/brinco da cria antes de salvar.";
   if ((pending.tipo === "DESPESA" || pending.tipo === "RECEITA_VENDA") && invalidPositiveNumber(dados.valor)) return "Informe um valor financeiro válido antes de salvar.";
   if (pending.tipo === "PAGAMENTO_FUNCIONARIO" && invalidPositiveNumber(dados.valor)) return "Informe um valor de pagamento válido antes de salvar.";
   if ((pending.tipo === "ESTOQUE_ENTRADA" || pending.tipo === "ESTOQUE_SAIDA") && invalidPositiveNumber(dados.quantidade)) return "Informe uma quantidade de estoque válida antes de salvar.";
@@ -1837,6 +1848,15 @@ function calfPayloadFromParto(owner: WhatsAppOwner, dados: AnyRecord, mother: An
       dados.cria_observacoes || ""
     ].filter(Boolean).join(". ")
   };
+}
+
+function isSamePartoChild(child: AnyRecord, dados: AnyRecord, mother: AnyRecord) {
+  const expectedSex = normalizeCalfSex(dados.cria_sexo);
+  const childSex = normalizeCalfSex(child.sexo);
+  const expectedDate = dateOnlyFromReference(String(dados.data_referencia || "hoje"));
+  return String(child.mae_id || "") === String(mother.id || "")
+    && (!expectedSex || childSex === expectedSex)
+    && (!child.data_nascimento || String(child.data_nascimento).slice(0, 10) === expectedDate);
 }
 
 function partoChildConfirmationText(parsed: ParsedRanchoMessage) {
@@ -4817,6 +4837,15 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
     }
 
     if (pending.tipo === "PARTO") {
+      botPartoSaveLog("parto_save_start", owner, {
+        mother_ref: dados.animal_codigo || null,
+        child_code: dados.cria_codigo || null,
+        has_child: partoWithChild(dados)
+      });
+      botPartoSaveLog("parto_save_mother_resolved", owner, {
+        mother_id: animal.id,
+        mother_ref: animal.brinco || animal.nome || null
+      });
       if (partoWithChild(dados)) {
         if (animalSexKind(animal) === "macho") {
           return { response: `O animal ${animalLabel(animal)} esta marcado como macho. Para registrar parto com cria, informe uma mae femea. Nada foi salvo.` };
@@ -4839,7 +4868,10 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         }
 
         const duplicateChild = await findAnimal(supabase, owner, childCode);
-        if (duplicateChild?.row && duplicateChild.exact) {
+        const existingChild = duplicateChild?.row && duplicateChild.exact && isSamePartoChild(duplicateChild.row, dados, animal)
+          ? duplicateChild.row
+          : null;
+        if (duplicateChild?.row && duplicateChild.exact && !existingChild) {
           return {
             response: `Ja existe um animal com o codigo/brinco ${childCode}. Me envie outro codigo para a cria ou responda 2 para gerar um codigo temporario.`,
             nextSession: {
@@ -4856,6 +4888,23 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         }
 
         const duplicatePartos = await existingPartoSameDay(supabase, owner, animal.id, dados.data_referencia);
+        if (existingChild && duplicatePartos.some((event) => normalizeRanchoText(String(event.descricao || "")).includes(normalizeRanchoText(childCode)))) {
+          botPartoSaveLog("parto_save_child_skipped", owner, {
+            child_id: existingChild.id,
+            child_code: childCode,
+            reason: "already_registered"
+          });
+          botPartoSaveLog("parto_save_mother_status_updated", owner, {
+            mother_id: animal.id,
+            status: "recem_parida",
+            source: "existing_parto_event"
+          });
+          return {
+            response: `O parto da ${animalLabel(animal)} com a cria ${childCode} ja estava registrado. Nenhum registro foi duplicado.`,
+            savedReal: false,
+            savedTables: []
+          };
+        }
         if (duplicatePartos.length && !dados.confirmar_duplicidade_parto) {
           const nextPending = pendingWithData(pending, { confirmar_duplicidade_parto: true, cria_codigo: childCode, cria_sexo: childSex });
           return {
@@ -4899,50 +4948,95 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           cria_categoria: dados.cria_categoria || calfCategoryForSex(childSex)
         };
 
-        const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
-          fazenda_id: owner.fazenda_id,
-          animal_id: animal.id,
-          tipo: "parto",
-          data_evento: isoFromReference(dados.data_referencia),
-          descricao: partoChildEventDescription(normalizedDados, animal, childCode, father),
-          medicamento: null,
-          dose: null,
-          custo: 0,
-          responsavel_usuario_id: owner.usuario_id || null
-        });
-
+        let saveStage = "child";
+        let child = existingChild;
+        let childCreated = false;
         try {
-          await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+          if (!child) {
+            child = await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+            childCreated = true;
+            botPartoSaveLog("parto_save_child_created", owner, {
+              child_id: child?.id || null,
+              child_code: childCode
+            });
+          } else {
+            botPartoSaveLog("parto_save_child_skipped", owner, {
+              child_id: child.id,
+              child_code: childCode,
+              reason: "matching_child_already_exists"
+            });
+          }
+
+          botPartoSaveLog("parto_save_genealogy_created", owner, {
+            child_id: child?.id || null,
+            mother_id: animal.id,
+            father_id: father?.id || null
+          });
+
+          saveStage = "reproduction_event";
+          const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+            fazenda_id: owner.fazenda_id,
+            animal_id: animal.id,
+            tipo: "parto",
+            data_evento: isoFromReference(dados.data_referencia),
+            descricao: partoChildEventDescription(normalizedDados, animal, childCode, father),
+            medicamento: null,
+            dose: null,
+            custo: 0,
+            responsavel_usuario_id: owner.usuario_id || null
+          });
+          botPartoSaveLog("parto_save_reproduction_event_created", owner, {
+            event_id: birthEvent?.id || null,
+            mother_id: animal.id
+          });
+          botPartoSaveLog("parto_save_mother_status_updated", owner, {
+            mother_id: animal.id,
+            status: "recem_parida",
+            source: "parto_event",
+            phase_preserved: animal.fase || null,
+            category_preserved: animal.categoria || null,
+            lot_preserved: animal.lote_id || null
+          });
         } catch (error) {
           let compensationError: string | null = null;
-          if (birthEvent?.id) {
+          if (childCreated && child?.id) {
             const rollback = await supabase
-              .from(TABLES.eventosAnimal)
+              .from(TABLES.animais)
               .delete()
-              .eq("id", birthEvent.id)
+              .eq("id", child.id)
               .eq("fazenda_id", owner.fazenda_id);
             compensationError = rollback.error?.message || null;
           }
-          console.error("[rancho-bot] parto_child_save_failed", {
-            fazenda_id: owner.fazenda_id,
+          const errorMessage = safeErrorText(error);
+          botPartoSaveLog("parto_save_error", owner, {
+            stage: saveStage,
             mother_id: animal.id,
             child_code: childCode,
-            birth_event_id: birthEvent?.id || null,
             compensation_error: compensationError,
-            error: error instanceof Error ? error.message : String(error)
+            message: errorMessage
           });
-          throw error;
+          if (/duplicate|duplicad|23505|unique/i.test(errorMessage)) {
+            return {
+              response: `Ja existe um animal com o codigo/brinco ${childCode}. Me envie outro codigo para a cria ou responda 2 para gerar um codigo temporario.`,
+              nextSession: {
+                etapa: "aguardando_dado",
+                dados: {
+                  pending: pendingWithData(pending, {
+                    cria_codigo: undefined,
+                    gerar_cria_codigo_temporario: undefined,
+                    cria_codigo_duplicado: childCode
+                  })
+                }
+              }
+            };
+          }
+          return {
+            response: "Nao consegui concluir o cadastro da cria e do parto. Nenhum novo registro foi mantido. Tente confirmar novamente.",
+            nextSession: { etapa: "aguardando_confirmacao", dados: { pending } }
+          };
         }
 
-        const savedTables: string[] = [TABLES.eventosAnimal, TABLES.animais];
-        if (animal.fase === "gestante") {
-          const { error } = await supabase
-            .from(TABLES.animais)
-            .update({ fase: "lactacao" })
-            .eq("id", animal.id)
-            .eq("fazenda_id", owner.fazenda_id);
-          if (error) throw new Error(error.message);
-        }
+        const savedTables: string[] = existingChild ? [TABLES.eventosAnimal] : [TABLES.animais, TABLES.eventosAnimal];
 
         return realSaveResult([
           `Pronto, parto registrado e cria ${childCode} cadastrada.`,
@@ -4952,7 +5046,8 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         ].join("\n"), savedTables);
       }
 
-      await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+      botPartoSaveLog("parto_save_child_skipped", owner, { reason: "parto_without_child_registration" });
+      const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,
         animal_id: animal.id,
         tipo: "parto",
@@ -4963,16 +5058,19 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
+      botPartoSaveLog("parto_save_reproduction_event_created", owner, {
+        event_id: birthEvent?.id || null,
+        mother_id: animal.id
+      });
+      botPartoSaveLog("parto_save_mother_status_updated", owner, {
+        mother_id: animal.id,
+        status: "recem_parida",
+        source: "parto_event",
+        phase_preserved: animal.fase || null,
+        category_preserved: animal.categoria || null,
+        lot_preserved: animal.lote_id || null
+      });
       const savedTables: string[] = [TABLES.eventosAnimal];
-      if (animal.fase === "gestante") {
-        const { error } = await supabase
-          .from(TABLES.animais)
-          .update({ fase: "lactacao" })
-          .eq("id", animal.id)
-          .eq("fazenda_id", owner.fazenda_id);
-        if (error) throw new Error(error.message);
-        savedTables.push(TABLES.animais);
-      }
       return realSaveResult(`Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.`, savedTables);
     }
 
