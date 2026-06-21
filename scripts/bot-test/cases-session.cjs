@@ -300,6 +300,27 @@ module.exports = function loadBotTestSection(context) {
         ]
       },
       {
+        name: "tabela estruturada substitui campo pendente sem virar observacao",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        initialSession: () => ({
+          etapa: "aguardando_dado",
+          dados: { pending: parseResolved("registrar inseminacao") }
+        }),
+        messages: [
+          {
+            text: "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha",
+            expected: {
+              intent: "IMPORTACAO_EVENTOS_TABELA",
+              estadoAnterior: "aguardando_dado",
+              estadoNovo: "aguardando_confirmacao",
+              dados: { total_linhas: 2 },
+              responseIncludes: "Li a tabela de eventos"
+            }
+          }
+        ]
+      },
+      {
         name: "cancelamento limpa a sessao sem salvar",
         phone: BOT_TEST_ADMIN_PHONE,
         expectNoBusinessWrites: true,

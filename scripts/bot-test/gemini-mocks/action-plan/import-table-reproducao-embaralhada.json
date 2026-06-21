@@ -1,0 +1,26 @@
+{
+  "id": "import-table-reproducao-embaralhada",
+  "input": "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha\n20.06.26;parto normal;B-004;Pariu",
+  "inputExamples": [
+    "Data;Observações;Animal;Evento\nontem;primeira inseminação;B-002;Inseminada\nhoje;;B-003;Prenha\n20.06.26;parto normal;B-004;Pariu"
+  ],
+  "response": {
+    "action": "import_table",
+    "domain": "reproducao",
+    "confidence": 0.98,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "data": "Data",
+        "observacoes": "Observacoes",
+        "animal_ref": "Animal",
+        "evento": "Evento"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

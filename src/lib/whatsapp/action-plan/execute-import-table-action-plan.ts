@@ -59,12 +59,13 @@ function splitRows(text: string, separator?: string) {
   };
 }
 
-export function parseStructuredTableForActionPlan(text: string, separator?: string): ParsedTableForValidation {
+export function parseStructuredTableForActionPlan(text: string, separator?: string, hasHeader = true): ParsedTableForValidation {
   const parsed = splitRows(text, separator);
-  const headers = parsed.rows[0] || [];
+  const firstRow = parsed.rows[0] || [];
   return {
-    headers,
-    rows: parsed.rows.slice(1)
+    headers: hasHeader ? firstRow : firstRow.map((_cell, index) => index),
+    rows: hasHeader ? parsed.rows.slice(1) : parsed.rows,
+    hasHeader
   };
 }
 
@@ -122,7 +123,7 @@ function mappedRows(plan: ImportTableActionPlan, domain: DomainManifestEntry, pa
       parsedValues[field] = parseValue(domain, field, value);
     }
     return {
-      lineNumber: index + 2,
+      lineNumber: index + (parsedTable.hasHeader === false ? 1 : 2),
       rawText: cells.join(";"),
       values,
       parsedValues
@@ -233,7 +234,9 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     const animalRef = String(row.parsedValues?.animal_ref || row.values?.animal_ref || "").trim();
     const eventOriginal = String(row.values?.evento || row.parsedValues?.evento || "").trim();
     const eventKind = normalizeReproductiveEventType(eventOriginal);
-    const dateOriginal = String(row.values?.data || row.parsedValues?.data || "").trim();
+    const mappedDate = String(row.values?.data || row.parsedValues?.data || "").trim();
+    const embeddedDate = eventOriginal.match(/\b(?:hoje|ontem|anteontem|amanha|amanhÃ£|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/i)?.[0] || "";
+    const dateOriginal = mappedDate || embeddedDate;
     const date = parseDate(dateOriginal);
     const problems: string[] = [];
     const warnings: string[] = [];
@@ -249,7 +252,9 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
       animal_codigo: animalRef,
       status_original: eventOriginal,
       evento_tipo: eventKind || null,
-      evento_normalizado: eventKind ? eventKind.toUpperCase() : null,
+      evento_normalizado: eventKind === "protocolo"
+        ? "EM_PROTOCOLO"
+        : eventKind === "reteste" ? "EM_RETESTE" : eventKind ? eventKind.toUpperCase() : null,
       evento_label: reproductiveEventLabel(eventKind),
       db_tipo: reproductiveEventDbType(eventKind),
       data_original: dateOriginal,
@@ -274,7 +279,7 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     linhas_parse_invalidas: invalidRows,
     linhas_revisao: reviewRows,
     total_linhas: rowsWithStatus.length,
-    total_linhas_parse_validas: rowsWithStatus.length - invalidRows.length,
+    total_linhas_parse_validas: rowsWithStatus.length - invalidRows.length - reviewRows.length,
     total_linhas_parse_invalidas: invalidRows.length,
     total_linhas_needs_review: reviewRows.length,
     preview_only: true,
@@ -458,7 +463,7 @@ function genericDomainParsed(plan: ImportTableActionPlan, rows: AnyRecord[], pre
 }
 
 export async function executeImportTableActionPlan(input: ExecuteImportTableActionPlanInput): Promise<ExecuteImportTableActionPlanResult> {
-  const parsedTable = parseStructuredTableForActionPlan(input.text, input.plan.table.separator);
+  const parsedTable = parseStructuredTableForActionPlan(input.text, input.plan.table.separator, input.plan.table.hasHeader);
   const validation = validateImportTableActionPlan(input.plan, parsedTable);
   if (!validation.ok) {
     return {

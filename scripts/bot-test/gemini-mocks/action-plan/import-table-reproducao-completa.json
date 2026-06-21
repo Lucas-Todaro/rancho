@@ -1,0 +1,26 @@
+{
+  "id": "import-table-reproducao-completa",
+  "input": "Codigo / Animal;Status / Tipo;Data;Observacoes\n777;Pariu;20.06.26;\n204;Inseminacao;19.06.26;\n143;Emprenhou;18.06.26;Reteste\n091;Em protocolo;20.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa",
+  "inputExamples": [
+    "Código / Animal;Status / Tipo;Data;Observações\n777;Pariu;20.06.26;\n204;Inseminação;19.06.26;\n143;Emprenhou;18.06.26;Reteste\n091;Em protocolo;20.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa"
+  ],
+  "response": {
+    "action": "import_table",
+    "domain": "reproducao",
+    "confidence": 0.98,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "animal_ref": "Codigo / Animal",
+        "evento": "Status / Tipo",
+        "data": "Data",
+        "observacoes": "Observacoes"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

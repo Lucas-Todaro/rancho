@@ -43,6 +43,7 @@ const { interpretWithGemini } = require("../src/lib/whatsapp/gemini/interpreter.
 const { buildGeminiSystemPrompt } = require("../src/lib/whatsapp/gemini/system-prompt.ts");
 const { validateInterpretedAction } = require("../src/lib/whatsapp/gemini/validator.ts");
 const { domainFromUserChoice } = require("../src/lib/whatsapp/nlp-core/tabular-domain-router.ts");
+const { detectConversationAct } = require("../src/services/whatsapp/conversation-act.ts");
 const {
   geminiRuntimeReportLines,
   geminiRuntimeStats,
@@ -487,6 +488,8 @@ const cases = [
     { name: "create uso estoque", text: "usei 5kg de racao no lote lactacao", fixture: "create-uso-estoque", intent: "ESTOQUE_SAIDA" },
     { name: "create financeiro", text: "paguei 300 reais de energia", fixture: "create-financeiro", intent: "DESPESA" },
     { name: "create animal", text: "cadastrar touro T-900", fixture: "create-animal", intent: "CADASTRO_ANIMAL" },
+    { name: "create saude vacina", text: "usei 1 dose de vacina na vaca 032", fixture: "create-saude-vacina", intent: "VACINA_MEDICAMENTO" },
+    { name: "create saude vermifugo", text: "dei 2 doses de vermifugo no bezerro B-10", fixture: "create-saude-vermifugo", intent: "VACINA_MEDICAMENTO" },
     { name: "query vacas paridas", text: "vacas paridas", fixture: "query-vacas-paridas", intent: "CONSULTA_REGISTROS_HOJE" },
     { name: "query vacas protocolo", text: "vacas em protocolo", fixture: "query-vacas-protocolo", intent: "CONSULTA_REGISTROS_HOJE" },
     { name: "query vacas reteste", text: "vacas em reteste", fixture: "query-vacas-reteste", intent: "CONSULTA_REGISTROS_HOJE" },
@@ -497,6 +500,9 @@ const cases = [
     { name: "import estoque saida", text: "item;saida;unidade;destino\nracao;5;kg;lote lactacao", fixture: "import-table-estoque-saida", intent: "IMPORTACAO_ESTOQUE_TABELA" },
     { name: "import genealogia", text: "animal;pai;mae\nB-123;T-01;777\nB-124;;777", fixture: "import-table-genealogia", intent: "IMPORTACAO_TABELA_DOMINIO" },
     { name: "import agenda", text: "tarefa;data;responsavel\nvacinar lote bezerros;25/06/2026;Joao", fixture: "import-table-agenda", intent: "IMPORTACAO_TABELA_DOMINIO" },
+    { name: "import reproducao completa", text: "Codigo / Animal;Status / Tipo;Data;Observacoes\n777;Pariu;20.06.26;\n204;Inseminacao;19.06.26;\n143;Emprenhou;18.06.26;Reteste\n091;Em protocolo;20.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa", fixture: "import-table-reproducao-completa", intent: "IMPORTACAO_EVENTOS_TABELA" },
+    { name: "import reproducao embaralhada", text: "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha\n20.06.26;parto normal;B-004;Pariu", fixture: "import-table-reproducao-embaralhada", intent: "IMPORTACAO_EVENTOS_TABELA" },
+    { name: "import lista reproducao", text: "B-002 - inseminada ontem - primeira inseminacao\nB-003 - prenha hoje\nB-004 - pariu hoje", fixture: "import-lista-reproducao", intent: "IMPORTACAO_EVENTOS_TABELA" },
     { name: "parto sem cria", text: "777 pariu", fixture: "create-parto-777-sem-cria", intent: "PARTO" },
     { name: "parto com cria", text: "777 pariu macho codigo B-555 hoje", fixture: "create-parto-777-macho-codigo", intent: "PARTO" }
   ];
@@ -516,10 +522,74 @@ const cases = [
         `${testCase.name}: origem deve ser Gemini/ActionPlan, recebida ${parsed.dados?.origem_parser}`
       );
       assert(parsed.dados?.action_plan_used === true || parsed.dados?.table_action_plan_used === true, `${testCase.name}: plano nao marcado`);
+      if (testCase.fixture === "create-saude-vacina") {
+        assert(parsed.dados?.animal_codigo === "032", "saude vacina: animal 032 ausente");
+        assert(parsed.dados?.produto === "vacina", "saude vacina: produto ausente");
+        assert(parsed.dados?.dose === "1 dose", `saude vacina: dose esperada 1 dose, recebida ${parsed.dados?.dose}`);
+        assert(parsed.perguntas_faltantes.length === 0, "saude vacina: nao deveria faltar campo");
+      }
+      if (["import-table-reproducao-completa", "import-table-reproducao-embaralhada", "import-lista-reproducao"].includes(testCase.fixture)) {
+        const rows = parsed.dados?.linhas || [];
+        const total = Number(parsed.dados?.total_linhas || 0);
+        const valid = Number(parsed.dados?.total_linhas_parse_validas || 0);
+        const invalid = Number(parsed.dados?.total_linhas_parse_invalidas || 0);
+        const review = Number(parsed.dados?.total_linhas_needs_review || 0);
+        assert(rows.length === total, `${testCase.name}: linhas uteis desapareceram`);
+        assert(valid + invalid + review === total, `${testCase.name}: particao de linhas invalida`);
+        assert(rows.every((row) => !String(row.observacoes || "").includes("Data;")), `${testCase.name}: tabela inteira virou observacao`);
+        assert(rows.some((row) => row.evento_normalizado === "INSEMINACAO"), `${testCase.name}: INSEMINACAO ausente`);
+        assert(rows.some((row) => row.evento_normalizado === "PRENHEZ"), `${testCase.name}: PRENHEZ ausente`);
+        assert(rows.some((row) => row.evento_normalizado === "PARTO"), `${testCase.name}: PARTO ausente`);
+        if (testCase.fixture === "import-table-reproducao-completa") {
+          assert(rows.some((row) => row.evento_normalizado === "EM_PROTOCOLO"), "reproducao completa: EM_PROTOCOLO ausente");
+          assert(rows.some((row) => row.evento_normalizado === "EM_RETESTE"), "reproducao completa: EM_RETESTE ausente");
+        }
+      }
       results.push({ ok: true, name: `Gemini-first: ${testCase.name}` });
     } catch (error) {
       results.push({ ok: false, name: `Gemini-first: ${testCase.name}`, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  try {
+    const table = "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha";
+    const act = detectConversationAct({
+      text: table,
+      session: { etapa: "aguardando_dado", dados: { pending: parseRanchoMessage("atualizar observacao da vaca 032") } },
+      pending: parseRanchoMessage("atualizar observacao da vaca 032")
+    });
+    assert(act.messageType === "new_action", `tabela com pendencia deveria ser nova acao, recebido ${act.messageType}`);
+    assert(act.decision === "new_action", `tabela com pendencia deveria ignorar merge contextual, recebido ${act.decision}`);
+    results.push({ ok: true, name: "Tabela estruturada substitui resposta de pendencia" });
+  } catch (error) {
+    results.push({ ok: false, name: "Tabela estruturada substitui resposta de pendencia", error: error instanceof Error ? error.message : String(error) });
+  }
+
+  try {
+    const result = await parseWithConfiguredInterpreter({
+      text: "abc;def;ghi\nx;y;z\n1;2;3",
+      localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
+      owner: ADMIN_OWNER,
+      geminiMockId: "import-table-desconhecida-clarify"
+    });
+    assert(result.kind === "clarify", `tabela desconhecida deveria esclarecer, recebido ${result.kind}`);
+    results.push({ ok: true, name: "Tabela desconhecida pede esclarecimento" });
+  } catch (error) {
+    results.push({ ok: false, name: "Tabela desconhecida pede esclarecimento", error: error instanceof Error ? error.message : String(error) });
+  }
+
+  try {
+    const result = await parseWithConfiguredInterpreter({
+      text: "vacinei o lote bezerros hoje",
+      localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
+      owner: ADMIN_OWNER,
+      geminiMockId: "clarify-saude-lote"
+    });
+    assert(result.kind === "clarify", `saude por lote deveria pedir dado, recebido ${result.kind}`);
+    assert(/qual vacina/i.test(result.message), "saude por lote deveria perguntar qual vacina foi aplicada");
+    results.push({ ok: true, name: "Gemini-first: saude por lote pede esclarecimento" });
+  } catch (error) {
+    results.push({ ok: false, name: "Gemini-first: saude por lote pede esclarecimento", error: error instanceof Error ? error.message : String(error) });
   }
 
   try {

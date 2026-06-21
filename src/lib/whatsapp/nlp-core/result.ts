@@ -92,7 +92,8 @@ function buildResumo(tipo: RanchoIntent, dados: AnyRecord) {
   if (tipo === "VACINA_MEDICAMENTO") {
     const evento = dados.evento_tipo === "vacina" ?"vacina" : "tratamento";
     const produto = dados.produto ?`${evento === "vacina" ?" de" : " com"} ${dados.produto}` : "";
-    return `registrar ${evento}${produto}${dados.animal_codigo ?` no animal ${dados.animal_codigo}` : ""}`;
+    const dose = dados.dose ?` (${dados.dose})` : "";
+    return `registrar ${evento}${produto}${dose}${dados.animal_codigo ?` no animal ${dados.animal_codigo}` : ""}${dados.data_referencia ?` em ${dados.data_referencia}` : ""}`;
   }
 
   if (tipo === "MORTE") return `registrar morte do animal ${dados.animal_codigo || "informado"}${dados.data_referencia ?` (${dados.data_referencia})` : ""}`;

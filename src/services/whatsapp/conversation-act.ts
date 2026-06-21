@@ -2,6 +2,7 @@ import type { AnyRecord } from "@/lib/types";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import type { ParserRiskFlag } from "@/lib/whatsapp/nlp-core/types";
+import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 
 export type ConversationMessageType =
   | "new_action"
@@ -147,6 +148,19 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
 
   if (base.hasPendingAction) {
     flags.push("pending_action_response", "references_previous_context");
+  }
+
+  if (detectStructuredInput(input.text).isStructured) {
+    return {
+      ...base,
+      messageType: "new_action",
+      intent: null,
+      confidence: 0.9,
+      correction: null,
+      flags: uniqueFlags(flags),
+      decision: "new_action",
+      reason: "Mensagem estruturada tratada como nova entrada, sem preencher a pendencia anterior."
+    };
   }
 
   if (CANCELLATION_PATTERN.test(normalized)) {

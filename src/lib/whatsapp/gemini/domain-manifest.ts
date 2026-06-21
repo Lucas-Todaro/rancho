@@ -347,7 +347,12 @@ export const RANCHO_DOMAIN_MANIFEST = {
     allowedActions: queryCreateUpdateImport,
     fields: {
       animal_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
+      lote_ref: field("relation", { relationDomain: "lotes" }),
       evento: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao"] }),
+      tipo: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao"] }),
+      item: field("string", { sourceField: "medicamento" }),
+      quantidade: field("number"),
+      unidade: field("string"),
       produto: field("string", { sourceField: "medicamento" }),
       medicamento: field("string"),
       dose: field("string"),
@@ -367,9 +372,10 @@ export const RANCHO_DOMAIN_MANIFEST = {
     searchableFields: ["animal_ref", "evento", "produto", "medicamento", "dose", "sintomas", "responsavel", "observacoes", "descricao"],
     aggregatableFields: ["custo"],
     dateFields: ["data", "data_evento"],
-    relationFields: ["animal_ref"],
+    relationFields: ["animal_ref", "lote_ref"],
     enumFields: {
-      evento: ["vacina", "doenca", "tratamento", "medicamento", "observacao"]
+      evento: ["vacina", "doenca", "tratamento", "medicamento", "observacao"],
+      tipo: ["vacina", "doenca", "tratamento", "medicamento", "observacao"]
     },
     maxLimit: 500
   },

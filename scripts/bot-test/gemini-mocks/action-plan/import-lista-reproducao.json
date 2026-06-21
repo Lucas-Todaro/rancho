@@ -1,0 +1,22 @@
+{
+  "id": "import-lista-reproducao",
+  "input": "B-002 - inseminada ontem - primeira inseminacao\nB-003 - prenha hoje\nB-004 - pariu hoje",
+  "response": {
+    "action": "import_table",
+    "domain": "reproducao",
+    "confidence": 0.96,
+    "table": {
+      "hasHeader": false,
+      "separator": " - ",
+      "columnMapping": {
+        "animal_ref": 0,
+        "evento": 1,
+        "observacoes": 2
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

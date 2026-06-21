@@ -7,6 +7,7 @@ import {
   isUnsafeOperationalMessage,
   safeErrorText,
   sanitizeFreeText,
+  sanitizeWhatsappMessageText,
   sanitizePayloadValue,
   SAFE_OPERATION_BLOCKED_MESSAGE
 } from "@/lib/security";
@@ -39,6 +40,7 @@ import {
 import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import { domainFromUserChoice, manualDomainChoiceOptionsText, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
+import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -738,6 +740,27 @@ function tabularMissingAnimalCodes(parsed: ParsedRanchoMessage, maxRows = 8) {
   return Array.from(codes).slice(0, maxRows);
 }
 
+function tabularReadyEventDetails(parsed: ParsedRanchoMessage, maxRows = 6) {
+  const rows = tabularImportRows(parsed)
+    .filter((row) => {
+      const issues = Array.isArray(row.problemas_validacao)
+        ? row.problemas_validacao
+        : Array.isArray(row.problemas) ? row.problemas : [];
+      return issues.length === 0 || row.status_validacao === "pronto";
+    })
+    .slice(0, maxRows);
+  if (!rows.length) return "";
+  const lines = rows.map((row) => [
+    `- ${row.animal_codigo || row.animal_codigo_original || "Animal"}`,
+    row.evento_label || row.evento_normalizado || row.evento_tipo || "evento",
+    row.data_referencia || row.data_original || "data nao informada",
+    row.observacoes || ""
+  ].filter(Boolean).join(" | "));
+  const total = tabularImportRows(parsed).length;
+  if (total > rows.length) lines.push(`...e mais ${total - rows.length} linha(s).`);
+  return lines.join("\n");
+}
+
 function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   const summary = tabularImportSummary(parsed);
   const counts = tabularImportCountText(summary.eventCounts);
@@ -749,6 +772,8 @@ function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   const missingCodesText = missingCodes.length ?`Codigos faltantes: ${missingCodes.join(", ")}.` : "";
   const dateText = summary.missingDate || summary.invalidDate ?`Datas com problema: ${summary.missingDate + summary.invalidDate}.` : "";
   const typeText = summary.unknownType ?`Tipos nao reconhecidos: ${summary.unknownType}.` : "";
+  const readyDetails = tabularReadyEventDetails(parsed);
+  const readyBlock = readyDetails ? `\n\nEventos reconhecidos:\n${readyDetails}` : "";
 
   if (summary.notFound) {
     return [
@@ -761,6 +786,7 @@ function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
       missingCodesText,
       dateText,
       typeText,
+      readyBlock,
       issueBlock,
       "",
       "O que deseja fazer?",
@@ -784,6 +810,7 @@ function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
     notFoundText,
     dateText,
     typeText,
+    readyBlock,
     issueBlock,
     "",
     summary.invalid || summary.duplicates ? "Quer importar apenas as linhas validas?" : "Esta correto?",
@@ -5140,7 +5167,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         data_evento: isoFromReference(dados.data_referencia),
         descricao: `${tipo === "vacina" ?"Vacina" : "Tratamento"} registrado via WhatsApp`,
         medicamento: dados.produto,
-        dose: null,
+        dose: dados.dose || null,
         custo: 0,
         responsavel_usuario_id: owner.usuario_id || null
       });
@@ -8500,7 +8527,11 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       response = SAFE_OPERATION_BLOCKED_MESSAGE;
       suppressPreviousPending = true;
     } else {
-    const parserMessage = originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
+    const structuredMessage = sanitizeWhatsappMessageText(originalMessage);
+    const structuredDetection = detectStructuredInput(structuredMessage);
+    const parserMessage = structuredDetection.isStructured
+      ? structuredMessage
+      : originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const legacyParserCanDecide = !isGeminiPrimaryMode();
     const localParsedPreview = legacyParserCanDecide
       ? parseRanchoMessage(parserMessage)
@@ -8522,10 +8553,10 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         parse_invalidas: tableParsedPreview?.dados?.total_linhas_parse_invalidas || null
       });
     }
-    const conversationAct: ConversationAct = tableParsedPreview ?{
+    const conversationAct: ConversationAct = tableParsedPreview || structuredDetection.isStructured ?{
       messageType: "new_action",
-      intent: tableParsedPreview.tipo,
-      confidence: tableParsedPreview.confianca,
+      intent: tableParsedPreview?.tipo || null,
+      confidence: tableParsedPreview?.confianca || 0.9,
       targetPreviousActionId: null,
       targetPreviousAction: null,
       correction: null,
@@ -8542,7 +8573,32 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     });
     logConversationAct(message, conversationAct);
 
-    if (tableParsedPreview) {
+    if (structuredDetection.isStructured && !tableParsedPreview) {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      suppressPreviousPending = true;
+      const interpreted = await parseWithConfiguredInterpreter({
+        text: parserMessage,
+        localParsed: localParsedPreview,
+        owner,
+        supabase
+      });
+      if (interpreted.kind === "clarify") {
+        response = interpreted.message;
+      } else if (interpreted.kind === "consultations") {
+        parsed = interpreted.consultations[0];
+        response = await handleGeminiConsultationBatch(supabase, owner, interpreted.consultations);
+      } else if (interpreted.kind === "compound") {
+        const immediateText = interpreted.immediateConsultations.length
+          ? await handleGeminiConsultationBatch(supabase, owner, interpreted.immediateConsultations)
+          : "";
+        parsed = await enrichWithCatalog(supabase, owner, interpreted.pending);
+        const actionText = await handleFreeText(supabase, owner, parserMessage, parsed);
+        response = [immediateText, actionText].filter(Boolean).join("\n\n");
+      } else {
+        parsed = await enrichWithCatalog(supabase, owner, interpreted.parsed);
+        response = await handleFreeText(supabase, owner, parserMessage, parsed);
+      }
+    } else if (tableParsedPreview) {
       parsed = await enrichWithCatalog(supabase, owner, tableParsedPreview);
       response = await handleFreeText(supabase, owner, parserMessage, parsed);
     } else if (isMenuCommand(command)) {

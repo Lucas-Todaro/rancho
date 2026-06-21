@@ -314,7 +314,7 @@ test("fixtures ActionPlan obrigatorias validam ou bloqueiam corretamente", () =>
   assert(fixtures.length >= 11, `fixtures insuficientes: ${fixtures.length}`);
   for (const fixture of fixtures) {
     const parsedTable = fixture.parsedTable || (fixture.plan.action === "import_table" && fixture.input
-      ? parseStructuredTableForActionPlan(fixture.input, fixture.plan.table?.separator)
+      ? parseStructuredTableForActionPlan(fixture.input, fixture.plan.table?.separator, fixture.plan.table?.hasHeader)
       : undefined);
     const result = assertValid(fixture.name, fixture.plan, parsedTable);
     if (fixture.plan.action === "clarify" || fixture.plan.action === "block") {

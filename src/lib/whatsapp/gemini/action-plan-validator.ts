@@ -26,6 +26,7 @@ import {
 export type ParsedTableForValidation = {
   headers: Array<string | number>;
   rows?: unknown[][];
+  hasHeader?: boolean;
 };
 
 export type ActionPlanValidationContext = {
@@ -110,6 +111,12 @@ function normalizeReproductionData(data: unknown) {
 }
 
 function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPlan {
+  if (domainName === "saude_sanitario" && (plan.action === "create" || plan.action === "update")) {
+    const data = { ...plan.data };
+    if (!hasValue(data.evento) && hasValue(data.tipo)) data.evento = data.tipo;
+    if (!hasValue(data.produto) && hasValue(data.item)) data.produto = data.item;
+    return { ...plan, data };
+  }
   if (domainName !== "reproducao") return plan;
 
   if (plan.action === "query") {

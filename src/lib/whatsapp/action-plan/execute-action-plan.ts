@@ -163,6 +163,30 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
     return finalize("ATUALIZACAO_ANIMAL", dados, buildMissing("ATUALIZACAO_ANIMAL", dados), plan.confidence);
   }
 
+  if (plan.domain === "saude_sanitario") {
+    const rawType = String(data.tipo || data.evento || "tratamento").trim().toLowerCase();
+    const eventType = rawType === "vacina" ? "vacina" : "tratamento";
+    const quantity = data.quantidade;
+    const unit = String(data.unidade || "").trim();
+    const dose = data.dose || (quantity !== undefined && quantity !== null
+      ? `${quantity}${unit ? ` ${unit}` : ""}`
+      : undefined);
+    const dados = {
+      animal_codigo: data.animal_ref,
+      lote_nome: data.lote_ref || undefined,
+      produto: data.item || data.produto || data.medicamento || rawType,
+      dose,
+      quantidade: quantity,
+      unidade: unit || undefined,
+      evento_tipo: eventType,
+      data_referencia: date,
+      observacoes: data.observacoes || data.descricao || undefined,
+      custo: data.custo,
+      ...metadata
+    };
+    return finalize("VACINA_MEDICAMENTO", dados, buildMissing("VACINA_MEDICAMENTO", dados), plan.confidence);
+  }
+
   if (plan.domain === "agenda_tarefas") {
     const dados = {
       descricao: data.titulo || data.tarefa,

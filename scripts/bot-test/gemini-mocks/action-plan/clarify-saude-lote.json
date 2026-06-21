@@ -1,0 +1,14 @@
+{
+  "id": "clarify-saude-lote",
+  "input": "vacinei o lote bezerros hoje",
+  "response": {
+    "action": "clarify",
+    "domain": "saude_sanitario",
+    "operation": "registro_sanitario_lote",
+    "confidence": 0.9,
+    "data": { "lote_ref": "bezerros", "item": "vacina", "tipo": "vacina", "data": "hoje" },
+    "missingFields": ["produto_ou_vacina"],
+    "userQuestion": "Qual vacina foi aplicada no lote Bezerros?",
+    "requiresConfirmation": false
+  }
+}

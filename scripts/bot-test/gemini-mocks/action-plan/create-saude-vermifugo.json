@@ -1,0 +1,12 @@
+{
+  "id": "create-saude-vermifugo",
+  "inputExamples": ["dei 2 doses de vermifugo no bezerro B-10", "dei 2 doses de vermífugo no bezerro B-10"],
+  "response": {
+    "action": "create",
+    "domain": "saude_sanitario",
+    "operation": "registro_sanitario",
+    "confidence": 0.96,
+    "data": { "animal_ref": "B-10", "item": "vermifugo", "quantidade": 2, "unidade": "doses", "tipo": "medicamento", "data": "hoje" },
+    "requiresConfirmation": true
+  }
+}

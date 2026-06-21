@@ -1,0 +1,12 @@
+{
+  "id": "create-saude-vacina",
+  "inputExamples": ["usei 1 dose de vacina na vaca 032", "apliquei 1 dose de vacina na vaca 032"],
+  "response": {
+    "action": "create",
+    "domain": "saude_sanitario",
+    "operation": "registro_sanitario",
+    "confidence": 0.97,
+    "data": { "animal_ref": "032", "item": "vacina", "quantidade": 1, "unidade": "dose", "tipo": "vacina", "data": "hoje" },
+    "requiresConfirmation": true
+  }
+}
