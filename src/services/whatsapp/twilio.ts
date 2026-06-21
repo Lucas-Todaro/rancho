@@ -2899,8 +2899,51 @@ function physicalSaleStockDecisionQuestion(parsed: ParsedRanchoMessage) {
   return `Encontrei ${item} no estoque. Deseja dar baixa de ${formatStockAmount(Number(dados.quantidade || 0), dados.unidade)} desse item?\n1 - Sim\n2 - Não`;
 }
 
+function normalizePhysicalSalePending(parsed: ParsedRanchoMessage) {
+  if (parsed.tipo !== "ESTOQUE_SAIDA" || !parsed.dados?.venda) return parsed;
+
+  const dados = { ...(parsed.dados || {}) };
+  const actionPlan = dados.action_plan && typeof dados.action_plan === "object"
+    ? dados.action_plan as AnyRecord
+    : {};
+  const actionPlanData = actionPlan.data && typeof actionPlan.data === "object"
+    ? actionPlan.data as AnyRecord
+    : {};
+  const missing = (value: unknown) => value === undefined || value === null || String(value).trim() === "";
+  const firstPresent = (...values: unknown[]) => values.find((value) => !missing(value));
+
+  if (missing(dados.quantidade)) {
+    dados.quantidade = firstPresent(dados.venda_quantidade_original, actionPlanData.quantidade);
+  }
+  if (missing(dados.unidade)) {
+    dados.unidade = firstPresent(dados.venda_unidade_original, actionPlanData.unidade, actionPlanData.unidade_medida);
+  }
+  if (missing(dados.valor)) {
+    dados.valor = firstPresent(dados.venda_valor_original, actionPlanData.valor_total);
+  }
+  if (missing(dados.item_nome)) {
+    dados.item_nome = firstPresent(
+      dados.venda_item_original,
+      actionPlanData.item,
+      actionPlanData.item_ref,
+      actionPlanData.nome
+    );
+  }
+
+  if (!missing(dados.quantidade) && Number.isFinite(Number(dados.quantidade)) && Number(dados.quantidade) > 0) {
+    dados.venda_quantidade_original = dados.quantidade;
+  }
+  if (!missing(dados.unidade)) dados.venda_unidade_original = dados.unidade;
+  if (!missing(dados.valor) && Number.isFinite(Number(dados.valor)) && Number(dados.valor) > 0) {
+    dados.venda_valor_original = dados.valor;
+  }
+  if (!missing(dados.item_nome)) dados.venda_item_original = dados.item_nome;
+
+  return refreshRanchoMessage(parsed, dados);
+}
+
 function saleFinanceDataFromStockSale(parsed: ParsedRanchoMessage) {
-  const dados = parsed.dados || {};
+  const dados = normalizePhysicalSalePending(parsed).dados || {};
   const item = dados.item_extraido || dados.item_nome || dados.item_resolvido || "item";
   return {
     valor: dados.valor,
@@ -2919,17 +2962,18 @@ function saleFinanceDataFromStockSale(parsed: ParsedRanchoMessage) {
 }
 
 function withPhysicalSaleStockDecision(parsed: ParsedRanchoMessage, shouldMove: boolean) {
+  const normalized = normalizePhysicalSalePending(parsed);
   if (shouldMove) {
     const dados = {
-      ...(parsed.dados || {}),
+      ...(normalized.dados || {}),
       deve_baixar_estoque: true,
       motivo_processamento: "usuario_escolheu_estoque+receita"
     };
-    return refreshRanchoMessage(parsed, dados);
+    return refreshRanchoMessage(normalized, dados);
   }
 
-  const financeData = saleFinanceDataFromStockSale(parsed);
-  return refreshRanchoMessage({ ...parsed, tipo: "RECEITA_VENDA", dados: financeData }, financeData);
+  const financeData = saleFinanceDataFromStockSale(normalized);
+  return refreshRanchoMessage({ ...normalized, tipo: "RECEITA_VENDA", dados: financeData }, financeData);
 }
 
 function withoutChildMilkStockMetadata(parsed: ParsedRanchoMessage) {
@@ -4239,6 +4283,7 @@ async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: WhatsApp
 }
 
 async function enrichWithCatalog(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  parsed = normalizePhysicalSalePending(parsed);
   const dados = { ...(parsed.dados || {}) };
   let changed = false;
 
@@ -8232,7 +8277,7 @@ async function handleConfirmation(
     && Boolean(pendingStockSummary?.ready)
     && (isTabularImportFoundOnlyCommand(command) || command === "2")
     && !(command === "2" && !pendingStockSummary?.missingItems && Boolean(pendingStockSummary?.invalid || pendingStockSummary?.duplicates));
-  let pendingToSave = pending;
+  let pendingToSave = normalizePhysicalSalePending(pending);
 
   if (shouldCreateMissingLots) {
     pendingToSave = await enrichWithCatalog(supabase, owner, refreshRanchoMessage(pending, {

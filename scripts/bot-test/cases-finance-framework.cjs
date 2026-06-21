@@ -36,6 +36,114 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "venda de milho em sacos preserva quantidade ate a confirmacao",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["vendi 4 sacos de milho por 320 reais", "1", "sim"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { quantidade: 4, unidade: "saco", valor: 320, item_nome: "Milho", deve_baixar_estoque: true },
+          responseNotIncludes: "quantidade de estoque válida",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { quantidade: 4, valor: 320 },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "venda de feno em fardos preserva quantidade ate a confirmacao",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["vendi 2 fardos de feno por 180 reais", "sim", "confirma"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { quantidade: 2, unidade: "fardo", valor: 180, item_nome: "Feno", deve_baixar_estoque: true },
+          responseNotIncludes: "quantidade de estoque válida",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { quantidade: 2, valor: 180 },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "venda decimal em kg preserva quantidade ate a confirmacao",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["vendi 1,5 kg de sal mineral por 45 reais", "dar baixa", "sim"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { quantidade: 1.5, unidade: "kg", valor: 45, item_nome: "Sal mineral", deve_baixar_estoque: true },
+          responseNotIncludes: "quantidade de estoque válida",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { quantidade: 1.5, valor: 45 },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "venda Gemini recupera quantidade perdida antes da confirmacao",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        initialSession: () => ({
+          etapa: "aguardando_dado",
+          dados: {
+            acao_pendente: "venda_baixa_estoque_opcional",
+            pending: {
+              tipo: "ESTOQUE_SAIDA",
+              confianca: 0.94,
+              dados: {
+                item_nome: "Milho",
+                unidade: "saco",
+                valor: 320,
+                venda: true,
+                item_estoque_encontrado: true,
+                item_resolvido: "Milho",
+                item_id: "item-milho",
+                action_plan: {
+                  action: "create",
+                  domain: "estoque",
+                  operation: "venda_estoque",
+                  data: {
+                    item: "milho",
+                    quantidade: 4,
+                    unidade: "saco",
+                    valor_total: 320,
+                    tipo_movimento: "saida"
+                  }
+                }
+              },
+              perguntas_faltantes: [],
+              resumo: "registrar venda com baixa de estoque"
+            }
+          }
+        }),
+        messages: ["sim", "confirma"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { quantidade: 4, unidade: "saco", valor: 320, item_nome: "Milho", deve_baixar_estoque: true },
+          responseNotIncludes: "quantidade de estoque válida",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes, BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { quantidade: 4, valor: 320 },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "venda fisica de leite pode registrar apenas receita",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
