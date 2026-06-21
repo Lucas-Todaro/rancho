@@ -565,6 +565,18 @@ module.exports = function loadBotTestSection(context) {
             origem: "whatsapp"
           }
         }];
+        if (["gestante", "prenhe", "prenha", "prenhez"].includes(normalize(mother.fase))) {
+          actions.push({
+            ...base,
+            type: "update",
+            table: BOT_TEST_TABLES.animais,
+            payload: {
+              fazenda_id: fazendaId,
+              id: mother.id || null,
+              fase: "lactacao"
+            }
+          });
+        }
         return actions;
       }
 

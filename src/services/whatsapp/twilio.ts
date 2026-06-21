@@ -1606,6 +1606,23 @@ async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, t
   return data;
 }
 
+async function updateMotherPhaseAfterParto(supabase: SupabaseAdmin, owner: WhatsAppOwner, mother: AnyRecord) {
+  if (!mother?.id || !animalPhaseIsPregnant(mother)) return false;
+
+  const { data, error } = await supabase
+    .from(TABLES.animais)
+    .update({ fase: "lactacao" })
+    .eq("id", mother.id)
+    .eq("fazenda_id", owner.fazenda_id)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await logAudit(supabase, owner, TABLES.animais, "update", data || { ...mother, fase: "lactacao" });
+  mother.fase = "lactacao";
+  return true;
+}
+
 function realSaveResult(response: string, savedTables: string[]): SaveResult {
   return { response, savedReal: true, savedTables };
 }
@@ -1877,7 +1894,6 @@ function partoChildConfirmationText(parsed: ParsedRanchoMessage) {
     `- Data do parto/nascimento: ${date}`,
     "",
     "Isso vai registrar o parto, cadastrar a cria ativa e vincular a cria como descendente direto da mae.",
-    "A categoria e a fase produtiva da mae nao serao trocadas por \"parida\".",
     "",
     "Esta correto?",
     "1 - Confirmar",
@@ -4951,6 +4967,9 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         let saveStage = "child";
         let child = existingChild;
         let childCreated = false;
+        let birthEvent: AnyRecord | null = null;
+        let motherPhaseUpdated = false;
+        const motherPhaseBeforeParto = animal.fase || null;
         try {
           if (!child) {
             child = await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
@@ -4974,7 +4993,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           });
 
           saveStage = "reproduction_event";
-          const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+          birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
             fazenda_id: owner.fazenda_id,
             animal_id: animal.id,
             tipo: "parto",
@@ -4989,24 +5008,37 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             event_id: birthEvent?.id || null,
             mother_id: animal.id
           });
+          saveStage = "mother_phase";
+          motherPhaseUpdated = await updateMotherPhaseAfterParto(supabase, owner, animal);
           botPartoSaveLog("parto_save_mother_status_updated", owner, {
             mother_id: animal.id,
             status: "recem_parida",
             source: "parto_event",
-            phase_preserved: animal.fase || null,
+            previous_phase: motherPhaseBeforeParto,
+            phase: animal.fase || null,
+            phase_updated: motherPhaseUpdated,
             category_preserved: animal.categoria || null,
             lot_preserved: animal.lote_id || null
           });
         } catch (error) {
-          let compensationError: string | null = null;
+          const compensationErrors: string[] = [];
+          if (birthEvent?.id) {
+            const rollbackEvent = await supabase
+              .from(TABLES.eventosAnimal)
+              .delete()
+              .eq("id", birthEvent.id)
+              .eq("fazenda_id", owner.fazenda_id);
+            if (rollbackEvent.error?.message) compensationErrors.push(rollbackEvent.error.message);
+          }
           if (childCreated && child?.id) {
-            const rollback = await supabase
+            const rollbackChild = await supabase
               .from(TABLES.animais)
               .delete()
               .eq("id", child.id)
               .eq("fazenda_id", owner.fazenda_id);
-            compensationError = rollback.error?.message || null;
+            if (rollbackChild.error?.message) compensationErrors.push(rollbackChild.error.message);
           }
+          const compensationError = compensationErrors.join(" | ") || null;
           const errorMessage = safeErrorText(error);
           botPartoSaveLog("parto_save_error", owner, {
             stage: saveStage,
@@ -5037,41 +5069,66 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         }
 
         const savedTables: string[] = existingChild ? [TABLES.eventosAnimal] : [TABLES.animais, TABLES.eventosAnimal];
+        if (motherPhaseUpdated && !savedTables.includes(TABLES.animais)) savedTables.push(TABLES.animais);
 
         return realSaveResult([
           `Pronto, parto registrado e cria ${childCode} cadastrada.`,
           `Mae: ${animalLabel(animal)}.`,
           `Pai: ${father ? animalLabel(father) : "nao informado"}.`,
-          "A mae continua com a categoria/fase produtiva do cadastro; recem-parida sera exibido pelo ultimo evento de parto."
-        ].join("\n"), savedTables);
+          "A mae agora aparece como recem-parida.",
+          motherPhaseUpdated ? "Fase produtiva atualizada para lactacao." : ""
+        ].filter(Boolean).join("\n"), savedTables);
       }
 
       botPartoSaveLog("parto_save_child_skipped", owner, { reason: "parto_without_child_registration" });
-      const birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
-        fazenda_id: owner.fazenda_id,
-        animal_id: animal.id,
-        tipo: "parto",
-        data_evento: isoFromReference(dados.data_referencia),
-        descricao: `Parto registrado via WhatsApp para o animal ${animal.brinco}`,
-        medicamento: null,
-        dose: null,
-        custo: 0,
-        responsavel_usuario_id: owner.usuario_id || null
-      });
-      botPartoSaveLog("parto_save_reproduction_event_created", owner, {
-        event_id: birthEvent?.id || null,
-        mother_id: animal.id
-      });
+      let birthEvent: AnyRecord | null = null;
+      let motherPhaseUpdated = false;
+      const motherPhaseBeforeParto = animal.fase || null;
+      try {
+        birthEvent = await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
+          fazenda_id: owner.fazenda_id,
+          animal_id: animal.id,
+          tipo: "parto",
+          data_evento: isoFromReference(dados.data_referencia),
+          descricao: `Parto registrado via WhatsApp para o animal ${animal.brinco}`,
+          medicamento: null,
+          dose: null,
+          custo: 0,
+          responsavel_usuario_id: owner.usuario_id || null
+        });
+        botPartoSaveLog("parto_save_reproduction_event_created", owner, {
+          event_id: birthEvent?.id || null,
+          mother_id: animal.id
+        });
+        motherPhaseUpdated = await updateMotherPhaseAfterParto(supabase, owner, animal);
+      } catch (error) {
+        if (birthEvent?.id) {
+          await supabase
+            .from(TABLES.eventosAnimal)
+            .delete()
+            .eq("id", birthEvent.id)
+            .eq("fazenda_id", owner.fazenda_id);
+        }
+        throw error;
+      }
       botPartoSaveLog("parto_save_mother_status_updated", owner, {
         mother_id: animal.id,
         status: "recem_parida",
         source: "parto_event",
-        phase_preserved: animal.fase || null,
+        previous_phase: motherPhaseBeforeParto,
+        phase: animal.fase || null,
+        phase_updated: motherPhaseUpdated,
         category_preserved: animal.categoria || null,
         lot_preserved: animal.lote_id || null
       });
       const savedTables: string[] = [TABLES.eventosAnimal];
-      return realSaveResult(`Pronto, registro salvo com sucesso.\nParto registrado para ${animal.brinco}.`, savedTables);
+      if (motherPhaseUpdated) savedTables.push(TABLES.animais);
+      return realSaveResult([
+        "Pronto, registro salvo com sucesso.",
+        `Parto registrado para ${animal.brinco}.`,
+        "A mae agora aparece como recem-parida.",
+        motherPhaseUpdated ? "Fase produtiva atualizada para lactacao." : ""
+      ].filter(Boolean).join("\n"), savedTables);
     }
 
     if (pending.tipo === "VACINA_MEDICAMENTO") {

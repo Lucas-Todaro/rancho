@@ -99,6 +99,35 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto B-002 com cria limpa preview atualiza mae e preserva categoria e lote",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["a vaca B-002 pariu uma bezerra hoje, código B-5", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "A mae agora aparece como recem-parida",
+          allResponsesNotInclude: ["A categoria e a fase produtiva da mae nao serao trocadas por \"parida\""],
+          entities: { animal_codigo: "B-002", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-5" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: {
+            brinco: "B-5",
+            categoria: "vaca",
+            sexo: "femea",
+            mae_id: "animal-b-002",
+            pai_id: null,
+            tipo: "parto",
+            fase: "lactacao",
+            lote_id: "lote-lactacao-1"
+          },
+          shouldNotSaveValues: { categoria: "parida", fase: "parida", novo_valor: "parida" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "parto com cria pergunta codigo e vincula descendente sem alterar categoria da mae",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -157,22 +186,23 @@ module.exports = function loadBotTestSection(context) {
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
-          simulatedSaveCount: 2,
+          simulatedSaveCount: 3,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
           shouldSaveValues: {
             brinco: "B-555",
             categoria: "bezerro",
             sexo: "macho",
             mae_id: "animal-777",
-            pai_id: null
+            pai_id: null,
+            fase: "lactacao"
           },
-          shouldNotSaveValues: { novo_valor: "lactacao" },
+          shouldNotSaveValues: { categoria: "parida", fase: "parida", novo_valor: "parida" },
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID
         }
       },
       {
-        name: "parto completo da 777 salva cria genealogia e evento sem alterar fase da mae",
+        name: "parto completo da 777 salva cria genealogia evento e atualiza fase da mae",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: ["777 pariu femea codigo B-777 hoje", { text: "sim", salvarReal: true }],
@@ -190,9 +220,10 @@ module.exports = function loadBotTestSection(context) {
             sexo: "femea",
             mae_id: "animal-777",
             pai_id: null,
-            tipo: "parto"
+            tipo: "parto",
+            fase: "lactacao"
           },
-          shouldNotSaveValues: { novo_valor: "lactacao" },
+          shouldNotSaveValues: { categoria: "parida", fase: "parida", novo_valor: "parida" },
           shouldNotWriteBusiness: false,
           ranchId: BOT_TEST_FARM_ID
         }
