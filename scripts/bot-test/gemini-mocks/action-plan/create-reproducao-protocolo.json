@@ -1,0 +1,20 @@
+{
+  "id": "create-reproducao-protocolo",
+  "input": "091 entrou em protocolo hoje",
+  "inputExamples": [
+    "091 entrou em protocolo hoje",
+    "coloca a 093 em protocolo IA"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "operation": "registro_reprodutivo",
+    "confidence": 0.96,
+    "data": {
+      "animal_ref": "091",
+      "evento": "em_protocolo",
+      "data": "hoje"
+    },
+    "requiresConfirmation": true
+  }
+}

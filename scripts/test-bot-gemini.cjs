@@ -490,6 +490,8 @@ const cases = [
     { name: "create animal", text: "cadastrar touro T-900", fixture: "create-animal", intent: "CADASTRO_ANIMAL" },
     { name: "create saude vacina", text: "usei 1 dose de vacina na vaca 032", fixture: "create-saude-vacina", intent: "VACINA_MEDICAMENTO" },
     { name: "create saude vermifugo", text: "dei 2 doses de vermifugo no bezerro B-10", fixture: "create-saude-vermifugo", intent: "VACINA_MEDICAMENTO" },
+    { name: "create reproducao protocolo", text: "091 entrou em protocolo hoje", fixture: "create-reproducao-protocolo", intent: "ATUALIZACAO_ANIMAL" },
+    { name: "create reproducao reteste", text: "092 esta em reteste", fixture: "create-reproducao-reteste", intent: "ATUALIZACAO_ANIMAL" },
     { name: "query vacas paridas", text: "vacas paridas", fixture: "query-vacas-paridas", intent: "CONSULTA_REGISTROS_HOJE" },
     { name: "query vacas protocolo", text: "vacas em protocolo", fixture: "query-vacas-protocolo", intent: "CONSULTA_REGISTROS_HOJE" },
     { name: "query vacas reteste", text: "vacas em reteste", fixture: "query-vacas-reteste", intent: "CONSULTA_REGISTROS_HOJE" },
@@ -501,6 +503,7 @@ const cases = [
     { name: "import genealogia", text: "animal;pai;mae\nB-123;T-01;777\nB-124;;777", fixture: "import-table-genealogia", intent: "IMPORTACAO_TABELA_DOMINIO" },
     { name: "import agenda", text: "tarefa;data;responsavel\nvacinar lote bezerros;25/06/2026;Joao", fixture: "import-table-agenda", intent: "IMPORTACAO_TABELA_DOMINIO" },
     { name: "import reproducao completa", text: "Codigo / Animal;Status / Tipo;Data;Observacoes\n777;Pariu;20.06.26;\n204;Inseminacao;19.06.26;\n143;Emprenhou;18.06.26;Reteste\n091;Em protocolo;20.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa", fixture: "import-table-reproducao-completa", intent: "IMPORTACAO_EVENTOS_TABELA" },
+    { name: "import reproducao statuses", text: "Codigo / Animal;Status / Tipo;Data;Observacoes\n091;Em protocolo;21.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa\n093;Inseminacao;20.06.26;\n094;Pariu;19.06.26;", fixture: "import-table-reproducao-statuses", intent: "IMPORTACAO_EVENTOS_TABELA" },
     { name: "import reproducao embaralhada", text: "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha\n20.06.26;parto normal;B-004;Pariu", fixture: "import-table-reproducao-embaralhada", intent: "IMPORTACAO_EVENTOS_TABELA" },
     { name: "import lista reproducao", text: "B-002 - inseminada ontem - primeira inseminacao\nB-003 - prenha hoje\nB-004 - pariu hoje", fixture: "import-lista-reproducao", intent: "IMPORTACAO_EVENTOS_TABELA" },
     { name: "parto sem cria", text: "777 pariu", fixture: "create-parto-777-sem-cria", intent: "PARTO" },
@@ -528,7 +531,13 @@ const cases = [
         assert(parsed.dados?.dose === "1 dose", `saude vacina: dose esperada 1 dose, recebida ${parsed.dados?.dose}`);
         assert(parsed.perguntas_faltantes.length === 0, "saude vacina: nao deveria faltar campo");
       }
-      if (["import-table-reproducao-completa", "import-table-reproducao-embaralhada", "import-lista-reproducao"].includes(testCase.fixture)) {
+      if (["create-reproducao-protocolo", "create-reproducao-reteste"].includes(testCase.fixture)) {
+        const expected = testCase.fixture.endsWith("protocolo") ? "protocolo" : "reteste";
+        assert(parsed.dados?.evento_reprodutivo_tipo === expected, `${testCase.name}: evento esperado ${expected}`);
+        assert(parsed.dados?.registro_evento_animal === true, `${testCase.name}: registro historico ausente`);
+        assert(!("categoria" in parsed.dados), `${testCase.name}: status nao pode virar categoria`);
+      }
+      if (["import-table-reproducao-completa", "import-table-reproducao-statuses", "import-table-reproducao-embaralhada", "import-lista-reproducao"].includes(testCase.fixture)) {
         const rows = parsed.dados?.linhas || [];
         const total = Number(parsed.dados?.total_linhas || 0);
         const valid = Number(parsed.dados?.total_linhas_parse_validas || 0);
@@ -538,9 +547,11 @@ const cases = [
         assert(valid + invalid + review === total, `${testCase.name}: particao de linhas invalida`);
         assert(rows.every((row) => !String(row.observacoes || "").includes("Data;")), `${testCase.name}: tabela inteira virou observacao`);
         assert(rows.some((row) => row.evento_normalizado === "INSEMINACAO"), `${testCase.name}: INSEMINACAO ausente`);
-        assert(rows.some((row) => row.evento_normalizado === "PRENHEZ"), `${testCase.name}: PRENHEZ ausente`);
+        if (testCase.fixture !== "import-table-reproducao-statuses") {
+          assert(rows.some((row) => row.evento_normalizado === "PRENHEZ"), `${testCase.name}: PRENHEZ ausente`);
+        }
         assert(rows.some((row) => row.evento_normalizado === "PARTO"), `${testCase.name}: PARTO ausente`);
-        if (testCase.fixture === "import-table-reproducao-completa") {
+        if (["import-table-reproducao-completa", "import-table-reproducao-statuses"].includes(testCase.fixture)) {
           assert(rows.some((row) => row.evento_normalizado === "EM_PROTOCOLO"), "reproducao completa: EM_PROTOCOLO ausente");
           assert(rows.some((row) => row.evento_normalizado === "EM_RETESTE"), "reproducao completa: EM_RETESTE ausente");
         }

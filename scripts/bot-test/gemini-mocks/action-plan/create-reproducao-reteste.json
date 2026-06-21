@@ -1,0 +1,20 @@
+{
+  "id": "create-reproducao-reteste",
+  "input": "092 esta em reteste",
+  "inputExamples": [
+    "092 está em reteste",
+    "094 nova tentativa de inseminação"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "operation": "registro_reprodutivo",
+    "confidence": 0.96,
+    "data": {
+      "animal_ref": "092",
+      "evento": "em_reteste",
+      "data": "hoje"
+    },
+    "requiresConfirmation": true
+  }
+}

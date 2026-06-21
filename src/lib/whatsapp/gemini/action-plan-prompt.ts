@@ -104,7 +104,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Se houver lote_ref sem animal individual e o plano nao puder ser executado por lote com seguranca, use clarify. Nao gere baixa de estoque implicitamente.",
     "Para parto sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
     "Parida e recem-parida sao estados derivados de evento de parto; nao altere categoria, lote ou fase produtiva.",
-    "Protocolo de inseminacao normaliza para evento observavel sem inventar resultado; reteste tambem nao implica prenhez.",
+    "Protocolo de inseminacao normaliza para em_protocolo e nova tentativa ou retorno de inseminacao normaliza para em_reteste, sem inventar resultado ou prenhez.",
     "",
     "Domain manifest:",
     JSON.stringify(summarizeDomainManifestForPrompt(manifest), null, 2),

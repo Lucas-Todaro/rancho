@@ -38,6 +38,7 @@ require.extensions[".ts"] = function loadTs(module, filename) {
   });
   module._compile(output.outputText, filename);
 };
+require.extensions[".tsx"] = require.extensions[".ts"];
 
 const {
   RANCHO_DOMAIN_MANIFEST,
@@ -72,6 +73,7 @@ const {
 const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
+const { animalReproductionStatus } = require("../src/components/modules/ReproductionScreen.tsx");
 const {
   polishBotResponse,
   userFacingCodeLabel
@@ -676,10 +678,51 @@ test("normalizadores de reproducao aceitam aliases, datas curtas e sexo abreviad
   assert(normalizeReproductionEvent("Emprenhada") === "PRENHEZ", "Emprenhada deveria normalizar");
   assert(normalizeReproductionEvent("pré-parto") === "PRE_PARTO", "Pre-parto deveria normalizar");
   assert(normalizeReproductionEvent("abortou") === "ABORTO", "Abortou deveria normalizar");
+  assert(normalizeReproductionEvent("recem-parida") === "PARTO", "Recem-parida deveria normalizar para PARTO");
+  assert(normalizeReproductionEvent("protocolo de IA") === "EM_PROTOCOLO", "Protocolo IA deveria normalizar");
+  assert(normalizeReproductionEvent("nova tentativa de inseminacao") === "EM_RETESTE", "Nova tentativa deveria normalizar para reteste");
   assert(normalizeDate("20.6.26", "2026-06-20") === "2026-06-20", "data pontuada curta incorreta");
   assert(normalizeDate("ontem", "2026-06-20") === "2026-06-19", "ontem incorreto");
   assert(normalizeSex("f") === "femea", "sexo f deveria normalizar");
   assert(normalizeSex("bezerro") === "macho", "bezerro deveria normalizar para macho");
+});
+
+test("ActionPlan de protocolo e reteste preserva evento sem alterar categoria", async () => {
+  for (const fixtureName of ["create-reproducao-protocolo", "create-reproducao-reteste"]) {
+    const fixture = fixtureByName(fixtureName);
+    const result = await executeActionPlan({
+      plan: clone(fixture.plan),
+      text: fixture.input,
+      owner: ADMIN_OWNER,
+      currentDate: "2026-06-21"
+    });
+    assert(result.ok, `${fixtureName} deveria executar: ${result.reason}`);
+    assert(result.parsed.tipo === "ATUALIZACAO_ANIMAL", `${fixtureName}: intent incorreta`);
+    assert(result.parsed.dados?.registro_evento_animal === true, `${fixtureName}: evento historico ausente`);
+    assert(["protocolo", "reteste"].includes(result.parsed.dados?.evento_reprodutivo_tipo), `${fixtureName}: tipo persistivel incorreto`);
+    assert(!("categoria" in result.parsed.dados), `${fixtureName}: status nao pode virar categoria`);
+    assert(fixture.plan.requiresConfirmation === true, `${fixtureName}: confirmacao obrigatoria ausente`);
+  }
+});
+
+test("status reprodutivo mantem inseminacao complementar e parto encerra prenhez atual", () => {
+  const animal = { id: "animal-1", categoria: "vaca", lote_id: "lote-1", fase: "gestante" };
+  const withRetest = animalReproductionStatus(animal, [
+    { tipo: "inseminacao", data_evento: "2026-06-10T12:00:00Z", descricao: "Inseminacao registrada" },
+    { tipo: "observacao", data_evento: "2026-06-20T12:00:00Z", descricao: "[Reproducao Animal] Reteste de protocolo" }
+  ]);
+  assert(withRetest.key === "reteste", `status atual esperado reteste, recebido ${withRetest.key}`);
+  assert(withRetest.keys.includes("inseminada"), "inseminacao historica deveria continuar filtravel");
+  assert(withRetest.keys.includes("reteste"), "reteste deveria estar nos estados complementares");
+
+  const afterBirth = animalReproductionStatus(animal, [
+    { tipo: "inseminacao", data_evento: "2025-09-10T12:00:00Z", descricao: "Inseminacao registrada" },
+    { tipo: "parto", data_evento: "2026-06-21T12:00:00Z", descricao: "Parto registrado" }
+  ]);
+  assert(afterBirth.key === "parto", `parto deveria ser o estado atual, recebido ${afterBirth.key}`);
+  assert(afterBirth.label === "Recém-parida", `rotulo esperado Recem-parida, recebido ${afterBirth.label}`);
+  assert(!afterBirth.keys.includes("prenhe"), "parto nao pode manter prenhez como estado atual");
+  assert(animal.categoria === "vaca" && animal.lote_id === "lote-1", "calculo de status nao pode alterar categoria ou lote");
 });
 
 test("ActionPlan clarify 777 pariu cria pendencia e pergunta sexo", async () => {

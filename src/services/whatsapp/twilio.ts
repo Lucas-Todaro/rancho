@@ -718,6 +718,8 @@ function tabularImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8) {
 
 function normalizedReproductiveEventKind(dados: AnyRecord, description: string): NlpReproductiveEventKind | undefined {
   const explicitKind = String(dados.evento_reprodutivo_tipo || "");
+  if (explicitKind === "em_protocolo") return "protocolo";
+  if (explicitKind === "em_reteste") return "reteste";
   if (["inseminacao", "prenhez", "pre_parto", "parto", "cio", "aborto", "protocolo", "reteste", "observacao"].includes(explicitKind)) {
     return explicitKind as NlpReproductiveEventKind;
   }

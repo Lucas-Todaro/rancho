@@ -1,0 +1,23 @@
+{
+  "id": "import-table-reproducao-statuses",
+  "input": "Codigo / Animal;Status / Tipo;Data;Observacoes\n091;Em protocolo;21.06.26;Protocolo IA\n092;Em reteste;21.06.26;Nova tentativa\n093;Inseminacao;20.06.26;\n094;Pariu;19.06.26;",
+  "response": {
+    "action": "import_table",
+    "domain": "reproducao",
+    "confidence": 0.98,
+    "table": {
+      "hasHeader": true,
+      "separator": ";",
+      "columnMapping": {
+        "animal_ref": "Codigo / Animal",
+        "evento": "Status / Tipo",
+        "data": "Data",
+        "observacoes": "Observacoes"
+      },
+      "defaultFields": {},
+      "ignoredColumns": [],
+      "ambiguousColumns": []
+    },
+    "requiresConfirmation": true
+  }
+}

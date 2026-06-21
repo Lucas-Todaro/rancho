@@ -32,8 +32,8 @@ import { createRecord, deleteRecord, listRecords, subscribeTable, updateRecord }
 import { notifyDashboardUpdated } from "@/services/dashboard";
 import { removeEventCostFromFinance, syncEventCostToFinance } from "@/services/event-finance";
 
-type ReproductionKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo" | "observacao";
-type ReproductionFilter = "todos" | "prenhe" | "inseminada" | "pre_parto" | "parto" | "sem_info";
+type ReproductionKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo" | "reteste" | "observacao";
+type ReproductionFilter = "todos" | "prenhe" | "inseminada" | "pre_parto" | "parto" | "protocolo" | "reteste" | "sem_info";
 type BirthPeriodFilter = "todos" | "recentes" | "antigos" | "hoje" | "semana" | "mes" | "ultimos_30" | "ultimos_90";
 
 type Draft = {
@@ -99,6 +99,7 @@ const reproductiveKeywords = [
   "pre-parto",
   "parto",
   "protocolo",
+  "reteste",
   "cio"
 ];
 
@@ -108,6 +109,7 @@ const kindOptions: Array<{ value: ReproductionKind; label: string; helper: strin
   { value: "pre_parto", label: "Pre-parto", helper: "Acompanhamento final" },
   { value: "parto", label: "Parto", helper: "Nascimento registrado" },
   { value: "protocolo", label: "Protocolo", helper: "Hormonal ou manejo" },
+  { value: "reteste", label: "Reteste", helper: "Nova tentativa ou retorno" },
   { value: "observacao", label: "Observação", helper: "Nota reprodutiva" }
 ];
 
@@ -117,6 +119,8 @@ const statusFilters: Array<{ value: ReproductionFilter; label: string }> = [
   { value: "inseminada", label: "Inseminadas" },
   { value: "pre_parto", label: "Pre-parto" },
   { value: "parto", label: "Paridas" },
+  { value: "protocolo", label: "Em protocolo" },
+  { value: "reteste", label: "Em reteste" },
   { value: "sem_info", label: "Sem info" }
 ];
 
@@ -139,6 +143,7 @@ const kindLabels: Record<ReproductionKind, string> = {
   pre_parto: "Pre-parto",
   parto: "Parto",
   protocolo: "Protocolo",
+  reteste: "Reteste",
   observacao: "Observação"
 };
 
@@ -212,6 +217,7 @@ function eventKind(event: AnyRecord): ReproductionKind {
   if (type === "inseminacao" || text.includes("inseminacao") || text.includes("cobertura") || text.includes("semen")) return "inseminacao";
   if (text.includes("pre parto") || text.includes("pre-parto")) return "pre_parto";
   if (text.includes("prenhez") || text.includes("prenhe") || text.includes("gestacao") || text.includes("gestante")) return "prenhez";
+  if (text.includes("reteste") || text.includes("nova tentativa")) return "reteste";
   if (text.includes("protocolo")) return "protocolo";
   return "observacao";
 }
@@ -221,6 +227,7 @@ function kindBadgeTone(kind: ReproductionKind): "default" | "success" | "warning
   if (kind === "pre_parto") return "warning";
   if (kind === "parto") return "info";
   if (kind === "inseminacao") return "info";
+  if (kind === "protocolo" || kind === "reteste") return "warning";
   return "default";
 }
 
@@ -346,40 +353,49 @@ function hasBirthInPeriod(events: AnyRecord[], period: BirthPeriodFilter) {
   return birthEvents(events).some((event) => birthEventMatchesPeriod(event, period));
 }
 
-function isLatestReproductiveStatus(candidateDate: Date | null, dates: Array<Date | null>): candidateDate is Date {
-  if (!candidateDate) return false;
-  return dates.every((date) => !date || candidateDate.getTime() >= date.getTime());
+function reproductionFilterForKind(kind: ReproductionKind): ReproductionFilter | null {
+  if (kind === "inseminacao") return "inseminada";
+  if (kind === "prenhez") return "prenhe";
+  if (["pre_parto", "parto", "protocolo", "reteste"].includes(kind)) return kind as ReproductionFilter;
+  return null;
 }
 
-function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
+export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
   const sorted = sortEventsDescending(events);
   const lastParto = latestOfKind(sorted, "parto");
-  const lastPreParto = latestOfKind(sorted, "pre_parto");
-  const lastPrenhez = latestOfKind(sorted, "prenhez");
   const lastInseminacao = latestOfKind(sorted, "inseminacao");
   const phase = normalize(animal.fase);
 
   const partoDate = dateFromEvent(lastParto);
-  const prePartoDate = dateFromEvent(lastPreParto);
-  const prenhezDate = dateFromEvent(lastPrenhez);
   const inseminacaoDate = dateFromEvent(lastInseminacao);
+  const latestStatusEvent = sorted.find((event) => eventKind(event) !== "observacao") || null;
+  const latestKind = latestStatusEvent ? eventKind(latestStatusEvent) : null;
+  const cycleStart = partoDate?.getTime() || Number.NEGATIVE_INFINITY;
+  const keys = Array.from(new Set(sorted.flatMap((event) => {
+    const date = dateFromEvent(event);
+    const key = reproductionFilterForKind(eventKind(event));
+    return key && date && date.getTime() >= cycleStart ? [key] : [];
+  })));
+  if (phase === "gestante" && latestKind !== "parto" && !keys.includes("prenhe")) keys.push("prenhe");
 
-  if (isLatestReproductiveStatus(inseminacaoDate, [partoDate, prePartoDate, prenhezDate])) {
-    const estimatedBirth = addDays(inseminacaoDate, 283);
+  if (latestKind === "protocolo" || latestKind === "reteste") {
     return {
-      key: "inseminada" as ReproductionFilter,
-      label: "Inseminada",
-      detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
-      tone: "info" as const,
-      lastEvent: lastInseminacao,
-      estimatedBirth
+      key: latestKind as ReproductionFilter,
+      keys,
+      label: latestKind === "protocolo" ? "Em protocolo" : "Em reteste",
+      detail: `Desde ${formatDate(latestStatusEvent?.data_evento)}`,
+      tone: "warning" as const,
+      lastEvent: latestStatusEvent,
+      estimatedBirth: null as Date | null
     };
   }
 
-  if (partoDate && daysBetween(partoDate) <= 45) {
+  if (latestKind === "parto" && partoDate) {
+    const recent = daysBetween(partoDate) <= 45;
     return {
       key: "parto" as ReproductionFilter,
-      label: "Recém-parida",
+      keys,
+      label: recent ? "Recém-parida" : "Parida",
       detail: `Parto em ${formatDate(lastParto?.data_evento)}`,
       tone: "info" as const,
       lastEvent: lastParto,
@@ -387,33 +403,36 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
     };
   }
 
-  if (prePartoDate) {
+  if (latestKind === "pre_parto") {
     return {
       key: "pre_parto" as ReproductionFilter,
+      keys,
       label: "Pre-parto",
-      detail: `Acompanhamento desde ${formatDate(lastPreParto?.data_evento)}`,
+      detail: `Acompanhamento desde ${formatDate(latestStatusEvent?.data_evento)}`,
       tone: "warning" as const,
-      lastEvent: lastPreParto,
+      lastEvent: latestStatusEvent,
       estimatedBirth: null as Date | null
     };
   }
 
-  if (prenhezDate || phase === "gestante") {
+  if (latestKind === "prenhez" || (phase === "gestante" && latestKind !== "parto")) {
     const estimatedBirth = inseminacaoDate ? addDays(inseminacaoDate, 283) : null;
     return {
       key: "prenhe" as ReproductionFilter,
-      label: phase === "gestante" && !prenhezDate ? "Gestante" : "Prenhe",
+      keys: keys.includes("prenhe") ? keys : [...keys, "prenhe" as ReproductionFilter],
+      label: phase === "gestante" && latestKind !== "prenhez" ? "Gestante" : "Prenhe",
       detail: estimatedBirth ? `Previsão ${formatDate(estimatedBirth.toISOString())}` : "Prenhez confirmada",
       tone: "success" as const,
-      lastEvent: lastPrenhez || lastInseminacao || sorted[0] || null,
+      lastEvent: latestStatusEvent || lastInseminacao || sorted[0] || null,
       estimatedBirth
     };
   }
 
-  if (inseminacaoDate) {
+  if (latestKind === "inseminacao" && inseminacaoDate) {
     const estimatedBirth = addDays(inseminacaoDate, 283);
     return {
       key: "inseminada" as ReproductionFilter,
+      keys,
       label: "Inseminada",
       detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
       tone: "info" as const,
@@ -424,6 +443,7 @@ function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
 
   return {
     key: "sem_info" as ReproductionFilter,
+    keys: ["sem_info" as ReproductionFilter],
     label: "Sem info",
     detail: "Sem evento reprodutivo",
     tone: "default" as const,
@@ -959,7 +979,7 @@ export function ReproductionScreen() {
       if (term && !haystack.includes(term)) return false;
       if (reproductionFilter === "parto") {
         if (!partos.length || !hasBirthInPeriod(animalEvents, birthPeriodFilter)) return false;
-      } else if (reproductionFilter !== "todos" && reproStatus.key !== reproductionFilter) {
+      } else if (reproductionFilter !== "todos" && !reproStatus.keys.includes(reproductionFilter)) {
         return false;
       }
       if (statusFilter !== "todos" && String(animal.status || "") !== statusFilter) return false;

@@ -245,7 +245,9 @@ function reproductionMutationParsed(plan: ActionPlan, currentDate?: string): Par
     return finalize("PARTO", dados, buildMissing("PARTO", dados), plan.confidence);
   }
 
-  const eventKind = event.toLowerCase();
+  const eventKind = event === "EM_PROTOCOLO"
+    ? "protocolo"
+    : event === "EM_RETESTE" ? "reteste" : event.toLowerCase();
   const description = String(data.observacoes || data.descricao || event.replace(/_/g, " ")).trim();
   const dados = {
     animal_codigo: animalRef,

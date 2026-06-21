@@ -11,7 +11,7 @@ export type ReproductiveEventKind =
   | "reteste"
   | "observacao";
 
-const reproductiveCuePattern = /\b(?:cio|aborto|ia|iatf|inseminad[ao]s?|inseminacao|inseminacoes|inseminar|inseminaram|cobert[ao]s?|cobertura|cobertas?|cobertos?|semen|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao|pegou cria|diagnostico positivo|pre\s*parto|pre-parto|preparto|parto|pariu|deu cria|teve cria|protocolo|reteste|nao passou)\b/;
+const reproductiveCuePattern = /\b(?:cio|aborto|ia|iatf|inseminad[ao]s?|inseminacao|inseminacoes|inseminar|inseminaram|cobert[ao]s?|cobertura|cobertas?|cobertos?|semen|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao|pegou cria|diagnostico positivo|pre\s*parto|pre-parto|preparto|parto|pariu|parida|recem parida|deu cria|teve cria|protocolo|reteste|nova tentativa|nao passou)\b/;
 
 function normalizeReproductiveTypeText(value: string) {
   const preCleaned = String(value || "")
@@ -31,8 +31,16 @@ export function normalizeReproductiveEventType(rawType: string): ReproductiveEve
     return "pre_parto";
   }
 
-  if (/\b(?:pariu|parto|deu cria|teve cria|nascimento|nasceu|nasceu bezerro|nasceu bezerra)\b/.test(normalized)) {
+  if (/\b(?:pariu|parto|parida|recem parida|deu cria|teve cria|nascimento|nasceu|nasceu bezerro|nasceu bezerra)\b/.test(normalized)) {
     return "parto";
+  }
+
+  if (/\b(?:reteste|novo teste|nova tentativa(?: de inseminacao)?|nova inseminacao|repetir inseminacao|retorno para reteste)\b/.test(normalized)) {
+    return "reteste";
+  }
+
+  if (/\b(?:ultimo protocolo|em protocolo|entrou em protocolo|iniciou protocolo|protocolo(?: de)? ia|protocolo|protocolada|protocolado|nao passou)\b/.test(normalized)) {
+    return "protocolo";
   }
 
   if (/\b(?:inseminad[ao]s?|inseminacao|inseminacoes|inseminar|inseminou|inseminaram|recebeu ia|ia|iatf|cobert[ao]s?|cobertura|cobertas?|cobertos?|semen)\b/.test(normalized)) {
@@ -44,9 +52,7 @@ export function normalizeReproductiveEventType(rawType: string): ReproductiveEve
     return "prenhez";
   }
 
-  if (/\b(?:reteste|novo teste)\b/.test(normalized)) return "reteste";
   if (/\b(?:cio)\b/.test(normalized)) return "cio";
-  if (/\b(?:ultimo protocolo|protocolo|protocolada|protocolado|nao passou)\b/.test(normalized)) return "protocolo";
   if (/\b(?:aborto|abortou)\b/.test(normalized)) return "aborto";
 
   return undefined;
