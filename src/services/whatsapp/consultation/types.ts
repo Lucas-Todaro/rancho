@@ -1,0 +1,41 @@
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { AnyRecord } from "@/lib/types";
+import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
+import type { WhatsAppOwner } from "@/services/whatsapp/identity";
+import type { BotSession } from "@/services/whatsapp/session-service";
+
+export type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+
+export type ConsultationDependencies = {
+  helpText: () => string;
+  unknownText: () => string;
+  saveSession: (supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession) => Promise<void>;
+  handleHerdConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleLotConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleProductionRankingConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleFinanceConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleStockListConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleEventsReportConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  handleTodayRecordsConsultation: (supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) => Promise<string>;
+  findAnimal: (supabase: SupabaseAdmin, owner: WhatsAppOwner, code: string) => Promise<AnyRecord | undefined>;
+  findStockItem: (supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) => Promise<AnyRecord>;
+  findEmployee: (supabase: SupabaseAdmin, owner: WhatsAppOwner, name: string) => Promise<AnyRecord | undefined>;
+  listAnimals: (supabase: SupabaseAdmin, owner: WhatsAppOwner) => Promise<AnyRecord[]>;
+  listLots: (supabase: SupabaseAdmin, owner: WhatsAppOwner) => Promise<AnyRecord[]>;
+  buildAnimalIndividualReport: (supabase: SupabaseAdmin, owner: WhatsAppOwner, animal: AnyRecord, reference: string, lot?: AnyRecord | null) => Promise<{ text: string; result: AnyRecord }>;
+  collectDescendantIds: (animalId: string, animals: AnyRecord[]) => Set<string>;
+  animalOptionsText: (rows?: AnyRecord[]) => string;
+  animalLabel: (animal?: AnyRecord | null) => string;
+  animalMap: (rows: AnyRecord[]) => Map<string, AnyRecord>;
+  animalShortLabel: (row?: AnyRecord | null) => string;
+  periodRange: (period?: string) => { start: string; end: string };
+  periodLabel: (period?: string) => string;
+  formatNumber: (value: number | string | null | undefined, suffix?: string) => string;
+  formatMoney: (value: number | string | null | undefined) => string;
+  formatStockAmount: (quantity: number | string | null | undefined, unit: string | null | undefined) => string;
+  formatWhatsappForBot: (value: string | number | null | undefined) => string;
+  isBotAdmin: (owner: WhatsAppOwner) => boolean;
+  monthStartFromPaymentPeriod: (period?: string) => string;
+  monthRange: (period: string) => { start: string; end: string };
+  monthKeyFromDate: (value: unknown) => string;
+};

@@ -655,8 +655,9 @@ function markLegacyIntentAfterGemini(parsed: ParsedRanchoMessage) {
     ...parsed,
     dados: {
       ...(parsed.dados || {}),
+      origem_parser: "legacy_local_fallback",
       action_plan_used: false,
-      interpreter_final_usado: parsed.dados?.interpreter_final_usado || "legacy_intent_after_gemini"
+      interpreter_final_usado: "legacy_local_fallback"
     }
   };
 }
@@ -797,6 +798,11 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
 }
 
 function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string): GeminiFallbackParseResult {
+  logActionPlan("legacy_local_fallback_used", {
+    intent: localParsed.tipo,
+    reason
+  });
+
   return {
     kind: "local",
     threshold: 0.7,
@@ -804,6 +810,9 @@ function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string):
       ...localParsed,
       dados: {
         ...(localParsed.dados || {}),
+        origem_parser: "legacy_local_fallback",
+        interpreter_final_usado: "legacy_local_fallback",
+        action_plan_used: false,
         usedLegacyRollback: true,
         gemini_failure_reason: reason
       }
@@ -817,6 +826,11 @@ function localFallbackResult(
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
 ): GeminiFallbackParseResult {
+  logActionPlan("legacy_local_fallback_used", {
+    intent: input.localParsed.tipo,
+    reason
+  });
+
   return {
     kind: "local",
     threshold: 0.7,
@@ -824,10 +838,11 @@ function localFallbackResult(
       ...input.localParsed,
       dados: {
         ...(input.localParsed.dados || {}),
-        origem_parser: input.localParsed.dados?.origem_parser || "local",
+        origem_parser: "legacy_local_fallback",
         route,
         structuredDetection,
-        interpreter_final_usado: "local_parser_after_gemini_failure",
+        interpreter_final_usado: "legacy_local_fallback",
+        action_plan_used: false,
         gemini_failure_reason: reason
       }
     }
@@ -991,6 +1006,17 @@ async function convertActionPlanInterpretation(
     route,
     finalIntent: result.parsed.tipo
   });
+  logActionPlan("action_plan_priority_used", {
+    action: plan.action,
+    domain: "domain" in plan ? plan.domain : null
+  });
+  if (input.localParsed.tipo !== "DESCONHECIDO" && input.localParsed.tipo !== result.parsed.tipo) {
+    logActionPlan("legacy_local_ignored_action_plan_valid", {
+      legacyIntent: input.localParsed.tipo,
+      action: plan.action,
+      domain: "domain" in plan ? plan.domain : null
+    });
+  }
 
   return {
     kind: "parsed",
@@ -999,6 +1025,9 @@ async function convertActionPlanInterpretation(
       ...result.parsed,
       dados: {
         ...(result.parsed.dados || {}),
+        origem_parser: "gemini_action_plan",
+        interpreter_final_usado: "action_plan",
+        action_plan_used: true,
         ...(result.logEvent === "action_plan_used" ? { consulta_executada: "action_plan" } : {}),
         route,
         structuredDetection

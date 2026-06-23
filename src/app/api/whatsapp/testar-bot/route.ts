@@ -5,7 +5,7 @@ import { TABLES } from "@/lib/tables";
 import { whatsappNumbersMatch } from "@/lib/phone";
 import { isOversizedText, safeErrorText, sanitizeFreeText, sanitizeWhatsappMessageText } from "@/lib/security";
 import { requireInternalWhatsappTester } from "@/lib/server/internal-whatsapp-tools";
-import { processWhatsappMessage } from "@/services/whatsapp/twilio";
+import { processWhatsappMessage } from "@/services/whatsapp/process-message";
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({

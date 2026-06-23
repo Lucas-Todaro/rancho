@@ -841,6 +841,116 @@ test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", asyn
   assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
 });
 
+test("Gemini-first prioriza ActionPlan financeiro 6 meses e ignora consulta legada", async () => {
+  const text = "relatório financeiro dos últimos 6 meses";
+  const fixture = fixtureByName("query-financeiro-ultimos-6-meses");
+  const before = actionStatsSnapshot();
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const legacy = parseRanchoMessage(text);
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: legacy,
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] })
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.dados?.action_plan_used === true, "ActionPlan deveria vencer");
+    assert(parsed.dados?.origem_parser === "gemini_action_plan", "origem_parser deveria ser ActionPlan");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "interpreter_final_usado deveria ser action_plan");
+    assert(parsed.dados?.action_plan_domain === "financeiro", "domain financeiro ausente");
+    assert(parsed.dados?.action_plan?.filters?.some((filter) => filter.op === "last_months" && filter.value === 6), "filtro 6 meses ausente");
+    assert(parsed.dados?.interpreter_final_usado !== "legacy_local_fallback", "nao deveria cair no legado");
+  });
+  const after = actionStatsSnapshot();
+  assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
+  assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first prioriza ActionPlan financeiro racao 90 dias e nao estoque legado", async () => {
+  const text = "quanto gastei com ração nos últimos 90 dias";
+  const fixture = fixtureByName("query-financeiro-racao-90-dias");
+  const before = actionStatsSnapshot();
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const legacy = parseRanchoMessage(text);
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: legacy,
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.transacoesFinanceiras]: [
+          { id: "racao-1", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 1200, descricao: "compra de racao", categoria: "racao", data_transacao: "2026-05-10" }
+        ]
+      })
+    });
+    const parsed = finalParsed(result);
+    const filters = parsed?.dados?.action_plan?.filters || [];
+    assert(parsed?.dados?.action_plan_used === true, "ActionPlan deveria vencer");
+    assert(parsed.dados?.action_plan_domain === "financeiro", "domain financeiro ausente");
+    assert(parsed.tipo !== "CONSULTA_ESTOQUE" && parsed.tipo !== "CONSULTA_ESTOQUE_ITEM", `nao deveria virar estoque legado: ${parsed.tipo}`);
+    assert(filters.some((filter) => filter.field === "descricao" && filter.op === "contains" && /ra[cç]ão|ra[cç]ao/i.test(filter.value)), "filtro racao ausente");
+    assert(filters.some((filter) => filter.field === "data" && filter.op === "last_days" && filter.value === 90), "filtro 90 dias ausente");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "interpreter final deveria ser ActionPlan");
+  });
+  const after = actionStatsSnapshot();
+  assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
+  assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first responde vacas prenhas via ActionPlan reproducao", async () => {
+  const text = "quais vacas tao prenhas?";
+  const fixture = fixtureByName("query-vacas-prenhas");
+  const before = actionStatsSnapshot();
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.animais]: [
+          { id: "animal-306", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "306", nome: "Estrela", categoria: "vaca", fase: "gestante", status: "ativo" }
+        ],
+        [TABLES.eventosAnimal]: [
+          { id: "evt-306", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-306", tipo: "prenhez", data_evento: "2026-05-01", descricao: "prenhez confirmada" }
+        ]
+      })
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.dados?.action_plan_used === true, "ActionPlan deveria vencer");
+    assert(parsed.dados?.action_plan_domain === "reproducao", "domain reproducao ausente");
+    assert(parsed.dados?.resultado?.tipo_reprodutivo === "prenhez", "filtro reprodutivo prenhez ausente");
+    assert(parsed.dados?.action_plan_response?.includes("Vacas prenhas"), "resposta de prenhas ausente");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "interpreter final deveria ser ActionPlan");
+  });
+  const after = actionStatsSnapshot();
+  assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
+  assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first parto 306 com cria usa ActionPlan create sem sobrescrever pelo parser local", async () => {
+  const text = "306 pariu fêmea código B-306 hoje";
+  const fixture = fixtureByName("create-parto-306-femea-codigo");
+  const before = actionStatsSnapshot();
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.tipo === "PARTO", `intent esperado PARTO, recebido ${parsed?.tipo}`);
+    assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria marcar uso");
+    assert(parsed.dados?.origem_parser === "gemini_action_plan", "origem deveria ser ActionPlan");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "interpreter final deveria ser ActionPlan");
+    assert(parsed.dados?.animal_codigo === "306", "animal 306 ausente");
+    assert(parsed.dados?.cria_codigo === "B-306", "codigo da cria ausente");
+    assert(parsed.dados?.cria_sexo === "femea", "sexo da cria ausente");
+  });
+  const after = actionStatsSnapshot();
+  assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
+  assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
 test("parse flags true usa ActionPlan query com Supabase mockado", async () => {
   const fixture = fixtureByName("query-financeiro-racao-90-dias");
   const before = actionStatsSnapshot();

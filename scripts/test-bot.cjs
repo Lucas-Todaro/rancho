@@ -75,7 +75,7 @@ const {
   safeErrorText,
   sanitizeWhatsappMessageText
 } = require("../src/lib/security.ts");
-const { processWhatsappMessage } = require("../src/services/whatsapp/twilio.ts");
+const { processWhatsappMessage } = require("../src/services/whatsapp/process-message.ts");
 const { geminiRuntimeReportLines, resetGeminiRuntimeStats } = require("../src/lib/whatsapp/gemini/runtime.ts");
 resetGeminiRuntimeStats();
 
