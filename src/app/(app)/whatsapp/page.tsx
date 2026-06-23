@@ -42,7 +42,6 @@ const defaultOutboundMessage = [
 
 type BotTestResult = {
   respostaTexto: string;
-  quickReplies?: Array<{ id: string; title: string }>;
   intencaoDetectada: string | null;
   confianca: number | null;
   dadosExtraidos: AnyRecord | null;

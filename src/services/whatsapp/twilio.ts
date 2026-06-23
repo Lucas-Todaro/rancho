@@ -63,14 +63,8 @@ export type ProcessWhatsappMessageInput = {
   raw?: AnyRecord;
 };
 
-export type WhatsappQuickReply = {
-  id: string;
-  title: string;
-};
-
 export type ProcessWhatsappMessageResult = {
   respostaTexto: string;
-  quickReplies?: WhatsappQuickReply[];
   intencaoDetectada: ParsedRanchoMessage["tipo"] | null;
   confianca: number | null;
   dadosExtraidos: AnyRecord | null;
@@ -194,22 +188,6 @@ const STOCK_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
 const DOMAIN_TABLE_IMPORT_ADMIN_INTENTS = new Set<ParsedRanchoMessage["tipo"]>([
   "IMPORTACAO_TABELA_DOMINIO"
 ]);
-
-const QUICK_REPLY_CONFIRMATION: WhatsappQuickReply[] = [
-  { id: "confirmar", title: "Confirmar" },
-  { id: "corrigir", title: "Corrigir" },
-  { id: "cancelar", title: "Cancelar" }
-];
-const QUICK_REPLY_CALF_SEX: WhatsappQuickReply[] = [
-  { id: "macho", title: "Macho" },
-  { id: "femea", title: "Fêmea" },
-  { id: "cancelar", title: "Cancelar" }
-];
-const QUICK_REPLY_CALF_CODE: WhatsappQuickReply[] = [
-  { id: "informar_codigo", title: "Informar código" },
-  { id: "gerar_codigo", title: "Gerar código" },
-  { id: "cancelar", title: "Cancelar" }
-];
 
 const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.ordenhas]: new Set(["fazenda_id", "animal_id", "litros", "ordenhado_em", "turno", "destino", "origem", "registrado_por", "observacoes"]),
@@ -542,52 +520,6 @@ function animalBlockFromParsed(parsed: ParsedRanchoMessage) {
 
 function isConfirmCommand(command: string) {
   return CONFIRM_WORDS.has(command) || /\b(?:sim|ss|confirma(?:r|do)?|correto|pode salvar|pode registrar|pode lancar|pode importar|importar validas|importar linhas validas|importar encontrados|importar so encontrados|salvar validas|cadastrar validos|cadastrar animais|so as validas|so validas|somente validas|apenas validas|pode|salvar|salva|registrar|registra|lancar|lanca|importar|cadastrar|ok|okay|blz|beleza|certo|ta certo|isso|isso mesmo|fechou|show|joia|manda|vai)\b/.test(command);
-}
-
-function normalizeIncomingQuickReplyText(text: string) {
-  const command = normalizeRanchoText(text);
-  if (/^(?:confirmar|confirma)$/.test(command)) return "confirmar";
-  if (/^(?:corrigir|corrige)$/.test(command)) return "corrigir";
-  if (/^(?:cancelar|cancela)$/.test(command)) return "cancelar";
-  if (/^macho$/.test(command)) return "macho";
-  if (/^(?:femea|feminino)$/.test(command)) return "femea";
-  if (/^(?:gerar codigo|gerar brinco|gerar codigo temporario|gerar brinco temporario)$/.test(command)) return "2";
-  if (/^(?:informar codigo|informar brinco|vou informar codigo|vou informar brinco)$/.test(command)) return "informar codigo";
-  return text;
-}
-
-function quickRepliesForManualDomainChoice(parsed?: ParsedRanchoMessage | null): WhatsappQuickReply[] {
-  if (parsed?.tipo !== "IMPORTACAO_TABELA_AMBIGUA") return [];
-  const candidates = parsed.dados?.classificacao_tabela?.candidateDomains || parsed.dados?.candidateDomains;
-  if (!Array.isArray(candidates) || candidates.length < 1 || candidates.length > 3) return [];
-  return candidates
-    .map((candidate: AnyRecord) => String(candidate?.domain || ""))
-    .filter(Boolean)
-    .map((domain) => ({
-      id: domain,
-      title: tabularDomainLabel(domain as Parameters<typeof tabularDomainLabel>[0]).slice(0, 20)
-    }));
-}
-
-function quickRepliesForBotResponse(response: string, session?: BotSession | null, parsed?: ParsedRanchoMessage | null): WhatsappQuickReply[] {
-  const pending = pendingFromSession(session) || parsed || null;
-  const domainChoices = quickRepliesForManualDomainChoice(pending);
-  if (domainChoices.length) return domainChoices;
-
-  const text = normalizeRanchoText(response);
-  if ((/\bqual foi o sexo da cria\b/.test(text) || /\bcria nasceu\b/.test(text)) && /\bmacho\b/.test(text) && /\bfemea\b/.test(text)) {
-    return QUICK_REPLY_CALF_SEX;
-  }
-  if (/\bcodigo\/brinco da cria\b/.test(text) && /\bgerar um codigo temporario\b/.test(text)) {
-    return QUICK_REPLY_CALF_CODE;
-  }
-  if (/\besta correto\b/.test(text) && /\bconfirmar\b/.test(text) && /\bcorrigir\b/.test(text)) {
-    return QUICK_REPLY_CONFIRMATION;
-  }
-  if (/\bquer registrar mesmo assim\b/.test(text) || /\bquer usar esse\b/.test(text) || /\bdeseja salvar\b/.test(text)) {
-    return QUICK_REPLY_CONFIRMATION;
-  }
-  return [];
 }
 
 function isHerdDeleteConfirmationCommand(pending: ParsedRanchoMessage | undefined, command: string) {
@@ -8560,10 +8492,8 @@ function buildProcessResult(input: {
   suppressPreviousPending?: boolean;
 }): ProcessWhatsappMessageResult {
   const detected = pendingFromSession(input.nextSession) || input.parsed || (input.suppressPreviousPending ?undefined : pendingFromSession(input.previousSession));
-  const quickReplies = quickRepliesForBotResponse(input.response, input.nextSession, detected);
   return {
     respostaTexto: polishBotResponse(input.response),
-    ...(quickReplies.length ? { quickReplies } : {}),
     intencaoDetectada: detected?.tipo || null,
     confianca: typeof detected?.confianca === "number" ?detected.confianca : null,
     dadosExtraidos: detected?.dados || null,
@@ -8586,7 +8516,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
 
   const phone = normalizeWhatsappNumber(input.telefone) || input.telefone;
   const originalMessage = String(input.mensagem || "");
-  const message = sanitizeFreeText(normalizeIncomingQuickReplyText(originalMessage));
+  const message = sanitizeFreeText(originalMessage);
   const messageTooLong = isOversizedText(originalMessage);
   const salvarRealNoTeste = Boolean(input.modoTeste && input.salvarReal);
   let owner: WhatsAppOwner | null = null;

@@ -42,16 +42,6 @@ module.exports = function loadBotTestSection(context) {
         }
       }
 
-      const expectedQuickReplies = Array.isArray(expected.quickReplies) ? expected.quickReplies : [];
-      if (expectedQuickReplies.length) {
-        const titles = (result.quickReplies || []).map((reply) => normalize(reply.title));
-        for (const title of expectedQuickReplies) {
-          if (!titles.includes(normalize(title))) {
-            failures.push(`quickReply esperado "${title}", recebido ${JSON.stringify(result.quickReplies || [])}`);
-          }
-        }
-      }
-
       for (const field of expected.missing || []) {
         if (hasValue(dados[field])) failures.push(`campo ${field} deveria estar faltando, recebeu ${dados[field]}`);
         if (!result.camposFaltantes.some((question) => normalize(question).includes(normalize(field)))) {

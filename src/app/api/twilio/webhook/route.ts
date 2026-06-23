@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     const params = new URLSearchParams(rawBody);
 
-    const Body = sanitizeWhatsappMessageText(params.get("Body") || params.get("ButtonText") || params.get("ButtonPayload") || "");
+    const Body = sanitizeWhatsappMessageText(params.get("Body") || "");
     const From = sanitizeFreeText(params.get("From") || "", 80);
     const To = sanitizeFreeText(params.get("To") || "", 80);
     const MessageSid = sanitizeFreeText(params.get("MessageSid") || "", 120);
