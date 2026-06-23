@@ -103,6 +103,9 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
       const nextDados = { ...dados, gerar_cria_codigo_temporario: true };
       return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
     }
+    if (/^(?:informar codigo|informar c[oó]digo|informar brinco|vou informar codigo|vou informar c[oó]digo|vou informar brinco)$/i.test(original)) {
+      return finalize(current.tipo, dados, buildMissing(current.tipo, dados), current.confianca);
+    }
     const childCode = extractAnimalRegistrationCode(normalized) || normalizeAnimalCandidate(original);
     if (childCode) {
       const nextDados = { ...dados, cria_codigo: childCode, gerar_cria_codigo_temporario: undefined };
