@@ -67,7 +67,7 @@ function cleanUpdateValue(value?: string | null) {
 }
 
 const clinicalObservationCue = /\b(?:mancando|doente|doenca|doença|recuperou|febre|diarreia|sem comer|nao comeu|nao levantou|mastite|carrapato|triste|fraco|fraca|ruim|tossindo|ferida|veterinario|queda de producao|problema no casco|casco)\b/;
-const reproductiveObservationCue = /\b(?:cio|ia|iatf|inseminad[ao]s?|inseminacao|inseminar|inseminaram|cobertura|coberta|coberto|semen|prenhas?|prenhe|prenha|prenhez|gestante|gestacao|pegou cria|diagnostico positivo|pre\s*parto|pre-parto|preparto|protocolo|reteste|nao passou|aborto)\b/;
+const reproductiveObservationCue = /\b(?:cio|ia|iatf|inseminad[ao]s?|inseminacao|inseminar|inseminaram|cobertura|coberta|coberto|semen|prenhas?|prenhe|prenha|prenhez|emprenhou|emprenhada|emprenhado|gestante|gestacao|pegou cria|diagnostico positivo|pre\s*parto|pre-parto|preparto|protocolo|reteste|nao passou|aborto)\b/;
 const vaccineProductCue = /\b(?:vacina|vacinei|vacinada|vacinado|aftosa|brucelose|raiva|clostridial)\b/;
 const treatmentProductCue = /\b(?:mediquei|medicar|medicou|tratei|tratou|tratamento|manejo|remedio|medicamento|terramicina|vermifugo|antibiotico|dipirona|anti-inflamatorio|antiinflamatorio|carrapaticida|pour-on|pour on|suplemento)\b/;
 

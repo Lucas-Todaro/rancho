@@ -1,0 +1,18 @@
+{
+  "id": "query-vacas-prenhas",
+  "inputExamples": [
+    "quais vacas tao prenhas?",
+    "quais vacas estão prenhas?",
+    "quais vacas estão gestantes?",
+    "lista das prenhas"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "evento", "op": "eq", "value": "prenhez" }],
+    "orderBy": { "field": "data", "direction": "desc" },
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

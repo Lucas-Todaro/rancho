@@ -634,6 +634,9 @@ export function extractStockQuantity(original: string) {
 }
 
 export function extractStockDestination(original: string) {
+  const lotMatch = original.match(/\b(?:no|na|nos|nas|para o|para a|pro|pra|para)\s+((?:lote|piquete|pasto)\s+[^\s,.;]+(?:\s+[^\s,.;]+){0,2})\b/i);
+  if (lotMatch?.[1]) return cleanAnswer(lotMatch[1]);
+
   const match = original.match(/\b(?:pros?|pras?|para os|para as|aos?|às?)\s+(bois|vacas|bezerros|gado|animais)\b/i);
   return match?.[1] ?cleanAnswer(match[1]) : undefined;
 }

@@ -6,6 +6,7 @@ import { getDomainManifest, type DomainFieldDefinition, type DomainManifestEntry
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import { detectReproductiveEventKind, reproductiveEventLabel } from "@/lib/whatsapp/nlp-core/reproductive-events";
 
 type QueryBuilderLike = AnyRecord;
 
@@ -182,7 +183,7 @@ function normalizeFinanceType(value: unknown) {
 
 function rowValue(row: AnyRecord, domain: DomainManifestEntry, fieldName: string, relations: AnyRecord) {
   if (fieldName === "animal_ref") {
-    if (domain.domain === "genealogia") return [row.brinco, row.nome].filter(Boolean).join(" ");
+    if (domain.domain === "genealogia" || domain.domain === "animais") return [row.brinco, row.nome, row.categoria].filter(Boolean).join(" ");
     const animal = relations.animalsById?.get(String(row.animal_id || ""));
     return [animal?.brinco, animal?.nome, animal?.categoria].filter(Boolean).join(" ");
   }
@@ -301,6 +302,265 @@ function numberText(value: number) {
   return Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
 
+function shortDate(value: unknown) {
+  const parsed = parseDate(value);
+  return parsed ? dateOnly(parsed) : "sem data";
+}
+
+function daysSince(value: unknown, baseDate: Date) {
+  const parsed = parseDate(value);
+  if (!parsed) return null;
+  const diff = Math.floor((baseDate.getTime() - parsed.getTime()) / 86400000);
+  return Number.isFinite(diff) && diff >= 0 ? diff : null;
+}
+
+function animalLabel(row?: AnyRecord | null) {
+  if (!row) return "Animal";
+  const brinco = String(row.brinco || "").trim();
+  const nome = String(row.nome || "").trim();
+  if (brinco && nome && normalizedText(brinco) !== normalizedText(nome)) return `${nome} (${brinco})`;
+  return brinco || nome || String(row.id || "Animal");
+}
+
+function stockAmount(quantity: unknown, unit: unknown) {
+  return `${numberText(Number(quantity || 0))} ${String(unit || "unidade")}`.trim();
+}
+
+function queryEventKind(row: AnyRecord) {
+  return detectReproductiveEventKind([row.tipo, row.descricao, row.medicamento].filter(Boolean).join(" "))
+    || (normalizedText(row.tipo) === "parto" ? "parto" : undefined);
+}
+
+function targetReproductionKind(plan: QueryActionPlan, originalText?: string) {
+  const raw = [
+    ...plan.filters.map((filter) => String(filter.value || "")),
+    originalText || ""
+  ].join(" ");
+  const text = normalizedText(raw);
+  if (/\b(?:prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(text)) return "prenhez";
+  if (/\b(?:inseminad[ao]s?|inseminacao|ia|iatf)\b/.test(text)) return "inseminacao";
+  if (/\b(?:paridas?|pariram|partos?|pariu|recem parida)\b/.test(text)) return "parto";
+  if (/\bprotocolo\b/.test(text) || text.includes("em_protocolo")) return "protocolo";
+  if (/\breteste\b/.test(text) || text.includes("em_reteste")) return "reteste";
+  return detectReproductiveEventKind(text);
+}
+
+function reproductionTitle(kind?: string) {
+  if (kind === "prenhez") return "Vacas prenhas";
+  if (kind === "inseminacao") return "Vacas inseminadas";
+  if (kind === "parto") return "Vacas paridas";
+  if (kind === "protocolo") return "Vacas em protocolo";
+  if (kind === "reteste") return "Vacas em reteste";
+  return "Eventos reprodutivos";
+}
+
+function emptyReproductionText(kind?: string) {
+  if (kind === "prenhez") return "Não encontrei vacas prenhas registradas no momento.";
+  if (kind === "inseminacao") return "Não encontrei vacas inseminadas registradas no momento.";
+  if (kind === "parto") return "Não encontrei vacas paridas registradas no momento.";
+  if (kind === "protocolo") return "Não encontrei vacas em protocolo registradas no momento.";
+  if (kind === "reteste") return "Não encontrei vacas em reteste registradas no momento.";
+  return "Não encontrei eventos reprodutivos para esse período.";
+}
+
+async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan: QueryActionPlan, domain: DomainManifestEntry): Promise<ExecuteQueryActionPlanResult> {
+  if (!input.supabase || !input.owner.fazenda_id) {
+    return {
+      ok: false,
+      status: "blocked",
+      reason: "missing_query_context",
+      message: "Nao posso consultar sem contexto do rancho."
+    };
+  }
+
+  const baseDate = currentDate(input.currentDate);
+  const dateFilter = plan.filters.find((filter) => domain.dateFields.includes(filter.field));
+  const range = dateFilter ? dateRangeFor(dateFilter, baseDate) : null;
+  const kind = targetReproductionKind(plan, input.originalText);
+  const limit = Math.min(plan.limit || domain.maxLimit, domain.maxLimit);
+
+  let query = input.supabase
+    .from(TABLES.eventosAnimal)
+    .select("id,animal_id,tipo,data_evento,descricao,medicamento,custo,created_at")
+    .eq("fazenda_id", input.owner.fazenda_id)
+    .order("data_evento", { ascending: false })
+    .limit(3000);
+  if (range) query = query.gte("data_evento", range.start.toISOString()).lt("data_evento", range.end.toISOString());
+
+  const [{ data: eventData, error: eventError }, { data: animalData, error: animalError }] = await Promise.all([
+    query,
+    input.supabase
+      .from(TABLES.animais)
+      .select("id,brinco,nome,categoria,sexo,fase,status")
+      .eq("fazenda_id", input.owner.fazenda_id)
+      .limit(3000)
+  ]);
+  if (eventError) throw new Error(eventError.message);
+  if (animalError) throw new Error(animalError.message);
+
+  const animalsById = new Map(((animalData || []) as AnyRecord[]).map((animal) => [String(animal.id), animal]));
+  const allEvents: AnyRecord[] = ((eventData || []) as AnyRecord[])
+    .map((event): AnyRecord => ({ ...event, kind: queryEventKind(event) }))
+    .filter((event): event is AnyRecord => Boolean(event.kind))
+    .sort((left: AnyRecord, right: AnyRecord) => String(right.data_evento || right.created_at || "").localeCompare(String(left.data_evento || left.created_at || "")));
+
+  let rows: AnyRecord[];
+  if (kind) {
+    const latestByAnimal = new Map<string, AnyRecord>();
+    for (const event of allEvents) {
+      const animalId = String(event.animal_id || "");
+      if (animalId && !latestByAnimal.has(animalId)) latestByAnimal.set(animalId, event);
+    }
+    rows = Array.from(latestByAnimal.values()).filter((event) => event.kind === kind);
+    if (kind === "prenhez") {
+      const existing = new Set(rows.map((event) => String(event.animal_id || "")));
+      for (const animal of (animalData || []) as AnyRecord[]) {
+        if (existing.has(String(animal.id))) continue;
+        if (["gestante", "prenhe", "prenha"].includes(normalizedText(animal.fase))) {
+          rows.push({ animal_id: animal.id, kind: "prenhez", tipo: "prenhez", data_evento: null, descricao: "Status atual do animal" });
+        }
+      }
+    }
+  } else {
+    rows = allEvents.filter((event) => !kind || event.kind === kind);
+  }
+
+  rows = rows.slice(0, limit);
+  const title = reproductionTitle(kind);
+  const response = rows.length
+    ? [
+        `${title}:`,
+        ...rows.slice(0, 12).map((row, index) => {
+          const animal = animalsById.get(String(row.animal_id || ""));
+          const label = reproductiveEventLabel(row.kind).replace("Prenhez", "Prenha");
+          const date = row.data_evento ? shortDate(row.data_evento) : "sem data";
+          const days = row.data_evento ? daysSince(row.data_evento, baseDate) : null;
+          const obs = row.descricao ? ` - ${row.descricao}` : "";
+          return `${index + 1}. ${animalLabel(animal)} - ${label} - ${date}${days !== null ? ` (${days} dias)` : ""}${obs}`;
+        }),
+        rows.length > 12 ? `...e mais ${rows.length - 12} registro(s).` : ""
+      ].filter(Boolean).join("\n")
+    : emptyReproductionText(kind);
+
+  const parsed = finalize(QUERY_INTENT_BY_DOMAIN[domain.domain] || "CONSULTA_REGISTROS_HOJE", {
+    consulta: true,
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "action_plan_query",
+    action_plan_used: true,
+    action_plan_domain: domain.domain,
+    action_plan: plan,
+    action_plan_response: response,
+    resultado: { registros: rows.length, tipo_reprodutivo: kind || null }
+  }, [], plan.confidence);
+
+  return { ok: true, parsed, response, rows };
+}
+
+async function executeStockQuery(input: ExecuteQueryActionPlanInput, plan: QueryActionPlan, domain: DomainManifestEntry): Promise<ExecuteQueryActionPlanResult> {
+  if (!input.supabase || !input.owner.fazenda_id) {
+    return {
+      ok: false,
+      status: "blocked",
+      reason: "missing_query_context",
+      message: "Nao posso consultar sem contexto do rancho."
+    };
+  }
+
+  const itemFilter = plan.filters.find((filter) => ["item", "nome"].includes(filter.field));
+  const movementFilter = plan.filters.some((filter) => ["data", "tipo_movimento", "tipo"].includes(filter.field));
+  const itemText = itemFilter ? normalizedText(itemFilter.value) : "";
+  const [{ data: itemData, error: itemError }, { data: movementData, error: movementError }] = await Promise.all([
+    input.supabase
+      .from(TABLES.estoqueItens)
+      .select("id,nome,categoria,unidade_medida,quantidade_atual,quantidade_minima,ativo,created_at")
+      .eq("fazenda_id", input.owner.fazenda_id)
+      .limit(1000),
+    input.supabase
+      .from(TABLES.estoqueMovimentacoes)
+      .select("id,item_id,tipo,quantidade,valor_unitario,motivo,created_at")
+      .eq("fazenda_id", input.owner.fazenda_id)
+      .order("created_at", { ascending: false })
+      .limit(1000)
+  ]);
+  if (itemError) throw new Error(itemError.message);
+  if (movementError) throw new Error(movementError.message);
+
+  const movements = (movementData || []) as AnyRecord[];
+  const items = ((itemData || []) as AnyRecord[])
+    .filter((item) => item.ativo !== false)
+    .filter((item) => !itemText || normalizedText([item.nome, item.categoria].filter(Boolean).join(" ")).includes(itemText));
+  const itemById = new Map(items.map((item) => [String(item.id), item]));
+  const latestMovementByItem = new Map<string, AnyRecord>();
+  for (const movement of movements) {
+    const key = String(movement.item_id || "");
+    if (key && !latestMovementByItem.has(key)) latestMovementByItem.set(key, movement);
+  }
+
+  let rows = items;
+  if (movementFilter) {
+    const baseDate = currentDate(input.currentDate);
+    const filteredMovements = movements.filter((movement) => {
+      if (itemText && !itemById.has(String(movement.item_id || ""))) return false;
+      return plan.filters.every((filter) => {
+        if (["item", "nome"].includes(filter.field)) return true;
+        if (filter.field === "tipo_movimento" || filter.field === "tipo") return normalizedText(movement.tipo) === normalizedText(filter.value);
+        if (filter.field === "data") {
+          const range = dateRangeFor(filter, baseDate);
+          const parsed = parseDate(movement.created_at);
+          return !range || (parsed ? parsed >= range.start && parsed < range.end : false);
+        }
+        return true;
+      });
+    });
+    const response = filteredMovements.length
+      ? [
+          "Movimentações de estoque:",
+          ...filteredMovements.slice(0, 12).map((movement, index) => {
+            const item = itemById.get(String(movement.item_id || "")) || ((itemData || []) as AnyRecord[]).find((row) => String(row.id) === String(movement.item_id));
+            return `${index + 1}. ${shortDate(movement.created_at)} - ${item?.nome || "Item"} - ${movement.tipo || "movimento"} de ${stockAmount(movement.quantidade, item?.unidade_medida)}`;
+          })
+        ].join("\n")
+      : "Não encontrei movimentações de estoque para esse período.";
+    const parsed = finalize("CONSULTA_ESTOQUE_GERAL", {
+      consulta: true,
+      origem_parser: "gemini_action_plan",
+      interpreter_final_usado: "action_plan_query",
+      action_plan_used: true,
+      action_plan_domain: domain.domain,
+      action_plan: plan,
+      action_plan_response: response,
+      resultado: { registros: filteredMovements.length }
+    }, [], plan.confidence);
+    return { ok: true, parsed, response, rows: filteredMovements };
+  }
+
+  rows = rows.slice(0, Math.min(plan.limit || domain.maxLimit, domain.maxLimit));
+  const response = rows.length
+    ? [
+        itemText ? `Estoque de ${rows[0]?.nome || itemFilter?.value}:` : "Estoque atual:",
+        ...rows.slice(0, 12).map((item, index) => {
+          const latest = latestMovementByItem.get(String(item.id));
+          const min = item.quantidade_minima !== undefined && item.quantidade_minima !== null ? `; mínimo ${stockAmount(item.quantidade_minima, item.unidade_medida)}` : "";
+          const alert = Number(item.quantidade_minima || 0) > 0 && Number(item.quantidade_atual || 0) <= Number(item.quantidade_minima || 0) ? " Atenção: abaixo do mínimo." : "";
+          return `${index + 1}. ${item.nome}: ${stockAmount(item.quantidade_atual, item.unidade_medida)}${min}${latest ? `; última movimentação ${shortDate(latest.created_at)}` : ""}.${alert}`;
+        }),
+        rows.length > 12 ? `...e mais ${rows.length - 12} item(ns).` : ""
+      ].filter(Boolean).join("\n")
+    : itemText ? `Não encontrei ${itemFilter?.value || "esse item"} no estoque deste rancho.` : "Não encontrei itens de estoque cadastrados.";
+  const parsed = finalize("CONSULTA_ESTOQUE_GERAL", {
+    consulta: true,
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "action_plan_query",
+    action_plan_used: true,
+    action_plan_domain: domain.domain,
+    action_plan: plan,
+    action_plan_response: response,
+    resultado: { registros: rows.length }
+  }, [], plan.confidence);
+
+  return { ok: true, parsed, response, rows };
+}
+
 function periodText(plan: QueryActionPlan) {
   const filter = plan.filters.find((item) => ["last_months", "last_days", "current_month", "current_year", "since", "between"].includes(item.op));
   if (!filter) return "";
@@ -339,6 +599,21 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
       `Produção de leite${animal ? ` da ${animal}` : ""}:`,
       `Registros: ${rows.length}.`,
       `Total: ${numberText(total)} litros.`
+    ].join("\n");
+  }
+
+  if (domain.domain === "animais") {
+    if (!rows.length) return "Não encontrei esse animal no rebanho.";
+    const animal = rows[0];
+    return [
+      `Ficha da ${animalLabel(animal)}:`,
+      `Categoria: ${animal.categoria || "sem categoria"}.`,
+      `Sexo: ${animal.sexo || "não informado"}.`,
+      `Status: ${animal.status || "ativo"}.`,
+      `Fase: ${animal.fase || "sem fase"}.`,
+      animal.peso ? `Peso: ${numberText(Number(animal.peso))} kg.` : "Peso: sem registro.",
+      animal.raca ? `Raça: ${animal.raca}.` : "Raça: sem registro.",
+      animal.observacoes ? `Observações: ${animal.observacoes}` : "Observações: sem registros."
     ].join("\n");
   }
 
@@ -388,6 +663,15 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
 
   const plan = validation.value as QueryActionPlan;
   const domain = getDomainManifest(plan.domain);
+
+  if (domain?.domain === "reproducao") {
+    return executeReproductionQuery(input, plan, domain);
+  }
+
+  if (domain?.domain === "estoque") {
+    return executeStockQuery(input, plan, domain);
+  }
+
   const tableName = domain ? queryTable(domain) : null;
   if (!domain || !tableName || tableName.includes("+")) {
     return {

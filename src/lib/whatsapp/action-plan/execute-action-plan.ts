@@ -95,6 +95,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
       valor: data.valor_total,
       data_referencia: date,
       compra: isPurchase || undefined,
+      sem_financeiro: isPurchase && (data.valor_total === undefined || data.valor_total === null || data.valor_total === "") ? true : undefined,
       venda: isSale || undefined,
       destino: data.destino || undefined,
       motivo: data.motivo || data.observacoes || undefined,

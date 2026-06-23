@@ -390,6 +390,24 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "Gemini query financeiro dos ultimos 6 meses resume sem confirmar",
+        module: "financeiro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        financeTransactions: [
+          { tipo: "entrada", valor: 1200, descricao: "Venda de leite", data_transacao: "2026-06-10" },
+          { tipo: "saida", valor: 300, descricao: "Compra de racao", data_transacao: "2026-06-11" }
+        ],
+        messages: ["relatorio financeiro dos ultimos 6 meses"],
+        expected: {
+          finalIntent: "CONSULTA_FINANCEIRO",
+          responseIncludes: "Resumo financeiro",
+          responseNotIncludes: "Esta correto",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "consulta resumo de entradas de hoje soma sem confirmar",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,

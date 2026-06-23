@@ -1,0 +1,16 @@
+{
+  "id": "query-eventos-reproducao-hoje",
+  "inputExamples": [
+    "eventos de reproducao de hoje",
+    "eventos reprodutivos de hoje"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.94,
+    "filters": [{ "field": "data", "op": "last_days", "value": 1 }],
+    "orderBy": { "field": "data", "direction": "desc" },
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

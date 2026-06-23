@@ -1,0 +1,21 @@
+{
+  "id": "create-compra-estoque-sacos",
+  "inputExamples": [
+    "comprei 10 sacos de racao por 300 reais",
+    "comprei 10 sacos de ração por 300 reais"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "compra_estoque",
+    "confidence": 0.96,
+    "data": {
+      "item": "racao",
+      "quantidade": 10,
+      "unidade": "saco",
+      "valor_total": 300,
+      "tipo_movimento": "entrada"
+    },
+    "requiresConfirmation": true
+  }
+}

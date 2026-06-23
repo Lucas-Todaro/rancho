@@ -651,7 +651,9 @@ module.exports = function loadBotTestSection(context) {
             item_id: dados.item_id || null,
             item_nome: dados.item_nome,
             tipo: tipo === "ESTOQUE_ENTRADA" ? "entrada" : "saida",
-            quantidade: Number(dados.quantidade || 0)
+            quantidade: Number(dados.quantidade || 0),
+            destino: dados.destino || null,
+            motivo: dados.motivo || null
           }
           });
         }
@@ -828,6 +830,7 @@ module.exports = function loadBotTestSection(context) {
               evento_tipo: dados.evento_tipo || "observacao",
               evento_reprodutivo_tipo: dados.evento_reprodutivo_tipo || null,
               tipo: reproductiveKind ? simulatedReproductiveDbType(reproductiveKind) : "observacao",
+              data_evento: dados.data_referencia || null,
               descricao: dados.descricao || dados.novo_valor || null,
               descricao_salvar: reproductiveKind ? simulatedReproductiveDescription(dados) : dados.descricao || dados.novo_valor || null,
               medicamento: reproductiveKind === "inseminacao" ? dados.origem_inseminacao || null : null,

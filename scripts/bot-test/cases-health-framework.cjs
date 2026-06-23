@@ -229,6 +229,34 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto Gemini da 306 cadastra cria genealogia evento e atualiza mae",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["306 pariu femea codigo B-306 hoje", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          entities: { animal_codigo: "306", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-306" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: {
+            brinco: "B-306",
+            categoria: "bezerra",
+            sexo: "femea",
+            mae_id: "animal-306",
+            pai_id: null,
+            tipo: "parto",
+            fase: "lactacao"
+          },
+          shouldNotSaveValues: { categoria: "parida", fase: "parida", novo_valor: "parida" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "parto com codigo de cria existente pede outro codigo sem erro interno",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -950,6 +978,96 @@ module.exports = function loadBotTestSection(context) {
           entities: { consulta_registros: "eventos", data_referencia: "recentes", evento_tipo: "reprodutivo" },
           responseIncludes: "Últimos eventos reprodutivos",
           responseRawIncludes: ["Pré-parto", "Protocolo", "Inseminação"],
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "Gemini query lista vacas prenhas por ultimo evento reprodutivo",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        animalEvents: [
+          { id: "prenhez-306", animal_id: "animal-306", tipo: "observacao", descricao: "[Reproducao Animal] Prenhez registrada via WhatsApp", data_evento: "2026-06-20T08:00:00.000Z" },
+          { id: "ia-b001", animal_id: "animal-b-001", tipo: "inseminacao", descricao: "inseminacao registrada", data_evento: "2026-06-19T08:00:00.000Z" }
+        ],
+        messages: ["quais vacas tao prenhas?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          responseIncludes: "vacas gestantes",
+          responseRawIncludes: "306",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "Gemini create prenhez da 306 salva e consulta prenhas em seguida",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["306 emprenhou", { text: "sim", salvarReal: true }, "quais vacas tao prenhas?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          responseIncludes: "vacas gestantes",
+          responseRawIncludes: "306",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: { animal_codigo: "306", evento_reprodutivo_tipo: "prenhez", tipo: "observacao" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "Gemini query lista vacas inseminadas por ultimo evento reprodutivo",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        animalEvents: [
+          { id: "ia-306", animal_id: "animal-306", tipo: "inseminacao", descricao: "inseminacao registrada", data_evento: "2026-06-19T08:00:00.000Z" },
+          { id: "parto-b001", animal_id: "animal-b-001", tipo: "parto", descricao: "parto registrado", data_evento: "2026-06-20T08:00:00.000Z" }
+        ],
+        messages: ["quais vacas tao inseminadas?"],
+        expected: {
+          finalIntent: "CONSULTA_REBANHO",
+          responseIncludes: "vaca inseminada",
+          responseRawIncludes: "306",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "Gemini query eventos reprodutivos de hoje usa tabela de eventos",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        animalEvents: [
+          { id: "repro-hoje-306", animal_id: "animal-306", tipo: "observacao", descricao: "[Reproducao Animal] Prenhez registrada via WhatsApp", data_evento: "2026-06-23T08:00:00.000Z" }
+        ],
+        messages: ["eventos de reproducao de hoje"],
+        expected: {
+          finalIntent: "CONSULTA_REGISTROS_HOJE",
+          responseIncludes: "Eventos hoje",
+          responseRawIncludes: "306",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "Gemini query individual da vaca 306 retorna ficha sem salvar",
+        module: "eventos-periodo",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["como ta a vaca 306?"],
+        expected: {
+          finalIntent: "CONSULTA_ANIMAL",
+          responseIncludes: "Resumo da vaca 306",
+          responseRawIncludes: "Prenha",
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true

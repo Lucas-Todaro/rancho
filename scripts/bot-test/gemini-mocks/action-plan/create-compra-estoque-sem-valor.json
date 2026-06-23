@@ -1,0 +1,20 @@
+{
+  "id": "create-compra-estoque-sem-valor",
+  "inputExamples": [
+    "comprei 10 sacos de racao",
+    "comprei 10 sacos de ração"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "compra_estoque",
+    "confidence": 0.94,
+    "data": {
+      "item": "racao",
+      "quantidade": 10,
+      "unidade": "saco",
+      "tipo_movimento": "entrada"
+    },
+    "requiresConfirmation": true
+  }
+}

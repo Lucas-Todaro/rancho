@@ -52,7 +52,7 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "compra fisica sem valor pede valor e permite seguir sem financeiro",
+        name: "compra fisica sem valor salva apenas estoque apos confirmacao",
         module: "estoque-compras",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: ["comprei 10 sacos de racao", "2", "sim"],
@@ -148,6 +148,44 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "baixa de estoque Gemini com destino salva saida apos confirmacao",
+        module: "estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["usei 2 sacos de racao no lote lactacao", "sim"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { item_nome: "Racao", quantidade: 2, unidade: "saco", destino: "lote lactacao" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { quantidade: 2, destino: "lote lactacao" },
+          shouldNotDuplicate: true,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "baixa de estoque Gemini sem destino salva saida apos confirmacao",
+        module: "estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["dei saida de 5 kg de sal mineral", "sim"],
+        expected: {
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { item_nome: "Sal mineral", quantidade: 5, unidade: "kg" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 1,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { quantidade: 5 },
+          shouldNotDuplicate: true,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "consulta de estoque nao abre confirmacao nem salva",
         module: "estoque",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -186,6 +224,22 @@ module.exports = function loadBotTestSection(context) {
           entities: { item_nome: "Racao" },
           responseIncludes: "10 sacos",
           responseNotIncludes: "Está correto",
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "Gemini query de estoque responde saldo sem confirmar",
+        module: "estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        stockItems: stockConsultationItems,
+        messages: ["quanto tem de racao no estoque"],
+        expected: {
+          finalIntent: "CONSULTA_ESTOQUE_ITEM",
+          responseIncludes: "Estoque de Racao",
+          responseRawIncludes: "10 sacos",
+          responseNotIncludes: "Esta correto",
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true

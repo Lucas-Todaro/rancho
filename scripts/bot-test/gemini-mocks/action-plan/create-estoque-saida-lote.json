@@ -1,0 +1,21 @@
+{
+  "id": "create-estoque-saida-lote",
+  "inputExamples": [
+    "usei 2 sacos de racao no lote lactacao",
+    "usei 2 sacos de ração no lote lactação"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "uso_estoque",
+    "confidence": 0.95,
+    "data": {
+      "item": "racao",
+      "quantidade": 2,
+      "unidade": "saco",
+      "tipo_movimento": "saida",
+      "destino": "lote lactacao"
+    },
+    "requiresConfirmation": true
+  }
+}

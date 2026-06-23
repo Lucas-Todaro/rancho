@@ -1,0 +1,21 @@
+{
+  "id": "create-reproducao-prenhez-306",
+  "inputExamples": [
+    "306 emprenhou",
+    "306 esta prenha",
+    "306 está prenha"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "operation": "registro_reprodutivo",
+    "confidence": 0.96,
+    "data": {
+      "animal_ref": "306",
+      "evento": "PRENHEZ",
+      "data": "hoje",
+      "observacoes": "Prenhez registrada"
+    },
+    "requiresConfirmation": true
+  }
+}

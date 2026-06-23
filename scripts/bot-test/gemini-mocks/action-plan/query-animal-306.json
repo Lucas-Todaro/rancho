@@ -1,0 +1,17 @@
+{
+  "id": "query-animal-306",
+  "inputExamples": [
+    "como ta a vaca 306?",
+    "como está a vaca 306?",
+    "relatorio da 306",
+    "ficha da vaca 306"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "animais",
+    "confidence": 0.94,
+    "filters": [{ "field": "animal_ref", "op": "contains", "value": "306" }],
+    "limit": 1,
+    "requiresConfirmation": false
+  }
+}

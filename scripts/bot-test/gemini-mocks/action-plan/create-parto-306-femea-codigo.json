@@ -1,0 +1,21 @@
+{
+  "id": "create-parto-306-femea-codigo",
+  "inputExamples": [
+    "306 pariu femea codigo B-306 hoje",
+    "306 pariu fêmea código B-306 hoje"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "reproducao",
+    "operation": "registro_reprodutivo",
+    "confidence": 0.97,
+    "data": {
+      "animal_ref": "306",
+      "evento": "PARTO",
+      "data": "hoje",
+      "cria_sexo": "femea",
+      "cria_codigo": "B-306"
+    },
+    "requiresConfirmation": true
+  }
+}

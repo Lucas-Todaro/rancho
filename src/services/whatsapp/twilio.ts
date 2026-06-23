@@ -4934,7 +4934,16 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         child_code: dados.cria_codigo || null,
         has_child: partoWithChild(dados)
       });
+      botPartoSaveLog("parto_confirm_start", owner, {
+        mother_ref: dados.animal_codigo || null,
+        child_code: dados.cria_codigo || null,
+        has_child: partoWithChild(dados)
+      });
       botPartoSaveLog("parto_save_mother_resolved", owner, {
+        mother_id: animal.id,
+        mother_ref: animal.brinco || animal.nome || null
+      });
+      botPartoSaveLog("parto_confirm_mother_resolved", owner, {
         mother_id: animal.id,
         mother_ref: animal.brinco || animal.nome || null
       });
@@ -5048,9 +5057,21 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         const motherPhaseBeforeParto = animal.fase || null;
         try {
           if (!child) {
-            child = await insertRealRecord(supabase, owner, TABLES.animais, calfPayloadFromParto(owner, normalizedDados, animal, father));
+            const childPayload = calfPayloadFromParto(owner, normalizedDados, animal, father);
+            botPartoSaveLog("parto_confirm_child_payload", owner, {
+              child_code: childPayload.brinco || null,
+              child_sex: childPayload.sexo || null,
+              child_category: childPayload.categoria || null,
+              mother_id: childPayload.mae_id || null,
+              father_id: childPayload.pai_id || null
+            });
+            child = await insertRealRecord(supabase, owner, TABLES.animais, childPayload);
             childCreated = true;
             botPartoSaveLog("parto_save_child_created", owner, {
+              child_id: child?.id || null,
+              child_code: childCode
+            });
+            botPartoSaveLog("parto_confirm_child_created", owner, {
               child_id: child?.id || null,
               child_code: childCode
             });
@@ -5063,6 +5084,11 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
           }
 
           botPartoSaveLog("parto_save_genealogy_created", owner, {
+            child_id: child?.id || null,
+            mother_id: animal.id,
+            father_id: father?.id || null
+          });
+          botPartoSaveLog("parto_confirm_genealogy_created", owner, {
             child_id: child?.id || null,
             mother_id: animal.id,
             father_id: father?.id || null
@@ -5081,6 +5107,10 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             responsavel_usuario_id: owner.usuario_id || null
           });
           botPartoSaveLog("parto_save_reproduction_event_created", owner, {
+            event_id: birthEvent?.id || null,
+            mother_id: animal.id
+          });
+          botPartoSaveLog("parto_confirm_reproduction_created", owner, {
             event_id: birthEvent?.id || null,
             mother_id: animal.id
           });
@@ -5111,6 +5141,13 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             compensation_error: compensationError,
             message: errorMessage
           });
+          botPartoSaveLog("parto_confirm_error", owner, {
+            stage: saveStage,
+            mother_id: animal.id,
+            child_code: childCode,
+            compensation_error: compensationError,
+            message: errorMessage
+          });
           if (/duplicate|duplicad|23505|unique/i.test(errorMessage)) {
             return {
               response: `Ja existe um animal com o codigo/brinco ${childCode}. Me envie outro codigo para a cria ou responda 2 para gerar um codigo temporario.`,
@@ -5127,7 +5164,7 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             };
           }
           return {
-            response: "Nao consegui concluir o cadastro da cria e do parto. Nenhum novo registro foi mantido. Tente confirmar novamente.",
+            response: `Nao consegui concluir o parto na etapa ${saveStage}. Nenhum novo registro foi mantido. Tente confirmar novamente.`,
             nextSession: { etapa: "aguardando_confirmacao", dados: { pending } }
           };
         }
@@ -5138,6 +5175,16 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
         try {
           motherPhaseUpdated = await updateMotherPhaseAfterParto(supabase, owner, animal);
           botPartoSaveLog("parto_save_mother_status_updated", owner, {
+            mother_id: animal.id,
+            status: "recem_parida",
+            source: "parto_event",
+            previous_phase: motherPhaseBeforeParto,
+            phase: animal.fase || null,
+            phase_updated: motherPhaseUpdated,
+            category_preserved: animal.categoria || null,
+            lot_preserved: animal.lote_id || null
+          });
+          botPartoSaveLog("parto_confirm_mother_status_updated", owner, {
             mother_id: animal.id,
             status: "recem_parida",
             source: "parto_event",

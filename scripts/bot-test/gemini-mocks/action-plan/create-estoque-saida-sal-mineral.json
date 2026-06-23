@@ -1,0 +1,20 @@
+{
+  "id": "create-estoque-saida-sal-mineral",
+  "inputExamples": [
+    "dei saida de 5 kg de sal mineral",
+    "dei saída de 5 kg de sal mineral"
+  ],
+  "response": {
+    "action": "create",
+    "domain": "estoque",
+    "operation": "uso_estoque",
+    "confidence": 0.94,
+    "data": {
+      "item": "sal mineral",
+      "quantidade": 5,
+      "unidade": "kg",
+      "tipo_movimento": "saida"
+    },
+    "requiresConfirmation": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "query-vacas-inseminadas",
+  "inputExamples": [
+    "quais vacas tao inseminadas?",
+    "quais vacas estão inseminadas?",
+    "lista das inseminadas"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "evento", "op": "eq", "value": "inseminacao" }],
+    "orderBy": { "field": "data", "direction": "desc" },
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}
