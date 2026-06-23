@@ -5084,18 +5084,6 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             event_id: birthEvent?.id || null,
             mother_id: animal.id
           });
-          saveStage = "mother_phase";
-          motherPhaseUpdated = await updateMotherPhaseAfterParto(supabase, owner, animal);
-          botPartoSaveLog("parto_save_mother_status_updated", owner, {
-            mother_id: animal.id,
-            status: "recem_parida",
-            source: "parto_event",
-            previous_phase: motherPhaseBeforeParto,
-            phase: animal.fase || null,
-            phase_updated: motherPhaseUpdated,
-            category_preserved: animal.categoria || null,
-            lot_preserved: animal.lote_id || null
-          });
         } catch (error) {
           const compensationErrors: string[] = [];
           if (birthEvent?.id) {
@@ -5142,6 +5130,32 @@ async function saveConfirmedRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner
             response: "Nao consegui concluir o cadastro da cria e do parto. Nenhum novo registro foi mantido. Tente confirmar novamente.",
             nextSession: { etapa: "aguardando_confirmacao", dados: { pending } }
           };
+        }
+
+        // A cria, o vínculo genealógico e o parto formam a operação principal.
+        // A fase produtiva da mãe é uma atualização derivada e não pode desfazer
+        // esses registros caso o schema da fazenda rejeite essa atualização.
+        try {
+          motherPhaseUpdated = await updateMotherPhaseAfterParto(supabase, owner, animal);
+          botPartoSaveLog("parto_save_mother_status_updated", owner, {
+            mother_id: animal.id,
+            status: "recem_parida",
+            source: "parto_event",
+            previous_phase: motherPhaseBeforeParto,
+            phase: animal.fase || null,
+            phase_updated: motherPhaseUpdated,
+            category_preserved: animal.categoria || null,
+            lot_preserved: animal.lote_id || null
+          });
+        } catch (error) {
+          botPartoSaveLog("parto_save_mother_status_update_error", owner, {
+            stage: "mother_phase",
+            mother_id: animal.id,
+            child_id: child?.id || null,
+            child_code: childCode,
+            event_id: birthEvent?.id || null,
+            message: safeErrorText(error)
+          });
         }
 
         const savedTables: string[] = existingChild ? [TABLES.eventosAnimal] : [TABLES.animais, TABLES.eventosAnimal];

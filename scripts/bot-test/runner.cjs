@@ -64,6 +64,7 @@ module.exports = function loadBotTestSection(context) {
 
     function createSupabaseForScenario(test = {}) {
       const supabase = new BotTestSupabase();
+      supabase.failMotherPhaseUpdate = Boolean(test.failMotherPhaseUpdate);
       if (test.ranches) {
         supabase.tables[BOT_TEST_TABLES.fazendas].push(...test.ranches.map((ranch) => ({
           id: ranch.id,

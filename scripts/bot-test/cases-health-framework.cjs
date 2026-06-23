@@ -246,6 +246,93 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto 09 com cria CA-006 persiste mesmo se atualizacao derivada da fase falhar",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        failMotherPhaseUpdate: true,
+        extraAnimals: [{ id: "animal-09", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        messages: [{ text: "1", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "parto registrado e cria CA-006 cadastrada",
+          responseNotIncludes: "Nenhum novo registro foi mantido",
+          entities: { animal_codigo: "09", cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra" },
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.eventosAnimal],
+          shouldSaveValues: {
+            brinco: "CA-006",
+            categoria: "bezerra",
+            sexo: "femea",
+            status: "ativo",
+            data_nascimento: "2026-06-22",
+            mae_id: "animal-09",
+            pai_id: null,
+            tipo: "parto"
+          },
+          shouldNotDuplicate: true,
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "confirmacao repetida do parto 09 nao duplica cria nem evento",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-09-repeat", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca", fase: "lactacao", status: "ativo" }],
+        sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-repeat", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        messages: [{ text: "1", salvarReal: true }, { text: "1", salvarReal: true }],
+        expected: {
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.eventosAnimal],
+          shouldNotDuplicate: true,
+          allResponsesNotInclude: ["Nenhum novo registro foi mantido"],
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto 09 com codigo CA-006 existente pede outro codigo sem salvar",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [
+          { id: "animal-09-duplicate", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca" },
+          { id: "animal-ca-006", brinco: "CA-006", nome: "Cria existente", sexo: "femea", categoria: "bezerra" }
+        ],
+        sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-duplicate", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        messages: [{ text: "1", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Ja existe um animal com o codigo/brinco CA-006",
+          responseNotIncludes: "Erro interno",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto com mae 09 inexistente nao salva registros parciais",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        messages: [{ text: "1", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "não encontrei o animal",
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "doenca vira evento clinico e salva so apos confirmacao",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,

@@ -544,6 +544,7 @@ module.exports = function loadBotTestSection(context) {
         this.payload = null;
         this.conflictColumns = [];
         this.forcedError = null;
+        this.forcedOperationalError = null;
       }
 
       select(columns = "*") {
@@ -626,6 +627,9 @@ module.exports = function loadBotTestSection(context) {
         this.payload = payload || {};
         const forbiddenColumn = firstForbiddenWriteColumn(this.tableName, this.payload);
         if (forbiddenColumn) this.forcedError = schemaColumnError(this.tableName, forbiddenColumn);
+        if (this.db.failMotherPhaseUpdate && this.tableName === BOT_TEST_TABLES.animais && this.payload.fase === "lactacao") {
+          this.forcedOperationalError = { code: "23514", message: "mock: falha ao atualizar fase derivada da mae" };
+        }
         return this;
       }
 
@@ -741,6 +745,9 @@ module.exports = function loadBotTestSection(context) {
       }
 
       execute(singleMode) {
+        if (this.forcedOperationalError) {
+          return { data: null, error: this.forcedOperationalError };
+        }
         if (this.forcedError) {
           this.db.recordSchemaError(this.tableName, this.operation, this.forcedError.message);
           return { data: null, error: this.forcedError };
