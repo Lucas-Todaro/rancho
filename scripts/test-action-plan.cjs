@@ -72,6 +72,11 @@ const {
   normalizeReproductionEvent,
   normalizeSex
 } = require("../src/lib/whatsapp/nlp-core/reproduction-normalizers.ts");
+const {
+  applyPendingPatchToSession,
+  interpretPendingPatchWithGemini,
+  shouldUsePendingPatchForText
+} = require("../src/lib/whatsapp/gemini/pending-patch.ts");
 const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
@@ -624,6 +629,66 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
 });
 
+test("executor import_table reproducao aceita lista codigo evento com data.rows", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "reproducao",
+    confidence: 0.93,
+    data: {
+      rows: [
+        { animal_ref: "177", evento: "protocolo" },
+        { animal_ref: "094", evento: "PROTOCOLO" },
+        { animal_ref: "053", evento: "INSEMINAÇÃO" },
+        { animal_ref: "249", evento: "protocolo" },
+        { animal_ref: "205", evento: "RETESTE" }
+      ]
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({
+    plan,
+    text: "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINAÇÃO\n249:PROTOCOLO\n205:RETESTE"
+  });
+  assert(result.ok, `lista data.rows de reproducao deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_EVENTOS_TABELA", `intent incorreto: ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.action_plan_used === true, "ActionPlan deveria ser marcado");
+  assert(result.parsed.dados?.action_plan_domain === "reproducao", "dominio reproducao ausente");
+  assert(result.parsed.dados?.total_linhas === 5, `esperado 5 linhas, recebido ${result.parsed.dados?.total_linhas}`);
+  assert(result.parsed.dados?.total_linhas_parse_invalidas === 0, "PROTOCOLO/INSEMINAÇÃO/RETESTE deveriam normalizar sem invalidar");
+  assert(result.parsed.dados?.linhas?.[2]?.evento_tipo === "inseminacao", "INSEMINAÇÃO deveria normalizar para inseminacao");
+  assert(result.parsed.dados?.linhas?.[4]?.evento_tipo === "reteste", "RETESTE deveria normalizar para reteste");
+});
+
+test("BOT_INTERPRETER=gemini chama Gemini mock para lista estruturada com dois pontos", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "mock",
+    GEMINI_ACTION_PLAN_ENABLED: "true",
+    GEMINI_TABLE_ACTION_PLAN_ENABLED: "true"
+  }, async () => {
+    resetGeminiRuntimeStats();
+    const text = "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE";
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: null
+    });
+    const stats = geminiRuntimeStats();
+    assert(stats.mockCalls === 1, `Gemini mock deveria ser chamado uma vez, recebido ${stats.mockCalls}`);
+    assert(result.kind === "parsed", `lista estruturada deveria gerar parsed, recebido ${result.kind}`);
+    const parsed = result.parsed;
+    assert(parsed.dados?.route === "structured_input", "rota structured_input ausente");
+    assert(parsed.dados?.structuredDetection?.isStructured === true, "structuredDetection deveria marcar true");
+    assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria vencer o parser local");
+    assert(parsed.dados?.table_action_plan_used === true, "table_action_plan_used ausente");
+    assert(parsed.dados?.action_plan_domain === "reproducao", "dominio reproducao ausente");
+    assert(parsed.dados?.total_linhas === 5, "lista deveria reconhecer 5 linhas");
+    assert(result.gemini.requiresConfirmation === true, "import_table deve exigir confirmacao");
+    assert(!String(result.gemini.userResponse || "").includes("Preciso revisar esse plano"), "nao deveria retornar erro generico de revisao");
+  });
+});
+
 test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () => {
   assert(userFacingCodeLabel("tarefa_com_data_passada") === "tarefa com data no passado", "codigo de tarefa deveria ser traduzido");
   assert(userFacingCodeLabel("novo_codigo_interno") === "novo codigo interno", "codigo desconhecido deveria perder underlines");
@@ -897,6 +962,86 @@ test("Gemini mock roteia lista codigo evento para import_table reproducao", asyn
   assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "EM_PROTOCOLO"), "EM_PROTOCOLO ausente");
   assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "INSEMINACAO"), "INSEMINACAO ausente");
   assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "EM_RETESTE"), "EM_RETESTE ausente");
+});
+
+test("PendingPatch PARTO aplica resposta livre com sexo codigo e pai", async () => {
+  const pending = parseRanchoMessage("090 pariu");
+  const result = await interpretPendingPatchWithGemini({
+    text: "sim.\nsexo:femea\ncodigo:c-140\npai:t-50",
+    pending,
+    status: "aguardando_dado",
+    currentDate: "2026-06-24"
+  });
+  assert(result.ok, `PendingPatch deveria interpretar resposta livre: ${result.reason}`);
+  const patched = applyPendingPatchToSession(pending, result.patch);
+  assert(patched.dados?.parto_cria_cadastro === true, "confirm_child=true deveria cadastrar cria");
+  assert(patched.dados?.cria_sexo === "femea", `sexo esperado femea, recebido ${patched.dados?.cria_sexo}`);
+  assert(patched.dados?.cria_categoria === "bezerro", `categoria esperada bezerro, recebida ${patched.dados?.cria_categoria}`);
+  assert(patched.dados?.cria_codigo === "c-140", `codigo esperado c-140, recebido ${patched.dados?.cria_codigo}`);
+  assert(patched.dados?.pai_ref === "t-50", `pai esperado t-50, recebido ${patched.dados?.pai_ref}`);
+  assert(!patched.perguntas_faltantes.includes("cria_codigo"), "nao deveria pedir codigo novamente");
+  assert(!patched.perguntas_faltantes.includes("cria_sexo"), "nao deveria pedir sexo novamente");
+});
+
+test("PendingPatch PARTO extrai sexo e codigo juntos em resposta curta", async () => {
+  const pending = applyPendingPatchToSession(parseRanchoMessage("090 pariu"), {
+    type: "pending_patch",
+    targetIntent: "PARTO",
+    confidence: 0.9,
+    data: { confirm_child: true }
+  });
+  const result = await interpretPendingPatchWithGemini({
+    text: "femea, codigo C-00691",
+    pending,
+    status: "aguardando_dado",
+    currentDate: "2026-06-24"
+  });
+  assert(result.ok, `PendingPatch resposta curta falhou: ${result.reason}`);
+  const patched = applyPendingPatchToSession(pending, result.patch);
+  assert(patched.dados?.cria_sexo === "femea", "resposta curta nao extraiu sexo femea");
+  assert(patched.dados?.cria_codigo === "C-00691", "resposta curta nao extraiu codigo");
+  assert(!patched.perguntas_faltantes.includes("cria_codigo"), "resposta curta nao deveria pedir codigo novamente");
+});
+
+test("PendingPatch PARTO aplica pai separado sem apagar sexo e codigo", async () => {
+  const pending = applyPendingPatchToSession(parseRanchoMessage("090 pariu"), {
+    type: "pending_patch",
+    targetIntent: "PARTO",
+    confidence: 0.9,
+    data: { confirm_child: true, child_sex: "femea", child_code: "C-00691" }
+  });
+  const result = await interpretPendingPatchWithGemini({
+    text: "pai t-50",
+    pending,
+    status: "aguardando_dado",
+    currentDate: "2026-06-24"
+  });
+  assert(result.ok, `PendingPatch pai separado falhou: ${result.reason}`);
+  const patched = applyPendingPatchToSession(pending, result.patch);
+  assert(patched.dados?.cria_sexo === "femea", "pai separado apagou sexo");
+  assert(patched.dados?.cria_codigo === "C-00691", "pai separado apagou codigo");
+  assert(patched.dados?.pai_ref === "t-50", "pai separado nao aplicou pai");
+});
+
+test("PendingPatch PARTO sem cria segue para parto sem cadastro de cria", async () => {
+  const pending = parseRanchoMessage("090 pariu");
+  const result = await interpretPendingPatchWithGemini({
+    text: "nao quero cadastrar cria",
+    pending,
+    status: "aguardando_dado",
+    currentDate: "2026-06-24"
+  });
+  assert(result.ok, `PendingPatch sem cria falhou: ${result.reason}`);
+  const patched = applyPendingPatchToSession(pending, result.patch);
+  assert(patched.dados?.parto_sem_cadastro_cria === true, "confirm_child=false deveria marcar parto sem cria");
+  assert(!patched.perguntas_faltantes.length, "parto sem cria nao deveria ficar pedindo dados da cria");
+});
+
+test("PendingPatch nao captura confirmacao ou cancelamento simples", () => {
+  assert(shouldUsePendingPatchForText("1") === false, "confirmacao 1 nao deve chamar PendingPatch");
+  assert(shouldUsePendingPatchForText("sim") === false, "sim simples nao deve chamar PendingPatch");
+  assert(shouldUsePendingPatchForText("cancelar") === false, "cancelar nao deve chamar PendingPatch");
+  assert(shouldUsePendingPatchForText("sexo:femea codigo:c-140 pai:t-50") === true, "dados livres deveriam chamar PendingPatch");
 });
 
 test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", async () => {

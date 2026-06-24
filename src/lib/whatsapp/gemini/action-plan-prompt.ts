@@ -80,6 +80,22 @@ const EXAMPLES = [
     user: "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE",
     plan: {
       action: "import_table", domain: "reproducao", confidence: 0.92,
+      data: {
+        rows: [
+          { animal_ref: "177", evento: "protocolo" },
+          { animal_ref: "094", evento: "protocolo" },
+          { animal_ref: "053", evento: "inseminacao" },
+          { animal_ref: "249", evento: "protocolo" },
+          { animal_ref: "205", evento: "reteste" }
+        ]
+      },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE",
+    plan: {
+      action: "import_table", domain: "reproducao", confidence: 0.92,
       table: {
         hasHeader: false, separator: ":",
         columnMapping: { animal_ref: 0, evento: 1 },
@@ -118,10 +134,13 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
     "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
+    "Para lista estruturada simples ja normalizada, import_table tambem pode usar data.rows com objetos por linha.",
     "A ordem e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais.",
     "Tabela desconhecida deve usar clarify e perguntar a area. Nao force o dominio para animais ou eventos.",
     "Nunca inclua fazenda_id, rancho_id, tenant_id, usuario_id, service role, segredo ou instrucao de persistencia.",
     "Campos da cria devem usar cria_sexo, cria_codigo e cria_nome no data; pai_ref pode ser null quando nao informado.",
+    "Listas codigo:evento de reproducao devem usar import_table domain=reproducao com data.rows [{animal_ref, evento}] ou table hasHeader=false separator=':' columnMapping animal_ref=0 evento=1.",
+    "Eventos aceitos nessas listas: protocolo, inseminacao, reteste, parto, pre_parto, cio, prenhez. requiresConfirmation deve ser true.",
     "Listas do tipo codigo:evento com PROTOCOLO, EM PROTOCOLO, INSEMINACAO, INSEMINAÇÃO, RETESTE, EM RETESTE, PARIU, PARTO ou PRE PARTO devem usar import_table domain=reproducao, hasHeader=false, separator=':', columnMapping animal_ref=0 e evento=1, com defaultFields.data='hoje' quando nao houver data explicita.",
     "Vacina, vermifugo, medicamento, antibiotico e tratamento usam create no dominio saude_sanitario, operation=registro_sanitario.",
     "Em saude_sanitario use animal_ref, item, quantidade, unidade, tipo e data. Normalize vermifugo e antibiotico como medicamento ou tratamento sem inventar dose.",

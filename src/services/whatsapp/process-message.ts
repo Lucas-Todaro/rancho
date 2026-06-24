@@ -98,6 +98,11 @@ import {
 } from "@/services/whatsapp/catalog-service";
 import { confirmationText, dryRunConfirmationText, isDestructiveBulkParsed } from "@/services/whatsapp/confirmation-message";
 import {
+  applyPendingPatchToSession,
+  interpretPendingPatchWithGemini,
+  shouldUsePendingPatchForText
+} from "@/lib/whatsapp/gemini/pending-patch";
+import {
   ambiguousTableQuestion,
   animalImportIssueDetails,
   animalImportPendingFromMissingEventAnimals,
@@ -3820,6 +3825,33 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
     }
 
     return "Responda 1 para dar baixa no estoque ou 2 para registrar apenas a receita.";
+  }
+
+  if (isGeminiPrimaryMode() && pending.tipo === "PARTO" && shouldUsePendingPatchForText(text)) {
+    const missingBefore = [...(pending.perguntas_faltantes || [])];
+    const patchResult = await interpretPendingPatchWithGemini({
+      text,
+      pending,
+      status: session.etapa,
+      currentDate: new Date().toISOString().slice(0, 10),
+      timezone: "America/Sao_Paulo"
+    });
+    if (patchResult.ok) {
+      const patched = applyPendingPatchToSession(pending, patchResult.patch);
+      const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, patched);
+      botLog("pending_patch_applied", owner, {
+        targetIntent: pending.tipo,
+        missingFieldsBefore: missingBefore,
+        missingFieldsAfter: next.perguntas_faltantes || [],
+        nextStep: next.perguntas_faltantes.length ?"pedir_dado" : "confirmar"
+      });
+      const result = await saveCorrectedPending(supabase, owner, next);
+      return result.response;
+    }
+    botLog("pending_patch_invalid", owner, {
+      reason: patchResult.reason,
+      targetIntent: pending.tipo
+    });
   }
 
   const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, mergeRanchoMessageData(pending, text));

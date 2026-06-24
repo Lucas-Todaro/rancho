@@ -1,0 +1,18 @@
+{
+  "id": "pending-patch-parto-pai",
+  "input": "pai t-50",
+  "examples": [
+    "pai t-50",
+    "pai:t-50",
+    "o pai é t-50"
+  ],
+  "response": {
+    "type": "pending_patch",
+    "targetIntent": "PARTO",
+    "confidence": 0.9,
+    "data": {
+      "father_ref": "t-50"
+    },
+    "requiresConfirmation": true
+  }
+}

@@ -110,6 +110,16 @@ function normalizeReproductionData(data: unknown) {
   return normalized;
 }
 
+function normalizeImportRowsForDomain(data: unknown, domainName: string) {
+  if (!isPlainObject(data)) return data;
+  if (!Array.isArray(data.rows)) return data;
+  if (domainName !== "reproducao") return data;
+  return {
+    ...data,
+    rows: data.rows.map((row) => normalizeReproductionData(row))
+  };
+}
+
 function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPlan {
   if (domainName === "saude_sanitario" && (plan.action === "create" || plan.action === "update")) {
     const data = { ...plan.data };
@@ -134,15 +144,18 @@ function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPla
   }
 
   if (plan.action === "import_table") {
-    const columnMapping = { ...(plan.table.columnMapping || {}) };
+    const table: AnyRecord = isPlainObject(plan.table) ? plan.table : {};
+    const columnMapping = { ...(isPlainObject(table.columnMapping) ? table.columnMapping : {}) };
     if (!columnMapping.animal_ref && columnMapping.mae_ref) columnMapping.animal_ref = columnMapping.mae_ref;
     if (!columnMapping.evento && columnMapping.tipo) columnMapping.evento = columnMapping.tipo;
     return {
       ...plan,
+      data: normalizeImportRowsForDomain(plan.data || {}, domainName) as ImportTableActionPlan["data"],
       table: {
-        ...plan.table,
+        ...table,
+        hasHeader: table.hasHeader === false ? false : true,
         columnMapping,
-        defaultFields: normalizeReproductionData(plan.table.defaultFields || {}) as Record<string, unknown>
+        defaultFields: normalizeReproductionData(table.defaultFields || {}) as Record<string, unknown>
       }
     };
   }
@@ -496,6 +509,26 @@ function validateImportTableCore(
   errors: string[]
 ) {
   validateConfirmation("import_table", plan.requiresConfirmation, errors);
+  const dataRows = isPlainObject(plan.data) && Array.isArray(plan.data.rows) ? plan.data.rows : null;
+  if (dataRows) {
+    if (!dataRows.length) errors.push("import_table.data.rows nao pode ser vazio");
+    const mappedFields = new Set<string>();
+    dataRows.slice(0, 120).forEach((row, rowIndex) => {
+      if (!isPlainObject(row)) {
+        errors.push(`import_table.data.rows[${rowIndex}] deve ser objeto`);
+        return;
+      }
+      for (const [fieldName, value] of Object.entries(row)) {
+        const definition = validateFieldExists(domain, fieldName, errors, `import_table.data.rows[${rowIndex}]`);
+        if (!definition) continue;
+        mappedFields.add(fieldName);
+        validateEnumValue(domain, fieldName, definition, value, errors, `import_table.data.rows[${rowIndex}].${fieldName}`);
+      }
+    });
+    validateRequiredFields(domain, "import_table", mappedFields, errors);
+    return;
+  }
+
   if (!isPlainObject(plan.table)) {
     errors.push("table deve ser objeto");
     return;

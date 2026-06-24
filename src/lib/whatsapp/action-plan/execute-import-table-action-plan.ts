@@ -52,7 +52,7 @@ function splitRows(text: string, separator?: string) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const sep = separator || (lines[0]?.includes(";") ? ";" : lines[0]?.includes("\t") ? "\t" : ",");
+  const sep = separator || (lines[0]?.includes(";") ? ";" : lines[0]?.includes("|") ? "|" : lines[0]?.includes("\t") ? "\t" : lines[0]?.includes(":") ? ":" : ",");
   return {
     separator: sep,
     lines,
@@ -237,14 +237,13 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     const eventKind = normalizeReproductiveEventType(eventOriginal);
     const mappedDate = String(row.values?.data || row.parsedValues?.data || "").trim();
     const embeddedDate = eventOriginal.match(/\b(?:hoje|ontem|anteontem|amanha|amanhÃ£|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/i)?.[0] || "";
-    const dateOriginal = mappedDate || embeddedDate;
+    const dateOriginal = mappedDate || embeddedDate || "hoje";
     const date = parseDate(dateOriginal);
     const problems: string[] = [];
     const warnings: string[] = [];
     if (!animalRef) problems.push("animal_sem_codigo");
     if (!eventKind) problems.push("tipo_evento_desconhecido");
-    if (!dateOriginal) problems.push("data_ausente");
-    else if (!date) problems.push("data_invalida");
+    if (!date) problems.push("data_invalida");
     if (eventKind === "parto") warnings.push("dados_da_cria_ausentes");
     return {
       lineNumber: row.lineNumber,
@@ -299,6 +298,38 @@ function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], p
     total_litros: totalLitros,
     action_plan_preview: preview
   }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
+}
+
+function importRowsFromPlanData(plan: ImportTableActionPlan, domain: DomainManifestEntry) {
+  const rows = Array.isArray(plan.data?.rows) ? plan.data.rows : [];
+  return rows.map((row, index) => {
+    const values = { ...(row || {}) };
+    const parsedValues: AnyRecord = {};
+    for (const [field, value] of Object.entries(values)) {
+      parsedValues[field] = parseValue(domain, field, value);
+    }
+    return {
+      lineNumber: index + 1,
+      rawText: Object.values(values).map((value) => String(value ?? "")).join(";"),
+      values,
+      parsedValues
+    };
+  });
+}
+
+function actionPlanWithTableDefaults(plan: ImportTableActionPlan, rows: AnyRecord[]): ImportTableActionPlan {
+  if (plan.table) return plan;
+  const sample = rows[0]?.values && typeof rows[0].values === "object" ? rows[0].values as AnyRecord : {};
+  return {
+    ...plan,
+    table: {
+      hasHeader: false,
+      columnMapping: Object.fromEntries(Object.keys(sample).map((field) => [field, field])),
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    }
+  };
 }
 
 function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
@@ -446,7 +477,15 @@ function genericDomainParsed(plan: ImportTableActionPlan, rows: AnyRecord[], pre
 }
 
 export async function executeImportTableActionPlan(input: ExecuteImportTableActionPlanInput): Promise<ExecuteImportTableActionPlanResult> {
-  const parsedTable = parseStructuredTableForActionPlan(input.text, input.plan.table.separator, input.plan.table.hasHeader);
+  const dataRows = Array.isArray(input.plan.data?.rows) ? input.plan.data.rows : null;
+  const table = input.plan.table || { hasHeader: true, columnMapping: {} };
+  const parsedTable = dataRows
+    ? {
+      headers: dataRows[0] && typeof dataRows[0] === "object" ? Object.keys(dataRows[0]) : [],
+      rows: dataRows.map((row) => Object.values(row || {})),
+      hasHeader: false
+    }
+    : parseStructuredTableForActionPlan(input.text, table.separator, table.hasHeader);
   const validation = validateImportTableActionPlan(input.plan, parsedTable);
   if (!validation.ok) {
     return {
@@ -469,9 +508,10 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       message: "Ainda não tenho um mapeamento seguro para importar esse tipo de tabela."
     };
   }
-  const rows = mappedRows(plan, domain, parsedTable);
-  if (plan.domain === "reproducao") {
-    const reproduction = reproductionTableParsed(plan, rows, input.text);
+  const rows = dataRows ? importRowsFromPlanData(plan, domain) : mappedRows(plan, domain, parsedTable);
+  const executablePlan = actionPlanWithTableDefaults(plan, rows);
+  if (executablePlan.domain === "reproducao") {
+    const reproduction = reproductionTableParsed(executablePlan, rows, input.text);
     return {
       ok: true,
       parsed: reproduction.parsed,
@@ -482,15 +522,15 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
   }
 
   const normalizedRows = genericRows(rows, domain);
-  const metrics = metricsFor(plan.domain, normalizedRows);
-  const preview = previewText(plan.domain, normalizedRows, metrics);
-  const parsed = plan.domain === "producao_leite"
-    ? productionBatchParsed(plan, normalizedRows, preview)
-    : plan.domain === "animais"
-      ? animalImportParsed(plan, normalizedRows, preview)
-      : plan.domain === "estoque"
-        ? stockImportParsed(plan, normalizedRows, preview)
-        : genericDomainParsed(plan, normalizedRows, preview);
+  const metrics = metricsFor(executablePlan.domain, normalizedRows);
+  const preview = previewText(executablePlan.domain, normalizedRows, metrics);
+  const parsed = executablePlan.domain === "producao_leite"
+    ? productionBatchParsed(executablePlan, normalizedRows, preview)
+    : executablePlan.domain === "animais"
+      ? animalImportParsed(executablePlan, normalizedRows, preview)
+      : executablePlan.domain === "estoque"
+        ? stockImportParsed(executablePlan, normalizedRows, preview)
+        : genericDomainParsed(executablePlan, normalizedRows, preview);
   parsed.dados.texto_tabela_original = input.text;
 
   return { ok: true, parsed, preview, rows: normalizedRows, parsedTable };

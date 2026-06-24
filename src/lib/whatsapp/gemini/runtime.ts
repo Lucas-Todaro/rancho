@@ -52,6 +52,10 @@ function isActionPlanFixture(fixture: GeminiMockFixture) {
   return isPlainObject(fixture.response) && typeof fixture.response.action === "string";
 }
 
+function isPendingPatchFixture(fixture: GeminiMockFixture) {
+  return isPlainObject(fixture.response) && fixture.response.type === "pending_patch";
+}
+
 function actionPlanFixtureEnabled(fixture: GeminiMockFixture) {
   if (!isActionPlanFixture(fixture)) return true;
   const action = String(fixture.response.action || "").trim();
@@ -396,6 +400,20 @@ export function findGeminiMockFixture(input: { text?: string; geminiMockId?: str
   }
 
   return matches.find((fixture) => !isActionPlanFixture(fixture)) || null;
+}
+
+export function findPendingPatchMockFixture(input: { text?: string; geminiMockId?: string | null; targetIntent?: string | null }) {
+  const fixtures = loadFixtures().filter(isPendingPatchFixture);
+  const explicitId = String(input.geminiMockId || "").trim();
+  if (explicitId) return fixtures.find((fixture) => fixture.id === explicitId) || null;
+
+  const normalizedText = normalizeText(input.text);
+  const targetIntent = String(input.targetIntent || "").trim().toUpperCase();
+  return fixtures.find((fixture) => {
+    const responseIntent = String(fixture.response.targetIntent || "").trim().toUpperCase();
+    if (targetIntent && responseIntent && responseIntent !== targetIntent) return false;
+    return fixtureExamples(fixture).some((example) => normalizeText(example) === normalizedText);
+  }) || null;
 }
 
 export function unknownGeminiMockResponse() {

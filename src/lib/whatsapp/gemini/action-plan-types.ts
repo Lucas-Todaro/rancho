@@ -61,6 +61,9 @@ export type ImportTableActionPlan = {
     ignoredColumns?: Array<string | number>;
     ambiguousColumns?: Array<string | number>;
   };
+  data?: {
+    rows?: Array<Record<string, unknown>>;
+  };
   requiresConfirmation: true;
   operation?: string;
   missingFields?: string[];

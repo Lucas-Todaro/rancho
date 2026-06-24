@@ -15,7 +15,8 @@ const reproductiveCuePattern = /\b(?:cio|aborto|ia|iatf|inseminad[ao]s?|insemina
 
 function normalizeReproductiveTypeText(value: string) {
   const preCleaned = String(value || "")
-    .replace(/\bpr\S{0,4}[-_\s]*parto\b/gi, "pre parto");
+    .replace(/\bpr\S{0,4}[-_\s]*parto\b/gi, "pre parto")
+    .replace(/\binsemina\S{0,4}o\b/gi, "inseminacao");
   return normalizeRanchoText(preCleaned)
     .replace(/[-_‐‑‒–—]+/g, " ")
     .replace(/\s+/g, " ")

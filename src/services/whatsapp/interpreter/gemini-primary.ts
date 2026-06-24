@@ -949,6 +949,20 @@ function logActionPlan(event: string, details: AnyRecord) {
   });
 }
 
+function actionPlanDebug(plan: ActionPlan | null | undefined, structuredDetection: ReturnType<typeof detectStructuredInput>, reason?: string) {
+  const dataRows = plan && "data" in plan && Array.isArray(plan.data?.rows) ? plan.data.rows : null;
+  return {
+    action_plan_used: false,
+    action: plan?.action || null,
+    domain: plan && "domain" in plan ? plan.domain : null,
+    action_plan_validation_error: reason || null,
+    reason: reason || null,
+    rows_count: dataRows ? dataRows.length : structuredDetection.usefulLineCount || null,
+    structured_input_detected: structuredDetection.isStructured,
+    structuredDetection
+  };
+}
+
 function actionPlanGeminiMeta(interpretation: GeminiStructuredResult, result: ExecuteActionPlanResult) {
   return {
     confidence: interpretation.action_plan?.action === "block" ? 1 : interpretation.confidence,
@@ -1050,6 +1064,7 @@ async function convertActionPlanInterpretation(
         ? "Nao posso executar esse pedido com seguranca."
         : "Preciso revisar esse plano antes de executar. Pode reformular?",
       debug: {
+        ...actionPlanDebug(plan, structuredDetection, error.reason),
         error_classification: error.status === "blocked" ? "safety" : "validation",
         action_plan_validation_error: error.reason,
         domain: plan && "domain" in plan ? plan.domain : null,
@@ -1097,6 +1112,7 @@ async function convertActionPlanInterpretation(
       reason: result.reason,
       message: result.message,
       debug: {
+        ...actionPlanDebug(plan, structuredDetection, result.reason),
         error_classification: result.status === "blocked" ? "safety" : "validation",
         action_plan_validation_error: result.reason,
         domain: "domain" in plan ? plan.domain : null,

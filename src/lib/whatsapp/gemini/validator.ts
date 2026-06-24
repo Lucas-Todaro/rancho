@@ -104,11 +104,13 @@ function parsedTableForActionPlan(plan: unknown, originalText?: string): ParsedT
   const table = isPlainObject(plan.table) ? plan.table : {};
   const separator = typeof table.separator === "string"
     ? table.separator
-    : lines[0].includes(";") ? ";" : lines[0].includes("\t") ? "\t" : ",";
+    : lines[0].includes(";") ? ";" : lines[0].includes("|") ? "|" : lines[0].includes("\t") ? "\t" : lines[0].includes(":") ? ":" : ",";
   const rows = lines.map((line) => line.split(separator).map((cell) => cell.trim()));
+  const hasHeader = table.hasHeader !== false;
   return {
-    headers: rows[0] || [],
-    rows: rows.slice(1)
+    headers: hasHeader ? rows[0] || [] : (rows[0] || []).map((_cell, index) => index),
+    rows: hasHeader ? rows.slice(1) : rows,
+    hasHeader
   };
 }
 
@@ -418,7 +420,7 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     const actionPlanValidation = validateRawActionPlan(rawActionPlan, context);
     if (!actionPlanValidation.ok) {
       const blocked = actionPlanValidation.status === "blocked";
-      const value = actionPlanShell(null, {
+      const value = actionPlanShell(isPlainObject(rawActionPlan) ? rawActionPlan as ActionPlan : null, {
         status: blocked ? "blocked" : "invalid",
         reason: actionPlanValidation.reason
       }, [

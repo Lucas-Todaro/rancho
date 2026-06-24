@@ -1169,7 +1169,7 @@ module.exports = function loadBotTestSection(context) {
         phone: BOT_TEST_ADMIN_PHONE,
         extraAnimals: [{ id: "animal-306", brinco: "306", nome: "Vaca 306", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
         animalEvents: [
-          { id: "repro-hoje-306", animal_id: "animal-306", tipo: "observacao", descricao: "[Reproducao Animal] Prenhez registrada via WhatsApp", data_evento: "2026-06-23T08:00:00.000Z" }
+          { id: "repro-hoje-306", animal_id: "animal-306", tipo: "observacao", descricao: "[Reproducao Animal] Prenhez registrada via WhatsApp", data_evento: new Date().toISOString() }
         ],
         messages: ["eventos de reproducao de hoje"],
         expected: {

@@ -1,0 +1,21 @@
+{
+  "id": "pending-patch-parto-cria-completa",
+  "input": "sim.\nsexo:femea\ncodigo:c-140\npai:t-50",
+  "examples": [
+    "sim.\nsexo:femea\ncodigo:c-140\npai:t-50",
+    "sim.\nsexo:femea\ncódigo:c-140\npai:t-50",
+    "sim sexo:femea codigo:c-140 pai:t-50"
+  ],
+  "response": {
+    "type": "pending_patch",
+    "targetIntent": "PARTO",
+    "confidence": 0.94,
+    "data": {
+      "confirm_child": true,
+      "child_sex": "femea",
+      "child_code": "c-140",
+      "father_ref": "t-50"
+    },
+    "requiresConfirmation": true
+  }
+}

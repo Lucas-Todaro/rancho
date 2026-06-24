@@ -1,0 +1,20 @@
+{
+  "id": "pending-patch-parto-cria-sexo-codigo",
+  "input": "femea, codigo C-00691",
+  "examples": [
+    "femea, codigo C-00691",
+    "é fêmea, código C-00691",
+    "e femea, codigo C-00691"
+  ],
+  "response": {
+    "type": "pending_patch",
+    "targetIntent": "PARTO",
+    "confidence": 0.92,
+    "data": {
+      "confirm_child": true,
+      "child_sex": "femea",
+      "child_code": "C-00691"
+    },
+    "requiresConfirmation": true
+  }
+}

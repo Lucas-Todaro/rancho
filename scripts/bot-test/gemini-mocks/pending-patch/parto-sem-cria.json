@@ -1,0 +1,18 @@
+{
+  "id": "pending-patch-parto-sem-cria",
+  "input": "nao quero cadastrar cria",
+  "examples": [
+    "nao quero cadastrar cria",
+    "não quero cadastrar cria",
+    "sem cria"
+  ],
+  "response": {
+    "type": "pending_patch",
+    "targetIntent": "PARTO",
+    "confidence": 0.92,
+    "data": {
+      "confirm_child": false
+    },
+    "requiresConfirmation": true
+  }
+}
