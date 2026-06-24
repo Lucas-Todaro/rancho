@@ -23,4 +23,5 @@ export type ProcessWhatsappMessageResult = {
   camposFaltantes: string[];
   eventoConfirmado: boolean;
   erro: string | null;
+  debug?: AnyRecord | null;
 };

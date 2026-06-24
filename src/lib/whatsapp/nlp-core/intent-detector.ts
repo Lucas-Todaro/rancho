@@ -1664,9 +1664,11 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     && /\b(?:pariu|parto|cria|criou|nasceu bezerro|nasceu bezerra|nasceu um bezerro|nasceu uma bezerra|deu cria|teve bezerro|teve bezerra|teve cria|nascimento de bezerro|nascimento de bezerra)\b/.test(normalized);
   if (isParto) {
     const childData = extractBirthChildData(original);
+    const hasChildData = Boolean(childData.parto_cria_cadastro);
     const dados = {
       animal_codigo: extractAnimalCode(normalized, "PARTO"),
       data_referencia: extractDateReference(normalized),
+      parto_cria_decisao_pendente: hasChildData ? undefined : true,
       ...childData
     };
     return finalize("PARTO", dados, buildMissing("PARTO", dados));

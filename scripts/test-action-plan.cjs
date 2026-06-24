@@ -49,6 +49,8 @@ const {
   validateImportTableActionPlan
 } = require("../src/lib/whatsapp/gemini/action-plan-validator.ts");
 const { buildActionPlanPromptFragment } = require("../src/lib/whatsapp/gemini/action-plan-prompt.ts");
+const { buildGeminiSystemPrompt } = require("../src/lib/whatsapp/gemini/system-prompt.ts");
+const { validateInterpretedAction } = require("../src/lib/whatsapp/gemini/validator.ts");
 const {
   findGeminiMockFixture,
   geminiRuntimeStats,
@@ -74,6 +76,7 @@ const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whats
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
 const { TABLES } = require("../src/lib/tables.ts");
 const { animalReproductionStatus } = require("../src/components/modules/ReproductionScreen.tsx");
+const { realSex } = require("../src/components/modules/GenealogyScreen.tsx");
 const {
   polishBotResponse,
   userFacingCodeLabel
@@ -166,6 +169,23 @@ async function withActionPlanFlags(actionEnabled, tableEnabled, fn) {
   }
 }
 
+async function withInterpreterEnv(env, fn) {
+  const previous = {};
+  for (const key of Object.keys(env)) {
+    previous[key] = process.env[key];
+    if (env[key] === undefined) delete process.env[key];
+    else process.env[key] = env[key];
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const key of Object.keys(env)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+}
+
 async function withGeminiMock(responseFactory, fn) {
   const previous = global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
   global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = responseFactory;
@@ -174,6 +194,16 @@ async function withGeminiMock(responseFactory, fn) {
   } finally {
     if (previous) global.__RANCHO_GEMINI_INTERPRETER_MOCK__ = previous;
     else delete global.__RANCHO_GEMINI_INTERPRETER_MOCK__;
+  }
+}
+
+async function withFetchMock(fetchMock, fn) {
+  const previousFetch = global.fetch;
+  global.fetch = fetchMock;
+  try {
+    return await fn();
+  } finally {
+    global.fetch = previousFetch;
   }
 }
 
@@ -312,7 +342,38 @@ test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   assert(prompt.includes("Domain manifest"), "prompt sem manifest");
   assert(prompt.includes("delete ou update em massa"), "prompt sem regra de delete");
   assert(prompt.includes("columnMapping"), "prompt sem regra de tabela");
-  assert(prompt.includes("Nao retorne markdown, texto livre, intent legado ou SQL"), "prompt ainda permite formato legado");
+  assert(prompt.includes("Nao retorne markdown") && prompt.includes("intent legado") && prompt.includes("SQL"), "prompt ainda permite formato legado");
+
+  const systemPrompt = buildGeminiSystemPrompt({
+    text: "relatorio financeiro dos ultimos 6 meses",
+    currentDate: "2026-06-18",
+    timezone: "America/Fortaleza"
+  });
+  assert(systemPrompt.includes("Retorne somente um objeto JSON ActionPlan"), "prompt principal nao exige ActionPlan");
+  assert(!systemPrompt.includes("ACTION_DESCRIPTIONS"), "prompt principal vazou ACTION_DESCRIPTIONS");
+  assert(!systemPrompt.includes("LEGACY_ACTION_DESCRIPTIONS"), "prompt principal vazou LEGACY_ACTION_DESCRIPTIONS");
+  assert(!systemPrompt.includes("Acoes suportadas:"), "prompt principal parece usar contrato legado");
+});
+
+test("validator marca intent legado como fallback quando ActionPlan esta ligado", async () => {
+  await withInterpreterEnv({ BOT_INTERPRETER: "gemini", GEMINI_ACTION_PLAN_ENABLED: "true" }, async () => {
+    const validation = validateInterpretedAction({
+      intent: "PARTO",
+      confidence: 0.9,
+      riskScore: 0.1,
+      fields: { animal_ref: "090" },
+      actions: [],
+      missing_fields: [],
+      warnings: [],
+      should_confirm: true,
+      response_hint: null
+    }, { originalText: "090 pariu" });
+    assert(validation.ok, `intent legado deve virar resultado marcado, nao schema invalido: ${validation.message || validation.reason}`);
+    assert(validation.value.legacy_intent_returned === true, "legacy_intent_returned ausente");
+    assert(validation.value.action_plan_used === false, "action_plan_used deveria ser false");
+    assert(validation.value.interpreter_final_usado === "legacy_intent_after_gemini", "marcador de legado incorreto");
+    assert(!validation.value.action_plan, "intent legado nao deve ganhar ActionPlan falso");
+  });
 });
 
 test("fixtures ActionPlan obrigatorias validam ou bloqueiam corretamente", () => {
@@ -818,6 +879,26 @@ test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async 
   assert(result.rows[2].animal_codigo === "143" && result.rows[2].evento_tipo === "prenhez", "linha 143 mapeada incorretamente");
 });
 
+test("Gemini mock roteia lista codigo evento para import_table reproducao", async () => {
+  const text = "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE";
+  const before = geminiRuntimeStats().mockCalls;
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.tipo === "IMPORTACAO_EVENTOS_TABELA", `lista deveria virar IMPORTACAO_EVENTOS_TABELA, recebido ${parsed?.tipo}`);
+  assert(parsed.dados?.table_action_plan_used === true, "lista deveria usar ActionPlan de tabela");
+  assert(parsed.dados?.origem_parser === "gemini_action_plan", "lista deveria ser roteada pelo Gemini ActionPlan");
+  assert(geminiRuntimeStats().mockCalls === before + 1, "lista deveria chamar Gemini mock");
+  assert(parsed.dados?.total_linhas === 5, "lista deveria preservar 5 linhas");
+  assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "EM_PROTOCOLO"), "EM_PROTOCOLO ausente");
+  assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "INSEMINACAO"), "INSEMINACAO ausente");
+  assert(parsed.dados?.linhas?.some((row) => row.evento_normalizado === "EM_RETESTE"), "EM_RETESTE ausente");
+});
+
 test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", async () => {
   const fixture = fixtureByName("query-financeiro-ultimos-6-meses");
   const before = actionStatsSnapshot();
@@ -839,6 +920,13 @@ test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", asyn
   const after = actionStatsSnapshot();
   assert(after.legacyFallback === before.legacyFallback, "modo Gemini nao deveria contabilizar fallback legado");
   assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
+});
+
+test("Genealogia prioriza sexo explicito da cria sobre categoria bezerro", () => {
+  assert(realSex({ sexo: "femea", categoria: "bezerro" }) === "femea", "cria femea com categoria bezerro nao pode aparecer como macho");
+  assert(realSex({ sexo: "macho", categoria: "bezerro" }) === "macho", "cria macho deve continuar macho");
+  assert(realSex({ categoria: "vaca" }) === "femea", "categoria adulta vaca deve continuar femea");
+  assert(realSex({ categoria: "touro" }) === "macho", "categoria adulta touro deve continuar macho");
 });
 
 test("Gemini-first prioriza ActionPlan financeiro 6 meses e ignora consulta legada", async () => {
@@ -864,6 +952,63 @@ test("Gemini-first prioriza ActionPlan financeiro 6 meses e ignora consulta lega
   const after = actionStatsSnapshot();
   assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
   assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first bloqueia intent legado como caminho principal quando ActionPlan esta ligado", async () => {
+  const before = actionStatsSnapshot();
+  await withInterpreterEnv({ BOT_INTERPRETER: "gemini", GEMINI_ACTION_PLAN_ENABLED: "true", BOT_ALLOW_LEGACY_ROLLBACK: "false" }, async () => {
+    await withGeminiMock(() => ({
+      intent: "PARTO",
+      confidence: 0.9,
+      riskScore: 0.1,
+      fields: { animal_ref: "090" },
+      actions: [],
+      missing_fields: [],
+      warnings: [],
+      should_confirm: true,
+      response_hint: null
+    }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `intent legado com ActionPlan ligado nao deve virar parsed, recebido ${result.kind}`);
+      assert(result.reason === "legacy_intent_returned_while_action_plan_enabled", `motivo incorreto: ${result.reason}`);
+    });
+  });
+  const after = actionStatsSnapshot();
+  assert(after.legacyFallback === before.legacyFallback + 1, "retorno legado deveria ser contabilizado como fallback legado");
+});
+
+test("fallback legado so executa com permissao explicita fora do modo Gemini puro", async () => {
+  await withInterpreterEnv({ BOT_INTERPRETER: "shadow", GEMINI_ACTION_PLAN_ENABLED: "true", BOT_ALLOW_LEGACY_ROLLBACK: "true" }, async () => {
+    await withGeminiMock(() => ({
+      intent: "PARTO",
+      confidence: 0.9,
+      riskScore: 0.1,
+      fields: { animal_ref: "090", data: "hoje" },
+      actions: [],
+      missing_fields: [],
+      warnings: [],
+      should_confirm: true,
+      response_hint: null
+    }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      const parsed = finalParsed(result);
+      assert(parsed?.tipo === "PARTO", `fallback explicito deveria preservar legado, recebido ${parsed?.tipo}`);
+      assert(parsed.dados?.action_plan_used === false, "fallback legado nao deve marcar ActionPlan usado");
+      assert(parsed.dados?.interpreter_final_usado === "legacy_intent_after_gemini", "fallback legado deveria ficar marcado");
+    });
+  });
 });
 
 test("Gemini-first prioriza ActionPlan financeiro racao 90 dias e nao estoque legado", async () => {
@@ -949,6 +1094,154 @@ test("Gemini-first parto 306 com cria usa ActionPlan create sem sobrescrever pel
   const after = actionStatsSnapshot();
   assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
   assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first 090 pariu usa ActionPlan create de reproducao", async () => {
+  const text = "090 pariu";
+  const plan = {
+    action: "create",
+    domain: "reproducao",
+    confidence: 0.9,
+    data: { animal_ref: "090", evento: "parto" },
+    requiresConfirmation: true
+  };
+  await withGeminiMock(() => clone(plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.tipo === "PARTO", `090 pariu deveria virar PARTO via ActionPlan, recebido ${parsed?.tipo}`);
+    assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria vencer");
+    assert(parsed.dados?.action_plan_domain === "reproducao", "domain reproducao ausente");
+    assert(parsed.dados?.action_plan?.action === "create", "action create ausente");
+    assert(parsed.dados?.evento_reprodutivo_tipo === "parto", "evento parto ausente");
+    assert(parsed.dados?.animal_codigo === "090", "animal 090 ausente");
+    assert(parsed.dados?.origem_parser === "gemini_action_plan", "nao deve parecer parser local");
+  });
+});
+
+test("Gemini live JSON invalido nao retorna instabilidade", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "fake-test-key"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "{ invalid json" }] } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `JSON invalido deveria pedir clarify, recebido ${result.kind}`);
+      assert(!String(result.message).includes("Estou com instabilidade"), "JSON invalido nao deve usar mensagem de instabilidade");
+      assert(result.debug?.error_classification === "contract", "JSON invalido deveria ser erro de contrato");
+    });
+    resetGeminiRuntimeStats();
+  });
+});
+
+test("Gemini live HTTP 503 retorna instabilidade diagnosticada", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "fake-test-key"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { code: 503, message: "service unavailable", status: "UNAVAILABLE" }
+    }), { status: 503, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `HTTP 503 deveria retornar clarify, recebido ${result.kind}`);
+      assert(String(result.message).includes("Estou com instabilidade"), "HTTP 503 deve usar mensagem de instabilidade");
+      assert(result.debug?.error_classification === "external_transient", "HTTP 503 deveria ser falha externa transiente");
+      assert(result.debug?.responseStatus === 503, "status 503 ausente no debug");
+    });
+    resetGeminiRuntimeStats();
+  });
+});
+
+test("Gemini live HTTP 401 nao retorna instabilidade", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "fake-test-key"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { code: 401, message: "invalid credentials", status: "UNAUTHENTICATED" }
+    }), { status: 401, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `HTTP 401 deveria retornar clarify, recebido ${result.kind}`);
+      assert(!String(result.message).includes("Estou com instabilidade"), "HTTP 401 nao deve usar mensagem de instabilidade");
+      assert(result.debug?.error_classification === "configuration", "HTTP 401 deveria ser configuracao");
+    });
+    resetGeminiRuntimeStats();
+  });
+});
+
+test("Gemini live usa x-goog-api-key sem Authorization", async () => {
+  let seenUrl = "";
+  let seenInit = null;
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    GEMINI_ACTION_PLAN_ENABLED: "true",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "AQ-fake-test-key"
+  }, async () => {
+    await withFetchMock(async (url, init) => {
+      seenUrl = String(url);
+      seenInit = init;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(legacyMilkWithActionPlan({
+          action: "create",
+          domain: "reproducao",
+          operation: "parto",
+          confidence: 0.93,
+          requiresConfirmation: true,
+          data: { animal_ref: "090", evento: "parto" }
+        })) }] } }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }, async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "parsed", `ActionPlan valido deveria retornar parsed, recebido ${result.kind}`);
+    });
+    resetGeminiRuntimeStats();
+  });
+
+  assert(seenUrl.includes("generativelanguage.googleapis.com/v1beta/models/"), "endpoint generateContent incorreto");
+  assert(seenUrl.endsWith(":generateContent"), "endpoint deveria usar generateContent");
+  assert(seenInit?.headers?.["x-goog-api-key"] === "AQ-fake-test-key", "x-goog-api-key nao foi enviado");
+  assert(!Object.prototype.hasOwnProperty.call(seenInit?.headers || {}, "Authorization"), "Authorization nao deve ser enviado para GEMINI_API_KEY");
+  const body = JSON.parse(String(seenInit?.body || "{}"));
+  assert(body.contents?.[0]?.parts?.[0]?.text?.includes("090 pariu"), "payload deveria enviar texto em contents.parts.text");
+  assert(!Object.prototype.hasOwnProperty.call(body.contents?.[0] || {}, "role"), "payload nao deve enviar role no content");
 });
 
 test("parse flags true usa ActionPlan query com Supabase mockado", async () => {
@@ -1067,6 +1360,10 @@ test("ActionPlan invalido com flags true nao faz fallback legado", async () => {
         supabase: createActionPlanSupabase({})
       });
       assert(result.kind === "clarify", `ActionPlan invalido deveria pedir revisao, recebido ${result.kind}`);
+      assert(!String(result.message).includes("Estou com instabilidade"), "ActionPlan invalido nao deve usar instabilidade");
+      assert(result.debug?.error_classification === "validation", "ActionPlan invalido deveria retornar classificacao de validacao");
+      assert(result.debug?.action_plan_validation_error, "ActionPlan invalido deveria retornar erro de validacao");
+      assert(result.debug?.reason === result.debug?.action_plan_validation_error, "ActionPlan invalido deveria retornar motivo diagnostico consistente");
     });
   });
   const after = actionStatsSnapshot();

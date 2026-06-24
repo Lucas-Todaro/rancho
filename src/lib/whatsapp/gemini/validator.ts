@@ -1,4 +1,5 @@
 import type { AnyRecord } from "@/lib/types";
+import { geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
 import { validateActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { GEMINI_CONSULT_INTENTS, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
@@ -72,7 +73,8 @@ function actionPlanConfidence(plan: unknown) {
 function actionPlanShell(
   plan: ActionPlan | null,
   error: { status: "invalid" | "blocked"; reason: string } | null,
-  warnings: string[]
+  warnings: string[],
+  extra: Partial<GeminiStructuredResult> = {}
 ): GeminiStructuredResult {
   return {
     intent: "DESCONHECIDO",
@@ -86,7 +88,8 @@ function actionPlanShell(
     response_hint: null,
     action_plan: plan,
     action_plan_error: error,
-    table_import: null
+    table_import: null,
+    ...extra
   };
 }
 
@@ -387,6 +390,7 @@ function validateSingleAction(
 export function validateInterpretedAction(result: unknown, context: GeminiValidationContext = {}): GeminiValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const actionPlanRequired = geminiActionPlanEnabled();
 
   if (context.originalText && detectDestructiveBulkAction(context.originalText)) {
     const value = destructiveBulkGeminiValue(context.originalText);
@@ -430,7 +434,7 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
       };
     }
 
-    if (hasActionPlanShape(result) && !result.intent) {
+    if (actionPlanRequired || (hasActionPlanShape(result) && !result.intent)) {
       const value = actionPlanShell(actionPlanValidation.value, null, ["action_plan_detected"]);
       return {
         ok: true,
@@ -443,6 +447,31 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
   }
 
   const topIntent = normalizeGeminiIntent(String(result.intent || ""));
+  if (actionPlanRequired && topIntent) {
+    const legacyWarnings = Array.from(new Set([
+      ...normalizeWarnings(result.warnings),
+      "legacy_intent_returned_while_action_plan_enabled"
+    ]));
+    const value = actionPlanShell(null, null, legacyWarnings, {
+      intent: topIntent,
+      confidence: numberOrDefault(result.confidence, 0.8, 0, 1),
+      riskScore: numberOrDefault(result.riskScore, 0, 0, 1),
+      fields: normalizedFields(result.fields, [], "fields"),
+      response_hint: typeof result.response_hint === "string" ? result.response_hint.slice(0, STRING_MAX) : null,
+      legacy_intent_returned: true,
+      action_plan_used: false,
+      fallback_eligible: false,
+      interpreter_final_usado: "legacy_intent_after_gemini"
+    });
+    return {
+      ok: true,
+      status: "valid",
+      value,
+      warnings: value.warnings,
+      missingFields: []
+    };
+  }
+
   if (!topIntent) errors.push("intent inexistente ou nao permitido");
 
   const fields = normalizedFields(result.fields, errors, "fields");

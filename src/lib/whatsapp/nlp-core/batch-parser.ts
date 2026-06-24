@@ -163,7 +163,9 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
   for (const segment of segments) {
     const parsed = parseSingleRanchoMessage(segment);
     const contextual: ParsedRanchoMessage | null = previous ?parseBatchSegmentWithContext(segment, previous) : null;
-    const directIsReadyAction = parsed.tipo !== "DESCONHECIDO" && !parsed.perguntas_faltantes.length && batchableIntents.has(parsed.tipo);
+    const parsedCanEnterBatch = !parsed.perguntas_faltantes.length
+      || (parsed.tipo === "PARTO" && parsed.dados?.parto_cria_decisao_pendente && parsed.perguntas_faltantes.length === 1);
+    const directIsReadyAction = parsed.tipo !== "DESCONHECIDO" && parsedCanEnterBatch && batchableIntents.has(parsed.tipo);
     const shouldPreferStockContext: boolean = Boolean(contextual
       && previous
       && ["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(previous.tipo)
@@ -175,7 +177,9 @@ export function parseBatchMessage(text: string): ParsedRanchoMessage | null {
       && ["DESPESA", "RECEITA_VENDA"].includes(contextual.tipo)
       && parsed.tipo === "VACINA_MEDICAMENTO");
     const next: ParsedRanchoMessage | null = shouldPreferStockContext || shouldPreferFinanceContext ?contextual : directIsReadyAction ?parsed : contextual;
-    if (!next || !batchableIntents.has(next.tipo) || next.perguntas_faltantes.length) return null;
+    const nextCanEnterBatch = !next?.perguntas_faltantes.length
+      || (next?.tipo === "PARTO" && next.dados?.parto_cria_decisao_pendente && next.perguntas_faltantes.length === 1);
+    if (!next || !batchableIntents.has(next.tipo) || !nextCanEnterBatch) return null;
     registros.push(next);
     previous = next;
   }

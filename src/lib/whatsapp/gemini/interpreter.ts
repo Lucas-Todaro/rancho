@@ -1,5 +1,5 @@
 import { configuredGeminiModel, botTestVerbose, geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
-import { GEMINI_ALLOWED_INTENTS, GEMINI_CONSULT_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
+import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import { buildGeminiSystemPrompt } from "@/lib/whatsapp/gemini/system-prompt";
 import { validateInterpretedAction } from "@/lib/whatsapp/gemini/validator";
@@ -63,6 +63,10 @@ function geminiInterpreterLog(event: string, details: Record<string, unknown>) {
     event,
     ...details
   });
+}
+
+function geminiAuthHeaders(credential: string): Record<string, string> {
+  return { "x-goog-api-key": credential.trim() };
 }
 
 async function mockInterpretation(input: GeminiInterpreterInput) {
@@ -139,16 +143,16 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   const modelPath = model.replace(/^models\//, "");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent`;
 
   try {
     geminiInterpreterLog("request", { model, messageLength: input.text.length });
     recordGeminiLiveCall();
     const requestInit = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...geminiAuthHeaders(apiKey) },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
       }),
       signal: controller.signal
@@ -164,18 +168,32 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
     const data = await response.json().catch(() => ({})) as GeminiApiResponse;
     if (!response.ok) {
       const reason = response.status === 429 ? "rate_limit" : response.status >= 500 ? "api_error" : "api_error";
-      geminiInterpreterLog("error", { reason, status: response.status, model, apiStatus: data.error?.status || null });
+      const rawText = JSON.stringify(data).slice(0, 1200);
+      geminiInterpreterLog("gemini_http_error", {
+        reason,
+        status: response.status,
+        statusText: response.statusText,
+        model,
+        hasKey: Boolean(apiKey),
+        keyLength: apiKey.length,
+        authHeaderUsed: false,
+        xGoogApiKeyUsed: true,
+        apiStatus: data.error?.status || null,
+        bodyPreview: rawText,
+        responseBodyPreview: rawText
+      });
       return {
         ok: false,
         reason,
         status: response.status,
-        message: data.error?.message || "Erro ao chamar Gemini."
+        message: data.error?.message || "Erro ao chamar Gemini.",
+        rawText
       };
     }
 
     const rawText = textFromGeminiResponse(data);
     if (!rawText) {
-      geminiInterpreterLog("error", { reason: "empty_response", model });
+      geminiInterpreterLog("gemini_empty_response", { reason: "empty_response", model });
       return { ok: false, reason: "empty_response", message: "Gemini retornou resposta vazia." };
     }
 
@@ -219,10 +237,12 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
         domain: "domain" in plan ? plan.domain : null,
         confidence: validation.value.confidence
       });
-    } else if (geminiActionPlanEnabled() && GEMINI_CONSULT_INTENTS.has(validation.value.intent)) {
+    } else if (geminiActionPlanEnabled() && validation.value.legacy_intent_returned) {
       geminiInterpreterLog("legacy_intent_returned_while_action_plan_enabled", {
         model,
         intent: validation.value.intent,
+        actionPlanUsed: false,
+        fallbackEligible: validation.value.fallback_eligible === true,
         messageLength: input.text.length
       });
     }

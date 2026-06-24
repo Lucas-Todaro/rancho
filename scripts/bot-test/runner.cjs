@@ -65,6 +65,7 @@ module.exports = function loadBotTestSection(context) {
     function createSupabaseForScenario(test = {}) {
       const supabase = new BotTestSupabase();
       supabase.failMotherPhaseUpdate = Boolean(test.failMotherPhaseUpdate);
+      supabase.failPartoChildInsert = Boolean(test.failPartoChildInsert);
       if (test.ranches) {
         supabase.tables[BOT_TEST_TABLES.fazendas].push(...test.ranches.map((ranch) => ({
           id: ranch.id,
@@ -533,7 +534,7 @@ module.exports = function loadBotTestSection(context) {
       if (tipo === "PARTO" && (dados.parto_cria_cadastro || dados.cria_codigo || dados.cria_sexo || dados.cria_categoria)) {
         const mother = mockAnimals.find((animal) => animal.id === dados.animal_id || sameValue(animal.brinco, dados.animal_codigo)) || {};
         const childSex = dados.cria_sexo || "nao_informado";
-        const childCategory = dados.cria_categoria || (childSex === "femea" ? "bezerra" : "bezerro");
+        const childCategory = "bezerro";
         const actions = [{
           ...base,
           table: BOT_TEST_TABLES.eventosAnimal,

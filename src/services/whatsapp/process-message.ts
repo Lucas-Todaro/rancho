@@ -788,7 +788,15 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
 async function insertRealRecord(supabase: SupabaseAdmin, owner: WhatsAppOwner, table: string, payload: AnyRecord) {
   const safePayload = safeBotPayload(table, payload);
   const { data, error } = await supabase.from(table).insert(safePayload).select("*").single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    const err = new Error(error.message || "Erro ao salvar registro no Supabase.") as Error & {
+      supabaseErrorCode?: string | null;
+      supabaseErrorMessage?: string | null;
+    };
+    err.supabaseErrorCode = error.code || null;
+    err.supabaseErrorMessage = error.message || null;
+    throw err;
+  }
   await logAudit(supabase, owner, table, "insert", data || safePayload);
   await createBotNotificationForInsert(supabase, owner, table, (data || safePayload) as AnyRecord);
   return data;
@@ -931,11 +939,13 @@ function calfCodeFromParto(dados: AnyRecord, mother: AnyRecord) {
 
 function calfPayloadFromParto(owner: WhatsAppOwner, dados: AnyRecord, mother: AnyRecord, father?: AnyRecord | null) {
   const sex = normalizeCalfSex(dados.cria_sexo) || "nao_informado";
+  const sexCategory = calfCategoryForSex(sex);
+  const childCategory = sexCategory || "bezerro";
   return {
     fazenda_id: owner.fazenda_id,
     brinco: calfCodeFromParto(dados, mother),
     nome: dados.cria_nome || null,
-    categoria: dados.cria_categoria || calfCategoryForSex(sex) || "bezerro",
+    categoria: childCategory,
     sexo: sex,
     fase: "crescimento",
     raca: null,
@@ -4125,6 +4135,7 @@ function buildProcessResult(input: {
   eventConfirmed?: boolean;
   error?: string | null;
   suppressPreviousPending?: boolean;
+  debug?: AnyRecord | null;
 }): ProcessWhatsappMessageResult {
   const detected = pendingFromSession(input.nextSession) || input.parsed || (input.suppressPreviousPending ?undefined : pendingFromSession(input.previousSession));
   return {
@@ -4136,7 +4147,8 @@ function buildProcessResult(input: {
     estadoNovo: input.nextSession?.etapa || null,
     camposFaltantes: detected?.perguntas_faltantes || [],
     eventoConfirmado: Boolean(input.eventConfirmed),
-    erro: input.error || null
+    erro: input.error || null,
+    debug: input.debug || null
   };
 }
 
@@ -4281,6 +4293,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         supabase
       });
       if (interpreted.kind === "clarify") {
+        parsed = finalize("DESCONHECIDO", {
+          ...(interpreted.debug || {}),
+          interpreter_final_usado: interpreted.reason,
+          origem_parser: "gemini_action_plan",
+          action_plan_used: false
+        }, [], 0.2);
         response = interpreted.message;
       } else if (interpreted.kind === "consultations") {
         parsed = interpreted.consultations[0];
@@ -4432,6 +4450,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
 
         if (fallback.kind === "clarify") {
           await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+          parsed = finalize("DESCONHECIDO", {
+            ...(fallback.debug || {}),
+            interpreter_final_usado: fallback.reason,
+            origem_parser: "gemini_action_plan",
+            action_plan_used: false
+          }, [], 0.2);
           response = fallback.message;
         } else if (fallback.kind === "consultations") {
           parsed = fallback.consultations[0];

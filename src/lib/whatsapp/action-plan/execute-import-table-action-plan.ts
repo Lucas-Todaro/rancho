@@ -2,8 +2,8 @@ import type { AnyRecord } from "@/lib/types";
 import type { ImportTableActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { validateImportTableActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
-import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
+import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 import {
   normalizeReproductiveEventType,
   reproductiveEventDbType,
@@ -270,10 +270,7 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
   const invalidRows = rowsWithStatus.filter((row) => row.status_linha === "invalido");
   const reviewRows = rowsWithStatus.filter((row) => row.avisos.length > 0);
   const preview = reproductionPreview(rowsWithStatus);
-  const parsed = finalize("IMPORTACAO_EVENTOS_TABELA", {
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "table_action_plan",
-    table_action_plan_used: true,
+  const parsed = finalizeActionPlanParsed("IMPORTACAO_EVENTOS_TABELA", {
     column_mapping: plan.table.columnMapping,
     texto_tabela_original: text,
     linhas: rowsWithStatus,
@@ -284,31 +281,24 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     total_linhas_parse_invalidas: invalidRows.length,
     total_linhas_needs_review: reviewRows.length,
     preview_only: true,
-    action_plan: plan,
     action_plan_preview: preview
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
   return { parsed, rows: rowsWithStatus, preview };
 }
 
 function productionBatchParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
-  const registros = rows.map((row) => finalize("PRODUCAO_LEITE", {
+  const registros = rows.map((row) => finalizeActionPlanParsed("PRODUCAO_LEITE", {
     animal_codigo: row.parsedValues.animal_ref || row.values.animal_ref,
     litros: row.parsedValues.litros,
-    data_referencia: row.parsedValues.data || row.values.data,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "table_action_plan"
-  }, [], plan.confidence));
+    data_referencia: row.parsedValues.data || row.values.data
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true }));
   const totalLitros = rows.reduce((sum, row) => sum + Number(row.parsedValues?.litros || 0), 0);
-  return finalize("LOTE_REGISTROS", {
+  return finalizeActionPlanParsed("LOTE_REGISTROS", {
     registros,
     total_registros: registros.length,
     total_litros: totalLitros,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "table_action_plan",
-    table_action_plan_used: true,
-    action_plan: plan,
     action_plan_preview: preview
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
 }
 
 function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
@@ -339,10 +329,7 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
     };
   });
   const invalid = normalizedRows.filter((row) => row.problemas.length > 0);
-  return finalize("IMPORTACAO_ANIMAIS_TABELA", {
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "table_action_plan",
-    table_action_plan_used: true,
+  return finalizeActionPlanParsed("IMPORTACAO_ANIMAIS_TABELA", {
     column_mapping: plan.table.columnMapping,
     linhas: normalizedRows,
     total_linhas: normalizedRows.length,
@@ -350,9 +337,8 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
     total_linhas_parse_invalidas: invalid.length,
     linhas_parse_invalidas: invalid,
     preview_only: true,
-    action_plan: plan,
     action_plan_preview: preview
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
 }
 
 function stockMovement(value: unknown) {
@@ -398,10 +384,7 @@ function stockImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], previ
     };
   });
   const invalid = normalizedRows.filter((row) => row.problemas.length > 0);
-  return finalize("IMPORTACAO_ESTOQUE_TABELA", {
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "table_action_plan",
-    table_action_plan_used: true,
+  return finalizeActionPlanParsed("IMPORTACAO_ESTOQUE_TABELA", {
     column_mapping: plan.table.columnMapping,
     linhas: normalizedRows,
     total_linhas: normalizedRows.length,
@@ -409,9 +392,8 @@ function stockImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], previ
     total_linhas_parse_invalidas: invalid.length,
     linhas_parse_invalidas: invalid,
     preview_only: true,
-    action_plan: plan,
     action_plan_preview: preview
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
 }
 
 function genericDomainParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
@@ -423,11 +405,8 @@ function genericDomainParsed(plan: ImportTableActionPlan, rows: AnyRecord[], pre
   const tabularDomain = TABULAR_DOMAIN_BY_ACTION_DOMAIN[plan.domain] || plan.domain.toUpperCase();
   const metrics = metricsFor(plan.domain, normalizedRows);
 
-  return finalize("IMPORTACAO_TABELA_DOMINIO", {
-    origem_parser: "gemini_action_plan",
+  return finalizeActionPlanParsed("IMPORTACAO_TABELA_DOMINIO", {
     route: "structured_input",
-    interpreter_final_usado: "table_action_plan",
-    table_action_plan_used: true,
     tipo_tabela: `domain_${tabularDomain.toLowerCase()}`,
     dominio_tabela: tabularDomain,
     classificacao_tabela: {
@@ -462,9 +441,8 @@ function genericDomainParsed(plan: ImportTableActionPlan, rows: AnyRecord[], pre
     tabela_destino: tabularDomain,
     instrucoes_confirmacao: "confirmar_preview_tabela_dominio",
     preview_only: true,
-    action_plan: plan,
     action_plan_preview: preview
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
 }
 
 export async function executeImportTableActionPlan(input: ExecuteImportTableActionPlanInput): Promise<ExecuteImportTableActionPlanResult> {

@@ -3,9 +3,10 @@ import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/
 import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ActionPlanSupabaseLike } from "@/lib/whatsapp/action-plan/execute-query-action-plan";
-import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
+import { botAllowsLegacyRollback, botInterpreterMode, configuredGeminiModel, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
+import { geminiMode } from "@/lib/whatsapp/gemini/runtime";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
@@ -51,6 +52,13 @@ const CONSULT_RANCHO_INTENTS = new Set<RanchoIntent>([
   "CONSULTA_REGISTROS_HOJE",
   "AJUDA"
 ]);
+
+const BOT_INTERNAL_INTERPRETER_ERROR_MESSAGE =
+  "Não consegui processar essa mensagem por um erro interno do bot. O erro foi registrado para revisão.";
+const BOT_CONTRACT_INTERPRETER_MESSAGE =
+  "Não consegui interpretar essa mensagem no formato seguro esperado. Pode reformular?";
+const BOT_CONFIGURATION_MESSAGE =
+  "O interpretador do Rancho precisa de configuração. Fale com o administrador.";
 
 function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
@@ -524,9 +532,11 @@ function mapGeminiFieldsToRancho(intent: string, fields: AnyRecord, rawText: str
 
     case "PARTO":
       {
-        const childSex = normalizeCalfSex(fields.cria_sexo || fields.sexo_cria);
+        const rawChildCategory = cleanText(fields.cria_categoria);
+        const normalizedChildCategory = normalizeRanchoText(rawChildCategory || "");
+        const childSex = normalizeCalfSex(fields.cria_sexo || fields.sexo_cria) || (normalizedChildCategory === "bezerra" ? "femea" : undefined);
         const childCode = cleanText(fields.cria_codigo || fields.codigo_cria || fields.brinco_cria);
-        const childCategory = cleanText(fields.cria_categoria) || calfCategoryForSex(childSex);
+        const childCategory = calfCategoryForSex(childSex) || (["bezerro", "bezerra"].includes(normalizedChildCategory) ? "bezerro" : undefined);
         const fatherRef = cleanText(fields.pai_ref || fields.pai || fields.touro_ref);
         const childName = cleanText(fields.cria_nome || fields.nome_cria);
         const childRegistration = Boolean(childSex || childCode || childCategory || fatherRef || childName || fields.cria);
@@ -655,9 +665,10 @@ function markLegacyIntentAfterGemini(parsed: ParsedRanchoMessage) {
     ...parsed,
     dados: {
       ...(parsed.dados || {}),
-      origem_parser: "legacy_local_fallback",
+      origem_parser: "legacy_gemini_fallback",
       action_plan_used: false,
-      interpreter_final_usado: "legacy_local_fallback"
+      legacyIntentReturned: true,
+      interpreter_final_usado: "legacy_intent_after_gemini"
     }
   };
 }
@@ -693,7 +704,7 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
       kind: "clarify",
       threshold: 0.7,
       reason: "gemini_unknown_intent",
-      message: interpretation.response_hint || GEMINI_SAFE_FAILURE_MESSAGE
+      message: interpretation.response_hint || BOT_CONTRACT_INTERPRETER_MESSAGE
     };
   }
 
@@ -707,7 +718,7 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
       kind: "clarify",
       threshold: 0.7,
       reason: "gemini_action_not_mapped",
-      message: GEMINI_SAFE_FAILURE_MESSAGE
+      message: BOT_CONTRACT_INTERPRETER_MESSAGE
     };
   }
 
@@ -858,17 +869,66 @@ function mockFixtureMissingResult(): GeminiFallbackParseResult {
   };
 }
 
-function geminiFailureMessage(result: { reason: string; status?: number }) {
+function isTransientGeminiFailure(result: { reason: string; status?: number }) {
+  return result.reason === "rate_limit"
+    || result.reason === "timeout"
+    || result.reason === "network_error"
+    || result.status === 429
+    || result.status === 500
+    || result.status === 502
+    || result.status === 503
+    || result.status === 504;
+}
+
+function logGeminiSafeFailureReturned(
+  input: ParseWithInterpreterInput,
+  result: { reason: string; status?: number; message?: string; rawText?: string }
+) {
+  const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
+  console.error("[BOT GEMINI INTERPRETER]", {
+    event: "gemini_safe_failure_returned",
+    geminiMode: geminiMode(),
+    geminiModel: configuredGeminiModel(),
+    botInterpreter: botInterpreterMode(),
+    hasGeminiApiKey: Boolean(apiKey),
+    geminiApiKeyLength: apiKey.length,
+    errorName: result.reason || null,
+    errorMessage: result.message || null,
+    errorStatus: result.status || null,
+    errorCode: result.reason || null,
+    errorStack: null,
+    responseStatus: result.status || null,
+    responseBodyPreview: result.rawText ? String(result.rawText).slice(0, 1200) : null,
+    messageLength: input.text.length
+  });
+}
+
+function logInternalInterpreterError(error: unknown) {
+  console.error("[BOT GEMINI INTERPRETER]", {
+    event: "bot_internal_interpreter_error",
+    error_classification: "internal",
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : null
+  });
+}
+
+function geminiFailureMessage(input: ParseWithInterpreterInput, result: { reason: string; status?: number; message?: string; rawText?: string }) {
   if (result.status === 429 || result.reason === "rate_limit") {
+    logGeminiSafeFailureReturned(input, result);
     return "O limite de interpretacao foi atingido agora. Tente novamente em alguns instantes.";
   }
-  if (result.status === 403 || result.reason === "missing_api_key") {
-    return "O interpretador do Rancho precisa de configuracao. Fale com o administrador.";
+  if (result.status === 401 || result.status === 403 || result.reason === "missing_api_key") {
+    return BOT_CONFIGURATION_MESSAGE;
   }
   if (result.status === 400 || result.reason === "invalid_json" || result.reason === "invalid_schema") {
-    return "Nao consegui interpretar essa mensagem com seguranca. Pode reformular?";
+    return BOT_CONTRACT_INTERPRETER_MESSAGE;
   }
-  return GEMINI_SAFE_FAILURE_MESSAGE;
+  if (isTransientGeminiFailure(result)) {
+    logGeminiSafeFailureReturned(input, result);
+    return GEMINI_SAFE_FAILURE_MESSAGE;
+  }
+  return BOT_INTERNAL_INTERPRETER_ERROR_MESSAGE;
 }
 
 function actionPlanEnabledFor(plan: ActionPlan | null | undefined) {
@@ -912,6 +972,31 @@ async function convertActionPlanInterpretation(
   const error = interpretation.action_plan_error || null;
 
   if (!plan && !error) {
+    if (interpretation.legacy_intent_returned) {
+      recordActionPlanRuntime("legacyFallback");
+      logActionPlan("legacy_intent_returned_while_action_plan_enabled", {
+        legacyIntent: interpretation.intent,
+        actionPlanUsed: false,
+        fallbackEligible: botInterpreterMode() !== "gemini" && botAllowsLegacyRollback(),
+        route
+      });
+      if (botInterpreterMode() !== "gemini" && botAllowsLegacyRollback()) {
+        return null;
+      }
+      return {
+        kind: "clarify",
+        threshold: 0.7,
+        reason: "legacy_intent_returned_while_action_plan_enabled",
+        message: BOT_CONTRACT_INTERPRETER_MESSAGE,
+        debug: {
+          error_classification: "contract",
+          action_plan_used: false,
+          interpreter_final_usado: "legacy_intent_after_gemini",
+          origem_parser: "gemini_action_plan",
+          gemini_live_error: "legacy_intent_returned_while_action_plan_enabled"
+        }
+      };
+    }
     if (botInterpreterMode() === "gemini") {
       recordActionPlanRuntime("invalid");
       logActionPlan("action_plan_invalid", { reason: "action_plan_absent", route });
@@ -919,7 +1004,14 @@ async function convertActionPlanInterpretation(
         kind: "clarify",
         threshold: 0.7,
         reason: "action_plan_absent",
-        message: GEMINI_SAFE_FAILURE_MESSAGE
+        message: BOT_CONTRACT_INTERPRETER_MESSAGE,
+        debug: {
+          error_classification: "contract",
+          action_plan_used: false,
+          interpreter_final_usado: "action_plan_absent",
+          origem_parser: "gemini_action_plan",
+          gemini_live_error: "action_plan_absent"
+        }
       };
     }
     if (anyActionPlanFlagEnabled()) {
@@ -956,7 +1048,15 @@ async function convertActionPlanInterpretation(
       reason: error.reason,
       message: error.status === "blocked"
         ? "Nao posso executar esse pedido com seguranca."
-        : "Preciso revisar esse plano antes de executar. Pode reformular?"
+        : "Preciso revisar esse plano antes de executar. Pode reformular?",
+      debug: {
+        error_classification: error.status === "blocked" ? "safety" : "validation",
+        action_plan_validation_error: error.reason,
+        domain: plan && "domain" in plan ? plan.domain : null,
+        action: plan?.action || null,
+        reason: error.reason,
+        route
+      }
     };
   }
 
@@ -995,7 +1095,15 @@ async function convertActionPlanInterpretation(
       kind: "clarify",
       threshold: 0.7,
       reason: result.reason,
-      message: result.message
+      message: result.message,
+      debug: {
+        error_classification: result.status === "blocked" ? "safety" : "validation",
+        action_plan_validation_error: result.reason,
+        domain: "domain" in plan ? plan.domain : null,
+        action: plan.action,
+        reason: result.reason,
+        route
+      }
     };
   }
 
@@ -1212,7 +1320,16 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       kind: "clarify",
       threshold: 0.7,
       reason: gemini.reason,
-      message: geminiFailureMessage(gemini)
+      message: geminiFailureMessage(input, gemini),
+      debug: {
+        error_classification: isTransientGeminiFailure(gemini) ? "external_transient" : gemini.reason === "missing_api_key" || gemini.status === 401 || gemini.status === 403 ? "configuration" : "contract",
+        gemini_live_error: gemini.reason,
+        responseStatus: gemini.status || null,
+        responseBodyPreview: gemini.rawText ? String(gemini.rawText).slice(0, 600) : null,
+        action_plan_used: false,
+        interpreter_final_usado: gemini.reason,
+        origem_parser: "gemini_action_plan"
+      }
     };
   }
 
@@ -1236,7 +1353,14 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       kind: "clarify",
       threshold: 0.7,
       reason: "action_plan_required",
-      message: GEMINI_SAFE_FAILURE_MESSAGE
+      message: BOT_CONTRACT_INTERPRETER_MESSAGE,
+      debug: {
+        error_classification: "contract",
+        gemini_live_error: "action_plan_required",
+        action_plan_used: false,
+        interpreter_final_usado: "action_plan_required",
+        origem_parser: "gemini_action_plan"
+      }
     };
   }
 
@@ -1265,13 +1389,27 @@ function logShadowComparison(input: ParseWithInterpreterInput, result: GeminiFal
 export async function parseWithConfiguredInterpreter(input: ParseWithInterpreterInput): Promise<GeminiFallbackParseResult> {
   const mode = botInterpreterMode();
 
-  if (mode === "legacy_parser") {
-    return parseWithGeminiFallback(input);
-  }
+  try {
+    if (mode === "legacy_parser") {
+      return parseWithGeminiFallback(input);
+    }
 
-  const result = await parseWithGeminiPrimary(input);
-  if (mode === "shadow") logShadowComparison(input, result);
-  return result;
+    const result = await parseWithGeminiPrimary(input);
+    if (mode === "shadow") logShadowComparison(input, result);
+    return result;
+  } catch (error) {
+    logInternalInterpreterError(error);
+    return {
+      kind: "clarify",
+      threshold: 0.7,
+      reason: "bot_internal_interpreter_error",
+      message: BOT_INTERNAL_INTERPRETER_ERROR_MESSAGE,
+      debug: {
+        error_classification: "internal",
+        internal_error: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
 }
 
 export function parseLocalPreviewForInterpreter(text: string) {

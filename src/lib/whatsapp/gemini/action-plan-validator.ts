@@ -387,6 +387,9 @@ function validateRequiredFields(
   errors: string[]
 ) {
   for (const required of domain.requiredFieldsByAction[action] || []) {
+    if (domain.domain === "estoque" && action === "create" && required === "item" && (fields.has("item_ref") || fields.has("nome"))) {
+      continue;
+    }
     if (!fields.has(required)) errors.push(`${action}.${required} obrigatorio para ${domain.domain}`);
   }
 }

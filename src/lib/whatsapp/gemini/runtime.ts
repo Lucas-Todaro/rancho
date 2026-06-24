@@ -165,6 +165,9 @@ function milkTableMapping(text: unknown) {
 }
 
 function reproductionTableMapping(text: unknown) {
+  const pairList = reproductionPairListMapping(text);
+  if (pairList) return pairList;
+
   const header = splitStructuredHeader(text);
   if (!header) return null;
 
@@ -184,12 +187,48 @@ function reproductionTableMapping(text: unknown) {
   const observations = findHeader(header.headers, ["observacoes", "observaÃ§Ãµes", "observacao", "observaÃ§Ã£o", "obs"]);
   return {
     separator: header.separator,
+    hasHeader: true,
     columnMapping: {
       animal_ref: animal,
       evento: event,
       data: date,
       ...(observations ? { observacoes: observations } : {})
-    }
+    },
+    defaultFields: {}
+  };
+}
+
+function splitPairListLine(line: string, separator: ":" | " - ") {
+  if (separator === ":") {
+    const index = line.indexOf(":");
+    if (index <= 0) return null;
+    return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
+  }
+  const cells = line.split(separator).map((cell) => cell.trim()).filter(Boolean);
+  return cells.length >= 2 ? cells : null;
+}
+
+function reproductionPairListMapping(text: unknown) {
+  const lines = String(text || "")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const separator = lines.every((line) => splitPairListLine(line, ":")) ? ":" : lines.every((line) => splitPairListLine(line, " - ")) ? " - " : null;
+  if (!separator) return null;
+
+  const maxCells = Math.max(...lines.map((line) => splitPairListLine(line, separator)?.length || 0));
+  return {
+    separator,
+    hasHeader: false,
+    columnMapping: {
+      animal_ref: 0,
+      evento: 1,
+      ...(maxCells >= 3 ? { observacoes: 2 } : {})
+    },
+    defaultFields: separator === ":" ? { data: "hoje" } : {}
   };
 }
 
@@ -224,10 +263,10 @@ function adaptReproductionImportFixture(fixture: GeminiMockFixture, text: unknow
       ...fixture.response,
       table: {
         ...(isPlainObject(fixture.response.table) ? fixture.response.table : {}),
-        hasHeader: true,
+        hasHeader: mapping.hasHeader ?? true,
         separator: mapping.separator,
         columnMapping: mapping.columnMapping,
-        defaultFields: {},
+        defaultFields: mapping.defaultFields || {},
         ignoredColumns: [],
         ambiguousColumns: []
       }

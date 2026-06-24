@@ -607,6 +607,9 @@ module.exports = function loadBotTestSection(context) {
         this.payload = Array.isArray(payload) ? payload : [payload];
         const invalidRow = this.payload.find((row) => firstForbiddenWriteColumn(this.tableName, row));
         if (invalidRow) this.forcedError = schemaColumnError(this.tableName, firstForbiddenWriteColumn(this.tableName, invalidRow));
+        if (this.db.failPartoChildInsert && this.tableName === BOT_TEST_TABLES.animais && this.payload.some((row) => row.mae_id)) {
+          this.forcedOperationalError = { code: "23514", message: "mock: falha ao salvar cria do parto" };
+        }
         return this;
       }
 
@@ -782,6 +785,7 @@ module.exports = function loadBotTestSection(context) {
         this.tables = createBotTestTables();
         this.writes = [];
         this.schemaErrors = [];
+        this.failPartoChildInsert = false;
       }
 
       from(tableName) {

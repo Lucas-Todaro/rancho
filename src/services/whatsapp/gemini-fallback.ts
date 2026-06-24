@@ -12,6 +12,7 @@ import {
   type GeminiInterpretation
 } from "@/services/ai/gemini";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
+import { botInterpreterMode, geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
 
 export type GeminiFallbackParseResult =
   | {
@@ -44,6 +45,7 @@ export type GeminiFallbackParseResult =
       message: string;
       threshold: number;
       reason: string;
+      debug?: AnyRecord;
     };
 
 const GEMINI_CLARIFICATION_TEXT = "Não consegui entender com segurança. Pode reformular com mais detalhes? Ex: \"dei baixa de 30 kg de ração\" ou \"resumo do dia\".";
@@ -536,6 +538,16 @@ function logLocalParserDecision(text: string, parsed: ParsedRanchoMessage, thres
   });
 }
 
+function logLegacyFallbackUsed(reason: string, message: string) {
+  console.log("[BOT GEMINI LEGACY FALLBACK]", {
+    event: "legacy_fallback_used",
+    reason,
+    actionPlanEnabled: geminiActionPlanEnabled(),
+    geminiMode: botInterpreterMode(),
+    messageLength: message.length
+  });
+}
+
 function convertInterpretation(interpretation: GeminiInterpretation, threshold: number): GeminiFallbackParseResult {
   if (interpretation.confidence < threshold) {
     return {
@@ -662,6 +674,7 @@ export async function parseWithGeminiFallback(input: {
     };
   }
 
+  logLegacyFallbackUsed("risk_or_low_confidence", input.text);
   const gemini = await interpretRanchoMessageWithGemini({
     message: input.text,
     context: {

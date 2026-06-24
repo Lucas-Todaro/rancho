@@ -152,7 +152,8 @@ const GEMINI_OPERATIONS = [
   "help"
 ] as const;
 
-const ACTION_DESCRIPTIONS = [
+// Contrato legado usado apenas por fallback compatível. Não usar como prompt principal quando GEMINI_ACTION_PLAN_ENABLED=true.
+const LEGACY_ACTION_DESCRIPTIONS = [
   "PRODUCAO_LEITE: registrar litros de leite de um animal",
   "PARTO: registrar parto; se houver cria informada, notes pode conter cria_sexo, cria_codigo, cria_nome e pai_ref, sempre com confirmacao e validacao local",
   "VACINA_MEDICAMENTO: registrar vacina, medicamento ou tratamento",
@@ -196,6 +197,10 @@ function geminiLog(event: string, details: Record<string, unknown>) {
     event,
     ...details
   });
+}
+
+function geminiAuthHeaders(credential: string): Record<string, string> {
+  return { "x-goog-api-key": credential.trim() };
 }
 
 function buildPrompt(input: {
@@ -253,7 +258,7 @@ function buildPrompt(input: {
     `Contexto minimo: canal=${input.context.channel}; papel_do_usuario=${input.context.userRole}; fazenda=atual_resolvida_pelo_backend`,
     "",
     "Acoes suportadas:",
-    ...ACTION_DESCRIPTIONS.map((description) => `- ${description}`),
+    ...LEGACY_ACTION_DESCRIPTIONS.map((description) => `- ${description}`),
     "",
     "Formato obrigatorio:",
     JSON.stringify(schema, null, 2),
@@ -438,7 +443,7 @@ export async function interpretRanchoMessageWithGemini(input: {
     context: input.context
   });
   const modelPath = model.replace(/^models\//, "");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent`;
 
   try {
     geminiLog("request", { model, messageLength: input.message.length });
@@ -446,12 +451,12 @@ export async function interpretRanchoMessageWithGemini(input: {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...geminiAuthHeaders(apiKey)
       },
       body: JSON.stringify({
         contents: [
           {
-            role: "user",
             parts: [{ text: prompt }]
           }
         ],
@@ -466,11 +471,19 @@ export async function interpretRanchoMessageWithGemini(input: {
     const data = await response.json().catch(() => ({})) as GeminiApiResponse;
     if (!response.ok) {
       const reason = response.status === 429 ?"rate_limit" : "api_error";
-      geminiLog("error", {
+      const rawText = JSON.stringify(data).slice(0, 1200);
+      geminiLog("gemini_http_error", {
         reason,
         status: response.status,
+        statusText: response.statusText,
         model,
-        apiStatus: data.error?.status || null
+        hasKey: Boolean(apiKey),
+        keyLength: apiKey.length,
+        authHeaderUsed: false,
+        xGoogApiKeyUsed: true,
+        apiStatus: data.error?.status || null,
+        bodyPreview: rawText,
+        responseBodyPreview: rawText
       });
       return {
         ok: false,
@@ -482,7 +495,7 @@ export async function interpretRanchoMessageWithGemini(input: {
 
     const rawText = textFromGeminiResponse(data);
     if (!rawText) {
-      geminiLog("error", { reason: "empty_response", model });
+      geminiLog("gemini_empty_response", { reason: "empty_response", model });
       return { ok: false, reason: "empty_response", message: "Gemini retornou resposta vazia." };
     }
 

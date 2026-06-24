@@ -23,6 +23,10 @@ export type GeminiStructuredResult = {
   warnings: string[];
   should_confirm: boolean;
   response_hint: string | null;
+  legacy_intent_returned?: boolean;
+  action_plan_used?: boolean;
+  fallback_eligible?: boolean;
+  interpreter_final_usado?: string;
   action_plan?: ActionPlan | null;
   action_plan_error?: {
     status: "invalid" | "blocked";

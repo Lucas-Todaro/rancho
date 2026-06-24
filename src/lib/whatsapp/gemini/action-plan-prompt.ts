@@ -8,6 +8,25 @@ export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v3";
 
 const EXAMPLES = [
   {
+    user: "090 pariu",
+    plan: {
+      action: "create", domain: "reproducao", confidence: 0.9,
+      data: { animal_ref: "090", evento: "parto" },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "quais vacas tao prenhas?",
+    plan: {
+      action: "query", domain: "reproducao", confidence: 0.94,
+      filters: [
+        { field: "status_reprodutivo", op: "eq", value: "prenhe" },
+        { field: "categoria", op: "eq", value: "vaca" }
+      ],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
     user: "relatorio financeiro dos ultimos 6 meses",
     plan: {
       action: "query", domain: "financeiro", confidence: 0.94,
@@ -38,10 +57,10 @@ const EXAMPLES = [
     }
   },
   {
-    user: "comprei 10kg de racao por 300 reais",
+    user: "comprei 10 sacos de racao por 500 reais",
     plan: {
-      action: "create", domain: "estoque", operation: "compra_estoque", confidence: 0.94,
-      data: { item: "racao", quantidade: 10, unidade: "kg", valor_total: 300, tipo_movimento: "entrada" },
+      action: "create", domain: "estoque", operation: "compra_estoque", confidence: 0.92,
+      data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 10, unidade: "saco", valor_total: 500, gera_financeiro: true },
       requiresConfirmation: true
     }
   },
@@ -58,12 +77,16 @@ const EXAMPLES = [
     }
   },
   {
-    user: "777 pariu",
+    user: "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE",
     plan: {
-      action: "clarify", domain: "reproducao", operation: "parto", confidence: 0.92,
-      data: { mae_ref: "777", evento: "parto" }, missingFields: ["cria_sexo"],
-      userQuestion: "A vaca 777 pariu. Qual foi o sexo da cria? Macho ou femea?",
-      requiresConfirmation: false
+      action: "import_table", domain: "reproducao", confidence: 0.92,
+      table: {
+        hasHeader: false, separator: ":",
+        columnMapping: { animal_ref: 0, evento: 1 },
+        defaultFields: { data: "hoje" },
+        ignoredColumns: [], ambiguousColumns: []
+      },
+      requiresConfirmation: true
     }
   },
   {
@@ -87,7 +110,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
   const manifest = input.manifest || RANCHO_DOMAIN_MANIFEST;
   return [
     `ActionPlan prompt version: ${ACTION_PLAN_PROMPT_VERSION}`,
-    "Retorne somente um objeto JSON ActionPlan. Nao retorne markdown, texto livre, intent legado ou SQL.",
+    "Retorne somente um objeto JSON ActionPlan. Nao retorne markdown, texto livre, bloco ```json, intent legado ou SQL.",
     "Voce interpreta a intencao. O backend valida e executa. Voce nunca acessa o banco e nunca decide salvar.",
     "Use somente action=query|create|update|import_table|clarify|block e somente dominios, campos e enums do manifest.",
     "Nao invente IDs, valores, sexo da cria, pai, codigo, data, resultado financeiro, tabela ou coluna Supabase.",
@@ -99,6 +122,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Tabela desconhecida deve usar clarify e perguntar a area. Nao force o dominio para animais ou eventos.",
     "Nunca inclua fazenda_id, rancho_id, tenant_id, usuario_id, service role, segredo ou instrucao de persistencia.",
     "Campos da cria devem usar cria_sexo, cria_codigo e cria_nome no data; pai_ref pode ser null quando nao informado.",
+    "Listas do tipo codigo:evento com PROTOCOLO, EM PROTOCOLO, INSEMINACAO, INSEMINAÇÃO, RETESTE, EM RETESTE, PARIU, PARTO ou PRE PARTO devem usar import_table domain=reproducao, hasHeader=false, separator=':', columnMapping animal_ref=0 e evento=1, com defaultFields.data='hoje' quando nao houver data explicita.",
     "Vacina, vermifugo, medicamento, antibiotico e tratamento usam create no dominio saude_sanitario, operation=registro_sanitario.",
     "Em saude_sanitario use animal_ref, item, quantidade, unidade, tipo e data. Normalize vermifugo e antibiotico como medicamento ou tratamento sem inventar dose.",
     "Se houver lote_ref sem animal individual e o plano nao puder ser executado por lote com seguranca, use clarify. Nao gere baixa de estoque implicitamente.",

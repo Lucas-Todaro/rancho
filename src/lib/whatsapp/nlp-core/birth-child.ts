@@ -17,8 +17,7 @@ export function normalizeCalfSex(value: unknown) {
 
 export function calfCategoryForSex(sex: unknown) {
   const normalized = normalizeCalfSex(sex);
-  if (normalized === "femea") return "bezerra";
-  if (normalized === "macho") return "bezerro";
+  if (normalized === "femea" || normalized === "macho") return "bezerro";
   return undefined;
 }
 
@@ -39,7 +38,7 @@ export function hasBirthChildData(dados: AnyRecord = {}) {
 export function extractBirthChildData(originalText: string) {
   const normalized = normalizeRanchoText(originalText);
   const criaCodigo =
-    cleanRef(normalized.match(/\b(?:codigo|brinco)\s+([a-z][a-z0-9]*-\d[a-z0-9-]*|\d+[a-z0-9-]*)\b/i)?.[1])
+    cleanRef(normalized.match(/\b(?:codigo|brinco)\s+(?:e\s+|eh\s+)?([a-z][a-z0-9]*-\d[a-z0-9-]*|\d+[a-z0-9-]*)\b/i)?.[1])
     ||
     cleanRef(originalText.match(/\b(?:codigo|c[oó]digo|brinco)\s+(?:da\s+)?cria\s+([A-Za-z0-9][A-Za-z0-9-]*)/i)?.[1])
     || cleanRef(originalText.match(/\bcria\s+(?:codigo|c[oó]digo|brinco)\s+([A-Za-z0-9][A-Za-z0-9-]*)/i)?.[1])

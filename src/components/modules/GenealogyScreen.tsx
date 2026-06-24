@@ -83,10 +83,14 @@ function normalize(value: unknown) {
     .toLowerCase();
 }
 
-function realSex(animal?: AnyRecord | null) {
-  const values = [animal?.sexo, animal?.sex, animal?.genero, animal?.gender, animal?.categoria].map(normalize);
-  if (values.some((value) => ["macho", "m", "male", "masculino", "boi", "touro", "bezerro"].includes(value))) return "macho";
-  if (values.some((value) => ["femea", "f", "female", "feminino", "vaca", "novilha", "bezerra"].includes(value))) return "femea";
+export function realSex(animal?: AnyRecord | null) {
+  const explicitValues = [animal?.sexo, animal?.sex, animal?.genero, animal?.gender].map(normalize);
+  if (explicitValues.some((value) => ["femea", "f", "female", "feminino"].includes(value))) return "femea";
+  if (explicitValues.some((value) => ["macho", "m", "male", "masculino"].includes(value))) return "macho";
+
+  const category = normalize(animal?.categoria);
+  if (["boi", "touro"].includes(category)) return "macho";
+  if (["vaca", "novilha", "bezerra"].includes(category)) return "femea";
   return "";
 }
 
@@ -623,7 +627,7 @@ export function GenealogyScreen() {
       }
 
       const sex = birthDraft.cria_sexo === "macho" ? "macho" : "femea";
-      const childCategory = sex === "femea" ? "bezerra" : "bezerro";
+      const childCategory = "bezerro";
       const father = birthDraft.pai_id ? animalById.get(birthDraft.pai_id) || null : null;
       const eventDate = new Date(`${birthDraft.data_parto}T12:00:00`).toISOString();
 

@@ -1,6 +1,10 @@
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
+import {
+  actionPlanParsedMetadata,
+  finalizeBlockedActionPlanParsed
+} from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 import { executeImportTableActionPlan } from "@/lib/whatsapp/action-plan/execute-import-table-action-plan";
 import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { calfCategoryForSex } from "@/lib/whatsapp/nlp-core/birth-child";
@@ -40,26 +44,11 @@ export type ExecuteActionPlanResult =
 
 function blockParsed(plan: ActionPlan) {
   const reason = plan.action === "block" ? plan.safety?.reason || plan.reason || "action_plan_blocked" : "action_plan_blocked";
-  return finalize("ACAO_DESTRUTIVA_EM_MASSA", {
-    blocked: true,
-    bloqueado: true,
-    motivo: reason,
-    should_confirm: false,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "action_plan_block",
-    action_plan_used: true,
-    action_plan: plan
-  }, [], 1);
+  return finalizeBlockedActionPlanParsed(plan, reason);
 }
 
 function actionPlanMetadata(plan: ActionPlan) {
-  return {
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "action_plan",
-    action_plan_used: true,
-    action_plan_domain: "domain" in plan ? plan.domain : undefined,
-    action_plan: plan
-  };
+  return actionPlanParsedMetadata(plan);
 }
 
 function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {

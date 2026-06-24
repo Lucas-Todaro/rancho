@@ -178,15 +178,15 @@ module.exports = function loadBotTestSection(context) {
             text: "a Estrela pariu hoje",
             expected: {
               intent: "PARTO",
-              estadoNovo: "aguardando_confirmacao",
-              responseIncludes: "correto"
+              estadoNovo: "aguardando_dado",
+              responseIncludes: "Deseja cadastrar a cria"
             }
           },
           {
             text: "não é parto",
             expected: {
               intent: null,
-              estadoAnterior: "aguardando_confirmacao",
+              estadoAnterior: "aguardando_dado",
               estadoNovo: "livre",
               eventoConfirmado: false,
               responseIncludes: "nao e parto"

@@ -83,7 +83,7 @@ module.exports = function loadBotTestSection(context) {
         name: "parto salva uma vez apos confirmacao em dry-run",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["Mimosa pariu hoje", "confirma"],
+        messages: ["Mimosa pariu hoje", "2", "confirma"],
         expected: {
           finalIntent: "PARTO",
           entities: { animal_codigo: "B-001", data_referencia: "hoje" },
@@ -99,6 +99,46 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto 090 simples pergunta se quer cadastrar cria",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090-parto", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu"],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Deseja cadastrar a cria",
+          allResponsesNotInclude: ["Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090" },
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto 090 recusando cadastro de cria salva somente evento da mae",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090-sem-cria", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu", "2", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          allResponsesNotInclude: ["Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090" },
+          shouldAskConfirmation: true,
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { animal_codigo: "090", tipo: "parto", fase: "lactacao" },
+          shouldNotSaveValues: { categoria: "bezerro", cria_codigo: "CRIA" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "parto B-002 com cria limpa preview atualiza mae e preserva categoria e lote",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -107,14 +147,14 @@ module.exports = function loadBotTestSection(context) {
           finalIntent: "PARTO",
           responseIncludes: "A mae agora aparece como recem-parida",
           allResponsesNotInclude: ["A categoria e a fase produtiva da mae nao serao trocadas por \"parida\""],
-          entities: { animal_codigo: "B-002", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-5" },
+          entities: { animal_codigo: "B-002", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "B-5" },
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
           shouldSaveValues: {
             brinco: "B-5",
-            categoria: "vaca",
+            categoria: "bezerro",
             sexo: "femea",
             mae_id: "animal-b-002",
             pai_id: null,
@@ -128,13 +168,95 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "parto 090 cria femea salva cria como bezerro",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090-femea", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu cria femea codigo C-090 hoje", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          allResponsesNotInclude: ["Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "C-090" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "C-090", categoria: "bezerro", sexo: "femea", mae_id: "animal-090-femea", tipo: "parto", fase: "lactacao" },
+          shouldNotSaveValues: { categoria: "parida", novo_valor: "parida" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto 090 resposta contextual preenche sexo e codigo juntos",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090-contexto", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu", "femea, codigo e C-00690", { text: "1", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          allResponsesNotInclude: ["Qual e o codigo/brinco da cria", "Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "c-00690" },
+          shouldAskConfirmation: true,
+          shouldAskFollowUp: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "c-00690", categoria: "bezerro", sexo: "femea", mae_id: "animal-090-contexto", tipo: "parto", fase: "lactacao" },
+          shouldNotSaveValues: { categoria: "bezerra", novo_valor: "parida" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "parto 090 cria macho salva cria como bezerro",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: [{ id: "animal-090-macho", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu cria macho codigo M-090 hoje", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Registro salvo no sistema com sucesso",
+          allResponsesNotInclude: ["Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090", cria_sexo: "macho", cria_categoria: "bezerro", cria_codigo: "M-090" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
+          shouldSaveValues: { brinco: "M-090", categoria: "bezerro", sexo: "macho", mae_id: "animal-090-macho", tipo: "parto", fase: "lactacao" },
+          shouldNotSaveValues: { categoria: "parida", novo_valor: "parida" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "falha na etapa child do parto mantem rollback seguro",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        failPartoChildInsert: true,
+        extraAnimals: [{ id: "animal-090-child-fail", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
+        messages: ["090 pariu cria femea codigo F-090 hoje", { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "PARTO",
+          responseIncludes: "Nao consegui concluir o parto na etapa child",
+          allResponsesNotInclude: ["Erro interno no Rancho"],
+          entities: { animal_codigo: "090", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "F-090" },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "parto com cria pergunta codigo e vincula descendente sem alterar categoria da mae",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         messages: ["B-001 pariu uma femea hoje", "C-001", "sim"],
         expected: {
           finalIntent: "PARTO",
-          entities: { animal_codigo: "B-001", data_referencia: "hoje", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "C-001" },
+          entities: { animal_codigo: "B-001", data_referencia: "hoje", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "C-001" },
           shouldAskConfirmation: true,
           shouldAskFollowUp: true,
           shouldSaveBeforeConfirmation: false,
@@ -145,7 +267,7 @@ module.exports = function loadBotTestSection(context) {
             animal_codigo: "B-001",
             evento_tipo: "PARTO",
             brinco: "C-001",
-            categoria: "bezerra",
+            categoria: "bezerro",
             sexo: "femea",
             mae_id: "animal-b-001",
             mother_categoria: "vaca",
@@ -209,14 +331,14 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "PARTO",
           responseIncludes: "Registro salvo no sistema com sucesso",
-          entities: { animal_codigo: "777", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-777" },
+          entities: { animal_codigo: "777", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "B-777" },
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
           shouldSaveValues: {
             brinco: "B-777",
-            categoria: "bezerra",
+            categoria: "bezerro",
             sexo: "femea",
             mae_id: "animal-777",
             pai_id: null,
@@ -237,14 +359,14 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "PARTO",
           responseIncludes: "Registro salvo no sistema com sucesso",
-          entities: { animal_codigo: "306", cria_sexo: "femea", cria_categoria: "bezerra", cria_codigo: "B-306" },
+          entities: { animal_codigo: "306", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "B-306" },
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
           shouldSaveValues: {
             brinco: "B-306",
-            categoria: "bezerra",
+            categoria: "bezerro",
             sexo: "femea",
             mae_id: "animal-306",
             pai_id: null,
@@ -260,7 +382,7 @@ module.exports = function loadBotTestSection(context) {
         name: "parto com codigo de cria existente pede outro codigo sem erro interno",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
-        extraAnimals: [{ id: "animal-b-777-existente", brinco: "B-777", nome: "Cria existente", sexo: "femea", categoria: "bezerra" }],
+        extraAnimals: [{ id: "animal-b-777-existente", brinco: "B-777", nome: "Cria existente", sexo: "femea", categoria: "bezerro" }],
         messages: ["777 pariu femea codigo B-777 hoje"],
         expected: {
           finalIntent: "PARTO",
@@ -280,19 +402,19 @@ module.exports = function loadBotTestSection(context) {
         failMotherPhaseUpdate: true,
         extraAnimals: [{ id: "animal-09", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
         sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
-        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerro", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
         messages: [{ text: "1", salvarReal: true }],
         expected: {
           finalIntent: "PARTO",
           responseIncludes: "parto registrado e cria CA-006 cadastrada",
           responseNotIncludes: "Nenhum novo registro foi mantido",
-          entities: { animal_codigo: "09", cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra" },
+          entities: { animal_codigo: "09", cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerro" },
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.eventosAnimal],
           shouldSaveValues: {
             brinco: "CA-006",
-            categoria: "bezerra",
+            categoria: "bezerro",
             sexo: "femea",
             status: "ativo",
             data_nascimento: "2026-06-22",
@@ -311,7 +433,7 @@ module.exports = function loadBotTestSection(context) {
         phone: BOT_TEST_ADMIN_PHONE,
         extraAnimals: [{ id: "animal-09-repeat", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca", fase: "lactacao", status: "ativo" }],
         sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
-        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-repeat", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-repeat", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerro", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
         messages: [{ text: "1", salvarReal: true }, { text: "1", salvarReal: true }],
         expected: {
           shouldSaveBeforeConfirmation: false,
@@ -329,10 +451,10 @@ module.exports = function loadBotTestSection(context) {
         phone: BOT_TEST_ADMIN_PHONE,
         extraAnimals: [
           { id: "animal-09-duplicate", brinco: "09", nome: "Matriz 09", sexo: "femea", categoria: "vaca" },
-          { id: "animal-ca-006", brinco: "CA-006", nome: "Cria existente", sexo: "femea", categoria: "bezerra" }
+          { id: "animal-ca-006", brinco: "CA-006", nome: "Cria existente", sexo: "femea", categoria: "bezerro" }
         ],
         sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
-        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-duplicate", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", animal_id: "animal-09-duplicate", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerro", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
         messages: [{ text: "1", salvarReal: true }],
         expected: {
           finalIntent: "PARTO",
@@ -349,7 +471,7 @@ module.exports = function loadBotTestSection(context) {
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
         sourceMessage: "09 pariu uma bezerra fêmea hoje. O código dela é CA-006",
-        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerra", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
+        initialSession: () => ({ etapa: "aguardando_confirmacao", dados: { pending: { tipo: "PARTO", confianca: 0.99, dados: { animal_codigo: "09", parto_cria_cadastro: true, cria_codigo: "CA-006", cria_sexo: "femea", cria_categoria: "bezerro", data_referencia: "2026-06-22", pai_nao_informado: true }, perguntas_faltantes: [], resumo: "registrar parto da 09 e cadastrar cria CA-006" } } }),
         messages: [{ text: "1", salvarReal: true }],
         expected: {
           finalIntent: "PARTO",
@@ -702,7 +824,7 @@ module.exports = function loadBotTestSection(context) {
         name: "parto em etapas coleta mae antes de confirmar",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["registrar parto", "Mimosa", "sim"],
+        messages: ["registrar parto", "Mimosa", "2", "sim"],
         expected: {
           finalIntent: "PARTO",
           entities: { animal_codigo: "B-001" },
@@ -758,7 +880,7 @@ module.exports = function loadBotTestSection(context) {
         name: "correcao de data de parto antes de salvar",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["Mimosa pariu hoje", "nao, foi ontem", "sim"],
+        messages: ["Mimosa pariu hoje", "nao, foi ontem", "2", "sim"],
         expected: {
           finalIntent: "PARTO",
           entities: { animal_codigo: "B-001", data_referencia: "ontem" },
@@ -768,6 +890,7 @@ module.exports = function loadBotTestSection(context) {
           simulatedSaveCount: 1,
           savedTables: [BOT_TEST_TABLES.eventosAnimal],
           shouldNotWriteBusiness: true,
+          detectStuck: false,
           ranchId: BOT_TEST_FARM_ID
         }
       },

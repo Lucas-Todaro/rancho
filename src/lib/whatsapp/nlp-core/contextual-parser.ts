@@ -63,6 +63,15 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   }
 
   if (current.tipo === "PARTO" && expectedField === "parto_cria_decisao") {
+    const correctedDate = extractDateReference(normalized);
+    if (correctionLike && correctedDate) {
+      const nextDados = {
+        ...dados,
+        data_referencia: correctedDate
+      };
+      return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
+    }
+
     if (/^(?:nao|n|2|so parto|apenas parto|registrar so o parto|sem cadastrar cria)\b/.test(normalized)) {
       const nextDados = {
         ...dados,
@@ -88,11 +97,18 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
   if (current.tipo === "PARTO" && expectedField === "cria_sexo") {
     const sexAnswer = normalizeCalfSex(original);
     if (sexAnswer) {
+      const childData = extractBirthChildData(original);
+      const childCode = childData.cria_codigo || extractAnimalRegistrationCode(original) || extractAnimalRegistrationCode(normalized) || undefined;
       const nextDados = {
         ...dados,
         parto_cria_cadastro: true,
+        cria_codigo: childCode || dados.cria_codigo,
         cria_sexo: sexAnswer,
-        cria_categoria: calfCategoryForSex(sexAnswer)
+        cria_categoria: calfCategoryForSex(sexAnswer),
+        cria_nome: childData.cria_nome || dados.cria_nome,
+        pai_ref: childData.pai_ref || dados.pai_ref,
+        pai_nome: childData.pai_nome || dados.pai_nome,
+        pai_nao_informado: childData.pai_ref ? undefined : (dados.pai_nao_informado ?? true)
       };
       return finalize(current.tipo, nextDados, buildMissing(current.tipo, nextDados), current.confianca);
     }

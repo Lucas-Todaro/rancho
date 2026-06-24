@@ -108,6 +108,28 @@ export async function saveReproductionRecord(ctx: SaveRecordHandlerContext): Pro
         mother_ref: animal.brinco || animal.nome || null
       });
       if (partoWithChild(dados)) {
+        const hasConcreteChildData = Boolean(
+          normalizeCalfSex(dados.cria_sexo)
+          || dados.cria_codigo
+          || dados.gerar_cria_codigo_temporario
+          || dados.cria_nome
+          || dados.cria_ref
+          || dados.pai_ref
+          || dados.pai_nome
+          || dados.pai_id
+        );
+        if (!hasConcreteChildData) {
+          botPartoSaveLog("parto_save_child_skipped", owner, {
+            reason: "child_data_incomplete",
+            mother_id: animal.id,
+            mother_ref: animal.brinco || animal.nome || null
+          });
+          return {
+            response: "A cria nasceu macho ou femea? Se tiver codigo ou nome, me envie tambem.",
+            nextSession: { etapa: "aguardando_dado", dados: { pending: pendingWithData(pending, { cria_sexo: undefined }) } }
+          };
+        }
+
         if (animalSexKind(animal) === "macho") {
           return { response: `O animal ${animalLabel(animal)} esta marcado como macho. Para registrar parto com cria, informe uma mae femea. Nada foi salvo.` };
         }
@@ -206,18 +228,27 @@ export async function saveReproductionRecord(ctx: SaveRecordHandlerContext): Pro
           ...dados,
           cria_codigo: childCode,
           cria_sexo: childSex,
-          cria_categoria: dados.cria_categoria || calfCategoryForSex(childSex)
+          cria_categoria: calfCategoryForSex(childSex) || "bezerro"
         };
 
         let saveStage = "child";
         let child = existingChild;
         let childCreated = false;
         let birthEvent: AnyRecord | null = null;
+        let childPayloadForLog: AnyRecord | null = null;
         let motherPhaseUpdated = false;
         const motherPhaseBeforeParto = animal.fase || null;
         try {
           if (!child) {
             const childPayload = calfPayloadFromParto(owner, normalizedDados, animal, father);
+            childPayloadForLog = childPayload;
+            botPartoSaveLog("parto_child_payload_final", owner, {
+              child_code: childPayload.brinco || null,
+              child_sex_raw: dados.cria_sexo || null,
+              child_sex_normalized: childPayload.sexo || null,
+              child_category: childPayload.categoria || null,
+              child_insert_payload: safeBotPayload(TABLES.animais, childPayload)
+            });
             botPartoSaveLog("parto_confirm_child_payload", owner, {
               child_code: childPayload.brinco || null,
               child_sex: childPayload.sexo || null,
@@ -294,6 +325,17 @@ export async function saveReproductionRecord(ctx: SaveRecordHandlerContext): Pro
           }
           const compensationError = compensationErrors.join(" | ") || null;
           const errorMessage = safeErrorText(error);
+          const supabaseError = error as { supabaseErrorCode?: string | null; supabaseErrorMessage?: string | null };
+          if (saveStage === "child") {
+            botPartoSaveLog("parto_child_save_failed", owner, {
+              stage: "child",
+              animalRef: animal.brinco || animal.nome || dados.animal_codigo || null,
+              childPayload: childPayloadForLog ? safeBotPayload(TABLES.animais, childPayloadForLog) : null,
+              supabaseErrorCode: supabaseError.supabaseErrorCode || null,
+              supabaseErrorMessage: supabaseError.supabaseErrorMessage || null,
+              errorMessage
+            });
+          }
           botPartoSaveLog("parto_save_error", owner, {
             stage: saveStage,
             mother_id: animal.id,

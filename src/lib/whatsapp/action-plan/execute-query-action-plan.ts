@@ -3,10 +3,10 @@ import { TABLES } from "@/lib/tables";
 import type { QueryActionPlan, FilterPlan, AggregationPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { getDomainManifest, type DomainFieldDefinition, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
-import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { detectReproductiveEventKind, reproductiveEventLabel } from "@/lib/whatsapp/nlp-core/reproductive-events";
+import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 
 type QueryBuilderLike = AnyRecord;
 
@@ -442,16 +442,11 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
       ].filter(Boolean).join("\n")
     : emptyReproductionText(kind);
 
-  const parsed = finalize(QUERY_INTENT_BY_DOMAIN[domain.domain] || "CONSULTA_REGISTROS_HOJE", {
+  const parsed = finalizeActionPlanParsed(QUERY_INTENT_BY_DOMAIN[domain.domain] || "CONSULTA_REGISTROS_HOJE", {
     consulta: true,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "action_plan_query",
-    action_plan_used: true,
-    action_plan_domain: domain.domain,
-    action_plan: plan,
     action_plan_response: response,
     resultado: { registros: rows.length, tipo_reprodutivo: kind || null }
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
 
   return { ok: true, parsed, response, rows };
 }
@@ -521,16 +516,11 @@ async function executeStockQuery(input: ExecuteQueryActionPlanInput, plan: Query
           })
         ].join("\n")
       : "Não encontrei movimentações de estoque para esse período.";
-    const parsed = finalize("CONSULTA_ESTOQUE_GERAL", {
+    const parsed = finalizeActionPlanParsed("CONSULTA_ESTOQUE_GERAL", {
       consulta: true,
-      origem_parser: "gemini_action_plan",
-      interpreter_final_usado: "action_plan_query",
-      action_plan_used: true,
-      action_plan_domain: domain.domain,
-      action_plan: plan,
       action_plan_response: response,
       resultado: { registros: filteredMovements.length }
-    }, [], plan.confidence);
+    }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
     return { ok: true, parsed, response, rows: filteredMovements };
   }
 
@@ -547,16 +537,11 @@ async function executeStockQuery(input: ExecuteQueryActionPlanInput, plan: Query
         rows.length > 12 ? `...e mais ${rows.length - 12} item(ns).` : ""
       ].filter(Boolean).join("\n")
     : itemText ? `Não encontrei ${itemFilter?.value || "esse item"} no estoque deste rancho.` : "Não encontrei itens de estoque cadastrados.";
-  const parsed = finalize("CONSULTA_ESTOQUE_GERAL", {
+  const parsed = finalizeActionPlanParsed("CONSULTA_ESTOQUE_GERAL", {
     consulta: true,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "action_plan_query",
-    action_plan_used: true,
-    action_plan_domain: domain.domain,
-    action_plan: plan,
     action_plan_response: response,
     resultado: { registros: rows.length }
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
 
   return { ok: true, parsed, response, rows };
 }
@@ -692,14 +677,9 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
   }
 
   if (!input.supabase) {
-    const parsed = finalize(QUERY_INTENT_BY_DOMAIN[domain.domain] || "DESCONHECIDO", {
+    const parsed = finalizeActionPlanParsed(QUERY_INTENT_BY_DOMAIN[domain.domain] || "DESCONHECIDO", {
       consulta: true,
-      origem_parser: "gemini_action_plan",
-      interpreter_final_usado: "action_plan_query_planned",
-      action_plan_used: true,
-      action_plan_domain: domain.domain,
-      action_plan: plan
-    }, [], plan.confidence);
+    }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query_planned" });
     return {
       ok: true,
       parsed,
@@ -740,20 +720,15 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
     .slice(0, limit);
   const metrics = buildAggregations(rows, plan, domain, relationContext);
   const response = buildResponse(domain, rows, metrics, plan);
-  const parsed = finalize(QUERY_INTENT_BY_DOMAIN[domain.domain] || "DESCONHECIDO", {
+  const parsed = finalizeActionPlanParsed(QUERY_INTENT_BY_DOMAIN[domain.domain] || "DESCONHECIDO", {
     consulta: true,
-    origem_parser: "gemini_action_plan",
-    interpreter_final_usado: "action_plan_query",
-    action_plan_used: true,
-    action_plan_domain: domain.domain,
-    action_plan: plan,
     action_plan_response: response,
     resultado: {
       registros: rows.length,
       metrics,
       filters: plan.filters
     }
-  }, [], plan.confidence);
+  }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
 
   return { ok: true, parsed, response, rows };
 }

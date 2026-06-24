@@ -146,6 +146,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
       animal_id: field("relation", { relationDomain: "animais" }),
       evento: field("enum", { sourceField: "tipo", enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"] }),
       tipo: field("enum", { enumValues: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"] }),
+      status_reprodutivo: field("enum", { enumValues: ["prenhe", "inseminada", "pre_parto", "cio", "vazia", "parida", "em_protocolo", "em_reteste"] }),
+      categoria: field("enum", { enumValues: ["vaca", "boi", "touro", "bezerro", "bezerra", "novilha"] }),
       data: field("date", { sourceField: "data_evento" }),
       data_evento: field("datetime"),
       mae_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
@@ -165,13 +167,15 @@ export const RANCHO_DOMAIN_MANIFEST = {
       update: ["animal_ref"],
       import_table: ["animal_ref", "evento"]
     },
-    searchableFields: ["animal_ref", "mae_ref", "evento", "tipo", "resultado", "cria_ref", "cria_codigo", "cria_nome", "descricao", "observacoes"],
+    searchableFields: ["animal_ref", "mae_ref", "evento", "tipo", "status_reprodutivo", "categoria", "resultado", "cria_ref", "cria_codigo", "cria_nome", "descricao", "observacoes"],
     aggregatableFields: ["custo"],
     dateFields: ["data", "data_evento"],
     relationFields: ["animal_ref", "animal_id", "mae_ref", "pai_ref", "cria_ref"],
     enumFields: {
       evento: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"],
       tipo: ["parto", "inseminacao", "pre_parto", "cio", "prenhez", "aborto", "em_protocolo", "em_reteste", "observacao"],
+      status_reprodutivo: ["prenhe", "inseminada", "pre_parto", "cio", "vazia", "parida", "em_protocolo", "em_reteste"],
+      categoria: ["vaca", "boi", "touro", "bezerro", "bezerra", "novilha"],
       cria_sexo: ["femea", "macho", "nao_informado"],
       sexo_cria: ["femea", "macho", "nao_informado"]
     },
@@ -226,6 +230,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
       tipo: field("enum", { enumValues: ["entrada", "saida"] }),
       valor_total: field("number"),
       valor_unitario: field("number"),
+      gera_financeiro: field("boolean"),
       data: field("date"),
       fornecedor: field("string"),
       destino: field("string"),
