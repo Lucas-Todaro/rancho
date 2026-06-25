@@ -49,7 +49,7 @@ export function normalizeReproductiveEventType(rawType: string): ReproductiveEve
   }
 
   if (!/\b(?:nao esta prenha|nao ficou prenha|prenhez negativa|diagnostico negativo de prenhez)\b/.test(normalized)
-    && /\b(?:confirmar prenhez|prenhez confirmada|prenhez positiva|diagnostico positivo|emprenhou|emprenhada|emprenhado|esta gestante|esta prenha|ficou prenha|pegou cria|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(normalized)) {
+    && /\b(?:confirmar prenhez|prenhez confirmada|prenhez positiva|diagnostico positivo|em\s+prenhou|emprenhou|emprenhada|emprenhado|esta gestante|esta prenha|ficou prenha|pegou cria|prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(normalized)) {
     return "prenhez";
   }
 

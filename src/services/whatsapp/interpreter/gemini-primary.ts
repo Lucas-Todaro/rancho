@@ -56,7 +56,9 @@ const CONSULT_RANCHO_INTENTS = new Set<RanchoIntent>([
 const BOT_INTERNAL_INTERPRETER_ERROR_MESSAGE =
   "Não consegui processar essa mensagem por um erro interno do bot. O erro foi registrado para revisão.";
 const BOT_CONTRACT_INTERPRETER_MESSAGE =
-  "Não consegui interpretar essa mensagem no formato seguro esperado. Pode reformular?";
+  "Não consegui validar o plano dessa mensagem. O erro foi registrado para revisão.";
+const BOT_IMPORT_TABLE_VALIDATION_MESSAGE =
+  "Não consegui validar essa lista para importação. Revise o formato ou tente com cabeçalho.";
 const BOT_CONFIGURATION_MESSAGE =
   "O interpretador do Rancho precisa de configuração. Fale com o administrador.";
 
@@ -880,6 +882,24 @@ function isTransientGeminiFailure(result: { reason: string; status?: number }) {
     || result.status === 504;
 }
 
+function isGeminiConfigurationFailure(result: { reason: string; status?: number; message?: string; rawText?: string }) {
+  const details = `${result.reason || ""} ${result.message || ""} ${result.rawText || ""}`.toLowerCase();
+  return result.reason === "missing_api_key"
+    || result.status === 401
+    || result.status === 403
+    || details.includes("api_key_invalid")
+    || details.includes("invalid api key")
+    || details.includes("invalid credentials")
+    || details.includes("permission denied");
+}
+
+function geminiFailureClassification(result: { reason: string; status?: number; message?: string; rawText?: string }) {
+  if (isTransientGeminiFailure(result)) return "external_gemini";
+  if (isGeminiConfigurationFailure(result)) return "configuration";
+  if (["invalid_json", "invalid_schema", "empty_response", "dangerous_response"].includes(result.reason)) return "contract";
+  return "internal";
+}
+
 function logGeminiSafeFailureReturned(
   input: ParseWithInterpreterInput,
   result: { reason: string; status?: number; message?: string; rawText?: string }
@@ -887,6 +907,11 @@ function logGeminiSafeFailureReturned(
   const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
   console.error("[BOT GEMINI INTERPRETER]", {
     event: "gemini_safe_failure_returned",
+    error_classification: "external_gemini",
+    status: result.status || null,
+    code: result.reason || null,
+    message: result.message || null,
+    model: configuredGeminiModel(),
     geminiMode: geminiMode(),
     geminiModel: configuredGeminiModel(),
     botInterpreter: botInterpreterMode(),
@@ -903,6 +928,13 @@ function logGeminiSafeFailureReturned(
   });
 }
 
+function logNonExternalErrorNotMappedToInstability(details: AnyRecord) {
+  console.error("[BOT GEMINI INTERPRETER]", {
+    event: "non_external_error_not_mapped_to_instability",
+    ...details
+  });
+}
+
 function logInternalInterpreterError(error: unknown) {
   console.error("[BOT GEMINI INTERPRETER]", {
     event: "bot_internal_interpreter_error",
@@ -914,19 +946,25 @@ function logInternalInterpreterError(error: unknown) {
 }
 
 function geminiFailureMessage(input: ParseWithInterpreterInput, result: { reason: string; status?: number; message?: string; rawText?: string }) {
-  if (result.status === 429 || result.reason === "rate_limit") {
-    logGeminiSafeFailureReturned(input, result);
-    return "O limite de interpretacao foi atingido agora. Tente novamente em alguns instantes.";
-  }
-  if (result.status === 401 || result.status === 403 || result.reason === "missing_api_key") {
-    return BOT_CONFIGURATION_MESSAGE;
-  }
-  if (result.status === 400 || result.reason === "invalid_json" || result.reason === "invalid_schema") {
-    return BOT_CONTRACT_INTERPRETER_MESSAGE;
-  }
-  if (isTransientGeminiFailure(result)) {
+  const classification = geminiFailureClassification(result);
+  if (classification === "external_gemini") {
     logGeminiSafeFailureReturned(input, result);
     return GEMINI_SAFE_FAILURE_MESSAGE;
+  }
+  logNonExternalErrorNotMappedToInstability({
+    error_classification: classification,
+    reason: result.reason,
+    action: null,
+    domain: null,
+    status: result.status || null,
+    message: result.message || null,
+    messageLength: input.text.length
+  });
+  if (classification === "configuration") {
+    return BOT_CONFIGURATION_MESSAGE;
+  }
+  if (classification === "contract") {
+    return BOT_CONTRACT_INTERPRETER_MESSAGE;
   }
   return BOT_INTERNAL_INTERPRETER_ERROR_MESSAGE;
 }
@@ -956,11 +994,22 @@ function actionPlanDebug(plan: ActionPlan | null | undefined, structuredDetectio
     action: plan?.action || null,
     domain: plan && "domain" in plan ? plan.domain : null,
     action_plan_validation_error: reason || null,
+    import_table_validation_error: plan?.action === "import_table" ? reason || null : null,
+    error_code: reason || null,
+    error_message: reason || null,
     reason: reason || null,
     rows_count: dataRows ? dataRows.length : structuredDetection.usefulLineCount || null,
     structured_input_detected: structuredDetection.isStructured,
+    interpreter_final_usado: reason || null,
+    origem_parser: "gemini_action_plan",
     structuredDetection
   };
+}
+
+function actionPlanClarifyMessage(plan: ActionPlan | null | undefined, status: "invalid" | "blocked" | "clarify") {
+  if (status === "blocked") return "Nao posso executar esse pedido com seguranca.";
+  if (plan?.action === "import_table") return BOT_IMPORT_TABLE_VALIDATION_MESSAGE;
+  return BOT_CONTRACT_INTERPRETER_MESSAGE;
 }
 
 function actionPlanGeminiMeta(interpretation: GeminiStructuredResult, result: ExecuteActionPlanResult) {
@@ -1056,16 +1105,23 @@ async function convertActionPlanInterpretation(
       action: plan?.action || null,
       route
     });
+    if (error.status !== "blocked") {
+      logNonExternalErrorNotMappedToInstability({
+        error_classification: plan?.action === "import_table" ? "import_table" : "validation",
+        reason: error.reason,
+        action: plan?.action || null,
+        domain: plan && "domain" in plan ? plan.domain : null,
+        messageLength: input.text.length
+      });
+    }
     return {
       kind: "clarify",
       threshold: 0.7,
       reason: error.reason,
-      message: error.status === "blocked"
-        ? "Nao posso executar esse pedido com seguranca."
-        : "Preciso revisar esse plano antes de executar. Pode reformular?",
+      message: actionPlanClarifyMessage(plan, error.status),
       debug: {
         ...actionPlanDebug(plan, structuredDetection, error.reason),
-        error_classification: error.status === "blocked" ? "safety" : "validation",
+        error_classification: error.status === "blocked" ? "safety" : plan?.action === "import_table" ? "import_table" : "validation",
         action_plan_validation_error: error.reason,
         domain: plan && "domain" in plan ? plan.domain : null,
         action: plan?.action || null,
@@ -1106,6 +1162,15 @@ async function convertActionPlanInterpretation(
       domain: "domain" in plan ? plan.domain : null,
       route
     });
+    if (result.status !== "blocked") {
+      logNonExternalErrorNotMappedToInstability({
+        error_classification: plan.action === "import_table" ? "import_table" : "validation",
+        reason: result.reason,
+        action: plan.action,
+        domain: "domain" in plan ? plan.domain : null,
+        messageLength: input.text.length
+      });
+    }
     return {
       kind: "clarify",
       threshold: 0.7,
@@ -1113,7 +1178,7 @@ async function convertActionPlanInterpretation(
       message: result.message,
       debug: {
         ...actionPlanDebug(plan, structuredDetection, result.reason),
-        error_classification: result.status === "blocked" ? "safety" : "validation",
+        error_classification: result.status === "blocked" ? "safety" : plan.action === "import_table" ? "import_table" : "validation",
         action_plan_validation_error: result.reason,
         domain: "domain" in plan ? plan.domain : null,
         action: plan.action,
@@ -1338,11 +1403,22 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       reason: gemini.reason,
       message: geminiFailureMessage(input, gemini),
       debug: {
-        error_classification: isTransientGeminiFailure(gemini) ? "external_transient" : gemini.reason === "missing_api_key" || gemini.status === 401 || gemini.status === 403 ? "configuration" : "contract",
+        error_classification: geminiFailureClassification(gemini),
+        error_message: gemini.message || null,
+        error_code: gemini.reason,
+        gemini_status: gemini.status || null,
+        gemini_body_preview: gemini.rawText ? String(gemini.rawText).slice(0, 600) : null,
         gemini_live_error: gemini.reason,
         responseStatus: gemini.status || null,
         responseBodyPreview: gemini.rawText ? String(gemini.rawText).slice(0, 600) : null,
+        action: null,
+        domain: null,
         action_plan_used: false,
+        action_plan_validation_error: null,
+        import_table_validation_error: null,
+        structured_input_detected: structuredDetection.isStructured,
+        rows_count: structuredDetection.usefulLineCount || null,
+        structuredDetection,
         interpreter_final_usado: gemini.reason,
         origem_parser: "gemini_action_plan"
       }

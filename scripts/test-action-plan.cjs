@@ -689,6 +689,90 @@ test("BOT_INTERPRETER=gemini chama Gemini mock para lista estruturada com dois p
   });
 });
 
+test("lista estruturada reproducao valida nao retorna instabilidade e mostra preview", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "mock",
+    GEMINI_ACTION_PLAN_ENABLED: "true",
+    GEMINI_TABLE_ACTION_PLAN_ENABLED: "true"
+  }, async () => {
+    const text = "387:PROTOCOLO\n391:RETESTE\n094:PRÉ PARTO\n520:EM PRENHOU";
+    const plan = {
+      action: "import_table",
+      domain: "reproducao",
+      confidence: 0.93,
+      data: {
+        rows: [
+          { animal_ref: "387", evento: "protocolo" },
+          { animal_ref: "391", evento: "reteste" },
+          { animal_ref: "094", evento: "pre_parto" },
+          { animal_ref: "520", evento: "EM PRENHOU" }
+        ]
+      },
+      requiresConfirmation: true
+    };
+    await withGeminiMock(() => clone(plan), async () => {
+      resetGeminiRuntimeStats();
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: null
+      });
+      const stats = geminiRuntimeStats();
+      assert(stats.mockCalls === 1, `Gemini mock deveria ser chamado uma vez, recebido ${stats.mockCalls}`);
+      assert(result.kind === "parsed", `lista estruturada deveria gerar preview, recebido ${result.kind}`);
+      assert(!String(result.gemini?.userResponse || "").includes("Estou com instabilidade"), "lista valida nao deve retornar instabilidade");
+      const parsed = result.parsed;
+      assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria ser usado");
+      assert(parsed.dados?.action_plan_domain === "reproducao", "dominio reproducao ausente");
+      assert(parsed.dados?.total_linhas === 4, `esperado 4 linhas, recebido ${parsed.dados?.total_linhas}`);
+      assert(parsed.dados?.total_linhas_parse_invalidas === 0, "lista valida nao deveria ter invalidas");
+      assert(parsed.dados?.linhas?.[2]?.evento_tipo === "pre_parto", "PRE PARTO deveria normalizar");
+      assert(parsed.dados?.linhas?.[3]?.evento_tipo === "prenhez", "EM PRENHOU deveria normalizar para prenhez");
+      assert(result.gemini?.requiresConfirmation === true, "lista deve pedir confirmacao");
+    });
+  });
+});
+
+test("import_table invalido nao retorna instabilidade e expõe motivo", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "mock",
+    GEMINI_ACTION_PLAN_ENABLED: "true",
+    GEMINI_TABLE_ACTION_PLAN_ENABLED: "true"
+  }, async () => {
+    const text = "387:EVENTO ESTRANHO\n391:RETESTE";
+    const invalidPlan = {
+      action: "import_table",
+      domain: "reproducao",
+      confidence: 0.9,
+      data: {
+        rows: [
+          { animal_ref: "387", evento: "EVENTO ESTRANHO" },
+          { animal_ref: "391", evento: "reteste" }
+        ]
+      },
+      requiresConfirmation: true
+    };
+    await withGeminiMock(() => clone(invalidPlan), async () => {
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: null
+      });
+      assert(result.kind === "clarify", `import_table invalido deveria pedir revisão, recebido ${result.kind}`);
+      assert(!String(result.message).includes("Estou com instabilidade"), "import_table invalido nao deve retornar instabilidade");
+      assert(String(result.message).includes("validar essa lista"), `mensagem de lista ausente: ${result.message}`);
+      assert(result.debug?.error_classification === "import_table", "debug deveria classificar import_table");
+      assert(result.debug?.import_table_validation_error, "debug deveria expor import_table_validation_error");
+      assert(result.debug?.rows_count === 2, `rows_count esperado 2, recebido ${result.debug?.rows_count}`);
+      assert(result.debug?.structured_input_detected === true, "structured_input_detected deveria ser true");
+    });
+  });
+});
+
 test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () => {
   assert(userFacingCodeLabel("tarefa_com_data_passada") === "tarefa com data no passado", "codigo de tarefa deveria ser traduzido");
   assert(userFacingCodeLabel("novo_codigo_interno") === "novo codigo interno", "codigo desconhecido deveria perder underlines");
@@ -1312,8 +1396,35 @@ test("Gemini live HTTP 503 retorna instabilidade diagnosticada", async () => {
       });
       assert(result.kind === "clarify", `HTTP 503 deveria retornar clarify, recebido ${result.kind}`);
       assert(String(result.message).includes("Estou com instabilidade"), "HTTP 503 deve usar mensagem de instabilidade");
-      assert(result.debug?.error_classification === "external_transient", "HTTP 503 deveria ser falha externa transiente");
+      assert(result.debug?.error_classification === "external_gemini", "HTTP 503 deveria ser falha externa Gemini");
       assert(result.debug?.responseStatus === 503, "status 503 ausente no debug");
+      assert(result.debug?.gemini_status === 503, "gemini_status 503 ausente no debug");
+    });
+    resetGeminiRuntimeStats();
+  });
+});
+
+test("Gemini live HTTP 429 retorna instabilidade diagnosticada", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "fake-test-key"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { code: 429, message: "quota exceeded", status: "RESOURCE_EXHAUSTED" }
+    }), { status: 429, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `HTTP 429 deveria retornar clarify, recebido ${result.kind}`);
+      assert(String(result.message).includes("Estou com instabilidade"), "HTTP 429 deve usar mensagem de instabilidade");
+      assert(result.debug?.error_classification === "external_gemini", "HTTP 429 deveria ser falha externa Gemini");
+      assert(result.debug?.gemini_status === 429, "gemini_status 429 ausente no debug");
     });
     resetGeminiRuntimeStats();
   });
@@ -1339,6 +1450,32 @@ test("Gemini live HTTP 401 nao retorna instabilidade", async () => {
       assert(result.kind === "clarify", `HTTP 401 deveria retornar clarify, recebido ${result.kind}`);
       assert(!String(result.message).includes("Estou com instabilidade"), "HTTP 401 nao deve usar mensagem de instabilidade");
       assert(result.debug?.error_classification === "configuration", "HTTP 401 deveria ser configuracao");
+    });
+    resetGeminiRuntimeStats();
+  });
+});
+
+test("Gemini live API_KEY_INVALID retorna configuracao sem instabilidade", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_GEMINI_TESTS: "true",
+    GEMINI_API_KEY: "fake-test-key"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "API_KEY_INVALID" }
+    }), { status: 400, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      assert(result.kind === "clarify", `API_KEY_INVALID deveria retornar clarify, recebido ${result.kind}`);
+      assert(!String(result.message).includes("Estou com instabilidade"), "API_KEY_INVALID nao deve usar mensagem de instabilidade");
+      assert(String(result.message).toLowerCase().includes("interpretador"), "API_KEY_INVALID deveria pedir configuracao");
+      assert(result.debug?.error_classification === "configuration", "API_KEY_INVALID deveria ser configuracao");
     });
     resetGeminiRuntimeStats();
   });

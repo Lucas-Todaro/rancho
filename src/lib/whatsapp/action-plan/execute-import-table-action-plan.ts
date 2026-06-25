@@ -494,7 +494,7 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       reason: validation.reason,
       message: validation.status === "blocked"
         ? "Nao posso importar essa tabela com seguranca."
-        : "Preciso revisar o mapeamento da tabela antes de importar."
+        : "Não consegui validar essa lista para importação. Revise o formato ou tente com cabeçalho."
     };
   }
 
