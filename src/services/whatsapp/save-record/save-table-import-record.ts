@@ -227,9 +227,13 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
 
     const createMissingItems = Boolean(dados.criar_itens_faltantes);
     const createdItems = new Map<string, AnyRecord>();
+    const resolvedItems = new Map<string, AnyRecord>();
+    const balanceByItemId = new Map<string, number>();
     const savedTables = new Set<string>();
     let saved = 0;
     let createdItemCount = 0;
+    let skippedInsufficientStock = 0;
+    const insufficientStockItems: string[] = [];
 
     if (createMissingItems) {
       const missingItemRows = rows.filter((row) => row.criar_item_estoque);
@@ -260,6 +264,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
           created_by: owner.usuario_id || null
         });
         if (item?.id) createdItems.set(normalizeCatalogText(itemName), item as AnyRecord);
+        if (item?.id) balanceByItemId.set(String(item.id), Number(item.quantidade_atual || 0));
         savedTables.add(TABLES.estoqueItens);
         createdItemCount += 1;
       }
@@ -269,33 +274,81 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       let itemId = row.item_id || null;
       let itemName = row.item_resolvido || row.item_nome || row.item_original || "item";
       let unit = row.unidade_resolvida || row.unidade || "unidade";
+      let itemRecord: AnyRecord | null = null;
 
       if (!itemId && createMissingItems && row.criar_item_estoque) {
         const createdItem = createdItems.get(normalizeCatalogText(row.item_nome || row.item_original));
         itemId = createdItem?.id || null;
         itemName = createdItem?.nome || itemName;
         unit = createdItem?.unidade_medida || unit;
+        itemRecord = createdItem || null;
+      }
+
+      if (!itemRecord && itemId) {
+        itemRecord = resolvedItems.get(String(itemId)) || null;
+      }
+
+      if (!itemRecord && itemName) {
+        const foundItem = await findStockItem(supabase, owner, String(itemName));
+        if (foundItem?.row && !foundItem.ambiguousRows?.length && String(foundItem.row.id || "") === String(itemId || foundItem.row.id || "")) {
+          itemRecord = foundItem.row;
+          itemId = itemId || foundItem.row.id || null;
+          itemName = foundItem.row.nome || itemName;
+          unit = foundItem.row.unidade_medida || unit;
+          if (itemId) resolvedItems.set(String(itemId), itemRecord);
+        }
       }
 
       if (!itemId) continue;
 
-      await insertRealRecord(supabase, owner, TABLES.estoqueMovimentacoes, {
+      const type = row.tipo_movimento === "saida" ?"saida" : "entrada";
+      const quantity = Number(row.quantidade || 0);
+      const itemKey = String(itemId);
+      if (!balanceByItemId.has(itemKey)) {
+        balanceByItemId.set(itemKey, Number(itemRecord?.quantidade_atual || 0));
+      }
+
+      if (type === "saida") {
+        const currentBalance = Number(balanceByItemId.get(itemKey) || 0);
+        if (quantity > currentBalance) {
+          skippedInsufficientStock += 1;
+          insufficientStockItems.push(`${itemName}: ${formatStockAmount(currentBalance, unit)} disponível, baixa de ${formatStockAmount(quantity, unit)}`);
+          continue;
+        }
+      }
+
+      try {
+        await insertRealRecord(supabase, owner, TABLES.estoqueMovimentacoes, {
         fazenda_id: owner.fazenda_id,
         item_id: itemId,
-        tipo: row.tipo_movimento === "saida" ?"saida" : "entrada",
-        quantidade: Number(row.quantidade),
+        tipo: type,
+        quantidade: quantity,
         valor_unitario: row.valor ?Number(row.valor) / Math.max(1, Number(row.quantidade || 1)) : null,
         motivo: `Importado por tabela via WhatsApp: ${itemName} (${unit})`,
         responsavel_usuario_id: owner.usuario_id || null,
         origem: "whatsapp"
       });
+      } catch (error) {
+        const errorMessage = safeErrorText(error);
+        if (type === "saida" && /estoque insuficiente|saldo insuficiente|insufficient stock/i.test(errorMessage)) {
+          skippedInsufficientStock += 1;
+          insufficientStockItems.push(`${itemName}: baixa de ${formatStockAmount(quantity, unit)}`);
+          continue;
+        }
+        throw error;
+      }
+      const previousBalance = Number(balanceByItemId.get(itemKey) || 0);
+      balanceByItemId.set(itemKey, type === "saida" ?previousBalance - quantity : previousBalance + quantity);
       savedTables.add(TABLES.estoqueMovimentacoes);
       saved += 1;
     }
 
-    if (!saved) return { response: "Nenhuma movimentação de estoque foi importada. Nada foi salvo." };
+    if (!saved && !createdItemCount) return { response: "Nenhuma movimentação de estoque foi importada. Nada foi salvo." };
 
     const itemText = createdItemCount ?`\nItens criados: ${createdItemCount}.` : "";
-    return realSaveResult(`Importação de estoque concluída:\n- ${saved} linha(s) importada(s).${itemText}`, Array.from(savedTables));
+    const skippedText = skippedInsufficientStock
+      ?`\nBaixas ignoradas por saldo insuficiente: ${skippedInsufficientStock}.${insufficientStockItems.length ?`\n${insufficientStockItems.slice(0, 5).map((item) => `- ${item}`).join("\n")}` : ""}`
+      : "";
+    return realSaveResult(`Importação de estoque concluída:\n- ${saved} linha(s) importada(s).${itemText}${skippedText}`, Array.from(savedTables));
   }
 }

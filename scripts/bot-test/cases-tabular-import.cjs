@@ -155,6 +155,12 @@ module.exports = function loadBotTestSection(context) {
       "Racao de boi;10;kg;Entrada;01.06.26;",
       "Arroz;7;kg;Entrada;02.06.26;Item novo"
     ].join("\n");
+    const mixedStockImportWithInsufficientExitMessage = [
+      "Unidade;Produto;Movimento;Quantidade",
+      "sacos;Ração;entrada;10",
+      "kg;Sal mineral;saída;20",
+      "litros;Diesel;entrada;30"
+    ].join("\n");
     const shuffledAnimalEventsMessage = [
       "Data;Observacoes;Animal;Evento",
       "2026-03-01;;A-10;Inseminacao",
@@ -1971,6 +1977,27 @@ module.exports = function loadBotTestSection(context) {
           savedTables: [BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.estoqueMovimentacoes],
           shouldSaveValues: { nome: "Arroz" },
           shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque ignora saida sem saldo e salva demais linhas",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        stockItems: [
+          { id: "stock-racao-tabela", nome: "Ração", categoria: "racao", quantidade_atual: 0, unidade_medida: "sacos" },
+          { id: "stock-sal-baixo", nome: "Sal mineral", categoria: "racao", quantidade_atual: 5, unidade_medida: "kg" },
+          { id: "stock-diesel-tabela", nome: "Diesel", categoria: "insumo", quantidade_atual: 0, unidade_medida: "litros" }
+        ],
+        messages: [mixedStockImportWithInsufficientExitMessage, { text: "sim", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Baixas ignoradas por saldo insuficiente: 1",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { item_id: "stock-diesel-tabela", quantidade: 30, tipo: "entrada" },
+          shouldNotWriteBusiness: false
         }
       },
       {
