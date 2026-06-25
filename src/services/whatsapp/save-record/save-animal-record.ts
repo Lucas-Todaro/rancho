@@ -131,6 +131,24 @@ export async function saveAnimalRecord(ctx: SaveRecordHandlerContext): Promise<S
         ? reproductiveEventDescription(reproductiveKind, descricao, origemInseminacao)
         : `${eventoLabel} registrada via WhatsApp: ${descricao}`;
       const savedTables: string[] = [TABLES.eventosAnimal];
+      const reproductiveTransitions: AnyRecord = {
+        prenhez: { nextStatus: "prenhe", nextFlags: [], closedStatuses: ["inseminada", "protocolo", "reteste"] },
+        parto: { nextStatus: "parto", nextFlags: [], closedStatuses: ["prenhe", "inseminada", "pre_parto"] },
+        inseminacao: { nextStatus: "inseminada", nextFlags: [], closedStatuses: ["prenhe", "pre_parto", "parto"] },
+        protocolo: { nextStatus: "inseminada", nextFlags: ["protocolo"], closedStatuses: ["prenhe", "pre_parto", "parto"] },
+        reteste: { nextStatus: "inseminada", nextFlags: ["reteste"], closedStatuses: ["prenhe", "pre_parto", "parto"] },
+        pre_parto: { nextStatus: "pre_parto", nextFlags: [], closedStatuses: ["prenhe", "inseminada"] }
+      };
+      if (reproductiveKind && reproductiveTransitions[reproductiveKind]) {
+        console.log("[BOT REPRODUCTION]", {
+          event: "reproductive_status_transition",
+          animalRef: animal.brinco || animal.nome || animal.id || null,
+          previousStatus: animal.fase || null,
+          previousFlags: [],
+          eventType: reproductiveKind,
+          ...reproductiveTransitions[reproductiveKind]
+        });
+      }
 
       await insertRealRecord(supabase, owner, TABLES.eventosAnimal, {
         fazenda_id: owner.fazenda_id,

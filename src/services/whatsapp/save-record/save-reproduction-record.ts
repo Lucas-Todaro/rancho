@@ -396,6 +396,16 @@ export async function saveReproductionRecord(ctx: SaveRecordHandlerContext): Pro
             category_preserved: animal.categoria || null,
             lot_preserved: animal.lote_id || null
           });
+          console.log("[BOT REPRODUCTION]", {
+            event: "reproductive_status_transition",
+            animalRef: animal.brinco || animal.nome || animal.id || null,
+            previousStatus: motherPhaseBeforeParto,
+            previousFlags: [],
+            eventType: "parto",
+            nextStatus: "parto",
+            nextFlags: [],
+            closedStatuses: ["prenhe", "inseminada", "pre_parto"]
+          });
         } catch (error) {
           botPartoSaveLog("parto_save_mother_status_update_error", owner, {
             stage: "mother_phase",
@@ -459,6 +469,16 @@ export async function saveReproductionRecord(ctx: SaveRecordHandlerContext): Pro
         phase_updated: motherPhaseUpdated,
         category_preserved: animal.categoria || null,
         lot_preserved: animal.lote_id || null
+      });
+      console.log("[BOT REPRODUCTION]", {
+        event: "reproductive_status_transition",
+        animalRef: animal.brinco || animal.nome || animal.id || null,
+        previousStatus: motherPhaseBeforeParto,
+        previousFlags: [],
+        eventType: "parto",
+        nextStatus: "parto",
+        nextFlags: [],
+        closedStatuses: ["prenhe", "inseminada", "pre_parto"]
       });
       const savedTables: string[] = [TABLES.eventosAnimal];
       if (motherPhaseUpdated) savedTables.push(TABLES.animais);

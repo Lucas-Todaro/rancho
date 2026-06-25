@@ -331,6 +331,39 @@ function queryEventKind(row: AnyRecord) {
     || (normalizedText(row.tipo) === "parto" ? "parto" : undefined);
 }
 
+function eventTime(row: AnyRecord) {
+  const ms = Date.parse(String(row.data_evento || row.created_at || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function latestEventOfKind(events: AnyRecord[], kind: string) {
+  return events.find((event) => event.kind === kind) || null;
+}
+
+function hasLaterReproductiveOutcome(events: AnyRecord[], reference: AnyRecord | null | undefined, outcomes: string[]) {
+  if (!reference) return false;
+  const referenceTime = eventTime(reference);
+  return events.some((event) => eventTime(event) > referenceTime && outcomes.includes(String(event.kind || "")));
+}
+
+function activeReproductionEventForKind(events: AnyRecord[], kind?: string) {
+  if (!kind) return null;
+  if (kind === "inseminacao") {
+    const insemination = latestEventOfKind(events, "inseminacao");
+    return insemination && !hasLaterReproductiveOutcome(events, insemination, ["prenhez", "pre_parto", "parto"])
+      ? insemination
+      : null;
+  }
+  if (kind === "prenhez") {
+    const preBirth = latestEventOfKind(events, "pre_parto");
+    if (preBirth && !hasLaterReproductiveOutcome(events, preBirth, ["parto"])) return preBirth;
+    const pregnancy = latestEventOfKind(events, "prenhez");
+    return pregnancy && !hasLaterReproductiveOutcome(events, pregnancy, ["parto"]) ? pregnancy : null;
+  }
+  if (kind === "protocolo" || kind === "reteste") return latestEventOfKind(events, kind);
+  return latestEventOfKind(events, kind);
+}
+
 function targetReproductionKind(plan: QueryActionPlan, originalText?: string) {
   const raw = [
     ...plan.filters.map((filter) => String(filter.value || "")),
@@ -406,12 +439,15 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
 
   let rows: AnyRecord[];
   if (kind) {
-    const latestByAnimal = new Map<string, AnyRecord>();
+    const eventsByAnimal = new Map<string, AnyRecord[]>();
     for (const event of allEvents) {
       const animalId = String(event.animal_id || "");
-      if (animalId && !latestByAnimal.has(animalId)) latestByAnimal.set(animalId, event);
+      if (!animalId) continue;
+      eventsByAnimal.set(animalId, [...(eventsByAnimal.get(animalId) || []), event]);
     }
-    rows = Array.from(latestByAnimal.values()).filter((event) => event.kind === kind);
+    rows = Array.from(eventsByAnimal.values())
+      .map((events) => activeReproductionEventForKind(events, kind))
+      .filter((event): event is AnyRecord => Boolean(event));
     if (kind === "prenhez") {
       const existing = new Set(rows.map((event) => String(event.animal_id || "")));
       for (const animal of (animalData || []) as AnyRecord[]) {

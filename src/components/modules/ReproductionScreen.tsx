@@ -360,6 +360,44 @@ function reproductionFilterForKind(kind: ReproductionKind): ReproductionFilter |
   return null;
 }
 
+function applyReproductiveStatusTransition(keys: ReproductionFilter[], latestKind: ReproductionKind | null) {
+  const next = new Set(keys);
+
+  if (latestKind === "parto") return ["parto" as ReproductionFilter];
+
+  if (latestKind === "prenhez") {
+    next.delete("inseminada");
+    next.delete("protocolo");
+    next.delete("reteste");
+    next.delete("parto");
+    next.add("prenhe");
+  }
+
+  if (latestKind === "pre_parto") {
+    next.delete("inseminada");
+    next.delete("protocolo");
+    next.delete("reteste");
+    next.delete("parto");
+    next.add("pre_parto");
+  }
+
+  if (latestKind === "inseminacao") {
+    next.delete("prenhe");
+    next.delete("pre_parto");
+    next.delete("parto");
+    next.add("inseminada");
+  }
+
+  if (latestKind === "protocolo" || latestKind === "reteste") {
+    next.delete("prenhe");
+    next.delete("pre_parto");
+    next.delete("parto");
+    next.add(latestKind);
+  }
+
+  return Array.from(next);
+}
+
 export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[]) {
   const sorted = sortEventsDescending(events);
   const lastParto = latestOfKind(sorted, "parto");
@@ -376,12 +414,14 @@ export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[])
     const key = reproductionFilterForKind(eventKind(event));
     return key && date && date.getTime() >= cycleStart ? [key] : [];
   })));
-  if (phase === "gestante" && latestKind !== "parto" && !keys.includes("prenhe")) keys.push("prenhe");
+  const phaseCanImplyPregnancy = !["parto", "inseminacao", "protocolo", "reteste"].includes(String(latestKind || ""));
+  if (phase === "gestante" && phaseCanImplyPregnancy && !keys.includes("prenhe")) keys.push("prenhe");
+  const activeKeys = applyReproductiveStatusTransition(keys, latestKind);
 
   if (latestKind === "protocolo" || latestKind === "reteste") {
     return {
       key: latestKind as ReproductionFilter,
-      keys,
+      keys: activeKeys,
       label: latestKind === "protocolo" ? "Em protocolo" : "Em reteste",
       detail: `Desde ${formatDate(latestStatusEvent?.data_evento)}`,
       tone: "warning" as const,
@@ -394,7 +434,7 @@ export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[])
     const recent = daysBetween(partoDate) <= 45;
     return {
       key: "parto" as ReproductionFilter,
-      keys,
+      keys: activeKeys,
       label: recent ? "Recém-parida" : "Parida",
       detail: `Parto em ${formatDate(lastParto?.data_evento)}`,
       tone: "info" as const,
@@ -406,7 +446,7 @@ export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[])
   if (latestKind === "pre_parto") {
     return {
       key: "pre_parto" as ReproductionFilter,
-      keys,
+      keys: activeKeys,
       label: "Pre-parto",
       detail: `Acompanhamento desde ${formatDate(latestStatusEvent?.data_evento)}`,
       tone: "warning" as const,
@@ -415,11 +455,11 @@ export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[])
     };
   }
 
-  if (latestKind === "prenhez" || (phase === "gestante" && latestKind !== "parto")) {
+  if (latestKind === "prenhez" || (phase === "gestante" && phaseCanImplyPregnancy)) {
     const estimatedBirth = inseminacaoDate ? addDays(inseminacaoDate, 283) : null;
     return {
       key: "prenhe" as ReproductionFilter,
-      keys: keys.includes("prenhe") ? keys : [...keys, "prenhe" as ReproductionFilter],
+      keys: activeKeys.includes("prenhe") ? activeKeys : [...activeKeys, "prenhe" as ReproductionFilter],
       label: phase === "gestante" && latestKind !== "prenhez" ? "Gestante" : "Prenhe",
       detail: estimatedBirth ? `Previsão ${formatDate(estimatedBirth.toISOString())}` : "Prenhez confirmada",
       tone: "success" as const,
@@ -432,7 +472,7 @@ export function animalReproductionStatus(animal: AnyRecord, events: AnyRecord[])
     const estimatedBirth = addDays(inseminacaoDate, 283);
     return {
       key: "inseminada" as ReproductionFilter,
-      keys,
+      keys: activeKeys,
       label: "Inseminada",
       detail: `${daysBetween(inseminacaoDate)} dias desde a inseminação`,
       tone: "info" as const,

@@ -1031,7 +1031,6 @@ function reproductiveEventForFilter(animal: AnyRecord, eventsByAnimal: Map<strin
   const events = sortedEventsForAnimal(eventsByAnimal, animal);
   if (filter === "prenhe") {
     return events.find((event) => ["prenhez", "pre_parto"].includes(String(reproductiveEventKind(event) || "")))
-      || events.find((event) => reproductiveEventKind(event) === "inseminacao")
       || null;
   }
   if (filter === "pre_parto") return events.find((event) => reproductiveEventKind(event) === "pre_parto") || null;
@@ -1065,7 +1064,7 @@ function animalListLine(animal: AnyRecord, lotById: Map<string, AnyRecord>, inde
 }
 
 type HerdReproductionFilter = "prenhe" | "pre_parto" | "inseminada" | "sem_evento" | "com_evento";
-type ReproductiveEventKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo";
+type ReproductiveEventKind = "inseminacao" | "prenhez" | "pre_parto" | "parto" | "protocolo" | "reteste";
 
 function herdReproductionFilter(value: unknown): HerdReproductionFilter | undefined {
   const normalized = normalizeRanchoText(String(value || ""));
@@ -1095,7 +1094,8 @@ function reproductiveEventKind(event: AnyRecord): ReproductiveEventKind | undefi
   if (type === "parto" || /\b(?:parto|pariu|nasceu|nascimento|deu cria)\b/.test(text)) return "parto";
   if (type === "inseminacao" || /\b(?:inseminacao|inseminada|inseminado|cobertura|coberta|coberto|semen|ia|iatf)\b/.test(text)) return "inseminacao";
   if (/\b(?:prenhez|prenhe|prenha|gestacao|gestante|gravida|gravido)\b/.test(text)) return "prenhez";
-  if (/\b(?:protocolo|reteste|nao passou)\b/.test(text)) return "protocolo";
+  if (/\b(?:reteste)\b/.test(text)) return "reteste";
+  if (/\b(?:protocolo|nao passou)\b/.test(text)) return "protocolo";
   return undefined;
 }
 
@@ -1111,6 +1111,16 @@ function latestReproductiveKind(events: AnyRecord[]) {
   return undefined;
 }
 
+function hasActiveInsemination(events: AnyRecord[]) {
+  const latestInsemination = events.find((event) => reproductiveEventKind(event) === "inseminacao");
+  if (!latestInsemination) return false;
+  const reference = eventDateMs(latestInsemination);
+  return !events.some((event) => {
+    if (eventDateMs(event) <= reference) return false;
+    return ["prenhez", "pre_parto", "parto"].includes(String(reproductiveEventKind(event) || ""));
+  });
+}
+
 function animalPhaseIsPregnant(animal: AnyRecord) {
   return /\b(?:gestante|prenhe|prenha|prenhez|gravida)\b/.test(normalizeRanchoText(String(animal.fase || "")));
 }
@@ -1123,9 +1133,10 @@ function animalMatchesReproductiveFilter(animal: AnyRecord, eventsByAnimal: Map<
 
   const latestKind = latestReproductiveKind(events);
   if (filter === "pre_parto") return latestKind === "pre_parto";
-  if (filter === "inseminada") return latestKind === "inseminacao";
+  if (filter === "inseminada") return hasActiveInsemination(events);
   if (filter === "prenhe") {
     if (latestKind === "parto") return false;
+    if (latestKind === "inseminacao" || latestKind === "protocolo" || latestKind === "reteste") return false;
     return latestKind === "prenhez" || latestKind === "pre_parto" || animalPhaseIsPregnant(animal);
   }
   return true;

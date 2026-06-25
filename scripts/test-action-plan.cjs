@@ -917,6 +917,24 @@ test("ActionPlan de protocolo e reteste preserva evento sem alterar categoria", 
 
 test("status reprodutivo mantem inseminacao complementar e parto encerra prenhez atual", () => {
   const animal = { id: "animal-1", categoria: "vaca", lote_id: "lote-1", fase: "gestante" };
+  const withPregnancy = animalReproductionStatus(animal, [
+    { tipo: "inseminacao", data_evento: "2026-06-10T12:00:00Z", descricao: "Inseminacao registrada" },
+    { tipo: "observacao", data_evento: "2026-06-20T12:00:00Z", descricao: "[Reproducao Animal] Prenhez confirmada" }
+  ]);
+  assert(withPregnancy.key === "prenhe", `status atual esperado prenhe, recebido ${withPregnancy.key}`);
+  assert(withPregnancy.keys.includes("prenhe"), "prenhez deveria estar no estado atual");
+  assert(!withPregnancy.keys.includes("inseminada"), "prenhez posterior nao pode manter inseminada como estado atual");
+  assert(!withPregnancy.keys.includes("protocolo"), "prenhez posterior nao pode manter protocolo como estado atual");
+  assert(!withPregnancy.keys.includes("reteste"), "prenhez posterior nao pode manter reteste como estado atual");
+
+  const withProtocol = animalReproductionStatus(animal, [
+    { tipo: "inseminacao", data_evento: "2026-06-10T12:00:00Z", descricao: "Inseminacao registrada" },
+    { tipo: "observacao", data_evento: "2026-06-20T12:00:00Z", descricao: "[Reproducao Animal] Protocolo IA" }
+  ]);
+  assert(withProtocol.key === "protocolo", `status atual esperado protocolo, recebido ${withProtocol.key}`);
+  assert(withProtocol.keys.includes("inseminada"), "protocolo pode coexistir com inseminada");
+  assert(withProtocol.keys.includes("protocolo"), "protocolo deveria estar nos estados complementares");
+
   const withRetest = animalReproductionStatus(animal, [
     { tipo: "inseminacao", data_evento: "2026-06-10T12:00:00Z", descricao: "Inseminacao registrada" },
     { tipo: "observacao", data_evento: "2026-06-20T12:00:00Z", descricao: "[Reproducao Animal] Reteste de protocolo" }
@@ -932,7 +950,66 @@ test("status reprodutivo mantem inseminacao complementar e parto encerra prenhez
   assert(afterBirth.key === "parto", `parto deveria ser o estado atual, recebido ${afterBirth.key}`);
   assert(afterBirth.label === "Recém-parida", `rotulo esperado Recem-parida, recebido ${afterBirth.label}`);
   assert(!afterBirth.keys.includes("prenhe"), "parto nao pode manter prenhez como estado atual");
+  assert(!afterBirth.keys.includes("inseminada"), "parto nao pode manter inseminada como estado atual");
   assert(animal.categoria === "vaca" && animal.lote_id === "lote-1", "calculo de status nao pode alterar categoria ou lote");
+});
+
+test("ActionPlan query reproducao separa prenhas de inseminadas ativas", async () => {
+  const animals = [
+    { id: "animal-306", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "306", nome: "Vaca 306", categoria: "vaca", fase: "gestante", status: "ativo" },
+    { id: "animal-307", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "307", nome: "Vaca 307", categoria: "vaca", fase: "lactacao", status: "ativo" },
+    { id: "animal-308", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "308", nome: "Vaca 308", categoria: "vaca", fase: "lactacao", status: "ativo" }
+  ];
+  const events = [
+    { id: "ins-306", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-306", tipo: "inseminacao", data_evento: "2026-06-01T12:00:00Z", descricao: "Inseminacao registrada" },
+    { id: "prenhez-306", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-306", tipo: "observacao", data_evento: "2026-06-20T12:00:00Z", descricao: "[Reproducao Animal] Prenhez confirmada" },
+    { id: "ins-307", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-307", tipo: "inseminacao", data_evento: "2026-06-01T12:00:00Z", descricao: "Inseminacao registrada" },
+    { id: "protocolo-307", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-307", tipo: "observacao", data_evento: "2026-06-21T12:00:00Z", descricao: "[Reproducao Animal] Protocolo IA" },
+    { id: "ins-308", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-308", tipo: "inseminacao", data_evento: "2026-06-01T12:00:00Z", descricao: "Inseminacao registrada" },
+    { id: "reteste-308", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-308", tipo: "observacao", data_evento: "2026-06-21T12:00:00Z", descricao: "[Reproducao Animal] Reteste de protocolo" }
+  ];
+  const supabase = createActionPlanSupabase({
+    [TABLES.animais]: animals,
+    [TABLES.eventosAnimal]: events
+  });
+
+  const pregnant = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "reproducao",
+      confidence: 0.9,
+      filters: [{ field: "status_reprodutivo", op: "eq", value: "prenhe" }],
+      aggregations: [],
+      requiresConfirmation: false
+    },
+    originalText: "quais vacas tao prenhas?",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase
+  });
+  assert(pregnant.ok, `consulta prenhas deveria executar: ${pregnant.reason}`);
+  assert(pregnant.rows.length === 1, `consulta prenhas deveria retornar 1, recebeu ${pregnant.rows.length}`);
+  assert(String(pregnant.rows[0].animal_id) === "animal-306", "consulta prenhas deveria retornar somente animal com prenhez ativa");
+
+  const inseminated = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "reproducao",
+      confidence: 0.9,
+      filters: [{ field: "status_reprodutivo", op: "eq", value: "inseminada" }],
+      aggregations: [],
+      requiresConfirmation: false
+    },
+    originalText: "quais vacas estao inseminadas?",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase
+  });
+  assert(inseminated.ok, `consulta inseminadas deveria executar: ${inseminated.reason}`);
+  const inseminatedIds = new Set(inseminated.rows.map((row) => String(row.animal_id || "")));
+  assert(!inseminatedIds.has("animal-306"), "animal prenhe nao pode aparecer como inseminada ativa");
+  assert(inseminatedIds.has("animal-307"), "protocolo deve permitir coexistencia com inseminada");
+  assert(inseminatedIds.has("animal-308"), "reteste deve permitir coexistencia com inseminada");
 });
 
 test("ActionPlan clarify 777 pariu cria pendencia e pergunta sexo", async () => {
