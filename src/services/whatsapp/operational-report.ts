@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
+import { addRanchDays, getRanchDayRange, getRanchTodayISO, resolveDefaultEventDate } from "@/lib/dates/ranch-time";
 import { formatStockUnit, normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
 
@@ -76,89 +77,74 @@ function isBotAdmin(owner: WhatsAppOwner) {
 }
 
 function dateOnly(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return getRanchTodayISO(date);
 }
 
 function dateFromReference(reference?: string) {
-  const date = new Date();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(reference || ""))) {
-    const parsed = new Date(`${reference}T12:00:00`);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  if (reference === "anteontem") date.setDate(date.getDate() - 2);
-  if (reference === "ontem") date.setDate(date.getDate() - 1);
-  if (reference === "amanha") date.setDate(date.getDate() + 1);
-  return date;
+  return resolveDefaultEventDate(reference);
 }
 
 function dayRange(reference?: string): PeriodRange {
-  const date = dateFromReference(reference);
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { start, end } = getRanchDayRange(dateFromReference(reference));
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function currentMonthRange(): PeriodRange {
-  const now = new Date();
+  const [year, month] = getRanchTodayISO().split("-").map(Number);
   return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
+    start: getRanchDayRange(`${year}-${String(month).padStart(2, "0")}-01`).start.toISOString(),
+    end: getRanchDayRange(month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`).start.toISOString()
   };
 }
 
 function previousMonthRange(): PeriodRange {
-  const now = new Date();
+  const [year, month] = getRanchTodayISO().split("-").map(Number);
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const previousYear = month === 1 ? year - 1 : year;
   return {
-    start: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
-    end: new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    start: getRanchDayRange(`${previousYear}-${String(previousMonth).padStart(2, "0")}-01`).start.toISOString(),
+    end: getRanchDayRange(`${year}-${String(month).padStart(2, "0")}-01`).start.toISOString()
   };
 }
 
 function currentYearRange(): PeriodRange {
-  const now = new Date();
+  const year = Number(getRanchTodayISO().slice(0, 4));
   return {
-    start: new Date(now.getFullYear(), 0, 1).toISOString(),
-    end: new Date(now.getFullYear() + 1, 0, 1).toISOString()
+    start: getRanchDayRange(`${year}-01-01`).start.toISOString(),
+    end: getRanchDayRange(`${year + 1}-01-01`).start.toISOString()
   };
 }
 
 function monthRange(period: string): PeriodRange {
   const [year, month] = period.split("-").map(Number);
+  const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
   return {
-    start: new Date(year, month - 1, 1).toISOString(),
-    end: new Date(year, month, 1).toISOString()
+    start: getRanchDayRange(`${year}-${String(month).padStart(2, "0")}-01`).start.toISOString(),
+    end: getRanchDayRange(next).start.toISOString()
   };
 }
 
 function lastDaysRange(days: number): PeriodRange {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  const start = new Date(end);
-  start.setDate(start.getDate() - Math.max(0, days - 1));
-  start.setHours(0, 0, 0, 0);
-  return { start: start.toISOString(), end: end.toISOString() };
+  const today = getRanchTodayISO();
+  const startDate = addRanchDays(today, -Math.max(0, days - 1));
+  return { start: getRanchDayRange(startDate).start.toISOString(), end: getRanchDayRange(today).end.toISOString() };
 }
 
 function currentWeekRange(): PeriodRange {
-  const now = new Date();
-  const start = new Date(now);
-  const day = start.getDay();
+  const today = getRanchTodayISO();
+  const [year, month, dayOfMonth] = today.split("-").map(Number);
+  const day = new Date(Date.UTC(year, month - 1, dayOfMonth, 12)).getUTCDay();
   const offset = day === 0 ? -6 : 1 - day;
-  start.setDate(start.getDate() + offset);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 7);
-  return { start: start.toISOString(), end: end.toISOString() };
+  const startDate = addRanchDays(today, offset);
+  const endDate = addRanchDays(startDate, 7);
+  return { start: getRanchDayRange(startDate).start.toISOString(), end: getRanchDayRange(endDate).start.toISOString() };
 }
 
 function previousWeekRange(): PeriodRange {
   const current = currentWeekRange();
-  const end = new Date(current.start);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 7);
-  return { start: start.toISOString(), end: end.toISOString() };
+  const currentStart = resolveDefaultEventDate(current.start);
+  const startDate = addRanchDays(currentStart, -7);
+  return { start: getRanchDayRange(startDate).start.toISOString(), end: getRanchDayRange(currentStart).start.toISOString() };
 }
 
 export function normalizeOperationalReportPeriod(period?: string) {

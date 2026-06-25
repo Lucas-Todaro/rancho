@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { formatRanchDateISO, getRanchDatetimeLocalInput, getRanchTodayISO } from "@/lib/dates/ranch-time";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -28,12 +29,8 @@ export function parseLocalDate(value: string | Date | null | undefined) {
 }
 
 export function toDateOnlyString(value: string | Date | null | undefined = new Date()) {
-  const date = parseLocalDate(value) || new Date();
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return formatRanchDateISO(value || new Date());
 }
 
 export function formatDate(value: string | null | undefined) {
@@ -67,15 +64,12 @@ export function slug(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-export function todayISO() { return toDateOnlyString(new Date()); }
+export function todayISO() { return getRanchTodayISO(); }
 
 export function nowLocalDatetime() {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
+  return getRanchDatetimeLocalInput();
 }
 
 export function currentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return getRanchTodayISO().slice(0, 7);
 }

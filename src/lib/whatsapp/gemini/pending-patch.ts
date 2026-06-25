@@ -1,3 +1,4 @@
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import type { AnyRecord } from "@/lib/types";
 import { configuredGeminiModel } from "@/lib/whatsapp/gemini/config";
 import {
@@ -148,7 +149,8 @@ function buildPendingPatchPrompt(input: PendingPatchInput) {
     `Acao pendente: ${input.pending.tipo}`,
     `Dados conhecidos: ${JSON.stringify(dados)}`,
     `Campos faltantes: ${JSON.stringify(input.pending.perguntas_faltantes || [])}`,
-    `Data atual: ${input.currentDate || new Date().toISOString().slice(0, 10)}`,
+    `Data atual do rancho: ${input.currentDate || getRanchTodayISO()}`,
+    `Data atual: ${input.currentDate || getRanchTodayISO()}`,
     `Timezone: ${input.timezone || "America/Sao_Paulo"}`,
     "",
     "Exemplos:",

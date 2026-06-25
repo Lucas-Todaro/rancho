@@ -5,6 +5,7 @@ import { listRecords } from "@/services/crud";
 import type { DataContext } from "@/lib/types";
 import { financialAmount, financialMonthKey, isFinancialExpense, isFinancialIncome } from "@/lib/finance";
 import { formatDateBRShort, toDateOnlyString } from "@/lib/utils";
+import { getRanchDayRange, getRanchTodayISO } from "@/lib/dates/ranch-time";
 
 const DASHBOARD_UPDATED_EVENT = "rancho:dashboard-updated";
 
@@ -26,25 +27,26 @@ type LoadDashboardOptions = {
 const DASHBOARD_CACHE_TTL_MS = 30 * 1000;
 
 function startOfCurrentMonthIso() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  return getRanchDayRange(`${getRanchTodayISO().slice(0, 7)}-01`).start.toISOString();
 }
 
 function startOfCurrentMonthDate() {
-  return toDateOnlyString(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  return `${getRanchTodayISO().slice(0, 7)}-01`;
 }
 
 function startOfNextMonthDate() {
-  return toDateOnlyString(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1));
+  const [year, month] = getRanchTodayISO().split("-").map(Number);
+  return month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 }
 
 function startOfRollingMonthsDate(months: number) {
-  const now = new Date();
-  return toDateOnlyString(new Date(now.getFullYear(), now.getMonth() - Math.max(0, months - 1), 1));
+  const [year, month] = getRanchTodayISO().split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 - Math.max(0, months - 1), 1, 12));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 export async function loadDashboardData(context?: DataContext, options: LoadDashboardOptions = {}) {
-  const today = toDateOnlyString(new Date());
+  const today = getRanchTodayISO();
   const month = today.slice(0, 7);
   const monthStartIso = startOfCurrentMonthIso();
   const monthStartDate = startOfCurrentMonthDate();

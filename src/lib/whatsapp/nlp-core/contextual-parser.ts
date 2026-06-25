@@ -1,3 +1,4 @@
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { cleanAnswer, hasValue, normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { firstNumber } from "@/lib/whatsapp/nlp-numbers";
 import type { ParsedRanchoMessage } from "./types";
@@ -187,7 +188,7 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "funcionario_nome" && original) dados.funcionario_nome = extractEmployeeCreationName(original) || original;
     if (expectedField === "telefone" && contextualPhone) dados.telefone = contextualPhone;
     if (expectedField === "funcao" && original) dados.funcao = original;
-    if (expectedField === "data_admissao" && original) dados.data_admissao = normalized === "2" ? new Date().toISOString().slice(0, 10) : extractDateReference(normalized) || original;
+    if (expectedField === "data_admissao" && original) dados.data_admissao = normalized === "2" ? getRanchTodayISO() : extractDateReference(normalized) || original;
     if (expectedField === "pagamento_tipo" && original) dados.pagamento_tipo = extractEmployeePaymentType(normalized);
     if (expectedField === "periodo_pagamento" && original) dados.periodo_pagamento = normalized === "1" ? "mes_atual" : normalized === "2" ? "mes_anterior" : extractEmployeePaymentPeriod(normalized);
     if (expectedField === "ponto_tipo") dados.ponto_tipo = extractPointType(normalized);

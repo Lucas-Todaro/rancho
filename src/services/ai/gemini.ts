@@ -1,3 +1,4 @@
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import {
   geminiMode as geminiRuntimeMode,
   liveGeminiBlockedResult,
@@ -428,7 +429,7 @@ export async function interpretRanchoMessageWithGemini(input: {
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   const model = geminiModel();
-  const currentDate = input.currentDate || new Date().toISOString().slice(0, 10);
+  const currentDate = input.currentDate || getRanchTodayISO();
 
   if (!apiKey) {
     geminiLog("skipped", { reason: "missing_api_key", model, messageLength: input.message.length });

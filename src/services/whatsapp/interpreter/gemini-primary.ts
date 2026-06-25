@@ -1,4 +1,5 @@
 import type { AnyRecord } from "@/lib/types";
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/action-plan/execute-action-plan";
 import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
@@ -1151,7 +1152,7 @@ async function convertActionPlanInterpretation(
       usuario_id: input.owner.usuario_id
     },
     supabase: input.supabase || null,
-    currentDate: new Date().toISOString().slice(0, 10)
+    currentDate: getRanchTodayISO()
   });
 
   if (!result.ok) {
@@ -1380,7 +1381,7 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
     rancho: {
       fazenda_id: input.owner.fazenda_id
     },
-    currentDate: new Date().toISOString().slice(0, 10),
+    currentDate: getRanchTodayISO(),
     timezone: process.env.TZ || "America/Fortaleza",
     geminiMockId: input.geminiMockId || null
   });

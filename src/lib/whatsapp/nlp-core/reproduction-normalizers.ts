@@ -1,3 +1,4 @@
+import { addRanchDays, getRanchTodayISO, parseUserDateToRanchDate } from "@/lib/dates/ranch-time";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { normalizeCalfSex } from "./birth-child";
 import { normalizeReproductiveEventType } from "./reproductive-events";
@@ -30,16 +31,13 @@ function validDateParts(year: number, month: number, day: number) {
 }
 
 function dateOnly(value?: string | Date) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return getRanchTodayISO(value);
   const text = String(value || "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : new Date().toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : getRanchTodayISO();
 }
 
 function shiftDate(isoDate: string, days: number) {
-  const date = new Date(`${isoDate}T12:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return undefined;
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+  return addRanchDays(isoDate, days);
 }
 
 export function normalizeReproductionEvent(value: unknown): NormalizedReproductionEvent | undefined {
@@ -53,6 +51,8 @@ export function normalizeDate(value: unknown, currentDate?: string | Date) {
 
   const relative = normalizeRanchoText(text);
   const baseDate = dateOnly(currentDate);
+  const ranchParsed = parseUserDateToRanchDate(relative, baseDate);
+  if (ranchParsed) return ranchParsed;
   if (relative === "hoje") return baseDate;
   if (relative === "ontem") return shiftDate(baseDate, -1);
   if (relative === "anteontem") return shiftDate(baseDate, -2);

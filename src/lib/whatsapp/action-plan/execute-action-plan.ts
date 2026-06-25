@@ -1,3 +1,4 @@
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
@@ -55,7 +56,8 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
   if (plan.action !== "create" && plan.action !== "update") return null;
   const data = plan.data || {};
   const metadata = actionPlanMetadata(plan);
-  const date = normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje";
+  const ranchCurrentDate = currentDate || getRanchTodayISO();
+  const date = normalizeDate(data.data || data.data_evento, ranchCurrentDate) || ranchCurrentDate;
 
   if (plan.domain === "producao_leite") {
     const dados = {
@@ -197,7 +199,8 @@ function reproductionMutationParsed(plan: ActionPlan, currentDate?: string): Par
   const data = plan.data || {};
   const event = normalizeReproductionEvent(data.evento || data.tipo);
   const animalRef = String(data.animal_ref || data.mae_ref || "").trim();
-  const date = normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje";
+  const ranchCurrentDate = currentDate || getRanchTodayISO();
+  const date = normalizeDate(data.data || data.data_evento, ranchCurrentDate) || ranchCurrentDate;
   if (!event || !animalRef) return null;
 
   const actionPlanData = {
@@ -265,7 +268,7 @@ function reproductionPartoClarifyParsed(plan: ActionPlan, currentDate?: string):
     animal_codigo: animalRef,
     mae_ref: animalRef,
     evento_reprodutivo_tipo: "parto",
-    data_referencia: normalizeDate(data.data || data.data_evento, currentDate) || currentDate || "hoje",
+    data_referencia: normalizeDate(data.data || data.data_evento, currentDate || getRanchTodayISO()) || currentDate || getRanchTodayISO(),
     parto_cria_cadastro: true,
     parto_perguntar_sexo_direto: true,
     pai_nao_informado: true,

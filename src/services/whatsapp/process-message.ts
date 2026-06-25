@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import {
   isOversizedText,
@@ -240,12 +241,13 @@ function nowIso() {
   return new Date().toISOString();
 }
 function dateOnly(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return getRanchTodayISO(date);
 }
 function monthStartFromPaymentPeriod(period?: string) {
-  const date = new Date();
-  if (period === "mes_anterior") date.setMonth(date.getMonth() - 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+  const [year, month] = getRanchTodayISO().split("-").map(Number);
+  if (period !== "mes_anterior") return `${year}-${String(month).padStart(2, "0")}-01`;
+  const previous = new Date(Date.UTC(year, month - 2, 1, 12));
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function monthKeyFromDate(value: unknown) {
@@ -3844,7 +3846,7 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
       text,
       pending,
       status: session.etapa,
-      currentDate: new Date().toISOString().slice(0, 10),
+      currentDate: getRanchTodayISO(),
       timezone: "America/Sao_Paulo"
     });
     if (patchResult.ok) {

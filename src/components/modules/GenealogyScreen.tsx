@@ -11,6 +11,7 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { createRecord, listRecords, subscribeTable, updateRecord } from "@/services/crud";
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { syncAnimalPhaseAfterEvent } from "@/services/animal-lifecycle";
 import { withAsyncTimeout } from "@/lib/async";
 
@@ -72,7 +73,7 @@ function formatDateLabel(value: unknown) {
 }
 
 function todayDateInput() {
-  return new Date().toISOString().slice(0, 10);
+  return getRanchTodayISO();
 }
 
 function normalize(value: unknown) {

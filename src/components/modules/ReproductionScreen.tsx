@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/auth-context";
 import { withAsyncTimeout } from "@/lib/async";
 import { getFriendlyErrorMessage } from "@/lib/errors";
 import { canManageData, PERMISSION_DENIED_MESSAGE } from "@/lib/permissions";
+import { ranchDateToInstant } from "@/lib/dates/ranch-time";
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord, RelationOption } from "@/lib/types";
 import { cn, formatCurrency, formatDate, nowLocalDatetime, parseLocalDate } from "@/lib/utils";
@@ -45,8 +46,8 @@ type Draft = {
 };
 
 function eventDateForPayload(value: string) {
-  const date = value ? new Date(value) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  const [date, time] = String(value || "").split("T");
+  return ranchDateToInstant(date || undefined, time || undefined).toISOString();
 }
 
 const ANIMAL_SELECT = [

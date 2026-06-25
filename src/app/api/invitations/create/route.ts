@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TABLES } from "@/lib/tables";
+import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import {
   canInviteRole,
   createInvitationToken,
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
       email,
       contato_whatsapp: null,
       salario_base: 0,
-      data_admissao: new Date().toISOString().slice(0, 10),
+      data_admissao: getRanchTodayISO(),
       carga_horaria_mensal: 220,
       valor_hora_extra: 0,
       tipo_acesso: "sistema",

@@ -1,4 +1,5 @@
 import type { AnyRecord } from "@/lib/types";
+import { getRanchTodayISO, parseUserDateToRanchDate } from "@/lib/dates/ranch-time";
 import type { ImportTableActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { validateImportTableActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
@@ -85,6 +86,8 @@ function parseNumber(value: unknown) {
 function parseDate(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return null;
+  const ranchDate = parseUserDateToRanchDate(text);
+  if (ranchDate) return ranchDate;
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   const dateMatch = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
   if (dateMatch) {
@@ -120,6 +123,7 @@ function mappedRows(plan: ImportTableActionPlan, domain: DomainManifestEntry, pa
       const rawValue = indexInRow >= 0 ? cells[indexInRow] : "";
       values[field] = rawValue;
     }
+    if (domain.fields.data && !String(values.data || "").trim()) values.data = getRanchTodayISO();
     for (const [field, value] of Object.entries(values)) {
       parsedValues[field] = parseValue(domain, field, value);
     }
@@ -304,6 +308,7 @@ function importRowsFromPlanData(plan: ImportTableActionPlan, domain: DomainManif
   const rows = Array.isArray(plan.data?.rows) ? plan.data.rows : [];
   return rows.map((row, index) => {
     const values = { ...(row || {}) };
+    if (domain.fields.data && !String(values.data || "").trim()) values.data = getRanchTodayISO();
     const parsedValues: AnyRecord = {};
     for (const [field, value] of Object.entries(values)) {
       parsedValues[field] = parseValue(domain, field, value);

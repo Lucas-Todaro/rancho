@@ -1,3 +1,4 @@
+import { getRanchTodayISO, RANCH_TIMEZONE } from "@/lib/dates/ranch-time";
 import {
   summarizeDomainManifestForPrompt,
   type DomainManifest,
@@ -155,7 +156,8 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Exemplos de contrato:",
     JSON.stringify(EXAMPLES, null, 2),
     "",
-    `Data atual: ${input.currentDate || new Date().toISOString().slice(0, 10)}`,
-    `Timezone: ${input.timezone || "America/Sao_Paulo"}`
+    `Data atual do rancho: ${input.currentDate || getRanchTodayISO()}`,
+    `Data atual: ${input.currentDate || getRanchTodayISO()}`,
+    `Timezone: ${input.timezone || RANCH_TIMEZONE}`
   ].join("\n");
 }

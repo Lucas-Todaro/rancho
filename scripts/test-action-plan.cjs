@@ -83,6 +83,10 @@ const { TABLES } = require("../src/lib/tables.ts");
 const { animalReproductionStatus } = require("../src/components/modules/ReproductionScreen.tsx");
 const { realSex } = require("../src/components/modules/GenealogyScreen.tsx");
 const {
+  getRanchDayRange,
+  getRanchTodayISO
+} = require("../src/lib/dates/ranch-time.ts");
+const {
   polishBotResponse,
   userFacingCodeLabel
 } = require("../src/lib/whatsapp/user-facing-text.ts");
@@ -344,6 +348,8 @@ test("manifest nao expoe campos de escopo interno", () => {
 test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   const prompt = buildActionPlanPromptFragment({ currentDate: "2026-06-18" });
   assert(prompt.includes("ActionPlan prompt version"), "prompt sem versao");
+  assert(prompt.includes("Data atual do rancho: 2026-06-18"), "prompt sem data local do rancho");
+  assert(prompt.includes("Timezone: America/Sao_Paulo"), "prompt sem timezone oficial");
   assert(prompt.includes("Domain manifest"), "prompt sem manifest");
   assert(prompt.includes("delete ou update em massa"), "prompt sem regra de delete");
   assert(prompt.includes("columnMapping"), "prompt sem regra de tabela");
@@ -358,6 +364,69 @@ test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   assert(!systemPrompt.includes("ACTION_DESCRIPTIONS"), "prompt principal vazou ACTION_DESCRIPTIONS");
   assert(!systemPrompt.includes("LEGACY_ACTION_DESCRIPTIONS"), "prompt principal vazou LEGACY_ACTION_DESCRIPTIONS");
   assert(!systemPrompt.includes("Acoes suportadas:"), "prompt principal parece usar contrato legado");
+});
+
+test("data operacional do Rancho usa America/Sao_Paulo em vez de UTC puro", async () => {
+  const utcLateNight = new Date("2026-06-25T01:30:00.000Z");
+  const ranchToday = getRanchTodayISO(utcLateNight);
+  assert(ranchToday === "2026-06-24", `hoje do rancho esperado 2026-06-24, recebido ${ranchToday}`);
+
+  const range = getRanchDayRange("2026-06-24");
+  assert(range.start.toISOString() === "2026-06-24T03:00:00.000Z", `inicio GMT-3 incorreto: ${range.start.toISOString()}`);
+  assert(range.end.toISOString() === "2026-06-25T03:00:00.000Z", `fim GMT-3 incorreto: ${range.end.toISOString()}`);
+
+  const milk = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "producao_leite",
+      confidence: 0.9,
+      data: { animal_ref: "Mimosa", litros: 12 },
+      requiresConfirmation: true
+    },
+    text: "Mimosa deu 12 litros",
+    owner: ADMIN_OWNER,
+    currentDate: ranchToday
+  });
+  assert(milk.ok, `producao sem data deveria executar: ${milk.reason}`);
+  assert(milk.parsed.dados?.data_referencia === "2026-06-24", `producao sem data deveria usar hoje local, recebeu ${milk.parsed.dados?.data_referencia}`);
+
+  const finance = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "financeiro",
+      confidence: 0.9,
+      data: { tipo: "despesa", categoria: "racao", valor: 500 },
+      requiresConfirmation: true
+    },
+    text: "comprei racao por 500 reais",
+    owner: ADMIN_OWNER,
+    currentDate: ranchToday
+  });
+  assert(finance.ok, `financeiro sem data deveria executar: ${finance.reason}`);
+  assert(finance.parsed.dados?.data_referencia === "2026-06-24", `financeiro sem data deveria usar hoje local, recebeu ${finance.parsed.dados?.data_referencia}`);
+});
+
+test("import_table sem data aplica hoje local do Rancho", async () => {
+  const result = await executeImportTableActionPlan({
+    text: "177:PROTOCOLO\n094:PROTOCOLO",
+    plan: {
+      action: "import_table",
+      domain: "reproducao",
+      confidence: 0.92,
+      table: {
+        hasHeader: false,
+        separator: ":",
+        columnMapping: { animal_ref: 0, evento: 1 },
+        defaultFields: {},
+        ignoredColumns: [],
+        ambiguousColumns: []
+      },
+      requiresConfirmation: true
+    }
+  });
+  assert(result.ok, `import_table sem data deveria executar: ${result.reason}`);
+  assert(result.rows.length === 2, `import_table deveria preservar 2 linhas, recebeu ${result.rows.length}`);
+  assert(result.rows.every((row) => row.data_referencia === getRanchTodayISO()), "linhas importadas sem data deveriam usar hoje local do Rancho");
 });
 
 test("validator marca intent legado como fallback quando ActionPlan esta ligado", async () => {
@@ -388,7 +457,7 @@ test("fixtures ActionPlan obrigatorias validam ou bloqueiam corretamente", () =>
     const parsedTable = fixture.parsedTable || (fixture.plan.action === "import_table" && fixture.input
       ? parseStructuredTableForActionPlan(fixture.input, fixture.plan.table?.separator, fixture.plan.table?.hasHeader)
       : undefined);
-    const result = assertValid(fixture.name, fixture.plan, parsedTable);
+    const result = assertValid(fixture.name, clone(fixture.plan), parsedTable);
     if (fixture.plan.action === "clarify" || fixture.plan.action === "block") {
       assert(result.executable === false, `${fixture.name}: clarify/block nao deve ser executavel`);
     }

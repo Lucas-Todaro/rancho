@@ -1,5 +1,6 @@
 import type { AnyRecord } from "@/lib/types";
 import { TABLES } from "@/lib/tables";
+import { addRanchDays, getRanchDayRange, getRanchTodayISO } from "@/lib/dates/ranch-time";
 import type { QueryActionPlan, FilterPlan, AggregationPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { getDomainManifest, type DomainFieldDefinition, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
@@ -71,17 +72,21 @@ const QUERY_INTENT_BY_DOMAIN: Record<string, RanchoIntent> = {
 };
 
 function dateOnly(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return getRanchTodayISO(value);
 }
 
 function parseDate(value: unknown) {
   if (!value) return null;
   const text = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return new Date(`${text.slice(0, 10)}T12:00:00.000Z`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return getRanchDayRange(text).start;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(text)) {
     const [day, month, rawYear] = text.split(/[/-]/).map(Number);
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-    return new Date(Date.UTC(year, month - 1, day, 12));
+    return getRanchDayRange(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`).start;
   }
   const parsed = new Date(text);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -89,7 +94,17 @@ function parseDate(value: unknown) {
 
 function currentDate(input?: string) {
   const parsed = parseDate(input || "");
-  return parsed || new Date();
+  return parsed || getRanchDayRange(getRanchTodayISO()).start;
+}
+
+function monthStart(dateISO: string) {
+  return `${dateISO.slice(0, 7)}-01`;
+}
+
+function addMonths(dateISO: string, months: number) {
+  const [year, month] = dateISO.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + months, 1, 12));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function monthIndex(value: unknown) {
@@ -116,38 +131,34 @@ function normalizedText(value: unknown) {
 }
 
 function dateRangeFor(filter: FilterPlan, baseDate: Date) {
-  const end = new Date(baseDate);
-  end.setUTCHours(23, 59, 59, 999);
+  const baseISO = dateOnly(baseDate);
+  const end = getRanchDayRange(baseISO).end;
 
   if (filter.op === "last_days") {
-    const start = new Date(end);
-    start.setUTCDate(start.getUTCDate() - Math.max(1, Number(filter.value || 1)));
-    return { start, end };
+    const startDate = addRanchDays(baseISO, -Math.max(0, Number(filter.value || 1) - 1));
+    return { start: getRanchDayRange(startDate).start, end };
   }
 
   if (filter.op === "last_months") {
-    const start = new Date(end);
-    start.setUTCMonth(start.getUTCMonth() - Math.max(1, Number(filter.value || 1)));
-    return { start, end };
+    const startDate = addMonths(monthStart(baseISO), -Math.max(0, Number(filter.value || 1) - 1));
+    return { start: getRanchDayRange(startDate).start, end };
   }
 
   if (filter.op === "current_month") {
-    const start = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), 1));
-    const rangeEnd = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth() + 1, 1));
-    return { start, end: rangeEnd };
+    const startDate = monthStart(baseISO);
+    return { start: getRanchDayRange(startDate).start, end: getRanchDayRange(addMonths(startDate, 1)).start };
   }
 
   if (filter.op === "current_year") {
-    const start = new Date(Date.UTC(baseDate.getUTCFullYear(), 0, 1));
-    const rangeEnd = new Date(Date.UTC(baseDate.getUTCFullYear() + 1, 0, 1));
-    return { start, end: rangeEnd };
+    const year = baseISO.slice(0, 4);
+    return { start: getRanchDayRange(`${year}-01-01`).start, end: getRanchDayRange(`${Number(year) + 1}-01-01`).start };
   }
 
   if (filter.op === "since") {
     const month = monthIndex(filter.value);
     const start = month >= 0
-      ? new Date(Date.UTC(baseDate.getUTCFullYear(), month, 1))
-      : parseDate(filter.value) || new Date(Date.UTC(baseDate.getUTCFullYear(), 0, 1));
+      ? getRanchDayRange(`${baseISO.slice(0, 4)}-${String(month + 1).padStart(2, "0")}-01`).start
+      : parseDate(filter.value) || getRanchDayRange(`${baseISO.slice(0, 4)}-01-01`).start;
     return { start, end };
   }
 
@@ -157,7 +168,7 @@ function dateRangeFor(filter: FilterPlan, baseDate: Date) {
     const to = Array.isArray(raw) ? raw[1] : raw?.to;
     const start = parseDate(from);
     const rangeEnd = parseDate(to);
-    if (start && rangeEnd) return { start, end: rangeEnd };
+    if (start && rangeEnd) return { start, end: getRanchDayRange(dateOnly(rangeEnd)).end };
   }
 
   return null;
