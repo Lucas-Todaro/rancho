@@ -458,6 +458,36 @@ test("OpenRouter classifica 401 503 timeout e JSON invalido", async () => {
   });
 });
 
+test("OpenRouter tenta novamente sem response_format quando conteudo vem vazio", async () => {
+  const bodies = [];
+  await withInterpreterEnv({
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "qwen/test-model",
+    OPENROUTER_API_KEY: "or-test-key",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body || "{}")));
+      if (bodies.length === 1) {
+        return new Response(JSON.stringify({
+          choices: [{ finish_reason: "stop", message: { content: "" } }]
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ finish_reason: "stop", message: { content: "{\"ok\":true}" } }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }, async () => {
+      const result = await generateStructuredAI({ purpose: "action_plan", userPrompt: "json" });
+      assert(result.ok, `OpenRouter deveria recuperar resposta vazia: ${result.ok ? "" : result.reason}`);
+      assert(result.rawText === "{\"ok\":true}", "retry sem response_format nao retornou o JSON esperado");
+    });
+  });
+
+  assert(bodies.length === 2, `esperava duas chamadas OpenRouter, recebeu ${bodies.length}`);
+  assert(bodies[0].response_format?.type === "json_object", "primeira chamada deveria usar response_format");
+  assert(!Object.prototype.hasOwnProperty.call(bodies[1], "response_format"), "retry nao deveria enviar response_format");
+});
+
 test("OpenRouter ActionPlan usa validator e executor atuais", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",

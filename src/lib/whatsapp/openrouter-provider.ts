@@ -2,8 +2,12 @@ import { parseJsonObjectText, type GenerateStructuredResult, type ProviderReques
 
 type OpenRouterResponse = {
   choices?: Array<{
+    finish_reason?: string;
+    native_finish_reason?: string;
     message?: {
       content?: string | Array<{ type?: string; text?: string }>;
+      refusal?: string | null;
+      reasoning?: string | null;
     };
   }>;
   usage?: {
@@ -65,6 +69,25 @@ function openRouterText(data: OpenRouterResponse) {
   return "";
 }
 
+function safeOpenRouterDiagnostic(data: OpenRouterResponse) {
+  return JSON.stringify({
+    choices: (data.choices || []).slice(0, 2).map((choice) => {
+      const content = choice.message?.content;
+      return {
+        finish_reason: choice.finish_reason || null,
+        native_finish_reason: choice.native_finish_reason || null,
+        message_keys: choice.message ? Object.keys(choice.message).filter((key) => key !== "content" && key !== "reasoning") : [],
+        content_type: Array.isArray(content) ? "array" : typeof content,
+        content_length: typeof content === "string" ? content.length : Array.isArray(content) ? content.length : 0,
+        has_refusal: Boolean(choice.message?.refusal),
+        has_reasoning: Boolean(choice.message?.reasoning)
+      };
+    }),
+    usage: data.usage || null,
+    error: data.error ? { message: data.error.message || null, code: data.error.code || null } : null
+  }).slice(0, 1200);
+}
+
 function shouldRetryWithoutResponseFormat(status: number, data: OpenRouterResponse) {
   if (status !== 400) return false;
   return /response_format|json_object|schema|format/i.test(String(data.error?.message || ""));
@@ -121,9 +144,34 @@ export async function generateStructuredWithOpenRouter(input: ProviderRequest): 
       };
     }
 
-    const rawText = openRouterText(data);
+    let rawText = openRouterText(data);
     if (!rawText) {
-      return { ok: false, provider: "openrouter", model, reason: "empty_response", message: "OpenRouter retornou resposta vazia." };
+      response = await requestOpenRouter(input, apiKey, false, controller.signal);
+      data = await response.json().catch(() => ({})) as OpenRouterResponse;
+      if (!response.ok) {
+        const rawErrorText = JSON.stringify(data).slice(0, 1200);
+        return {
+          ok: false,
+          provider: "openrouter",
+          model,
+          reason: classifyOpenRouterHttpStatus(response.status),
+          status: response.status,
+          message: data.error?.message || "Erro ao chamar OpenRouter.",
+          rawText: rawErrorText
+        };
+      }
+      rawText = openRouterText(data);
+    }
+
+    if (!rawText) {
+      return {
+        ok: false,
+        provider: "openrouter",
+        model,
+        reason: "empty_response",
+        message: "OpenRouter retornou resposta vazia.",
+        rawText: safeOpenRouterDiagnostic(data)
+      };
     }
 
     try {
