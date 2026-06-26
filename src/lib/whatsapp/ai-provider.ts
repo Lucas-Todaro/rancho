@@ -17,11 +17,12 @@ export { parseJsonObjectText } from "@/lib/whatsapp/ai-provider-types";
 export function configuredAIProviderName(): AIProviderName {
   const raw = String(process.env.BOT_AI_PROVIDER || "").trim().toLowerCase();
   if (raw === "openrouter") return "openrouter";
+  if (!raw && process.env.OPENROUTER_API_KEY?.trim()) return "openrouter";
   return "gemini";
 }
 
 export function configuredAIModel(provider: AIProviderName = configuredAIProviderName()) {
-  if (provider === "openrouter") return String(process.env.BOT_AI_MODEL || "").trim();
+  if (provider === "openrouter") return String(process.env.BOT_AI_MODEL || process.env.OPENROUTER_MODEL || "qwen/qwen3-32b").trim();
   return configuredGeminiModel();
 }
 

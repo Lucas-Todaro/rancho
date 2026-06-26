@@ -360,7 +360,7 @@ test("manifest nao expoe campos de escopo interno", () => {
 });
 
 test("AI provider usa Gemini como padrao e respeita env explicito", async () => {
-  await withInterpreterEnv({ BOT_AI_PROVIDER: undefined, BOT_AI_MODEL: undefined, GEMINI_MODEL: undefined }, async () => {
+  await withInterpreterEnv({ BOT_AI_PROVIDER: undefined, BOT_AI_MODEL: undefined, OPENROUTER_API_KEY: undefined, OPENROUTER_MODEL: undefined, GEMINI_MODEL: undefined }, async () => {
     assert(configuredAIProviderName() === "gemini", "provider padrao deveria ser Gemini");
     assert(configuredAIModel() === "gemini-2.5-flash", "modelo Gemini padrao incorreto");
   });
@@ -373,6 +373,11 @@ test("AI provider usa Gemini como padrao e respeita env explicito", async () => 
   await withInterpreterEnv({ BOT_AI_PROVIDER: "openrouter", BOT_AI_MODEL: "qwen/test-model" }, async () => {
     assert(configuredAIProviderName() === "openrouter", "BOT_AI_PROVIDER=openrouter deveria selecionar OpenRouter");
     assert(configuredAIModel() === "qwen/test-model", "OpenRouter deveria usar BOT_AI_MODEL");
+  });
+
+  await withInterpreterEnv({ BOT_AI_PROVIDER: undefined, BOT_AI_MODEL: undefined, OPENROUTER_API_KEY: "or-test-key", OPENROUTER_MODEL: "qwen/alias-model" }, async () => {
+    assert(configuredAIProviderName() === "openrouter", "OPENROUTER_API_KEY deveria selecionar OpenRouter quando BOT_AI_PROVIDER nao vier");
+    assert(configuredAIModel() === "qwen/alias-model", "OpenRouter deveria aceitar OPENROUTER_MODEL como alias");
   });
 });
 
