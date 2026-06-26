@@ -78,16 +78,16 @@ const EXAMPLES = [
     }
   },
   {
-    user: "177:PROTOCOLO\n094:PROTOCOLO\n053:INSEMINACAO\n249:PROTOCOLO\n205:RETESTE",
+    user: "177:PROTOCOLO\n094:PARTO\n053:INSEMINACAO\n249:RETESTE\n520:EMPRENHOU",
     plan: {
       action: "import_table", domain: "reproducao", confidence: 0.92,
       data: {
         rows: [
           { animal_ref: "177", evento: "protocolo" },
-          { animal_ref: "094", evento: "protocolo" },
+          { animal_ref: "094", evento: "parto" },
           { animal_ref: "053", evento: "inseminacao" },
-          { animal_ref: "249", evento: "protocolo" },
-          { animal_ref: "205", evento: "reteste" }
+          { animal_ref: "249", evento: "reteste" },
+          { animal_ref: "520", evento: "prenhez" }
         ]
       },
       requiresConfirmation: true
@@ -143,10 +143,12 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Listas codigo:evento de reproducao devem usar import_table domain=reproducao com data.rows [{animal_ref, evento}] ou table hasHeader=false separator=':' columnMapping animal_ref=0 evento=1.",
     "Eventos aceitos nessas listas: protocolo, inseminacao, reteste, parto, pre_parto, cio, prenhez. requiresConfirmation deve ser true.",
     "Listas do tipo codigo:evento com PROTOCOLO, EM PROTOCOLO, INSEMINACAO, INSEMINAÇÃO, RETESTE, EM RETESTE, PARIU, PARTO ou PRE PARTO devem usar import_table domain=reproducao, hasHeader=false, separator=':', columnMapping animal_ref=0 e evento=1, com defaultFields.data='hoje' quando nao houver data explicita.",
+    "Em import_table de reproducao, parto sem dados da cria ainda e uma linha valida de evento da mae. Nao use clarify para cada parto da tabela.",
+    "Em import_table de reproducao, nao invente sexo, codigo, nome ou pai da cria. Se a tabela trouxer cria_sexo, cria_codigo, cria_nome ou pai_ref, preencha esses campos; se nao trouxer, deixe ausente para o backend tratar complemento em lote.",
     "Vacina, vermifugo, medicamento, antibiotico e tratamento usam create no dominio saude_sanitario, operation=registro_sanitario.",
     "Em saude_sanitario use animal_ref, item, quantidade, unidade, tipo e data. Normalize vermifugo e antibiotico como medicamento ou tratamento sem inventar dose.",
     "Se houver lote_ref sem animal individual e o plano nao puder ser executado por lote com seguranca, use clarify. Nao gere baixa de estoque implicitamente.",
-    "Para parto sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
+    "Para parto individual sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
     "Parida e recem-parida sao estados derivados de evento de parto; nao altere categoria, lote ou fase produtiva.",
     "Protocolo de inseminacao normaliza para em_protocolo e nova tentativa ou retorno de inseminacao normaliza para em_reteste, sem inventar resultado ou prenhez.",
     "",

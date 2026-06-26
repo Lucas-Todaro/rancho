@@ -92,9 +92,39 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
 
     const existingKeys = await existingAnimalEventKeysForImport(supabase, owner);
     let saved = 0;
+    let savedWithChild = 0;
+    let skippedChildRows = 0;
     let skippedDuplicates = 0;
 
     for (const row of rows) {
+      if (row.evento_tipo === "parto" && row.parto_cria_cadastro && row.cria_sexo && row.cria_codigo) {
+        const partoDados = {
+          animal_codigo: row.animal_codigo,
+          data_referencia: row.data_referencia || "hoje",
+          parto_cria_cadastro: true,
+          cria_sexo: row.cria_sexo,
+          cria_codigo: row.cria_codigo,
+          cria_nome: row.cria_nome || undefined,
+          cria_categoria: "bezerro",
+          pai_ref: row.pai_ref || undefined
+        };
+        const partoPending = refreshRanchoMessage({
+          tipo: "PARTO",
+          confianca: 0.94,
+          dados: partoDados,
+          resumo: "",
+          perguntas_faltantes: []
+        }, partoDados);
+        const result = await saveConfirmedRecord(supabase, owner, partoPending);
+        if (result.savedReal) {
+          saved += 1;
+          savedWithChild += 1;
+        } else {
+          skippedChildRows += 1;
+        }
+        continue;
+      }
+
       const key = importedTableEventKey(row);
       if (existingKeys.has(key)) {
         skippedDuplicates += 1;
@@ -116,12 +146,19 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       saved += 1;
     }
 
+    if (!saved && skippedChildRows) {
+      return { response: `Nenhum evento foi salvo porque ${skippedChildRows} parto(s) com cria precisam de revisao antes do cadastro da cria.` };
+    }
+
     if (!saved) {
       return { response: `Nada novo foi importado. ${skippedDuplicates} linha(s) já estavam registradas como duplicadas.` };
     }
 
     const duplicateText = skippedDuplicates ?`\nDuplicadas ignoradas no salvamento: ${skippedDuplicates}.` : "";
-    return realSaveResult(`Pronto, ${saved} evento(s) do rebanho importados com sucesso.${duplicateText}`, [TABLES.eventosAnimal]);
+    const childText = savedWithChild ?`\nPartos com cria cadastrada: ${savedWithChild}.` : "";
+    const childSkippedText = skippedChildRows ?`\nPartos com cria completa que precisam revisao: ${skippedChildRows}.` : "";
+    const savedTables = savedWithChild ?[TABLES.eventosAnimal, TABLES.animais] : [TABLES.eventosAnimal];
+    return realSaveResult(`Pronto, ${saved} evento(s) do rebanho importados com sucesso.${childText}${childSkippedText}${duplicateText}`, savedTables);
   }
 
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA") {

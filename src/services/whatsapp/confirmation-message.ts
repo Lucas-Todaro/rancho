@@ -297,11 +297,13 @@ export function tabularImportSummary(parsed: ParsedRanchoMessage) {
     total: Number(summary.total || dados.total_linhas || rows.length || 0),
     ready: Number(summary.prontas ?? ready.length ?? 0),
     invalid: Number(summary.invalidas ?? invalid.length ?? 0),
+    review: Number(summary.revisao || dados.total_linhas_needs_review || 0),
     duplicates: Number(summary.duplicadas || 0),
     notFound: Number(summary.animais_nao_encontrados || 0),
     missingDate: Number(summary.datas_ausentes || 0),
     invalidDate: Number(summary.datas_invalidas || 0),
     unknownType: Number(summary.tipos_desconhecidos || 0),
+    births: (summary.partos || dados.resumo_partos || {}) as AnyRecord,
     eventCounts: (summary.por_tipo || dados.contagem_eventos_parse || {}) as Record<string, number>
   };
 }
@@ -396,6 +398,10 @@ export function tabularReadyEventDetails(parsed: ParsedRanchoMessage, maxRows = 
     `- ${row.animal_codigo || row.animal_codigo_original || "Animal"}`,
     row.evento_label || row.evento_normalizado || row.evento_tipo || "evento",
     row.data_referencia || row.data_original || "data nao informada",
+    row.evento_tipo === "parto" && row.child_status === "complete" ? `cria ${row.cria_sexo || ""} ${row.cria_codigo || ""}`.trim() : "",
+    row.evento_tipo === "parto" && row.child_status === "pending_child_optional" ? "sem cria cadastrada agora" : "",
+    row.evento_tipo === "parto" && row.child_status === "missing_child_code" ? "falta codigo da cria" : "",
+    row.evento_tipo === "parto" && row.child_status === "missing_child_sex" ? "falta sexo da cria" : "",
     row.observacoes || ""
   ].filter(Boolean).join(" | "));
   const total = tabularImportRows(parsed).length;
@@ -408,6 +414,20 @@ export function tabularReadyEventDetails(parsed: ParsedRanchoMessage, maxRows = 
 export function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
   const summary = tabularImportSummary(parsed);
   const counts = tabularImportCountText(summary.eventCounts);
+  const preview = String(parsed.dados?.action_plan_preview || "").trim();
+  const previewBlock = preview ?`\n\nResumo do lote:\n${preview}` : "";
+  const births = summary.births || {};
+  const birthBlock = Number(births.total_partos || 0) ?[
+    "",
+    "Partos no lote:",
+    `- Total: ${Number(births.total_partos || 0)}.`,
+    `- Com cria completa: ${Number(births.partos_com_cria_completa || 0)}.`,
+    `- Sem cria cadastrada agora: ${Number(births.partos_sem_cria_cadastrada || 0)}.`,
+    `- Com dados de cria faltando: ${Number(births.partos_com_cria_pendente || 0)}.`,
+    Number(births.partos_sem_cria_cadastrada || 0) || Number(births.partos_com_cria_pendente || 0)
+      ? "Para complementar em lote, envie linhas como: 094;femea;C-094;T-50 ou 398;sem cria."
+      : ""
+  ].filter(Boolean).join("\n") : "";
   const issueText = tabularImportIssueDetails(parsed, 6);
   const issueBlock = issueText ?`\n\nLinhas que nao vou importar agora:\n${issueText}` : "";
   const duplicateText = summary.duplicates ?`Duplicadas ignoradas: ${summary.duplicates}.` : "";
@@ -430,6 +450,8 @@ export function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
       missingCodesText,
       dateText,
       typeText,
+      previewBlock,
+      birthBlock,
       readyBlock,
       issueBlock,
       "",
@@ -454,6 +476,8 @@ export function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
     notFoundText,
     dateText,
     typeText,
+    previewBlock,
+    birthBlock,
     readyBlock,
     issueBlock,
     "",

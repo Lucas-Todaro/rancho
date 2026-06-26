@@ -3,6 +3,7 @@ import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
+import { applyReproductionImportChildComplement } from "@/lib/whatsapp/action-plan/reproduction-import-child";
 import {
   isOversizedText,
   isUnsafeOperationalMessage,
@@ -3974,6 +3975,19 @@ async function handleConfirmation(
     }
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: animalPending } });
     return confirmationText(animalPending);
+  }
+
+  if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    const childPatched = applyReproductionImportChildComplement(pending, text);
+    if (childPatched) {
+      const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, childPatched);
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+      botTabularImportLog("birth_child_batch_patch_applied", owner, {
+        ...tabularImportSummary(next),
+        partos: next.dados?.resumo_partos || null
+      });
+      return `Atualizei os dados das crias no lote.\n${confirmationText(next)}`;
+    }
   }
 
   const wantsIssueDetails = (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && (isTabularImportIssueCommand(command) || command === eventIssueNumber))

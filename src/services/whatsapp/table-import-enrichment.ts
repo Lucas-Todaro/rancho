@@ -1,5 +1,6 @@
 import { TABLES } from "@/lib/tables";
 import type { AnyRecord } from "@/lib/types";
+import { reproductionImportChildSummary } from "@/lib/whatsapp/action-plan/reproduction-import-child";
 import { normalizeCatalogText, resolveAnimalIdentifier, resolveStockItem } from "@/lib/whatsapp/catalog";
 import { animalStatusValue, isAnimalInactiveForBot } from "@/lib/whatsapp/animal-status";
 import { refreshRanchoMessage, type ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
@@ -107,10 +108,13 @@ export async function enrichTabularAnimalEventImport(supabase: SupabaseAdmin, ow
   dados.linhas_validadas = validatedRows;
   dados.linhas_prontas = readyRows;
   dados.linhas_invalidas = invalidRows;
+  dados.resumo_partos = reproductionImportChildSummary(validatedRows);
   dados.resumo_validacao = {
     total: validatedRows.length,
     prontas: readyRows.length,
     invalidas: invalidRows.length,
+    revisao: validatedRows.filter((row) => Array.isArray(row.avisos) && row.avisos.length > 0).length,
+    partos: dados.resumo_partos,
     duplicadas: countIssue("duplicado"),
     animais_nao_encontrados: countIssue("animal_nao_encontrado"),
     animais_ambiguos: countIssue("animal_ambiguo"),

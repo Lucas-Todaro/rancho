@@ -6,6 +6,11 @@ import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemi
 import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
 import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 import {
+  classifyReproductionImportChild,
+  reproductionImportChildSummary,
+  warningCodesForChildStatus
+} from "@/lib/whatsapp/action-plan/reproduction-import-child";
+import {
   normalizeReproductiveEventType,
   reproductiveEventDbType,
   reproductiveEventLabel
@@ -225,13 +230,20 @@ function reproductionPreview(rows: AnyRecord[]) {
     .filter(([kind]) => kind !== "desconhecido")
     .map(([kind, count]) => `${count} ${labels[kind] || kind}`)
     .join(", ");
-  const birthsWithoutChild = rows.filter((row) => (
-    row.evento_tipo === "parto" && Array.isArray(row.avisos) && row.avisos.includes("dados_da_cria_ausentes")
-  )).length;
-  const warning = birthsWithoutChild
-    ? ` ${birthsWithoutChild === 1 ? "O parto nao tem" : `${birthsWithoutChild} partos nao tem`} dados da cria; posso registrar o evento agora e cadastrar a cria depois.`
-    : "";
-  return `Li uma tabela de reproducao com ${rows.length} registro(s)${summary ? `: ${summary}` : "."}.${warning}`.replace("..", ".");
+  const childSummary = reproductionImportChildSummary(rows);
+  const birthLines = childSummary.total_partos ? [
+    `Partos encontrados: ${childSummary.total_partos}.`,
+    `Com cria completa: ${childSummary.partos_com_cria_completa}.`,
+    `Sem cria cadastrada agora: ${childSummary.partos_sem_cria_cadastrada}.`,
+    `Com dados de cria faltando: ${childSummary.partos_com_cria_pendente}.`,
+    childSummary.partos_sem_cria_cadastrada || childSummary.partos_com_cria_pendente
+      ? "Voce pode confirmar para salvar os partos das maes, ou complementar as crias em lote no formato: 094;femea;C-094;T-50"
+      : ""
+  ].filter(Boolean).join(" ") : "";
+  return [
+    `Li uma tabela de reproducao com ${rows.length} registro(s)${summary ? `: ${summary}` : "."}`,
+    birthLines
+  ].filter(Boolean).join(" ").replace("..", ".");
 }
 
 function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[], text: string) {
@@ -244,11 +256,19 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     const dateOriginal = mappedDate || embeddedDate || "hoje";
     const date = parseDate(dateOriginal);
     const problems: string[] = [];
-    const warnings: string[] = [];
+    let warnings: string[] = [];
     if (!animalRef) problems.push("animal_sem_codigo");
     if (!eventKind) problems.push("tipo_evento_desconhecido");
     if (!date) problems.push("data_invalida");
-    if (eventKind === "parto") warnings.push("dados_da_cria_ausentes");
+    const child = classifyReproductionImportChild({
+      evento_tipo: eventKind,
+      cria_sexo: row.parsedValues?.cria_sexo || row.values?.cria_sexo || row.parsedValues?.sexo_cria || row.values?.sexo_cria,
+      cria_codigo: row.parsedValues?.cria_codigo || row.values?.cria_codigo || row.parsedValues?.codigo_cria || row.values?.codigo_cria,
+      cria_nome: row.parsedValues?.cria_nome || row.values?.cria_nome,
+      pai_ref: row.parsedValues?.pai_ref || row.values?.pai_ref
+    });
+    warnings = eventKind === "parto" ? warningCodesForChildStatus(child.child_status) : warnings;
+    const statusLinha = problems.length ? "invalido" : "pronto";
     return {
       lineNumber: row.lineNumber,
       rawText: row.rawText,
@@ -264,15 +284,23 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
       data_original: dateOriginal,
       data_referencia: date,
       observacoes: String(row.parsedValues?.observacoes || row.values?.observacoes || "").trim(),
+      child_status: child.child_status,
+      parto_cria_cadastro: child.parto_cria_cadastro,
+      cria_sexo: child.cria_sexo,
+      cria_codigo: child.cria_codigo,
+      cria_nome: child.cria_nome,
+      pai_ref: child.pai_ref,
+      classificacao_linha: problems.length ? "invalid" : child.child_status === "missing_child_code" || child.child_status === "missing_child_sex" ? "pending_child_data" : "ready",
       problemas: problems,
       avisos: warnings,
-      status_linha: problems.length ? "invalido" : "pronto"
+      status_linha: statusLinha
     };
   });
   const rowsWithStatus = normalizedRows;
   const invalidRows = rowsWithStatus.filter((row) => row.status_linha === "invalido");
   const reviewRows = rowsWithStatus.filter((row) => row.avisos.length > 0);
   const preview = reproductionPreview(rowsWithStatus);
+  const childSummary = reproductionImportChildSummary(rowsWithStatus);
   const parsed = finalizeActionPlanParsed("IMPORTACAO_EVENTOS_TABELA", {
     column_mapping: plan.table.columnMapping,
     texto_tabela_original: text,
@@ -280,9 +308,22 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     linhas_parse_invalidas: invalidRows,
     linhas_revisao: reviewRows,
     total_linhas: rowsWithStatus.length,
-    total_linhas_parse_validas: rowsWithStatus.length - invalidRows.length - reviewRows.length,
+    total_linhas_parse_validas: rowsWithStatus.length - invalidRows.length,
     total_linhas_parse_invalidas: invalidRows.length,
     total_linhas_needs_review: reviewRows.length,
+    resumo_partos: childSummary,
+    resumo_validacao: {
+      total: rowsWithStatus.length,
+      prontas: rowsWithStatus.length - invalidRows.length,
+      invalidas: invalidRows.length,
+      revisao: reviewRows.length,
+      partos: childSummary,
+      por_tipo: rowsWithStatus.reduce<Record<string, number>>((counts, row) => {
+        const key = String(row.evento_tipo || "desconhecido");
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+      }, {})
+    },
     preview_only: true,
     action_plan_preview: preview
   }, [], plan.confidence, plan, { interpreterFinal: "table_action_plan", table: true });
