@@ -601,8 +601,13 @@ export function stockImportSummary(parsed: ParsedRanchoMessage) {
   const dados = parsed.dados || {};
   const summary = (dados.resumo_validacao || {}) as AnyRecord;
   const rows = stockImportRows(parsed);
-  const ready = rows.filter((row) => row.status_validacao === "pronto");
-  const invalid = rows.filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  const rowIssues = (row: AnyRecord) => Array.isArray(row.problemas_validacao)
+    ?row.problemas_validacao
+    : Array.isArray(row.problemas)
+      ?row.problemas
+      : [];
+  const ready = rows.filter((row) => row.status_validacao === "pronto" || (!row.status_validacao && rowIssues(row).length === 0));
+  const invalid = rows.filter((row) => (row.status_validacao && row.status_validacao !== "pronto") || (!row.status_validacao && rowIssues(row).length > 0));
   return {
     total: Number(summary.total || dados.total_linhas || rows.length || 0),
     ready: Number(summary.prontas ?? ready.length ?? 0),
@@ -660,10 +665,37 @@ export function stockImportIssueDetails(parsed: ParsedRanchoMessage, maxRows = 8
 
 
 
+function stockImportReadyPreview(parsed: ParsedRanchoMessage, maxRows = 5) {
+  const readyRows = stockImportRows(parsed).filter((row) => {
+    const issues = Array.isArray(row.problemas_validacao)
+      ?row.problemas_validacao
+      : Array.isArray(row.problemas)
+        ?row.problemas
+        : [];
+    return row.status_validacao === "pronto" || (!row.status_validacao && issues.length === 0);
+  });
+  if (!readyRows.length) return "";
+
+  const lines = readyRows.slice(0, maxRows).map((row) => {
+    const item = row.item_nome || row.item_original || "item";
+    const movement = normalizeRanchoText(String(row.tipo_movimento || row.tipo_original || row.tipo || ""));
+    const movementLabel = movement === "saida" ? "saída" : movement === "entrada" ? "entrada" : (row.tipo_original || "movimento");
+    const quantity = row.quantidade ?? row.quantidade_original;
+    const unit = row.unidade || row.unidade_original || "";
+    const amount = [quantity, unit].filter((value) => value !== undefined && value !== null && String(value).trim() !== "").join(" ");
+    return `- ${item}: ${movementLabel}${amount ?` de ${amount}` : ""}`;
+  });
+  const extra = readyRows.length > lines.length ?`\n...e mais ${readyRows.length - lines.length} linha(s).` : "";
+  return `Linhas prontas:\n${lines.join("\n")}${extra}`;
+}
+
+
+
 export function stockImportConfirmationText(parsed: ParsedRanchoMessage) {
   const summary = stockImportSummary(parsed);
   const issueText = stockImportIssueDetails(parsed, 6);
   const issueBlock = issueText ?`\n\nPendências:\n${issueText}` : "";
+  const readyPreview = stockImportReadyPreview(parsed);
   const missingText = summary.missingItems ?`Itens de estoque não cadastrados: ${summary.missingItemNames.slice(0, 5).join(", ")}.` : "";
   const invalidText = summary.invalidDates || summary.invalidQuantities || summary.invalidUnits || summary.unknownTypes
     ?`Problemas de formato: ${summary.invalidDates + summary.invalidQuantities + summary.invalidUnits + summary.unknownTypes}.`
@@ -689,6 +721,7 @@ export function stockImportConfirmationText(parsed: ParsedRanchoMessage) {
     "Pré-validação concluída. Nenhum dado foi salvo ainda.",
     `Linhas lidas: ${summary.total}.`,
     `Linhas prontas: ${summary.ready}.`,
+    readyPreview,
     missingText,
     invalidText,
     duplicateText,

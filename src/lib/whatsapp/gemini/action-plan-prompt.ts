@@ -115,6 +115,14 @@ const EXAMPLES = [
     }
   },
   {
+    user: "Joao chegou agora",
+    plan: {
+      action: "create", domain: "ponto_funcionario", operation: "registrar_ponto", confidence: 0.9,
+      data: { funcionario_ref: "Joao", tipo: "entrada", data: "hoje" },
+      requiresConfirmation: true
+    }
+  },
+  {
     user: "excluir todo o rebanho",
     plan: {
       action: "block", domain: "animais", confidence: 0.99, requiresConfirmation: false,
@@ -148,6 +156,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Vacina, vermifugo, medicamento, antibiotico e tratamento usam create no dominio saude_sanitario, operation=registro_sanitario.",
     "Em saude_sanitario use animal_ref, item, quantidade, unidade, tipo e data. Normalize vermifugo e antibiotico como medicamento ou tratamento sem inventar dose.",
     "Se houver lote_ref sem animal individual e o plano nao puder ser executado por lote com seguranca, use clarify. Nao gere baixa de estoque implicitamente.",
+    "Ponto de funcionario em fala natural, como 'Joao chegou agora' ou 'Maria saiu', usa create domain=ponto_funcionario com funcionario_ref igual ao nome informado e tipo entrada/saida. Nao peca codigo se houver nome.",
     "Para parto individual sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
     "Parida e recem-parida sao estados derivados de evento de parto; nao altere categoria, lote ou fase produtiva.",
     "Protocolo de inseminacao normaliza para em_protocolo e nova tentativa ou retorno de inseminacao normaliza para em_reteste, sem inventar resultado ou prenhez.",

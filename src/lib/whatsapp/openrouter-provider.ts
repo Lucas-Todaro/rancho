@@ -21,11 +21,16 @@ type OpenRouterResponse = {
   };
 };
 
-const OPENROUTER_TIMEOUT_MS = 8000;
+const DEFAULT_OPENROUTER_TIMEOUT_MS = 25000;
 const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 function configuredOpenRouterBaseUrl() {
   return (process.env.OPENROUTER_BASE_URL || DEFAULT_OPENROUTER_BASE_URL).trim().replace(/\/+$/, "");
+}
+
+function configuredOpenRouterTimeoutMs() {
+  const value = Number(process.env.OPENROUTER_TIMEOUT_MS || "");
+  return Number.isFinite(value) && value >= 1000 ? value : DEFAULT_OPENROUTER_TIMEOUT_MS;
 }
 
 function openRouterHeaders(apiKey: string) {
@@ -120,7 +125,7 @@ export async function generateStructuredWithOpenRouter(input: ProviderRequest): 
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), configuredOpenRouterTimeoutMs());
 
   try {
     let response = await requestOpenRouter(input, apiKey, true, controller.signal);

@@ -645,6 +645,28 @@ test("data operacional do Rancho usa America/Sao_Paulo em vez de UTC puro", asyn
   assert(finance.parsed.dados?.data_referencia === "2026-06-24", `financeiro sem data deveria usar hoje local, recebeu ${finance.parsed.dados?.data_referencia}`);
 });
 
+test("ActionPlan create de ponto vira PONTO_FUNCIONARIO", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "ponto_funcionario",
+      operation: "registrar_ponto",
+      confidence: 0.9,
+      data: { funcionario_ref: "Joao", tipo: "entrada", data: "hoje" },
+      requiresConfirmation: true
+    },
+    text: "Joao chegou agora",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+
+  assert(result.ok, `ponto_funcionario deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "PONTO_FUNCIONARIO", `intent esperado PONTO_FUNCIONARIO, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.funcionario_nome === "Joao", "funcionario_ref deveria virar funcionario_nome");
+  assert(result.parsed.dados?.ponto_tipo === "entrada", "tipo de ponto deveria ser entrada");
+  assert(result.parsed.dados?.agora === true, "ponto sem hora explicita deveria marcar agora");
+});
+
 test("import_table sem data aplica hoje local do Rancho", async () => {
   const result = await executeImportTableActionPlan({
     text: "177:PROTOCOLO\n094:PROTOCOLO",
@@ -935,6 +957,37 @@ test("executor import_table estoque aceita defaultFields seguros", async () => {
   assert(result.parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent esperado IMPORTACAO_ESTOQUE_TABELA, recebido ${result.parsed.tipo}`);
   assert(result.rows[0]?.parsedValues?.tipo_movimento === "entrada", "defaultFields deveria marcar entrada");
   assert(result.parsed.dados?.preview_only === true, "import ActionPlan deve ficar em preview");
+});
+
+test("preview import_table estoque mostra produtos e movimento", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "estoque",
+    confidence: 0.95,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        unidade: "Unidade",
+        item: "Produto",
+        tipo_movimento: "Movimento",
+        quantidade: "Quantidade"
+      },
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({
+    plan,
+    text: "Unidade;Produto;Movimento;Quantidade\nsacos;Racao;entrada;10\nkg;Sal mineral;saida;20\nlitros;Diesel;entrada;30"
+  });
+  assert(result.ok, `import estoque deveria executar: ${result.reason}`);
+  const preview = confirmationText(result.parsed);
+  assert(preview.includes("Sal mineral"), "preview deveria mostrar Sal mineral");
+  assert(preview.includes("saída"), "preview deveria mostrar movimento saida com texto amigavel");
+  assert(preview.includes("Racao"), "preview deveria mostrar pelo menos uma linha pronta");
 });
 
 test("executor import_table reproducao aceita lista codigo evento com data.rows", async () => {

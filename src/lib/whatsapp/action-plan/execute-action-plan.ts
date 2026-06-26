@@ -191,6 +191,21 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
     return finalize("ORDEM_SERVICO", dados, [], plan.confidence);
   }
 
+  if (plan.domain === "ponto_funcionario") {
+    const tipo = String(data.tipo || plan.operation || "entrada").toLowerCase().includes("saida") ? "saida" : "entrada";
+    const pointDate = normalizeDate(data.data || data.data_evento || data.registrado_em, ranchCurrentDate) || date;
+    const dados = {
+      funcionario_nome: data.funcionario_ref || data.funcionario_id || data.nome,
+      ponto_tipo: tipo,
+      horario: data.hora || data.horario || undefined,
+      data_referencia: pointDate,
+      agora: !data.hora && !data.horario && !data.registrado_em ? true : undefined,
+      observacoes: data.observacoes || data.observacao || undefined,
+      ...metadata
+    };
+    return finalize("PONTO_FUNCIONARIO", dados, buildMissing("PONTO_FUNCIONARIO", dados), plan.confidence);
+  }
+
   return reproductionMutationParsed(plan, currentDate);
 }
 
