@@ -11,7 +11,7 @@ import { geminiMode } from "@/lib/whatsapp/gemini/runtime";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
-import { normalizeRanchoText, parseRanchoMessage } from "@/lib/whatsapp/nlp";
+import { normalizeRanchoText } from "@/lib/whatsapp/nlp";
 import { calfCategoryForSex, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 import { detectStructuredInput, parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
 import { domainFromGeminiTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
@@ -1516,14 +1516,6 @@ export async function parseWithConfiguredInterpreter(input: ParseWithInterpreter
   }
 }
 
-export function parseLocalPreviewForInterpreter(text: string) {
-  return parseRanchoMessage(text);
-}
-
 export function isGeminiPrimaryMode() {
   return botInterpreterMode() !== "legacy_parser";
-}
-
-export function isGeminiConsultIntent(intent: string) {
-  return GEMINI_CONSULT_INTENTS.has(intent);
 }
