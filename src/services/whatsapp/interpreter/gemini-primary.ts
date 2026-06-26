@@ -25,6 +25,8 @@ type ParseWithInterpreterInput = {
   owner: WhatsAppOwner;
   geminiMockId?: string | null;
   supabase?: ActionPlanSupabaseLike | null;
+  messageType?: string | null;
+  hasPendingAction?: boolean;
 };
 
 const REPRODUCTION_EVENT_BY_INTENT: Record<string, string> = {
@@ -812,9 +814,13 @@ function convertPrimaryInterpretation(interpretation: GeminiStructuredResult, ra
 }
 
 function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string): GeminiFallbackParseResult {
-  logActionPlan("legacy_local_fallback_used", {
+  logActionPlan("legacy_semantic_fallback_used", {
     intent: localParsed.tipo,
-    reason
+    reason,
+    botInterpreter: botInterpreterMode(),
+    actionPlanEnabled: anyActionPlanFlagEnabled(),
+    messageType: "legacy_rollback",
+    hasPendingAction: false
   });
 
   return {
@@ -824,8 +830,8 @@ function legacyRollbackResult(localParsed: ParsedRanchoMessage, reason: string):
       ...localParsed,
       dados: {
         ...(localParsed.dados || {}),
-        origem_parser: "legacy_local_fallback",
-        interpreter_final_usado: "legacy_local_fallback",
+        origem_parser: "legacy_semantic_fallback",
+        interpreter_final_usado: "legacy_semantic_fallback",
         action_plan_used: false,
         usedLegacyRollback: true,
         gemini_failure_reason: reason
@@ -840,9 +846,14 @@ function localFallbackResult(
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
 ): GeminiFallbackParseResult {
-  logActionPlan("legacy_local_fallback_used", {
+  logActionPlan("legacy_semantic_fallback_used", {
     intent: input.localParsed.tipo,
-    reason
+    reason,
+    botInterpreter: botInterpreterMode(),
+    actionPlanEnabled: anyActionPlanFlagEnabled(),
+    messageType: input.messageType || "new_action",
+    hasPendingAction: Boolean(input.hasPendingAction),
+    route
   });
 
   return {
@@ -852,10 +863,10 @@ function localFallbackResult(
       ...input.localParsed,
       dados: {
         ...(input.localParsed.dados || {}),
-        origem_parser: "legacy_local_fallback",
+        origem_parser: "legacy_semantic_fallback",
         route,
         structuredDetection,
-        interpreter_final_usado: "legacy_local_fallback",
+        interpreter_final_usado: "legacy_semantic_fallback",
         action_plan_used: false,
         gemini_failure_reason: reason
       }

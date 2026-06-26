@@ -11,10 +11,12 @@ coverage
 .next-layout.js
 bot-test-report.json
 bot-test-report.md
+bot-final-report.md
 
 # Bot/test generated reports
 bot-*-report.md
 bot-*-report.json
+reports/
 bot-evaluation-report.json
 bot-final-regression-report.md
 bot-heavy-report.json
@@ -31,3 +33,5 @@ test-bot-output.tmp
 
 # Logs
 *.log
+.codex-test-bot.log
+testbot-*.log

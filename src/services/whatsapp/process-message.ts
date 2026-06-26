@@ -4335,7 +4335,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         text: parserMessage,
         localParsed: localParsedPreview,
         owner,
-        supabase
+        supabase,
+        messageType: conversationAct.messageType,
+        hasPendingAction: conversationAct.hasPendingAction
       });
       if (interpreted.kind === "clarify") {
         parsed = finalize("DESCONHECIDO", {
@@ -4490,7 +4492,9 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
           text: parserMessage,
           localParsed,
           owner,
-          supabase
+          supabase,
+          messageType: conversationAct.messageType,
+          hasPendingAction: conversationAct.hasPendingAction
         });
 
         if (fallback.kind === "clarify") {

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const childProcess = require("child_process");
 const Module = require("module");
 const ts = require("typescript");
 
@@ -364,6 +365,36 @@ test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   assert(!systemPrompt.includes("ACTION_DESCRIPTIONS"), "prompt principal vazou ACTION_DESCRIPTIONS");
   assert(!systemPrompt.includes("LEGACY_ACTION_DESCRIPTIONS"), "prompt principal vazou LEGACY_ACTION_DESCRIPTIONS");
   assert(!systemPrompt.includes("Acoes suportadas:"), "prompt principal parece usar contrato legado");
+});
+
+test("artefatos gerados de bot ficam ignorados e fora do indice", () => {
+  const gitignore = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
+  for (const pattern of [
+    "bot-test-report.json",
+    "bot-test-report.md",
+    "bot-final-report.md",
+    "bot-evaluation-report.json",
+    "reports/",
+    "*.log",
+    ".codex-test-bot.log",
+    "testbot-*.log"
+  ]) {
+    assert(gitignore.includes(pattern), `.gitignore sem ${pattern}`);
+  }
+
+  const tracked = childProcess.execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const forbidden = tracked.filter((file) => (
+    file === "bot-test-report.json"
+    || file === "bot-test-report.md"
+    || file === "bot-final-report.md"
+    || file === "bot-evaluation-report.json"
+    || file.startsWith("reports/")
+    || file === ".codex-test-bot.log"
+    || /^testbot-.*\.log$/.test(file)
+  ));
+  assert(!forbidden.length, `artefatos gerados ainda versionados: ${forbidden.join(", ")}`);
 });
 
 test("data operacional do Rancho usa America/Sao_Paulo em vez de UTC puro", async () => {
@@ -1382,6 +1413,69 @@ test("fallback legado so executa com permissao explicita fora do modo Gemini pur
       assert(parsed?.tipo === "PARTO", `fallback explicito deveria preservar legado, recebido ${parsed?.tipo}`);
       assert(parsed.dados?.action_plan_used === false, "fallback legado nao deve marcar ActionPlan usado");
       assert(parsed.dados?.interpreter_final_usado === "legacy_intent_after_gemini", "fallback legado deveria ficar marcado");
+    });
+  });
+});
+
+test("mensagem nova em modo Gemini nao finaliza como local_parser", async () => {
+  const text = "venda de leite 900";
+  const plan = {
+    action: "create",
+    domain: "financeiro",
+    confidence: 0.91,
+    data: {
+      tipo: "receita",
+      valor: 900,
+      categoria: "leite",
+      descricao: "venda de leite",
+      data: "hoje"
+    },
+    requiresConfirmation: true
+  };
+
+  await withInterpreterEnv({ BOT_INTERPRETER: "gemini", GEMINI_ACTION_PLAN_ENABLED: "true", BOT_ALLOW_LEGACY_ROLLBACK: "false" }, async () => {
+    await withGeminiMock(() => clone(plan), async () => {
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({}),
+        messageType: "new_action",
+        hasPendingAction: false
+      });
+      const parsed = finalParsed(result);
+      assert(parsed, "mensagem nova deveria gerar parsed via ActionPlan");
+      assert(parsed.dados?.interpreter_final_usado !== "local_parser", "mensagem nova em modo Gemini nao pode finalizar como local_parser");
+      assert(parsed.dados?.origem_parser !== "local_parser", "mensagem nova em modo Gemini nao pode ter origem local_parser");
+      assert(parsed.dados?.action_plan_used === true, "ActionPlan deveria ser usado");
+      assert(parsed.dados?.interpreter_final_usado === "action_plan", `interpreter final esperado action_plan, recebido ${parsed.dados?.interpreter_final_usado}`);
+      assert(parsed.tipo === "RECEITA_VENDA", `venda de leite deveria virar receita, recebido ${parsed.tipo}`);
+    });
+  });
+});
+
+test("mensagem nova desconhecida em modo Gemini retorna clarify sem local_parser semantico", async () => {
+  const text = "xablau sem contexto operacional";
+  await withInterpreterEnv({ BOT_INTERPRETER: "gemini", GEMINI_ACTION_PLAN_ENABLED: "true", BOT_ALLOW_LEGACY_ROLLBACK: "false" }, async () => {
+    await withGeminiMock(() => ({
+      action: "clarify",
+      confidence: 0.2,
+      userQuestion: "Nao entendi esse pedido. Pode explicar com mais detalhes?",
+      requiresConfirmation: false
+    }), async () => {
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({}),
+        messageType: "new_action",
+        hasPendingAction: false
+      });
+      assert(result.kind === "clarify", `mensagem desconhecida deveria pedir esclarecimento, recebido ${result.kind}`);
+      assert(result.reason === "action_plan_clarify", `motivo esperado action_plan_clarify, recebido ${result.reason}`);
+      assert(result.debug?.interpreter_final_usado !== "local_parser", "clarify Gemini nao pode finalizar como local_parser");
+      assert(result.debug?.origem_parser === "gemini_action_plan", "clarify deveria preservar origem ActionPlan");
+      assert(!finalParsed(result), "clarify nao deveria retornar parsed legado");
     });
   });
 });
