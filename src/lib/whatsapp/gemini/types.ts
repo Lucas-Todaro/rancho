@@ -60,6 +60,8 @@ export type GeminiInterpreterInput = {
 
 export type GeminiInterpreterFailureReason =
   | "missing_api_key"
+  | "missing_model"
+  | "configuration_error"
   | "timeout"
   | "rate_limit"
   | "network_error"
@@ -74,6 +76,7 @@ export type GeminiInterpreterResult =
       ok: true;
       interpretation: GeminiStructuredResult;
       model: string;
+      provider?: "gemini" | "openrouter";
       rawText: string;
       validationStatus: "valid" | "missing_fields";
     }
@@ -81,6 +84,7 @@ export type GeminiInterpreterResult =
       ok: false;
       reason: GeminiInterpreterFailureReason;
       message: string;
+      provider?: "gemini" | "openrouter";
       status?: number;
       rawText?: string;
     };

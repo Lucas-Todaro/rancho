@@ -1,10 +1,11 @@
 import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
+import { configuredAIModel, configuredAIProviderName, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
 import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/action-plan/execute-action-plan";
 import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ActionPlanSupabaseLike } from "@/lib/whatsapp/action-plan/execute-query-action-plan";
-import { botAllowsLegacyRollback, botInterpreterMode, configuredGeminiModel, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
+import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
 import { geminiMode } from "@/lib/whatsapp/gemini/runtime";
@@ -897,6 +898,8 @@ function isTransientGeminiFailure(result: { reason: string; status?: number }) {
 function isGeminiConfigurationFailure(result: { reason: string; status?: number; message?: string; rawText?: string }) {
   const details = `${result.reason || ""} ${result.message || ""} ${result.rawText || ""}`.toLowerCase();
   return result.reason === "missing_api_key"
+    || result.reason === "missing_model"
+    || result.reason === "configuration_error"
     || result.status === 401
     || result.status === 403
     || details.includes("api_key_invalid")
@@ -916,19 +919,19 @@ function logGeminiSafeFailureReturned(
   input: ParseWithInterpreterInput,
   result: { reason: string; status?: number; message?: string; rawText?: string }
 ) {
-  const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
+  const provider = configuredAIProviderName();
   console.error("[BOT GEMINI INTERPRETER]", {
     event: "gemini_safe_failure_returned",
     error_classification: "external_gemini",
     status: result.status || null,
     code: result.reason || null,
     message: result.message || null,
-    model: configuredGeminiModel(),
+    aiProvider: provider,
+    aiModel: configuredAIModel(provider),
+    model: configuredAIModel(provider),
     geminiMode: geminiMode(),
-    geminiModel: configuredGeminiModel(),
     botInterpreter: botInterpreterMode(),
-    hasGeminiApiKey: Boolean(apiKey),
-    geminiApiKeyLength: apiKey.length,
+    hasProviderApiKey: providerApiKeyConfigured(provider),
     errorName: result.reason || null,
     errorMessage: result.message || null,
     errorStatus: result.status || null,
@@ -959,6 +962,10 @@ function logInternalInterpreterError(error: unknown) {
 
 function geminiFailureMessage(input: ParseWithInterpreterInput, result: { reason: string; status?: number; message?: string; rawText?: string }) {
   const classification = geminiFailureClassification(result);
+  if (result.status === 429 || result.reason === "rate_limit") {
+    logGeminiSafeFailureReturned(input, result);
+    return GEMINI_SAFE_FAILURE_MESSAGE;
+  }
   if (classification === "external_gemini") {
     logGeminiSafeFailureReturned(input, result);
     return GEMINI_SAFE_FAILURE_MESSAGE;
@@ -1421,6 +1428,8 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
         gemini_status: gemini.status || null,
         gemini_body_preview: gemini.rawText ? String(gemini.rawText).slice(0, 600) : null,
         gemini_live_error: gemini.reason,
+        ai_provider_error: gemini.reason,
+        ai_provider: gemini.provider || configuredAIProviderName(),
         responseStatus: gemini.status || null,
         responseBodyPreview: gemini.rawText ? String(gemini.rawText).slice(0, 600) : null,
         action: null,

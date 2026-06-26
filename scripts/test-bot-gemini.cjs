@@ -11,6 +11,9 @@ process.env.RANCHO_BOT_TEST = "1";
 if (!process.env.GEMINI_MODE) process.env.GEMINI_MODE = "mock";
 delete process.env.GEMINI_API_KEY;
 delete process.env.BOT_GEMINI_MOCK;
+delete process.env.BOT_AI_PROVIDER;
+delete process.env.BOT_AI_MODEL;
+delete process.env.OPENROUTER_API_KEY;
 
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function resolveAlias(request, parent, isMain, options) {

@@ -14,6 +14,9 @@ process.env.GEMINI_ACTION_PLAN_ENABLED = "true";
 process.env.GEMINI_TABLE_ACTION_PLAN_ENABLED = "true";
 delete process.env.GEMINI_API_KEY;
 delete process.env.BOT_GEMINI_MOCK;
+delete process.env.BOT_AI_PROVIDER;
+delete process.env.BOT_AI_MODEL;
+delete process.env.OPENROUTER_API_KEY;
 
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function resolveAlias(request, parent, isMain, options) {
@@ -52,6 +55,12 @@ const {
 const { buildActionPlanPromptFragment } = require("../src/lib/whatsapp/gemini/action-plan-prompt.ts");
 const { buildGeminiSystemPrompt } = require("../src/lib/whatsapp/gemini/system-prompt.ts");
 const { validateInterpretedAction } = require("../src/lib/whatsapp/gemini/validator.ts");
+const {
+  configuredAIModel,
+  configuredAIProviderName,
+  generateStructuredAI,
+  parseJsonObjectText
+} = require("../src/lib/whatsapp/ai-provider.ts");
 const {
   findGeminiMockFixture,
   geminiRuntimeStats,
@@ -348,6 +357,171 @@ test("manifest nao expoe campos de escopo interno", () => {
       assert(!forbidden.has(field), `${domain} expoe ${field}`);
     }
   }
+});
+
+test("AI provider usa Gemini como padrao e respeita env explicito", async () => {
+  await withInterpreterEnv({ BOT_AI_PROVIDER: undefined, BOT_AI_MODEL: undefined, GEMINI_MODEL: undefined }, async () => {
+    assert(configuredAIProviderName() === "gemini", "provider padrao deveria ser Gemini");
+    assert(configuredAIModel() === "gemini-2.5-flash", "modelo Gemini padrao incorreto");
+  });
+
+  await withInterpreterEnv({ BOT_AI_PROVIDER: "gemini", GEMINI_MODEL: "gemini-test-model" }, async () => {
+    assert(configuredAIProviderName() === "gemini", "BOT_AI_PROVIDER=gemini deveria selecionar Gemini");
+    assert(configuredAIModel() === "gemini-test-model", "Gemini deveria continuar usando GEMINI_MODEL");
+  });
+
+  await withInterpreterEnv({ BOT_AI_PROVIDER: "openrouter", BOT_AI_MODEL: "qwen/test-model" }, async () => {
+    assert(configuredAIProviderName() === "openrouter", "BOT_AI_PROVIDER=openrouter deveria selecionar OpenRouter");
+    assert(configuredAIModel() === "qwen/test-model", "OpenRouter deveria usar BOT_AI_MODEL");
+  });
+});
+
+test("OpenRouter extrai choices message content e remove cercas markdown", async () => {
+  let seenUrl = "";
+  let seenInit = null;
+  await withInterpreterEnv({
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "qwen/test-model",
+    OPENROUTER_API_KEY: "or-test-key",
+    OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
+    OPENROUTER_SITE_URL: "https://rancho.test",
+    OPENROUTER_APP_NAME: "Rancho Test",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async (url, init) => {
+      seenUrl = String(url);
+      seenInit = init;
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "```json\n{\"ok\":true,\"value\":7}\n```" } }],
+        usage: { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }, async () => {
+      const result = await generateStructuredAI({
+        purpose: "action_plan",
+        userPrompt: "retorne json",
+        temperature: 0
+      });
+      assert(result.ok, `OpenRouter deveria retornar sucesso: ${result.ok ? "" : result.reason}`);
+      assert(result.provider === "openrouter", "provider retornado deveria ser OpenRouter");
+      assert(result.model === "qwen/test-model", "modelo OpenRouter incorreto");
+      assert(result.usage?.totalTokens === 16, "usage OpenRouter nao foi mapeado");
+      const parsed = parseJsonObjectText(result.rawText);
+      assert(parsed.ok === true && parsed.value === 7, "JSON cercado nao foi parseado corretamente");
+    });
+  });
+
+  assert(seenUrl === "https://openrouter.ai/api/v1/chat/completions", "endpoint OpenRouter incorreto");
+  assert(seenInit?.headers?.Authorization === "Bearer or-test-key", "Authorization Bearer nao foi enviado ao OpenRouter");
+  assert(seenInit?.headers?.["HTTP-Referer"] === "https://rancho.test", "HTTP-Referer nao foi enviado");
+  assert(seenInit?.headers?.["X-Title"] === "Rancho Test", "X-Title nao foi enviado");
+  const body = JSON.parse(String(seenInit?.body || "{}"));
+  assert(body.model === "qwen/test-model", "modelo nao foi enviado no payload OpenRouter");
+  assert(body.response_format?.type === "json_object", "response_format json_object deveria ser enviado");
+});
+
+test("OpenRouter classifica 401 503 timeout e JSON invalido", async () => {
+  await withInterpreterEnv({
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "qwen/test-model",
+    OPENROUTER_API_KEY: "or-test-key",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { message: "invalid key" }
+    }), { status: 401, headers: { "Content-Type": "application/json" } }), async () => {
+      const result = await generateStructuredAI({ purpose: "action_plan", userPrompt: "json" });
+      assert(!result.ok && result.reason === "configuration_error", `401 deveria ser configuracao, recebido ${result.ok ? "ok" : result.reason}`);
+    });
+
+    await withFetchMock(async () => new Response(JSON.stringify({
+      error: { message: "unavailable" }
+    }), { status: 503, headers: { "Content-Type": "application/json" } }), async () => {
+      const result = await generateStructuredAI({ purpose: "action_plan", userPrompt: "json" });
+      assert(!result.ok && result.status === 503, "503 deveria preservar status");
+    });
+
+    await withFetchMock(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "texto livre" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+      const result = await generateStructuredAI({ purpose: "action_plan", userPrompt: "json" });
+      assert(!result.ok && result.reason === "invalid_json", `JSON invalido deveria ser contrato, recebido ${result.ok ? "ok" : result.reason}`);
+    });
+
+    await withFetchMock(async () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      throw error;
+    }, async () => {
+      const result = await generateStructuredAI({ purpose: "action_plan", userPrompt: "json" });
+      assert(!result.ok && result.reason === "timeout", `timeout deveria ser classificado, recebido ${result.ok ? "ok" : result.reason}`);
+    });
+  });
+});
+
+test("OpenRouter ActionPlan usa validator e executor atuais", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "qwen/test-model",
+    GEMINI_MODE: "live",
+    OPENROUTER_API_KEY: "or-test-key",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(legacyMilkWithActionPlan({
+        action: "create",
+        domain: "reproducao",
+        operation: "parto",
+        confidence: 0.93,
+        requiresConfirmation: true,
+        data: { animal_ref: "090", evento: "parto" }
+      })) } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "090 pariu";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      const parsed = finalParsed(result);
+      assert(parsed?.tipo === "PARTO", `ActionPlan OpenRouter deveria virar PARTO, recebido ${parsed?.tipo}`);
+      assert(parsed.dados?.action_plan_used === true, "OpenRouter deveria passar pelo ActionPlan atual");
+      assert(parsed.dados?.origem_parser === "gemini_action_plan", "origem compatível do ActionPlan deveria ser preservada");
+    });
+  });
+});
+
+test("OpenRouter PendingPatch usa validator atual", async () => {
+  const pending = parseRanchoMessage("090 pariu");
+  await withInterpreterEnv({
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "qwen/test-model",
+    GEMINI_MODE: "live",
+    OPENROUTER_API_KEY: "or-test-key",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "```json\n" + JSON.stringify({
+        type: "pending_patch",
+        targetIntent: "PARTO",
+        confidence: 0.94,
+        data: { confirm_child: true, child_sex: "femea", child_code: "C-OPEN" },
+        requiresConfirmation: true
+      }) + "\n```" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+      const result = await interpretPendingPatchWithGemini({
+        text: "femea codigo C-OPEN",
+        pending,
+        status: "aguardando_dado",
+        currentDate: "2026-06-24"
+      });
+      assert(result.ok, `PendingPatch OpenRouter deveria validar: ${result.ok ? "" : result.reason}`);
+      const patched = applyPendingPatchToSession(pending, result.patch);
+      assert(patched.dados?.cria_sexo === "femea", "PendingPatch OpenRouter nao preservou sexo");
+      assert(patched.dados?.cria_codigo === "C-OPEN", "PendingPatch OpenRouter nao preservou codigo");
+    });
+  });
 });
 
 test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {

@@ -1,12 +1,10 @@
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import type { AnyRecord } from "@/lib/types";
-import { configuredGeminiModel } from "@/lib/whatsapp/gemini/config";
+import { aiProviderLog, generateStructuredAI, parseJsonObjectText } from "@/lib/whatsapp/ai-provider";
 import {
   findPendingPatchMockFixture,
   geminiMode,
-  recordGeminiLiveCall,
-  recordGeminiMockCall,
-  shouldBlockGeminiLiveCall
+  recordGeminiMockCall
 } from "@/lib/whatsapp/gemini/runtime";
 import { calfCategoryForSex, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 import { refreshRanchoMessage } from "@/lib/whatsapp/nlp-core/result";
@@ -37,30 +35,8 @@ type PendingPatchInput = {
   geminiMockId?: string | null;
 };
 
-const GEMINI_TIMEOUT_MS = 8000;
-
 function logPendingPatch(event: string, details: Record<string, unknown>) {
   console.log("[BOT GEMINI PENDING PATCH]", { event, ...details });
-}
-
-function parseJsonObject(text: string): unknown {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("JSON object not found");
-    return JSON.parse(cleaned.slice(start, end + 1));
-  }
-}
-
-function textFromGeminiResponse(data: AnyRecord) {
-  return (Array.isArray(data.candidates) ?data.candidates : [])
-    .flatMap((candidate: AnyRecord) => candidate?.content?.parts || [])
-    .map((part: AnyRecord) => part?.text || "")
-    .join("\n")
-    .trim();
 }
 
 function normalizePatchData(data: AnyRecord) {
@@ -193,64 +169,47 @@ export async function interpretPendingPatchWithGemini(input: PendingPatchInput):
     return { ...validation, model: `mock:${fixture.id}` };
   }
 
-  if (shouldBlockGeminiLiveCall()) {
-    return { ok: false, reason: "live_call_blocked", message: "Teste tentou chamar Gemini live. Use GEMINI_MODE=mock." };
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  const model = configuredGeminiModel();
-  if (!apiKey) return { ok: false, reason: "missing_api_key", message: "GEMINI_API_KEY nao configurada." };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model.replace(/^models\//, ""))}:generateContent`;
   try {
-    recordGeminiLiveCall();
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPendingPatchPrompt(input) }] }],
-        generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
-      }),
-      signal: controller.signal
+    const generated = await generateStructuredAI({
+      purpose: "pending_patch",
+      userPrompt: buildPendingPatchPrompt(input),
+      temperature: 0.1,
+      requestId: input.geminiMockId || undefined
     });
-    const data = await response.json().catch(() => ({})) as AnyRecord;
-    if (!response.ok) {
-      const rawText = JSON.stringify(data).slice(0, 1200);
-      logPendingPatch("gemini_http_error", {
-        status: response.status,
-        statusText: response.statusText,
-        model,
-        hasKey: Boolean(apiKey),
-        keyLength: apiKey.length,
-        authHeaderUsed: false,
-        xGoogApiKeyUsed: true,
-        bodyPreview: rawText
-      });
+
+    if (!generated.ok) {
       return {
         ok: false,
-        reason: "api_error",
-        status: response.status,
-        message: String(data?.error?.message || "Erro ao chamar Gemini."),
-        rawText
+        reason: generated.reason,
+        status: generated.status,
+        message: generated.message,
+        rawText: generated.rawText
       };
     }
-    const rawText = textFromGeminiResponse(data);
-    if (!rawText) return { ok: false, reason: "empty_response", message: "Gemini retornou resposta vazia." };
-    const parsed = parseJsonObject(rawText);
+
+    const rawText = generated.rawText;
+    const parsed = parseJsonObjectText(rawText);
     const validation = validatePendingPatch(parsed, input.pending);
-    if (!validation.ok) return { ...validation, rawText };
+    if (!validation.ok) {
+      aiProviderLog("ai_provider_contract_error", {
+        provider: generated.provider,
+        model: generated.model,
+        purpose: "pending_patch",
+        requestId: input.geminiMockId || null,
+        reason: validation.reason
+      });
+      return { ...validation, rawText };
+    }
     logPendingPatch("pending_patch_success", {
+      provider: generated.provider,
+      model: generated.model,
       targetIntent: input.pending.tipo,
       confidence: validation.patch.confidence,
       fields: Object.keys(validation.patch.data || {})
     });
-    return { ...validation, model, rawText };
+    return { ...validation, model: generated.model, rawText };
   } catch (error) {
     return { ok: false, reason: error instanceof Error && error.name === "AbortError" ? "timeout" : "network_error", message: error instanceof Error ? error.message : String(error) };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
