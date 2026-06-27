@@ -65,11 +65,23 @@ module.exports = function loadBotTestSection(context) {
         dados.status_resolucao = resolved.status;
         dados.score_resolucao = Number(resolved.score.toFixed(3));
         dados.item_estoque_encontrado = Boolean(resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86);
-        dados.motivo_processamento = parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra
-          ? dados.item_estoque_encontrado ? "item_encontrado: estoque+financeiro" : "item_nao_encontrado: fluxo_criar_item_ou_financeiro"
-          : parsed.tipo === "ESTOQUE_SAIDA" && dados.venda
-            ? dados.item_estoque_encontrado ? "item_encontrado: perguntar_baixa_estoque_ou_financeiro" : "item_nao_encontrado: financeiro_apenas"
-            : dados.item_estoque_encontrado ? "item_encontrado" : "item_nao_encontrado";
+        if (
+          parsed.tipo === "ESTOQUE_SAIDA"
+          && dados.venda
+          && dados.item_estoque_encontrado
+          && hasValue(dados.valor)
+          && hasValue(dados.quantidade)
+          && dados.deve_baixar_estoque !== false
+        ) {
+          dados.deve_baixar_estoque = true;
+          dados.motivo_processamento = "item_encontrado: estoque+receita";
+        } else {
+          dados.motivo_processamento = parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra
+            ? dados.item_estoque_encontrado ? "item_encontrado: estoque+financeiro" : "item_nao_encontrado: fluxo_criar_item_ou_financeiro"
+            : parsed.tipo === "ESTOQUE_SAIDA" && dados.venda
+              ? dados.item_estoque_encontrado ? "item_encontrado: estoque+receita" : "item_nao_encontrado: financeiro_apenas"
+              : dados.item_estoque_encontrado ? "item_encontrado" : "item_nao_encontrado";
+        }
 
         if (resolved.row && resolved.status !== "ambiguous" && resolved.score >= 0.86) {
           dados.item_nome = resolved.row.nome;

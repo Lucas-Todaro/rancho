@@ -3298,6 +3298,77 @@ async function handlePostConfirmationConsultations(supabase: SupabaseAdmin, owne
   }
 }
 
+function stockCandidateOptionsText(dados: AnyRecord) {
+  const candidates = Array.isArray(dados.candidatos_catalogo)
+    ? dados.candidatos_catalogo
+    : [];
+  return candidates
+    .map((candidate) => String(candidate || "").trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((candidate) => `- ${candidate}`)
+    .join("\n");
+}
+
+function stockPendingWithoutResolvedItem(parsed: ParsedRanchoMessage) {
+  const dados = { ...(parsed.dados || {}) };
+  return refreshRanchoMessage(parsed, {
+    ...dados,
+    item_nome: undefined,
+    item_id: null,
+    item_resolvido: null,
+    item_estoque_encontrado: false
+  });
+}
+
+async function stockCatalogPreflight(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
+  if (!["ESTOQUE_ENTRADA", "ESTOQUE_SAIDA"].includes(parsed.tipo)) return null;
+
+  const dados = parsed.dados || {};
+  const hasItemReference = hasBotValue(dados.item_nome) || hasBotValue(dados.item_extraido);
+  if (!hasItemReference) return null;
+
+  const options = stockCandidateOptionsText(dados);
+  const isAmbiguous = dados.status_resolucao === "ambiguous";
+
+  if (isAmbiguous && options) {
+    const next = stockPendingWithoutResolvedItem(parsed);
+    botLog("stock_preflight", owner, {
+      currentIntent: parsed.tipo,
+      status: "item_ambiguo",
+      decision: "pedir_item_correto_antes_da_confirmacao"
+    });
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
+    return `Encontrei mais de um item parecido no estoque. Me envie o item correto:\n${options}`;
+  }
+
+  if (dados.status_resolucao === "suggestion" && dados.item_estoque_encontrado !== true && options) {
+    const next = stockPendingWithoutResolvedItem(parsed);
+    botLog("stock_preflight", owner, {
+      currentIntent: parsed.tipo,
+      status: "item_sugerido",
+      decision: "pedir_item_correto_antes_da_confirmacao"
+    });
+    await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
+    return `Encontrei um item parecido no estoque. Me confirme o item correto:\n${options}`;
+  }
+
+  if (parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra && !parsed.perguntas_faltantes.length && dados.status_resolucao === "not_found" && isBotAdmin(owner)) {
+    botLog("stock_preflight", owner, {
+      currentIntent: parsed.tipo,
+      status: "item_nao_encontrado",
+      decision: "pedir_criar_item_ou_financeiro_antes_da_confirmacao"
+    });
+    await saveSession(supabase, owner, {
+      etapa: "aguardando_dado",
+      dados: { pending: parsed, acao_pendente: "compra_item_nao_encontrado" }
+    });
+    return `Não encontrei "${dados.item_nome || dados.item_extraido || ""}" no estoque. Deseja criar o item de estoque ou registrar apenas como despesa?\n1 - Criar item de estoque\n2 - Registrar apenas despesa`;
+  }
+
+  return null;
+}
+
 async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, text: string, parsedMessage?: ParsedRanchoMessage) {
   const tableExamples = tabularTableExamplesText(text);
   if (tableExamples) {
@@ -3410,6 +3481,10 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
   if (animalPreflight) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return animalPreflight;
+  }
+  const stockPreflight = await stockCatalogPreflight(supabase, owner, parsed);
+  if (stockPreflight) {
+    return stockPreflight;
   }
 
   if (parsed.perguntas_faltantes.length) {
@@ -3695,6 +3770,10 @@ async function saveCorrectedPending(
   if (animalPreflight) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return { response: animalPreflight, parsed: next };
+  }
+  const stockPreflight = await stockCatalogPreflight(supabase, owner, next);
+  if (stockPreflight) {
+    return { response: [prefix, stockPreflight].filter(Boolean).join("\n"), parsed: next };
   }
 
   if (next.perguntas_faltantes.length) {
@@ -3992,6 +4071,10 @@ async function handleMissingData(
   if (animalPreflight) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return animalPreflight;
+  }
+  const stockPreflight = await stockCatalogPreflight(supabase, owner, next);
+  if (stockPreflight) {
+    return stockPreflight;
   }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });

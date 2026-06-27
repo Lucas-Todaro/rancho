@@ -43,6 +43,20 @@ function isBotAdmin(owner: WhatsAppOwner) {
   return owner.papel_bot === "admin";
 }
 
+function hasCatalogValue(value: unknown) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function shouldAutoApplyStockOutForPhysicalSale(parsed: ParsedRanchoMessage, dados: AnyRecord) {
+  return Boolean(
+    parsed.tipo === "ESTOQUE_SAIDA"
+    && dados.venda
+    && hasCatalogValue(dados.valor)
+    && hasCatalogValue(dados.quantidade)
+    && dados.deve_baixar_estoque !== false
+  );
+}
+
 export async function enrichWithCatalog(deps: CatalogEnrichmentDependencies, supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   const { botAnimalCheckLog, botLog, calfCodeFromParto, enrichDomainTableImport, partoWithChild } = deps;
   parsed = normalizePhysicalSalePending(parsed);
@@ -285,7 +299,7 @@ export async function enrichWithCatalog(deps: CatalogEnrichmentDependencies, sup
     const originalItemName = String(dados.item_nome);
     const found = await findStockItem(supabase, owner, originalItemName);
     const stockResolution = stockResolutionDebug(originalItemName, found);
-    const decision = stockDecisionReason(parsed, found, owner);
+    let decision = stockDecisionReason(parsed, found, owner);
 
     dados.item_extraido = originalItemName;
     dados.item_normalizado = stockResolution.item_normalizado;
@@ -300,20 +314,25 @@ export async function enrichWithCatalog(deps: CatalogEnrichmentDependencies, sup
     dados.motivo_processamento = decision;
     changed = true;
 
+    if (found.row && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
+      dados.item_nome = found.row.nome;
+      dados.item_id = found.row.id;
+      dados.item_resolvido = found.row.nome;
+      dados.item_estoque_encontrado = true;
+      if (shouldAutoApplyStockOutForPhysicalSale(parsed, dados)) {
+        dados.deve_baixar_estoque = true;
+        decision = "item_encontrado: estoque+receita";
+        dados.motivo_processamento = decision;
+      }
+      changed = true;
+    }
+
     botLog("stock_resolution", owner, {
       currentIntent: parsed.tipo,
       status: "catalogo",
       stockResolution,
       decision
     });
-
-    if (found.row && !found.ambiguousRows?.length && (found.exact || found.score >= 0.86)) {
-      dados.item_nome = found.row.nome;
-      dados.item_id = found.row.id;
-      dados.item_resolvido = found.row.nome;
-      dados.item_estoque_encontrado = true;
-      changed = true;
-    }
 
     if (parsed.tipo === "ESTOQUE_ENTRADA" && dados.compra && !found.row && !isBotAdmin(owner)) {
       const financeData = {

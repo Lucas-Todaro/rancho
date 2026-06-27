@@ -111,7 +111,6 @@ module.exports = function loadBotTestSection(context) {
         phone: BOT_TEST_ADMIN_PHONE,
         messages: [
           { text: "comprei 70kg de arroz por 200 reais", salvarReal: true },
-          { text: "sim", salvarReal: true },
           { text: "1", salvarReal: true },
           { text: "sim", salvarReal: true }
         ],

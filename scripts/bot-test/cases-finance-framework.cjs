@@ -17,10 +17,10 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "venda fisica de leite com valor pergunta baixa e salva estoque mais receita",
+        name: "venda fisica de leite com valor confirma direto estoque mais receita",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["vendi 40L de leite por 200 reais", "1", "sim"],
+        messages: ["vendi 40L de leite por 200 reais", "sim"],
         expected: {
           finalIntent: "ESTOQUE_SAIDA",
           entities: { quantidade: 40, unidade: "L", valor: 200, item_nome: "Leite Cru", deve_baixar_estoque: true },
@@ -39,7 +39,7 @@ module.exports = function loadBotTestSection(context) {
         name: "venda de milho em sacos preserva quantidade ate a confirmacao",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["vendi 4 sacos de milho por 320 reais", "1", "sim"],
+        messages: ["vendi 4 sacos de milho por 320 reais", "sim"],
         expected: {
           finalIntent: "ESTOQUE_SAIDA",
           entities: { quantidade: 4, unidade: "saco", valor: 320, item_nome: "Milho", deve_baixar_estoque: true },
@@ -58,7 +58,7 @@ module.exports = function loadBotTestSection(context) {
         name: "venda de feno em fardos preserva quantidade ate a confirmacao",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["vendi 2 fardos de feno por 180 reais", "sim", "confirma"],
+        messages: ["vendi 2 fardos de feno por 180 reais", "sim"],
         expected: {
           finalIntent: "ESTOQUE_SAIDA",
           entities: { quantidade: 2, unidade: "fardo", valor: 180, item_nome: "Feno", deve_baixar_estoque: true },
@@ -77,7 +77,7 @@ module.exports = function loadBotTestSection(context) {
         name: "venda decimal em kg preserva quantidade ate a confirmacao",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["vendi 1,5 kg de sal mineral por 45 reais", "dar baixa", "sim"],
+        messages: ["vendi 1,5 kg de sal mineral por 45 reais", "sim"],
         expected: {
           finalIntent: "ESTOQUE_SAIDA",
           entities: { quantidade: 1.5, unidade: "kg", valor: 45, item_nome: "Sal mineral", deve_baixar_estoque: true },
@@ -144,19 +144,18 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "venda fisica de leite pode registrar apenas receita",
+        name: "venda fisica de leite opcao 2 cancela sem salvar",
         module: "financeiro",
         phone: BOT_TEST_ADMIN_PHONE,
-        messages: ["vendi 40L de leite por 200 reais", "2", "sim"],
+        messages: ["vendi 40L de leite por 200 reais", "2"],
         expected: {
-          finalIntent: "RECEITA_VENDA",
-          entities: { quantidade: 40, unidade: "L", valor: 200, descricao: "venda de Leite Cru" },
+          finalIntent: "ESTOQUE_SAIDA",
+          entities: { quantidade: 40, unidade: "L", valor: 200, item_nome: "Leite Cru", deve_baixar_estoque: true },
+          responseIncludes: "Nada foi salvo",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
-          savedAfterConfirmation: true,
-          simulatedSaveCount: 1,
-          savedTables: [BOT_TEST_TABLES.transacoesFinanceiras],
-          shouldSaveValues: { valor: 200 },
+          savedAfterConfirmation: false,
+          simulatedSaveCount: 0,
           shouldNotWriteBusiness: true,
           ranchId: BOT_TEST_FARM_ID
         }

@@ -76,7 +76,6 @@ export async function saveStockRecord(ctx: SaveRecordHandlerContext): Promise<Sa
     botLog,
     stockResolutionDebug,
     stockDecisionReason,
-    physicalSaleStockDecisionQuestion,
     refreshRanchoMessage,
     normalizeWhatsappNumber,
     isValidBotPhone,
@@ -199,7 +198,7 @@ export async function saveStockRecord(ctx: SaveRecordHandlerContext): Promise<Sa
       };
     }
 
-    if (!found.exact) {
+    if (!found.exact && !dados.item_estoque_encontrado) {
       botLog("stock_purchase_decision", owner, {
         currentIntent: pending.tipo,
         status: "item_sugerido",
@@ -218,27 +217,20 @@ export async function saveStockRecord(ctx: SaveRecordHandlerContext): Promise<Sa
     const current = Number(found.row.quantidade_atual || 0);
     const quantity = Number(dados.quantidade || 0);
 
-    if (pending.tipo === "ESTOQUE_SAIDA" && dados.venda && hasBotValue(dados.valor) && dados.deve_baixar_estoque !== true) {
-      if (dados.deve_baixar_estoque === false) {
-        await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
-          fazenda_id: owner.fazenda_id,
-          tipo: "entrada",
-          data_transacao: dateOnlyFromReference(dados.data_referencia),
-          valor: Number(dados.valor),
-          categoria: dados.item_nome || found.row.nome,
-          descricao: `Venda de ${dados.item_nome || found.row.nome} registrada via WhatsApp`,
-          metodo_pagamento: "whatsapp",
-          origem: "whatsapp",
-          created_by: owner.usuario_id || null
-        });
+    if (pending.tipo === "ESTOQUE_SAIDA" && dados.venda && hasBotValue(dados.valor) && dados.deve_baixar_estoque === false) {
+      await insertRealRecord(supabase, owner, TABLES.transacoesFinanceiras, {
+        fazenda_id: owner.fazenda_id,
+        tipo: "entrada",
+        data_transacao: dateOnlyFromReference(dados.data_referencia),
+        valor: Number(dados.valor),
+        categoria: dados.item_nome || found.row.nome,
+        descricao: `Venda de ${dados.item_nome || found.row.nome} registrada via WhatsApp`,
+        metodo_pagamento: "whatsapp",
+        origem: "whatsapp",
+        created_by: owner.usuario_id || null
+      });
 
-        return realSaveResult(`Pronto, receita salva com sucesso.\nReceita: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
-      }
-
-      return {
-        response: physicalSaleStockDecisionQuestion(refreshRanchoMessage(pending, { ...dados, item_estoque_encontrado: true, item_id: found.row.id, item_resolvido: found.row.nome })),
-        nextSession: { etapa: "aguardando_dado", dados: { pending: refreshRanchoMessage(pending, { ...dados, item_estoque_encontrado: true, item_id: found.row.id, item_resolvido: found.row.nome }), acao_pendente: "venda_baixa_estoque_opcional" } }
-      };
+      return realSaveResult(`Pronto, receita salva com sucesso.\nReceita: ${formatMoney(dados.valor)}.`, [TABLES.transacoesFinanceiras]);
     }
 
     if (type === "saida" && quantity > current) {

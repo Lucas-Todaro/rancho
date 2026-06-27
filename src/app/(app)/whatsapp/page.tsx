@@ -61,6 +61,7 @@ type BotTestHistoryItem = {
 };
 
 const defaultBotTestMessage = "vaca B-002 deu 32 litros";
+const botProcessingNoticePreview = "Recebi sua mensagem. Estou conferindo os dados do rancho e já te respondo.";
 
 const WHATSAPP_USERS_SELECT = [
   "id",
@@ -96,6 +97,7 @@ export default function WhatsAppPage() {
   const [botTestMessage, setBotTestMessage] = useState(defaultBotTestMessage);
   const [botTestSaveReal, setBotTestSaveReal] = useState(false);
   const [botTestLoading, setBotTestLoading] = useState(false);
+  const [botTestProcessingNoticeVisible, setBotTestProcessingNoticeVisible] = useState(false);
   const [botTestResult, setBotTestResult] = useState<BotTestResult | null>(null);
   const [botTestHistory, setBotTestHistory] = useState<BotTestHistoryItem[]>([]);
   const [rows, setRows] = useState<AnyRecord[]>([]);
@@ -314,6 +316,7 @@ export default function WhatsAppPage() {
     const text = botTestMessage.trim();
 
     if (!normalizedPhone) {
+      setBotTestProcessingNoticeVisible(false);
       setBotTestResult({
         respostaTexto: "",
         intencaoDetectada: null,
@@ -329,6 +332,7 @@ export default function WhatsAppPage() {
     }
 
     if (!text) {
+      setBotTestProcessingNoticeVisible(false);
       setBotTestResult({
         respostaTexto: "",
         intencaoDetectada: null,
@@ -344,6 +348,10 @@ export default function WhatsAppPage() {
     }
 
     setBotTestLoading(true);
+    setBotTestProcessingNoticeVisible(false);
+    const processingNoticeTimer = window.setTimeout(() => {
+      setBotTestProcessingNoticeVisible(true);
+    }, 1500);
     try {
       const response = await fetch("/api/whatsapp/testar-bot", {
         method: "POST",
@@ -383,7 +391,9 @@ export default function WhatsAppPage() {
         erro: "Não foi possível simular agora."
       });
     } finally {
+      window.clearTimeout(processingNoticeTimer);
       setBotTestLoading(false);
+      setBotTestProcessingNoticeVisible(false);
     }
   }
 
@@ -672,8 +682,16 @@ export default function WhatsAppPage() {
 
             <div className="rounded-lg border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/55">
               <h3 className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Resultado</h3>
-              {botTestResult ? (
+              {botTestResult || botTestLoading ? (
                 <div className="mt-4 space-y-4">
+                  {botTestLoading && botTestProcessingNoticeVisible ? (
+                    <div>
+                      <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Mensagem intermediária</p>
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">{botProcessingNoticePreview}</p>
+                    </div>
+                  ) : null}
+                  {botTestResult ? (
+                    <>
                   {botTestResult.erro ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{botTestResult.erro}</p> : null}
                   {botTestResult.respostaTexto ? (
                     <div>
@@ -711,6 +729,8 @@ export default function WhatsAppPage() {
                     <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Dados extraídos</p>
                     <pre className="mt-1 max-h-44 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{JSON.stringify(botTestResult.dadosExtraidos || {}, null, 2)}</pre>
                   </div>
+                    </>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Nenhuma simulação executada ainda.</p>
