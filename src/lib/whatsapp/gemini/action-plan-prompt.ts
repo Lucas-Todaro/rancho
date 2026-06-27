@@ -5,8 +5,9 @@ import {
   RANCHO_DOMAIN_MANIFEST
 } from "@/lib/whatsapp/gemini/domain-manifest";
 import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
+import { ACTION_PLAN_DESIGN_MEMORY } from "@/lib/whatsapp/gemini/action-plan-memory";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v5";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v6";
 
 const EXAMPLES = [
   {
@@ -58,6 +59,12 @@ const EXAMPLES = [
     user: "quais eventos teve hoje?",
     plan: {
       action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
+      semantic: {
+        intent: "consultar_eventos",
+        scope: "eventos",
+        date: "hoje",
+        report: { type: "eventos", detailLevel: "resumo", includeDomains: ["observacoes", "reproducao", "saude_sanitario"] }
+      },
       filters: [{ field: "data", op: "last_days", value: 1 }],
       limit: 100, requiresConfirmation: false
     }
@@ -66,6 +73,13 @@ const EXAMPLES = [
     user: "adicionar entrada de mil reais",
     plan: {
       action: "execute", capability: "registrar_financeiro", confidence: 0.92,
+      semantic: {
+        intent: "registrar_receita",
+        scope: "financeiro",
+        money: { value: 1000, type: "receita", category: "receita via WhatsApp" },
+        date: "hoje",
+        effects: [{ domain: "financeiro", type: "receita" }]
+      },
       data: { tipo: "entrada", valor: 1000, categoria: "receita via WhatsApp", descricao: "receita via WhatsApp", data: "hoje" },
       requiresConfirmation: true
     }
@@ -74,6 +88,13 @@ const EXAMPLES = [
     user: "adicionar saida de mil reais",
     plan: {
       action: "execute", capability: "registrar_financeiro", confidence: 0.92,
+      semantic: {
+        intent: "registrar_despesa",
+        scope: "financeiro",
+        money: { value: 1000, type: "despesa", category: "despesa via WhatsApp" },
+        date: "hoje",
+        effects: [{ domain: "financeiro", type: "despesa" }]
+      },
       data: { tipo: "saida", valor: 1000, categoria: "despesa via WhatsApp", descricao: "despesa via WhatsApp", data: "hoje" },
       requiresConfirmation: true
     }
@@ -95,6 +116,15 @@ const EXAMPLES = [
     user: "090 deu 15 litros ontem as 18h",
     plan: {
       action: "create", domain: "producao_leite", confidence: 0.94,
+      semantic: {
+        intent: "registrar_producao_leite",
+        scope: "producao_leite",
+        entities: { animal: "090" },
+        quantity: { value: 15, unit: "litros", kind: "leite" },
+        attributes: { hora: "18:00" },
+        date: "ontem",
+        effects: [{ domain: "producao_leite", type: "registrar_ordenha" }]
+      },
       data: { animal_ref: "090", litros: 15, data: "ontem", hora: "18:00" },
       requiresConfirmation: true
     }
@@ -103,6 +133,15 @@ const EXAMPLES = [
     user: "comprei 10 sacos de racao por 500 reais",
     plan: {
       action: "execute", capability: "registrar_movimento_estoque", operation: "compra_estoque", confidence: 0.92,
+      semantic: {
+        intent: "compra_item_fisico",
+        scope: "estoque",
+        entities: { item: "racao" },
+        quantity: { value: 10, unit: "saco" },
+        money: { value: 500, type: "despesa", category: "racao" },
+        date: "hoje",
+        effects: [{ domain: "estoque", type: "entrada" }, { domain: "financeiro", type: "despesa" }]
+      },
       data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 10, unidade: "saco", valor_total: 500, gera_financeiro: true },
       requiresConfirmation: true
     }
@@ -111,6 +150,15 @@ const EXAMPLES = [
     user: "vendi 4 sacos de milho por 320 reais",
     plan: {
       action: "execute", capability: "registrar_movimento_estoque", operation: "venda_estoque", confidence: 0.92,
+      semantic: {
+        intent: "venda_item_fisico",
+        scope: "estoque",
+        entities: { item: "milho" },
+        quantity: { value: 4, unit: "saco" },
+        money: { value: 320, type: "receita", category: "milho" },
+        date: "hoje",
+        effects: [{ domain: "estoque", type: "saida" }, { domain: "financeiro", type: "receita" }]
+      },
       data: { tipo_movimento: "saida", item_ref: "milho", quantidade: 4, unidade: "saco", valor_total: 320, gera_financeiro: true },
       requiresConfirmation: true
     }
@@ -160,6 +208,18 @@ const EXAMPLES = [
     user: "777 pariu femea codigo B-777 hoje",
     plan: {
       action: "create", domain: "reproducao", operation: "parto_com_cria", confidence: 0.94,
+      semantic: {
+        intent: "registrar_parto_com_cria",
+        scope: "reproducao",
+        entities: { mae: "777", cria: { codigo: "B-777", sexo: "femea" }, pai: null },
+        date: "hoje",
+        effects: [
+          { domain: "reproducao", type: "registrar_parto" },
+          { domain: "animais", type: "cadastrar_cria" },
+          { domain: "genealogia", type: "vincular_mae_cria" },
+          { domain: "animais", type: "atualizar_status_mae" }
+        ]
+      },
       data: { mae_ref: "777", evento: "parto", data: "hoje", cria_sexo: "femea", cria_codigo: "B-777" },
       requiresConfirmation: true
     }
@@ -168,6 +228,13 @@ const EXAMPLES = [
     user: "a vaca B-002 morreu hoje",
     plan: {
       action: "execute", capability: "registrar_evento_animal", operation: "registro_morte", confidence: 0.94,
+      semantic: {
+        intent: "registrar_morte_animal",
+        scope: "saude_sanitario",
+        entities: { animal: "B-002" },
+        date: "hoje",
+        effects: [{ domain: "saude_sanitario", type: "morte" }, { domain: "animais", type: "marcar_morto" }]
+      },
       data: { animal_ref: "B-002", tipo_evento: "morte", data: "hoje" },
       requiresConfirmation: true
     }
@@ -176,6 +243,13 @@ const EXAMPLES = [
     user: "cadastrar vaca B-120 chamada Estrela",
     plan: {
       action: "execute", capability: "cadastrar_animal", confidence: 0.92,
+      semantic: {
+        intent: "cadastrar_animal",
+        scope: "animais",
+        entities: { animal: "B-120" },
+        attributes: { brinco: "B-120", categoria: "vaca", nome: "Estrela" },
+        effects: [{ domain: "animais", type: "cadastrar" }]
+      },
       data: { brinco: "B-120", categoria: "vaca", nome: "Estrela" },
       requiresConfirmation: true
     }
@@ -184,6 +258,14 @@ const EXAMPLES = [
     user: "paguei 1500 de salario para Joao",
     plan: {
       action: "execute", capability: "registrar_pagamento_funcionario", confidence: 0.92,
+      semantic: {
+        intent: "registrar_pagamento_funcionario",
+        scope: "funcionarios",
+        entities: { funcionario: "Joao" },
+        money: { value: 1500, type: "despesa", category: "salario" },
+        date: "hoje",
+        effects: [{ domain: "funcionarios", type: "pagamento" }, { domain: "financeiro", type: "despesa" }]
+      },
       data: { funcionario_ref: "Joao", valor: 1500, pagamento_tipo: "salario", data: "hoje" },
       requiresConfirmation: true
     }
@@ -192,6 +274,14 @@ const EXAMPLES = [
     user: "Joao chegou agora",
     plan: {
       action: "execute", capability: "registrar_ponto_funcionario", operation: "registrar_ponto", confidence: 0.9,
+      semantic: {
+        intent: "registrar_ponto_funcionario",
+        scope: "ponto_funcionario",
+        entities: { funcionario: "Joao" },
+        attributes: { tipo: "entrada" },
+        date: "hoje",
+        effects: [{ domain: "ponto_funcionario", type: "entrada" }]
+      },
       data: { funcionario_ref: "Joao", tipo: "entrada", data: "hoje" },
       requiresConfirmation: true
     }
@@ -214,7 +304,12 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Use somente action=query|create|update|execute|import_table|clarify|block e somente dominios, campos e enums do manifest.",
     "Para mensagens comuns de operacao do usuario, prefira action=execute com uma capability permitida. Isso da liberdade sem inventar intent legado.",
     "Capabilities permitidas: " + ACTION_PLAN_CAPABILITIES.join(", ") + ".",
-    "Em action=execute, use capability, data, confidence e requiresConfirmation. Mutacoes exigem requiresConfirmation=true; consultas exigem false.",
+    "Todo plano deve incluir semantic sempre que a mensagem tiver uma intencao operacional ou consulta. semantic e um bloco semantico, nao uma permissao para executar.",
+    "Formato semantic recomendado: { intent, scope, operation, domains, entities, attributes, quantity, money, date, period, effects, report, missingFields, risk }.",
+    "Use semantic.entities para animal, mae, cria, pai, funcionario, item, lote; use semantic.quantity para quantidade/unidade; use semantic.money para valor/tipo/categoria; use semantic.effects para efeitos cruzados entre dominios.",
+    "Para relatorios e consultas, use semantic.scope e semantic.report.type/detailLevel/includeDomains. Exemplo: resumo dos eventos de hoje => report.type=eventos, detailLevel=resumo, scope=eventos.",
+    "O backend so executa capabilities e dominios permitidos, valida campos pelo manifest e exige confirmacao para mutacoes. Nunca use semantic para escapar dessas regras.",
+    "Em action=execute, use capability, semantic, data, confidence e requiresConfirmation. Mutacoes exigem requiresConfirmation=true; consultas exigem false.",
     "Use action=query quando precisar de filtros/agregacoes mais ricos. Use action=import_table para tabelas.",
     "Nao invente IDs, valores, sexo da cria, pai, codigo, data, resultado financeiro, tabela ou coluna Supabase.",
     "query exige requiresConfirmation=false. create, update, execute mutacional e import_table exigem requiresConfirmation=true.",
@@ -244,6 +339,9 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Para parto individual sem sexo da cria, use clarify com domain=reproducao, operation=parto, data.animal_ref ou data.mae_ref, data.evento=PARTO e missingFields=[cria_sexo].",
     "Parida e recem-parida sao estados derivados de evento de parto; nao altere categoria, lote ou fase produtiva.",
     "Protocolo de inseminacao normaliza para em_protocolo e nova tentativa ou retorno de inseminacao normaliza para em_reteste, sem inventar resultado ou prenhez.",
+    "",
+    "Memoria de melhoria continua:",
+    ACTION_PLAN_DESIGN_MEMORY.join("\n"),
     "",
     "Domain manifest:",
     JSON.stringify(summarizeDomainManifestForPrompt(manifest)),

@@ -8,6 +8,7 @@ import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { detectReproductiveEventKind, reproductiveEventLabel } from "@/lib/whatsapp/nlp-core/reproductive-events";
 import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
+import { semanticPeriod, semanticReportType } from "@/lib/whatsapp/gemini/action-plan-semantic";
 
 type QueryBuilderLike = AnyRecord;
 
@@ -148,8 +149,14 @@ function genericEventReportText(text: unknown) {
 }
 
 function eventReportPeriod(input: { text?: string; plan: QueryActionPlan }) {
+  const semanticNormalized = normalizedText(semanticPeriod(input.plan));
   const normalized = normalizedText(input.text);
   const dateFilter = input.plan.filters.find((filter) => ["data", "data_evento", "created_at", "registrado_em"].includes(filter.field));
+  if (/\bhoje\b/.test(semanticNormalized)) return { period: "hoje" };
+  if (/\bontem\b/.test(semanticNormalized)) return { period: "ontem" };
+  if (/\bsemana\b/.test(semanticNormalized)) return { period: "semana" };
+  if (/\bmes\b/.test(semanticNormalized)) return { period: "mes" };
+  if (/\bano\b/.test(semanticNormalized)) return { period: "ano" };
   if (/\bhoje\b/.test(normalized)) return { period: "hoje" };
   if (/\bontem\b/.test(normalized)) return { period: "ontem" };
   if (/\bsemana passada\b/.test(normalized)) return { period: "semana_passada" };
@@ -184,9 +191,15 @@ function shouldUseGeneralEventReport(plan: QueryActionPlan, originalText?: strin
 function executeGeneralEventReportQuery(input: ExecuteQueryActionPlanInput, plan: QueryActionPlan): ExecuteQueryActionPlanResult {
   const { period, days } = eventReportPeriod({ text: input.originalText, plan });
   const mode = genericEventReportMode(input.originalText);
+  const reportType = semanticReportType(plan);
+  const consultaRegistros = reportType === "eventos"
+    ? "eventos"
+    : reportType === "relatorio"
+      ? "relatorio"
+      : /\b(?:relatorio|resumo|fechamento|como foi|aconteceu|tudo)\b/.test(normalizedText(input.originalText)) ? "relatorio" : "eventos";
   const parsed = finalizeActionPlanParsed("CONSULTA_REGISTROS_HOJE", {
     consulta: true,
-    consulta_registros: /\b(?:relatorio|resumo|fechamento|como foi|aconteceu|tudo)\b/.test(normalizedText(input.originalText)) ? "relatorio" : "eventos",
+    consulta_registros: consultaRegistros,
     data_referencia: period,
     periodo: period,
     ...(days ? { dias: days } : {}),

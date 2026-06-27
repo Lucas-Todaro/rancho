@@ -27,6 +27,40 @@ export type AggregationPlan = {
   as?: string;
 };
 
+export type ActionPlanSafety = {
+  risk: "low" | "medium" | "high";
+  reason?: string | null;
+};
+
+export type SemanticActionPlanEffect = {
+  domain: string;
+  type: string;
+  target?: string | null;
+  value?: unknown;
+};
+
+export type SemanticActionPlanBlock = {
+  intent?: string | null;
+  scope?: string | null;
+  operation?: string | null;
+  domains?: string[];
+  entities?: Record<string, unknown>;
+  attributes?: Record<string, unknown>;
+  quantity?: { value?: unknown; unit?: string | null; kind?: string | null } | number | string;
+  money?: { value?: unknown; type?: string | null; category?: string | null; method?: string | null } | number | string;
+  date?: unknown;
+  period?: unknown;
+  effects?: SemanticActionPlanEffect[];
+  report?: {
+    type?: string | null;
+    detailLevel?: string | null;
+    includeDomains?: string[];
+    excludeDomains?: string[];
+  };
+  missingFields?: string[];
+  risk?: ActionPlanSafety;
+};
+
 export type QueryActionPlan = {
   action: "query";
   domain: string;
@@ -39,14 +73,10 @@ export type QueryActionPlan = {
   limit?: number;
   requiresConfirmation: false;
   operation?: string;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   userQuestion?: string | null;
   safety?: ActionPlanSafety;
-};
-
-export type ActionPlanSafety = {
-  risk: "low" | "medium" | "high";
-  reason?: string | null;
 };
 
 export type ImportTableActionPlan = {
@@ -66,6 +96,7 @@ export type ImportTableActionPlan = {
   };
   requiresConfirmation: true;
   operation?: string;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   userQuestion?: string | null;
   safety?: ActionPlanSafety;
@@ -78,6 +109,7 @@ export type CreateActionPlan = {
   data: Record<string, unknown>;
   requiresConfirmation: true;
   operation?: string;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   userQuestion?: string | null;
   safety?: ActionPlanSafety;
@@ -91,6 +123,7 @@ export type UpdateActionPlan = {
   filters?: FilterPlan[];
   requiresConfirmation: true;
   operation?: string;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   userQuestion?: string | null;
   safety?: ActionPlanSafety;
@@ -104,6 +137,7 @@ export type ExecuteCapabilityActionPlan = {
   data: Record<string, unknown>;
   requiresConfirmation: boolean;
   operation?: string;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   userQuestion?: string | null;
   safety?: ActionPlanSafety;
@@ -115,6 +149,7 @@ export type ClarifyActionPlan = {
   operation?: string;
   confidence?: number;
   data?: Record<string, unknown>;
+  semantic?: SemanticActionPlanBlock;
   missingFields?: string[];
   question?: string;
   userQuestion?: string;
@@ -130,6 +165,7 @@ export type BlockActionPlan = {
   confidence?: number;
   reason?: string;
   userMessage?: string;
+  semantic?: SemanticActionPlanBlock;
   requiresConfirmation?: false;
   safety?: ActionPlanSafety;
 };

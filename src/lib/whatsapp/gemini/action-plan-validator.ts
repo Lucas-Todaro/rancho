@@ -27,6 +27,7 @@ import {
   normalizeReproductionEvent,
   normalizeSex
 } from "@/lib/whatsapp/nlp-core/reproduction-normalizers";
+import { normalizeActionPlanSemantic } from "@/lib/whatsapp/gemini/action-plan-semantic";
 
 export type ParsedTableForValidation = {
   headers: Array<string | number>;
@@ -650,6 +651,54 @@ function validateBlock(plan: AnyRecord, warnings: string[]): ActionPlanValidatio
   };
 }
 
+function validateDomainList(list: unknown, manifest: DomainManifest, errors: string[], path: string) {
+  if (list === undefined) return;
+  if (!Array.isArray(list)) {
+    errors.push(`${path} deve ser array`);
+    return;
+  }
+  list.forEach((domain, index) => {
+    const name = String(domain || "").trim();
+    if (!name || !manifest[name]) errors.push(`${path}[${index}] deve ser dominio valido do manifest`);
+  });
+}
+
+function validateSemanticBlock(semantic: unknown, manifest: DomainManifest, errors: string[]) {
+  if (semantic === undefined) return;
+  if (!isPlainObject(semantic)) {
+    errors.push("semantic deve ser objeto");
+    return;
+  }
+  validateDomainList(semantic.domains, manifest, errors, "semantic.domains");
+  if (semantic.report !== undefined) {
+    if (!isPlainObject(semantic.report)) {
+      errors.push("semantic.report deve ser objeto");
+    } else {
+      validateDomainList(semantic.report.includeDomains, manifest, errors, "semantic.report.includeDomains");
+      validateDomainList(semantic.report.excludeDomains, manifest, errors, "semantic.report.excludeDomains");
+    }
+  }
+  if (semantic.effects !== undefined) {
+    if (!Array.isArray(semantic.effects)) {
+      errors.push("semantic.effects deve ser array");
+    } else {
+      semantic.effects.forEach((effect, index) => {
+        if (!isPlainObject(effect)) {
+          errors.push(`semantic.effects[${index}] deve ser objeto`);
+          return;
+        }
+        const domain = String(effect.domain || "").trim();
+        const type = String(effect.type || "").trim();
+        if (!domain || !manifest[domain]) errors.push(`semantic.effects[${index}].domain deve ser dominio valido do manifest`);
+        if (!type) errors.push(`semantic.effects[${index}].type obrigatorio`);
+      });
+    }
+  }
+  if (semantic.missingFields !== undefined && (!Array.isArray(semantic.missingFields) || semantic.missingFields.some((field) => typeof field !== "string" || !field.trim()))) {
+    errors.push("semantic.missingFields deve ser array de textos");
+  }
+}
+
 function validateExecuteCapability(plan: AnyRecord, minConfidence: number, warnings: string[]): ActionPlanValidationResult {
   const errors: string[] = [];
   const capability = normalizeActionPlanCapability(plan.capability || plan.operation);
@@ -695,16 +744,18 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
 
   validateNoForbiddenScope(plan, errors);
   validateNoFreeSql(plan, errors);
+  validateSemanticBlock(plan.semantic, manifest, errors);
   if (errors.length) return invalid(errors.join("; "), warnings, true);
 
-  const action = String(plan.action || "").trim();
+  const normalizedInput = normalizeActionPlanSemantic(plan as ActionPlan, manifest) as AnyRecord;
+  const action = String(normalizedInput.action || "").trim();
   if (action === "delete") return invalid("delete nao e suportado em ActionPlan", warnings, true);
   if (!ACTION_PLAN_ACTIONS.includes(action as never)) return invalid("action inexistente ou nao permitida", warnings);
-  if (action === "clarify") return validateClarify(plan, warnings);
-  if (action === "block") return validateBlock(plan, warnings);
-  if (action === "execute") return validateExecuteCapability(plan, minConfidence, warnings);
+  if (action === "clarify") return validateClarify(normalizedInput, warnings);
+  if (action === "block") return validateBlock(normalizedInput, warnings);
+  if (action === "execute") return validateExecuteCapability(normalizedInput, minConfidence, warnings);
 
-  const domainName = String(plan.domain || "").trim();
+  const domainName = String(normalizedInput.domain || "").trim();
   if (!domainName) errors.push("domain obrigatorio");
   const domain = domainName ? domainFromContext(domainName, manifest) : null;
   if (!domain) errors.push(`domain ${domainName || "(vazio)"} nao existe no manifest`);
@@ -712,10 +763,10 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
     errors.push(`${domain.domain} nao permite action ${action}`);
   }
 
-  validateConfidence(plan, minConfidence, errors);
+  validateConfidence(normalizedInput, minConfidence, errors);
   if (errors.length || !domain) return invalid(errors.join("; "), warnings);
 
-  const normalizedPlan = normalizePlanForDomain({ ...plan } as ActionPlan, domainName);
+  const normalizedPlan = normalizePlanForDomain({ ...normalizedInput } as ActionPlan, domainName);
   if (action === "query") validateQueryPlan(normalizedPlan as QueryActionPlan, domain, errors, warnings);
   if (action === "create") validateCreatePlan(normalizedPlan as CreateActionPlan, domain, errors);
   if (action === "update") validateUpdatePlan(normalizedPlan as UpdateActionPlan, domain, errors);

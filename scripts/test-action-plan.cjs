@@ -567,6 +567,8 @@ test("prompt Gemini-first inclui contrato, manifest e seguranca", () => {
   assert(prompt.includes("Domain manifest"), "prompt sem manifest");
   assert(prompt.includes("delete ou update em massa"), "prompt sem regra de delete");
   assert(prompt.includes("columnMapping"), "prompt sem regra de tabela");
+  assert(prompt.includes("semantic") && prompt.includes("Memoria de melhoria continua"), "prompt sem bloco semantico ou memoria");
+  assert(prompt.includes("melhorar o contrato semantico geral antes de criar regra pontual"), "prompt sem memoria anti-regra-pontual");
   assert(prompt.includes("Nao retorne markdown") && prompt.includes("intent legado") && prompt.includes("SQL"), "prompt ainda permite formato legado");
 
   const systemPrompt = buildGeminiSystemPrompt({
@@ -861,6 +863,77 @@ test("ActionPlan execute cobre capacidades genericas principais", async () => {
   assert(genealogy.parsed.dados?.mae_nome === "Estrela", "execute genealogia deveria preservar mae");
 });
 
+test("ActionPlan semantic normaliza venda fisica com efeitos cruzados", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "registrar_movimento_estoque",
+      operation: "venda_estoque",
+      confidence: 0.94,
+      semantic: {
+        intent: "venda_item_fisico",
+        scope: "estoque",
+        entities: { item: "milho" },
+        quantity: { value: 4, unit: "sacos" },
+        money: { value: 320, type: "receita", category: "milho" },
+        date: "hoje",
+        effects: [
+          { domain: "estoque", type: "saida" },
+          { domain: "financeiro", type: "receita" }
+        ]
+      },
+      data: {},
+      requiresConfirmation: true
+    },
+    text: "vendi 4 sacos de milho por 320 reais",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+
+  assert(result.ok, `semantic venda deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "ESTOQUE_SAIDA", `semantic venda deveria virar ESTOQUE_SAIDA, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.item_nome === "milho", "semantic venda deveria preencher item");
+  assert(Number(result.parsed.dados?.quantidade) === 4, "semantic venda deveria preencher quantidade");
+  assert(result.parsed.dados?.unidade === "sacos", "semantic venda deveria preencher unidade");
+  assert(Number(result.parsed.dados?.valor) === 320, "semantic venda deveria preencher valor");
+  assert(result.parsed.dados?.venda === true, "semantic venda deveria marcar venda");
+  assert(result.parsed.dados?.action_plan_semantic?.scope === "estoque", "semantic deveria ficar auditavel no parsed");
+});
+
+test("ActionPlan semantic normaliza parto com cria sem regra por frase", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "registrar_evento_animal",
+      confidence: 0.94,
+      semantic: {
+        intent: "registrar_parto_com_cria",
+        scope: "reproducao",
+        entities: { mae: "B-5", cria: { codigo: "B-941", sexo: "femea" }, pai: null },
+        date: "hoje",
+        effects: [
+          { domain: "reproducao", type: "registrar_parto" },
+          { domain: "animais", type: "cadastrar_cria" },
+          { domain: "genealogia", type: "vincular_mae_cria" },
+          { domain: "animais", type: "atualizar_status_mae" }
+        ]
+      },
+      data: {},
+      requiresConfirmation: true
+    },
+    text: "a vaca B-5 pariu uma bezerra hoje, codigo B-941",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+
+  assert(result.ok, `semantic parto deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "PARTO", `semantic parto deveria virar PARTO, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.animal_codigo === "B-5", "semantic parto deveria preencher mae");
+  assert(result.parsed.dados?.cria_codigo === "B-941", "semantic parto deveria preencher codigo da cria");
+  assert(result.parsed.dados?.cria_sexo === "femea", "semantic parto deveria preencher sexo da cria");
+  assert(result.parsed.dados?.parto_cria_cadastro === true, "semantic parto deveria ativar cadastro da cria");
+});
+
 test("ActionPlan execute consulta generica passa pelo executor de query", async () => {
   const result = await executeActionPlan({
     plan: {
@@ -878,6 +951,52 @@ test("ActionPlan execute consulta generica passa pelo executor de query", async 
   assert(result.ok, `execute consulta generica deveria executar: ${result.reason}`);
   assert(result.parsed.tipo === "CONSULTA_FINANCEIRO", `consulta generica deveria virar CONSULTA_FINANCEIRO, recebeu ${result.parsed.tipo}`);
   assert(result.parsed.dados?.action_plan_capability === "consultar_dados", "capability de consulta ausente");
+});
+
+test("ActionPlan semantic mantem resumo dos eventos no escopo de eventos", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "observacoes",
+      operation: "eventos_gerais",
+      confidence: 0.95,
+      semantic: {
+        intent: "consultar_eventos",
+        scope: "eventos",
+        date: "hoje",
+        report: { type: "eventos", detailLevel: "resumo", includeDomains: ["observacoes", "reproducao", "saude_sanitario"] }
+      },
+      filters: [],
+      limit: 100,
+      requiresConfirmation: false
+    },
+    originalText: "resumo dos eventos de hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+
+  assert(result.ok, `semantic eventos deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_REGISTROS_HOJE", `intent esperado CONSULTA_REGISTROS_HOJE, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.consulta_registros === "eventos", "resumo dos eventos nao deveria virar relatorio geral");
+  assert(result.parsed.dados?.data_referencia === "hoje", "semantic eventos deveria preservar hoje");
+  assert(!result.parsed.dados?.action_plan_response, "semantic eventos nao deve trazer resposta pre-montada estreita");
+});
+
+test("ActionPlan semantic bloqueia dominio inventado em efeitos", () => {
+  const result = validateActionPlan({
+    action: "execute",
+    capability: "consultar_dados",
+    confidence: 0.9,
+    semantic: {
+      intent: "consulta_insegura",
+      effects: [{ domain: "sql_livre", type: "select" }]
+    },
+    data: {},
+    requiresConfirmation: false
+  });
+  assert(!result.ok, "semantic com dominio inventado deveria ser invalido");
+  assert(result.reason.includes("semantic.effects[0].domain"), `motivo semantic inesperado: ${result.reason}`);
 });
 
 test("ActionPlan consulta generica de eventos nao vira relatorio sanitario estreito", async () => {

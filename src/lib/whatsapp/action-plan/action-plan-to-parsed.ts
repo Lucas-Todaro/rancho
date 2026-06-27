@@ -15,6 +15,7 @@ export function actionPlanParsedMetadata(plan: ActionPlan, options: ActionPlanPa
     interpreter_final_usado: options.interpreterFinal || "action_plan",
     action_plan_used: true,
     action_plan_domain: "domain" in plan ? plan.domain : undefined,
+    action_plan_semantic: plan.semantic,
     action_plan: plan,
     ...(options.table ? { table_action_plan_used: true } : {}),
     ...(options.extra || {})
