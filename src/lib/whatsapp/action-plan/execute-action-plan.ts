@@ -9,6 +9,7 @@ import {
 import { executeImportTableActionPlan } from "@/lib/whatsapp/action-plan/execute-import-table-action-plan";
 import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { calfCategoryForSex } from "@/lib/whatsapp/nlp-core/birth-child";
+import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import {
   normalizeDate,
   normalizeReproductionEvent,
@@ -52,7 +53,102 @@ function actionPlanMetadata(plan: ActionPlan) {
   return actionPlanParsedMetadata(plan);
 }
 
-function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMessage | null {
+type PhysicalStockTrade = {
+  kind: "sale" | "purchase";
+  item?: string;
+  quantity?: number;
+  unit?: string;
+  value?: number;
+};
+
+function parseActionPlanNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  const text = String(value ?? "").trim();
+  if (!text) return undefined;
+  const cleaned = text.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return undefined;
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const normalized = lastComma >= 0 && lastDot >= 0
+    ? lastComma > lastDot
+      ? cleaned.replace(/\./g, "").replace(",", ".")
+      : cleaned.replace(/,/g, "")
+    : cleaned.replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function compactTradeText(value: unknown) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[.;:,]+$/g, "")
+    .trim();
+}
+
+function extractPhysicalStockTrade(text: string): PhysicalStockTrade | null {
+  const raw = compactTradeText(text);
+  if (!raw) return null;
+  const normalized = normalizeRanchoText(raw);
+  const isSale = /\b(vendi|vendemos|vendeu|venderam|venda|vender)\b/.test(normalized);
+  const isPurchase = /\b(comprei|compramos|comprou|compraram|compra|comprar|adquiri|adquirimos)\b/.test(normalized);
+  const kind = isSale ? "sale" : isPurchase ? "purchase" : null;
+  if (!kind) return null;
+
+  const verbs = kind === "sale"
+    ? "vendi|vendemos|vendeu|venderam|venda|vender"
+    : "comprei|compramos|comprou|compraram|compra|comprar|adquiri|adquirimos";
+  const unit = "sacos?|sacas?|kg|kgs|quilos?|litros?|lts?|l|unidades?|un|doses?|toneladas?|tons?|pacotes?|caixas?|fardos?";
+  const amount = "([0-9]+(?:[.,][0-9]+)*)";
+  const money = "(?:r\\$\\s*)?([0-9]+(?:[.,][0-9]+)*)(?:\\s*reais?)?";
+  const pattern = new RegExp(
+    `\\b(?:${verbs})\\b\\s+${amount}\\s+(${unit})\\s+(?:de\\s+|do\\s+|da\\s+|dos\\s+|das\\s+)?(.+?)\\s+(?:por|a|ao valor de|no valor de|custou|total(?: de)?)\\s+${money}\\b`,
+    "i"
+  );
+  const match = raw.match(pattern);
+  if (!match) return { kind };
+
+  return {
+    kind,
+    quantity: parseActionPlanNumber(match[1]),
+    unit: compactTradeText(match[2]),
+    item: compactTradeText(match[3]),
+    value: parseActionPlanNumber(match[4])
+  };
+}
+
+function actionPlanPhysicalStockTrade(plan: ActionPlan, data: Record<string, unknown>, text?: string): PhysicalStockTrade | null {
+  const fromText = extractPhysicalStockTrade(text || "");
+  const movementText = normalizeRanchoText([
+    plan.operation,
+    data.tipo_movimento,
+    data.tipo,
+    data.movimento,
+    data.descricao,
+    data.categoria
+  ].filter(Boolean).join(" "));
+  const kind = fromText?.kind
+    || (/\b(venda|vender|vendido)\b/.test(movementText)
+      ? "sale"
+      : /\b(compra|comprar|comprado)\b/.test(movementText)
+        ? "purchase"
+        : null);
+  if (!kind && !fromText) return null;
+
+  const item = compactTradeText(data.item || data.item_ref || data.nome || data.produto || fromText?.item);
+  const unit = compactTradeText(data.unidade || data.unidade_medida || fromText?.unit);
+  const quantity = parseActionPlanNumber(data.quantidade) ?? fromText?.quantity;
+  const value = parseActionPlanNumber(data.valor_total ?? data.valor) ?? fromText?.value;
+
+  return {
+    kind: kind || fromText?.kind || "purchase",
+    item: item || undefined,
+    unit: unit || undefined,
+    quantity,
+    value
+  };
+}
+
+function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: string): ParsedRanchoMessage | null {
   if (plan.action !== "create" && plan.action !== "update") return null;
   const data = plan.data || {};
   const metadata = actionPlanMetadata(plan);
@@ -74,19 +170,24 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
   }
 
   if (plan.domain === "estoque") {
-    const movement = String(data.tipo_movimento || data.tipo || plan.operation || "").toLowerCase();
-    const isOut = ["saida", "uso", "consumo", "venda", "venda_estoque"].some((value) => movement.includes(value));
-    const isPurchase = movement.includes("compra") || plan.operation === "compra_estoque";
-    const isSale = movement.includes("venda") || plan.operation === "venda_estoque";
+    const trade = actionPlanPhysicalStockTrade(plan, data, originalText);
+    const movement = normalizeRanchoText(String(data.tipo_movimento || data.tipo || plan.operation || ""));
+    const isOut = trade?.kind === "sale" || ["saida", "uso", "consumo", "venda", "venda_estoque"].some((value) => movement.includes(value));
+    const value = parseActionPlanNumber(data.valor_total ?? data.valor) ?? trade?.value;
+    const isPurchase = trade?.kind === "purchase"
+      || movement.includes("compra")
+      || plan.operation === "compra_estoque"
+      || (!isOut && data.gera_financeiro === true && value !== undefined);
+    const isSale = trade?.kind === "sale" || movement.includes("venda") || plan.operation === "venda_estoque";
     const tipo = isOut ? "ESTOQUE_SAIDA" : "ESTOQUE_ENTRADA";
     const dados = {
-      item_nome: data.item || data.item_ref || data.nome,
-      quantidade: data.quantidade,
-      unidade: data.unidade || data.unidade_medida,
-      valor: data.valor_total,
+      item_nome: data.item || data.item_ref || data.nome || trade?.item,
+      quantidade: parseActionPlanNumber(data.quantidade) ?? trade?.quantity ?? data.quantidade,
+      unidade: data.unidade || data.unidade_medida || trade?.unit,
+      valor: value,
       data_referencia: date,
       compra: isPurchase || undefined,
-      sem_financeiro: isPurchase && (data.valor_total === undefined || data.valor_total === null || data.valor_total === "") ? true : undefined,
+      sem_financeiro: isPurchase && value === undefined ? true : undefined,
       venda: isSale || undefined,
       destino: data.destino || undefined,
       motivo: data.motivo || data.observacoes || undefined,
@@ -96,6 +197,22 @@ function mutationParsed(plan: ActionPlan, currentDate?: string): ParsedRanchoMes
   }
 
   if (plan.domain === "financeiro") {
+    const trade = actionPlanPhysicalStockTrade(plan, data, originalText);
+    if (trade?.item && trade.quantity !== undefined && trade.unit && trade.value !== undefined) {
+      const tipo = trade.kind === "sale" ? "ESTOQUE_SAIDA" : "ESTOQUE_ENTRADA";
+      const dados = {
+        item_nome: trade.item,
+        quantidade: trade.quantity,
+        unidade: trade.unit,
+        valor: trade.value,
+        data_referencia: date,
+        compra: trade.kind === "purchase" || undefined,
+        venda: trade.kind === "sale" || undefined,
+        ...metadata
+      };
+      return finalize(tipo, dados, buildMissing(tipo, dados), plan.confidence);
+    }
+
     const financialType = String(data.tipo || "").toLowerCase();
     const tipo = ["receita", "entrada", "credito"].includes(financialType) ? "RECEITA_VENDA" : "DESPESA";
     const dados = {
@@ -379,7 +496,7 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
         logEvent: validation.status === "blocked" ? "action_plan_blocked" : "action_plan_invalid"
       };
     }
-    const parsed = mutationParsed(validation.value, input.currentDate);
+    const parsed = mutationParsed(validation.value, input.currentDate, input.text);
     if (parsed) {
       return {
         ok: true,

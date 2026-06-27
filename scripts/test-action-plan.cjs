@@ -650,6 +650,64 @@ test("data operacional do Rancho usa America/Sao_Paulo em vez de UTC puro", asyn
   assert(finance.parsed.dados?.data_referencia === "2026-06-24", `financeiro sem data deveria usar hoje local, recebeu ${finance.parsed.dados?.data_referencia}`);
 });
 
+test("ActionPlan compra e venda fisica geram estoque com reflexo financeiro", async () => {
+  const sale = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "financeiro",
+      confidence: 0.9,
+      data: { tipo: "receita", categoria: "milho", descricao: "venda de milho", valor: 320 },
+      requiresConfirmation: true
+    },
+    text: "vendi 4 sacos de milho por 320 reais",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(sale.ok, `venda fisica deveria executar: ${sale.reason}`);
+  assert(sale.parsed.tipo === "ESTOQUE_SAIDA", `venda fisica deveria virar ESTOQUE_SAIDA, recebeu ${sale.parsed.tipo}`);
+  assert(sale.parsed.dados?.item_nome === "milho", "venda deveria preservar item do texto");
+  assert(Number(sale.parsed.dados?.quantidade) === 4, "venda deveria preservar quantidade");
+  assert(sale.parsed.dados?.unidade === "sacos", "venda deveria preservar unidade");
+  assert(Number(sale.parsed.dados?.valor) === 320, "venda deveria preservar valor");
+  assert(sale.parsed.dados?.venda === true, "venda deveria marcar reflexo financeiro");
+
+  const purchase = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "estoque",
+      confidence: 0.9,
+      data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 12, unidade: "sacos", valor_total: 960 },
+      requiresConfirmation: true
+    },
+    text: "comprei 12 sacos de racao por 960 reais",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(purchase.ok, `compra fisica deveria executar: ${purchase.reason}`);
+  assert(purchase.parsed.tipo === "ESTOQUE_ENTRADA", `compra fisica deveria virar ESTOQUE_ENTRADA, recebeu ${purchase.parsed.tipo}`);
+  assert(purchase.parsed.dados?.item_nome === "racao", "compra deveria preservar item");
+  assert(Number(purchase.parsed.dados?.quantidade) === 12, "compra deveria preservar quantidade");
+  assert(Number(purchase.parsed.dados?.valor) === 960, "compra deveria preservar valor");
+  assert(purchase.parsed.dados?.compra === true, "compra deveria marcar reflexo financeiro");
+
+  const use = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "estoque",
+      confidence: 0.9,
+      data: { tipo_movimento: "saida", item_ref: "sal mineral", quantidade: 20, unidade: "kg", motivo: "consumo" },
+      requiresConfirmation: true
+    },
+    text: "dei 20 kg de sal mineral no cocho",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(use.ok, `saida comum de estoque deveria executar: ${use.reason}`);
+  assert(use.parsed.tipo === "ESTOQUE_SAIDA", `saida comum deveria virar ESTOQUE_SAIDA, recebeu ${use.parsed.tipo}`);
+  assert(use.parsed.dados?.venda !== true, "saida comum nao deveria marcar venda");
+  assert(use.parsed.dados?.compra !== true, "saida comum nao deveria marcar compra");
+});
+
 test("ActionPlan create de ponto vira PONTO_FUNCIONARIO", async () => {
   const result = await executeActionPlan({
     plan: {
@@ -901,6 +959,34 @@ test("executor query gasto com racao 90 dias nao vira mes atual", async () => {
   assert(result.rows.length === 2, `esperado 2 gastos com racao, recebido ${result.rows.length}`);
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_gasto || 0) === 1400, "total_gasto deveria somar apenas saidas no periodo");
   assertCleanVisibleText(result.response, "resposta query racao");
+});
+
+test("executor query financeiro mes atual repara filtro invalido do ActionPlan", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "financeiro",
+      confidence: 0.82,
+      filters: [{ field: "periodo", op: "eq", value: "mes_atual" }],
+      aggregations: [{ field: "valor", op: "sum", as: "total" }],
+      requiresConfirmation: false
+    },
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-18",
+    originalText: "como foi o financeiro desse mes?",
+    supabase: createActionPlanSupabase({
+      [TABLES.transacoesFinanceiras]: [
+        { id: "entrada-junho", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "entrada", valor: 1000, descricao: "venda leite", categoria: "leite", data_transacao: "2026-06-02" },
+        { id: "saida-junho", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 300, descricao: "racao", categoria: "racao", data_transacao: "2026-06-10" },
+        { id: "saida-maio", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 200, descricao: "sal", categoria: "insumo", data_transacao: "2026-05-30" }
+      ]
+    })
+  });
+  assert(result.ok, `consulta financeira deveria ser reparada: ${result.reason}`);
+  assert(result.rows.length === 2, `esperado somente registros do mes atual, recebido ${result.rows.length}`);
+  assert(result.parsed.tipo === "CONSULTA_FINANCEIRO", `consulta reparada deveria manter financeiro, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.resultado?.filters?.some((filter) => filter.field === "data" && filter.op === "current_month"), "filtro current_month reparado ausente");
+  assertCleanVisibleText(result.response, "resposta query financeiro reparada");
 });
 
 test("executor query producao Mimosa desde janeiro usa relacao animal", async () => {

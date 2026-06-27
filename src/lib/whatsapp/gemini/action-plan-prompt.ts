@@ -5,7 +5,7 @@ import {
   RANCHO_DOMAIN_MANIFEST
 } from "@/lib/whatsapp/gemini/domain-manifest";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v3";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v4";
 
 const EXAMPLES = [
   {
@@ -37,6 +37,15 @@ const EXAMPLES = [
     }
   },
   {
+    user: "como foi o financeiro desse mes?",
+    plan: {
+      action: "query", domain: "financeiro", confidence: 0.94,
+      filters: [{ field: "data", op: "current_month" }],
+      aggregations: [{ field: "valor", op: "sum", as: "total" }],
+      groupBy: ["tipo"], limit: 100, requiresConfirmation: false
+    }
+  },
+  {
     user: "quanto gastei com racao nos ultimos 90 dias",
     plan: {
       action: "query", domain: "financeiro", confidence: 0.94,
@@ -62,6 +71,14 @@ const EXAMPLES = [
     plan: {
       action: "create", domain: "estoque", operation: "compra_estoque", confidence: 0.92,
       data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 10, unidade: "saco", valor_total: 500, gera_financeiro: true },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "vendi 4 sacos de milho por 320 reais",
+    plan: {
+      action: "create", domain: "estoque", operation: "venda_estoque", confidence: 0.92,
+      data: { tipo_movimento: "saida", item_ref: "milho", quantidade: 4, unidade: "saco", valor_total: 320, gera_financeiro: true },
       requiresConfirmation: true
     }
   },
@@ -142,6 +159,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "query exige requiresConfirmation=false. create, update e import_table exigem requiresConfirmation=true.",
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
+    "Compra ou venda de item fisico com quantidade, unidade, item e valor deve usar domain=estoque, gera_financeiro=true. Compra vira entrada de estoque + despesa; venda vira saida de estoque + receita. Nao use somente financeiro nesses casos.",
     "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
     "Para lista estruturada simples ja normalizada, import_table tambem pode usar data.rows com objetos por linha.",
     "A ordem e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais.",

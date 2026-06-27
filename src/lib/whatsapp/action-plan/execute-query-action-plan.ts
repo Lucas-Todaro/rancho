@@ -130,6 +130,59 @@ function normalizedText(value: unknown) {
   return normalizeRanchoText(String(value ?? ""));
 }
 
+function isFinanceQueryText(text: unknown) {
+  const normalized = normalizedText(text);
+  if (!normalized) return false;
+  const hasFinanceTopic = /\b(financeiro|financas|financeira|receita|receitas|despesa|despesas|gasto|gastos|gastei|saldo|caixa|resultado|faturamento|vendas?)\b/.test(normalized);
+  const hasQueryShape = /\b(como|quanto|qual|quais|relatorio|resumo|consulta|consultar|mostrar|mostra|ver|foi|ficou|mes|semana|ano|hoje|ontem|ultimos?)\b/.test(normalized);
+  return hasFinanceTopic && hasQueryShape;
+}
+
+function financeQueryDateFilter(text: unknown): FilterPlan {
+  const normalized = normalizedText(text);
+  const lastDays = normalized.match(/\bultimos?\s+(\d+)\s+dias?\b/);
+  if (lastDays) return { field: "data", op: "last_days", value: Number(lastDays[1]) };
+  const lastMonths = normalized.match(/\bultimos?\s+(\d+)\s+mes(?:es)?\b/);
+  if (lastMonths) return { field: "data", op: "last_months", value: Number(lastMonths[1]) };
+  if (/\b(hoje|dia atual)\b/.test(normalized)) return { field: "data", op: "last_days", value: 1 };
+  if (/\b(ano|anual)\b/.test(normalized)) return { field: "data", op: "current_year" };
+  return { field: "data", op: "current_month" };
+}
+
+function financeQueryTypeFilter(text: unknown): FilterPlan | null {
+  const normalized = normalizedText(text);
+  if (/\b(despesa|despesas|gasto|gastos|gastei|saida|saidas|paguei|pagamento)\b/.test(normalized)) {
+    return { field: "tipo", op: "eq", value: "despesa" };
+  }
+  if (/\b(receita|receitas|entrada|entradas|faturamento|vendas?|recebi)\b/.test(normalized)) {
+    return { field: "tipo", op: "eq", value: "receita" };
+  }
+  return null;
+}
+
+function repairedFinanceQueryPlan(originalPlan: QueryActionPlan, originalText?: string): QueryActionPlan | null {
+  if (originalPlan.action !== "query" || originalPlan.domain !== "financeiro") return null;
+  if (!isFinanceQueryText(originalText || originalPlan.userQuestion || "")) return null;
+
+  const typeFilter = financeQueryTypeFilter(originalText || originalPlan.userQuestion || "");
+  return {
+    action: "query",
+    domain: "financeiro",
+    confidence: Math.max(originalPlan.confidence || 0, 0.85),
+    filters: [
+      ...(typeFilter ? [typeFilter] : []),
+      financeQueryDateFilter(originalText || originalPlan.userQuestion || "")
+    ],
+    aggregations: [{ field: "valor", op: "sum", as: "total" }],
+    groupBy: ["tipo"],
+    limit: 100,
+    requiresConfirmation: false,
+    operation: originalPlan.operation,
+    userQuestion: originalPlan.userQuestion || originalText || null,
+    safety: originalPlan.safety
+  };
+}
+
 function dateRangeFor(filter: FilterPlan, baseDate: Date) {
   const baseISO = dateOnly(baseDate);
   const end = getRanchDayRange(baseISO).end;
@@ -681,7 +734,12 @@ async function loadRelationContext(supabase: ActionPlanSupabaseLike | null | und
 }
 
 export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput): Promise<ExecuteQueryActionPlanResult> {
-  const validation = validateActionPlan(input.plan);
+  let validation = validateActionPlan(input.plan);
+  if (!validation.ok) {
+    const repairedPlan = repairedFinanceQueryPlan(input.plan, input.originalText);
+    if (repairedPlan) validation = validateActionPlan(repairedPlan);
+  }
+
   if (!validation.ok) {
     return {
       ok: false,
