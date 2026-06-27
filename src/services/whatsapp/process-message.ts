@@ -99,6 +99,7 @@ import {
   type StockLookupResult
 } from "@/services/whatsapp/catalog-service";
 import { confirmationText, dryRunConfirmationText, isDestructiveBulkParsed } from "@/services/whatsapp/confirmation-message";
+import { sendOutboundWhatsAppText } from "@/services/whatsapp/outbound";
 import {
   applyPendingPatchToSession,
   interpretPendingPatchWithGemini,
@@ -623,6 +624,88 @@ async function saveWhatsAppMessage(
     console.error("[Twilio webhook] Falha inesperada ao salvar mensagem", {
       message: safeErrorText(error) || "erro desconhecido"
     });
+  }
+}
+
+const PROCESSING_NOTICE_TEXT = "Recebi sua mensagem. Estou conferindo os dados do rancho e já te respondo.";
+const DEFAULT_PROCESSING_NOTICE_DELAY_MS = 1500;
+
+function processingNoticeDelayMs() {
+  const value = Number(process.env.BOT_PROCESSING_NOTICE_DELAY_MS || "");
+  if (!Number.isFinite(value)) return DEFAULT_PROCESSING_NOTICE_DELAY_MS;
+  return Math.min(Math.max(value, 500), 8000);
+}
+
+function processingNoticeEnabled(input: ProcessWhatsappMessageInput) {
+  if (input.modoTeste) return false;
+  if (!["twilio", "meta", "whatsapp"].includes(input.provider)) return false;
+
+  const raw = String(process.env.BOT_PROCESSING_NOTICE_ENABLED || "").trim().toLowerCase();
+  if (["0", "false", "off", "nao", "não"].includes(raw)) return false;
+  if (["1", "true", "on", "sim"].includes(raw)) return true;
+  return process.env.NODE_ENV === "production";
+}
+
+function startProcessingNotice(input: ProcessWhatsappMessageInput, supabase: SupabaseAdmin, owner: WhatsAppOwner, phone: string, reason: string) {
+  if (!processingNoticeEnabled(input)) return { cancel: () => undefined };
+
+  let cancelled = false;
+  const timer = setTimeout(() => {
+    if (cancelled) return;
+    void (async () => {
+      try {
+        await sendOutboundWhatsAppText(phone, PROCESSING_NOTICE_TEXT);
+        await saveWhatsAppMessage(supabase, {
+          owner,
+          phone,
+          messageSid: `${input.messageSid || "processing"}-${reason}`,
+          direction: "saida",
+          body: PROCESSING_NOTICE_TEXT,
+          raw: {
+            provider: input.provider,
+            processing_notice: true,
+            reason
+          }
+        });
+        console.log("[BOT FLOW]", {
+          event: "processing_notice_sent",
+          provider: input.provider,
+          phone: maskPhone(phone),
+          reason
+        });
+      } catch (error) {
+        console.warn("[BOT FLOW]", {
+          event: "processing_notice_failed",
+          provider: input.provider,
+          phone: maskPhone(phone),
+          reason,
+          message: safeErrorText(error) || "erro desconhecido"
+        });
+      }
+    })();
+  }, processingNoticeDelayMs());
+
+  return {
+    cancel: () => {
+      cancelled = true;
+      clearTimeout(timer);
+    }
+  };
+}
+
+async function withProcessingNotice<T>(
+  input: ProcessWhatsappMessageInput,
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  phone: string,
+  reason: string,
+  run: () => Promise<T>
+) {
+  const notice = startProcessingNotice(input, supabase, owner, phone, reason);
+  try {
+    return await run();
+  } finally {
+    notice.cancel();
   }
 }
 
@@ -3737,7 +3820,14 @@ async function handleConversationActMessage(
   return { handled: false };
 }
 
-async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, session: BotSession, text: string) {
+async function handleMissingData(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  session: BotSession,
+  text: string,
+  processingInput?: ProcessWhatsappMessageInput,
+  processingPhone?: string
+) {
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) return handleFreeText(supabase, owner, text);
 
@@ -3843,13 +3933,16 @@ async function handleMissingData(supabase: SupabaseAdmin, owner: WhatsAppOwner, 
 
   if (isGeminiPrimaryMode() && pending.tipo === "PARTO" && shouldUsePendingPatchForText(text)) {
     const missingBefore = [...(pending.perguntas_faltantes || [])];
-    const patchResult = await interpretPendingPatchWithGemini({
+    const interpretPatch = () => interpretPendingPatchWithGemini({
       text,
       pending,
       status: session.etapa,
       currentDate: getRanchTodayISO(),
       timezone: "America/Sao_Paulo"
     });
+    const patchResult = processingInput
+      ? await withProcessingNotice(processingInput, supabase, owner, processingPhone || owner.telefone_e164 || "", "pending_patch_interpreter", interpretPatch)
+      : await interpretPatch();
     if (patchResult.ok) {
       const patched = applyPendingPatchToSession(pending, patchResult.patch);
       const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, patched);
@@ -4345,14 +4438,14 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     if (structuredDetection.isStructured && !tableParsedPreview) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       suppressPreviousPending = true;
-      const interpreted = await parseWithConfiguredInterpreter({
+      const interpreted = await withProcessingNotice(input, supabase, owner!, phone, "structured_interpreter", () => parseWithConfiguredInterpreter({
         text: parserMessage,
         localParsed: localParsedPreview,
-        owner,
+        owner: owner!,
         supabase,
         messageType: conversationAct.messageType,
         hasPendingAction: conversationAct.hasPendingAction
-      });
+      }));
       if (interpreted.kind === "clarify") {
         parsed = finalize("DESCONHECIDO", {
           ...(interpreted.debug || {}),
@@ -4492,7 +4585,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         suppressPreviousPending = Boolean(handled.suppressPreviousPending);
         response = handled.response || "";
       } else {
-        response = await handleMissingData(supabase, owner, previousSession, message);
+        response = await handleMissingData(supabase, owner, previousSession, message, input, phone);
       }
     } else {
       const handled = await handleConversationActMessage(supabase, owner, previousSession, message, conversationAct);
@@ -4502,14 +4595,14 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         response = handled.response || "";
       } else {
         const localParsed = localParsedPreview;
-        const fallback = await parseWithConfiguredInterpreter({
+        const fallback = await withProcessingNotice(input, supabase, owner!, phone, "action_plan_interpreter", () => parseWithConfiguredInterpreter({
           text: parserMessage,
           localParsed,
-          owner,
+          owner: owner!,
           supabase,
           messageType: conversationAct.messageType,
           hasPendingAction: conversationAct.hasPendingAction
-        });
+        }));
 
         if (fallback.kind === "clarify") {
           await saveSession(supabase, owner, { etapa: "livre", dados: {} });

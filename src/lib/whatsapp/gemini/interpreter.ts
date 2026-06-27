@@ -1,7 +1,5 @@
 import { aiProviderLog, generateStructuredAI, parseJsonObjectText } from "@/lib/whatsapp/ai-provider";
 import { botTestVerbose, geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
-import { GEMINI_ALLOWED_INTENTS } from "@/lib/whatsapp/gemini/allowed-intents";
-import { allGeminiSchemasForPrompt } from "@/lib/whatsapp/gemini/schemas";
 import { buildGeminiSystemPrompt } from "@/lib/whatsapp/gemini/system-prompt";
 import { validateInterpretedAction } from "@/lib/whatsapp/gemini/validator";
 import {
@@ -84,9 +82,7 @@ export async function callGeminiInterpreter(input: GeminiInterpreterInput): Prom
   }
 
   const prompt = buildGeminiSystemPrompt({
-    ...input,
-    allowedIntents: input.allowedIntents || [...GEMINI_ALLOWED_INTENTS],
-    schemas: input.schemas || allGeminiSchemasForPrompt()
+    ...input
   });
 
   try {
