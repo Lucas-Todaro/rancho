@@ -745,6 +745,141 @@ test("ActionPlan de morte vira MORTE e nao cadastro generico", async () => {
   assert(animalDeath.parsed.dados?.animal_codigo === "B-003", "status morto deveria preservar animal_ref");
 });
 
+test("ActionPlan execute valida capacidades genericas com confirmacao correta", () => {
+  const mutation = validateActionPlan({
+    action: "execute",
+    capability: "registrar_evento_animal",
+    confidence: 0.9,
+    data: { animal_ref: "B-002", tipo_evento: "morte" },
+    requiresConfirmation: true
+  });
+  assert(mutation.ok, `execute mutacional deveria validar: ${mutation.reason}`);
+
+  const query = validateActionPlan({
+    action: "execute",
+    capability: "consultar_dados",
+    confidence: 0.9,
+    data: { domain: "financeiro", periodo: "mes" },
+    requiresConfirmation: false
+  });
+  assert(query.ok, `execute consulta deveria validar: ${query.reason}`);
+
+  const invalid = validateActionPlan({
+    action: "execute",
+    capability: "registrar_financeiro",
+    confidence: 0.9,
+    data: { valor: 100 },
+    requiresConfirmation: false
+  });
+  assert(!invalid.ok, "execute mutacional sem confirmacao deveria ser invalido");
+  assert(invalid.reason.includes("requiresConfirmation=true"), `motivo inesperado: ${invalid.reason}`);
+});
+
+test("ActionPlan execute cobre capacidades genericas principais", async () => {
+  const death = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "registrar_evento_animal",
+      operation: "registro_morte",
+      confidence: 0.94,
+      data: { animal_ref: "B-002", tipo_evento: "morte", data: "hoje" },
+      requiresConfirmation: true
+    },
+    text: "a vaca B-002 morreu hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(death.ok, `execute morte deveria executar: ${death.reason}`);
+  assert(death.parsed.tipo === "MORTE", `execute morte deveria virar MORTE, recebeu ${death.parsed.tipo}`);
+  assert(death.parsed.dados?.action_plan_capability === "registrar_evento_animal", "capability de morte ausente");
+
+  const sale = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "registrar_movimento_estoque",
+      operation: "venda_estoque",
+      confidence: 0.92,
+      data: { tipo_movimento: "saida", item: "milho", quantidade: 4, unidade: "sacos", valor_total: 320 },
+      requiresConfirmation: true
+    },
+    text: "vendi 4 sacos de milho por 320 reais",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(sale.ok, `execute venda estoque deveria executar: ${sale.reason}`);
+  assert(sale.parsed.tipo === "ESTOQUE_SAIDA", `execute venda deveria virar ESTOQUE_SAIDA, recebeu ${sale.parsed.tipo}`);
+  assert(Number(sale.parsed.dados?.quantidade) === 4, "execute venda deveria preservar quantidade");
+  assert(Number(sale.parsed.dados?.valor) === 320, "execute venda deveria preservar valor");
+  assert(sale.parsed.dados?.venda === true, "execute venda deveria marcar venda");
+
+  const animal = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "cadastrar_animal",
+      confidence: 0.92,
+      data: { brinco: "B-120", categoria: "vaca", nome: "Estrela" },
+      requiresConfirmation: true
+    },
+    text: "cadastrar vaca B-120 chamada Estrela",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(animal.ok, `execute cadastro animal deveria executar: ${animal.reason}`);
+  assert(animal.parsed.tipo === "CADASTRO_ANIMAL", `execute cadastro animal deveria virar CADASTRO_ANIMAL, recebeu ${animal.parsed.tipo}`);
+  assert(animal.parsed.dados?.animal_codigo === "B-120", "execute cadastro animal deveria preservar brinco");
+
+  const payroll = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "registrar_pagamento_funcionario",
+      confidence: 0.92,
+      data: { funcionario_ref: "Joao", valor: 1500, pagamento_tipo: "salario", data: "hoje" },
+      requiresConfirmation: true
+    },
+    text: "paguei 1500 de salario para Joao",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(payroll.ok, `execute pagamento funcionario deveria executar: ${payroll.reason}`);
+  assert(payroll.parsed.tipo === "PAGAMENTO_FUNCIONARIO", `execute pagamento deveria virar PAGAMENTO_FUNCIONARIO, recebeu ${payroll.parsed.tipo}`);
+  assert(payroll.parsed.dados?.funcionario_nome === "Joao", "execute pagamento deveria preservar funcionario");
+
+  const genealogy = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "atualizar_genealogia",
+      confidence: 0.9,
+      data: { animal_ref: "A12", mae_ref: "Estrela" },
+      requiresConfirmation: true
+    },
+    text: "mae do animal A12 e Estrela",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(genealogy.ok, `execute genealogia deveria executar: ${genealogy.reason}`);
+  assert(genealogy.parsed.tipo === "ATUALIZACAO_GENEALOGIA", `execute genealogia deveria virar ATUALIZACAO_GENEALOGIA, recebeu ${genealogy.parsed.tipo}`);
+  assert(genealogy.parsed.dados?.mae_nome === "Estrela", "execute genealogia deveria preservar mae");
+});
+
+test("ActionPlan execute consulta generica passa pelo executor de query", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "consultar_dados",
+      confidence: 0.9,
+      data: { domain: "financeiro", periodo: "mes" },
+      requiresConfirmation: false
+    },
+    text: "como foi o financeiro desse mes?",
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({ [TABLES.transacoesFinanceiras]: [] }),
+    currentDate: "2026-06-24"
+  });
+  assert(result.ok, `execute consulta generica deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_FINANCEIRO", `consulta generica deveria virar CONSULTA_FINANCEIRO, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.action_plan_capability === "consultar_dados", "capability de consulta ausente");
+});
+
 test("Gemini-first usa ActionPlan de morte quando o modelo entende o evento", async () => {
   await withGeminiMock(() => ({
     action: "create",
@@ -766,6 +901,29 @@ test("Gemini-first usa ActionPlan de morte quando o modelo entende o evento", as
     assert(parsed.dados?.animal_codigo === "B-002", "ActionPlan deveria preservar animal_ref");
     assert(parsed.dados?.action_plan_used === true, "ActionPlan de morte deveria ser marcado");
     assert(parsed.dados?.action_plan_domain === "saude_sanitario", "domain saude_sanitario ausente");
+  });
+});
+
+test("Gemini-first usa ActionPlan execute quando o modelo escolhe capacidade generica", async () => {
+  await withGeminiMock(() => ({
+    action: "execute",
+    capability: "registrar_evento_animal",
+    operation: "registro_morte",
+    confidence: 0.94,
+    data: { animal_ref: "B-002", tipo_evento: "morte", data: "hoje" },
+    requiresConfirmation: true
+  }), async () => {
+    const text = "a vaca B-002 morreu hoje";
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.tipo === "MORTE", `Gemini execute deveria virar MORTE, recebeu ${parsed?.tipo}`);
+    assert(parsed.dados?.action_plan_used === true, "Gemini execute deveria marcar ActionPlan");
+    assert(parsed.dados?.action_plan_capability === "registrar_evento_animal", "capability deveria ser preservada");
   });
 });
 

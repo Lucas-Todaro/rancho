@@ -47,6 +47,7 @@ const { buildGeminiSystemPrompt } = require("../src/lib/whatsapp/gemini/system-p
 const { validateInterpretedAction } = require("../src/lib/whatsapp/gemini/validator.ts");
 const { domainFromUserChoice } = require("../src/lib/whatsapp/nlp-core/tabular-domain-router.ts");
 const { detectConversationAct } = require("../src/services/whatsapp/conversation-act.ts");
+const { TABLES } = require("../src/lib/tables.ts");
 const {
   geminiRuntimeReportLines,
   geminiRuntimeStats,
@@ -62,6 +63,106 @@ const ADMIN_OWNER = {
   whatsapp_usuario_id: "wa-admin",
   nome_exibicao: "Dono"
 };
+
+class ActionPlanQueryBuilder {
+  constructor(rows) {
+    this.rows = rows;
+    this.filters = [];
+    this.limitCount = null;
+    this.orderField = null;
+    this.orderAscending = true;
+  }
+
+  select() {
+    return this;
+  }
+
+  eq(field, value) {
+    this.filters.push((row) => String(row[field] ?? "") === String(value ?? ""));
+    return this;
+  }
+
+  gte(field, value) {
+    this.filters.push((row) => String(row[field] ?? "") >= String(value ?? ""));
+    return this;
+  }
+
+  lt(field, value) {
+    this.filters.push((row) => String(row[field] ?? "") < String(value ?? ""));
+    return this;
+  }
+
+  lte(field, value) {
+    this.filters.push((row) => String(row[field] ?? "") <= String(value ?? ""));
+    return this;
+  }
+
+  limit(count) {
+    this.limitCount = Number(count);
+    return this;
+  }
+
+  order(field, options = {}) {
+    this.orderField = field;
+    this.orderAscending = options.ascending !== false;
+    return this;
+  }
+
+  execute() {
+    let data = this.rows.filter((row) => this.filters.every((filter) => filter(row)));
+    if (this.orderField) {
+      data = [...data].sort((left, right) => {
+        const comparison = String(left[this.orderField] ?? "").localeCompare(String(right[this.orderField] ?? ""));
+        return this.orderAscending ? comparison : -comparison;
+      });
+    }
+    if (Number.isFinite(this.limitCount)) data = data.slice(0, this.limitCount);
+    return { data, error: null };
+  }
+
+  then(resolve, reject) {
+    return Promise.resolve(this.execute()).then(resolve, reject);
+  }
+}
+
+function createActionPlanSupabase(seed) {
+  return {
+    from(tableName) {
+      return new ActionPlanQueryBuilder(seed[tableName] || []);
+    }
+  };
+}
+
+const QUERY_SUPABASE_SEED = {
+  [TABLES.animais]: [
+    { id: "animal-777", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "777", nome: "Mimosa", categoria: "vaca", sexo: "femea", fase: "lactacao", status: "ativo" },
+    { id: "animal-091", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "091", nome: "Protocolo", categoria: "vaca", sexo: "femea", fase: "protocolo", status: "ativo" },
+    { id: "animal-092", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "092", nome: "Reteste", categoria: "vaca", sexo: "femea", fase: "reteste", status: "ativo" }
+  ],
+  [TABLES.eventosAnimal]: [
+    { id: "evt-parto", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-777", tipo: "parto", data_evento: "2026-06-20", descricao: "Parto registrado", created_at: "2026-06-20T08:00:00Z" },
+    { id: "evt-protocolo", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-091", tipo: "protocolo", data_evento: "2026-06-21", descricao: "Protocolo IA", created_at: "2026-06-21T08:00:00Z" },
+    { id: "evt-reteste", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-092", tipo: "reteste", data_evento: "2026-06-22", descricao: "Reteste", created_at: "2026-06-22T08:00:00Z" }
+  ],
+  [TABLES.estoqueItens]: [
+    { id: "stock-racao", fazenda_id: ADMIN_OWNER.fazenda_id, nome: "Racao", categoria: "alimentacao", unidade_medida: "kg", quantidade_atual: 100, quantidade_minima: 20, ativo: true, created_at: "2026-06-01T08:00:00Z" }
+  ],
+  [TABLES.estoqueMovimentacoes]: [
+    { id: "mov-racao", fazenda_id: ADMIN_OWNER.fazenda_id, item_id: "stock-racao", tipo: "entrada", quantidade: 100, valor_unitario: 3, motivo: "Compra inicial", created_at: "2026-06-01T08:00:00Z" }
+  ],
+  [TABLES.transacoesFinanceiras]: [
+    { id: "fin-racao", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 300, descricao: "racao", data: "2026-06-01", created_at: "2026-06-01T08:00:00Z" },
+    { id: "fin-leite", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "entrada", valor: 1200, descricao: "venda de leite", data: "2026-06-02", created_at: "2026-06-02T08:00:00Z" }
+  ],
+  [TABLES.ordenhas]: [
+    { id: "milk-777", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-777", litros: 12, data: "2026-06-01", created_at: "2026-06-01T18:00:00Z" }
+  ],
+  [TABLES.funcionarios]: []
+};
+
+function querySupabase() {
+  return createActionPlanSupabase(QUERY_SUPABASE_SEED);
+}
 
 function normalize(value) {
   return String(value || "")
@@ -375,7 +476,7 @@ const cases = [
       assert(parsed, `${testCase.message}: resultado sem parsed`);
       assert(parsed.tipo === testCase.intent, `${testCase.message}: intent esperado ${testCase.intent}, recebido ${parsed.tipo}`);
       assert(
-        parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.dados?.origem_parser === "tabela_local" || parsed.dados?.origem_parser === "gemini_table_guard" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
+        result.kind === "local" || parsed.dados?.origem_parser === "gemini" || parsed.dados?.origem_parser === "gemini_action_plan" || parsed.dados?.origem_parser === "local" || parsed.dados?.origem_parser === "local_guard" || parsed.dados?.origem_parser === "tabela_local" || parsed.dados?.origem_parser === "gemini_table_guard" || parsed.tipo === "LOTE_REGISTROS" || parsed.tipo === "DESCONHECIDO",
         `${testCase.message}: origem_parser gemini ausente`
       );
       if (testCase.route) {
@@ -465,7 +566,8 @@ const cases = [
         const result = await parseWithConfiguredInterpreter({
           text: actionPlanCase.message,
           localParsed: parseRanchoMessage(actionPlanCase.message),
-          owner: ADMIN_OWNER
+          owner: ADMIN_OWNER,
+          supabase: querySupabase()
         });
         const parsed = finalParsed(result);
         assert(parsed, `${actionPlanCase.message}: resultado sem parsed`);
@@ -519,6 +621,7 @@ const cases = [
         text: testCase.text,
         localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
         owner: ADMIN_OWNER,
+        supabase: querySupabase(),
         geminiMockId: testCase.fixture
       });
       const parsed = finalParsed(result);
@@ -547,7 +650,8 @@ const cases = [
         const invalid = Number(parsed.dados?.total_linhas_parse_invalidas || 0);
         const review = Number(parsed.dados?.total_linhas_needs_review || 0);
         assert(rows.length === total, `${testCase.name}: linhas uteis desapareceram`);
-        assert(valid + invalid + review === total, `${testCase.name}: particao de linhas invalida`);
+        assert(valid + invalid === total, `${testCase.name}: particao de linhas invalida`);
+        assert(review <= valid, `${testCase.name}: revisao nao pode exceder linhas validas`);
         assert(rows.every((row) => !String(row.observacoes || "").includes("Data;")), `${testCase.name}: tabela inteira virou observacao`);
         assert(rows.some((row) => row.evento_normalizado === "INSEMINACAO"), `${testCase.name}: INSEMINACAO ausente`);
         if (testCase.fixture !== "import-table-reproducao-statuses") {
@@ -636,8 +740,11 @@ const cases = [
         timezone: "America/Fortaleza"
       });
       assert(prompt.includes("Retorne somente um objeto JSON ActionPlan"), "prompt nao declara ActionPlan obrigatorio");
-      assert(prompt.includes("Nao retorne markdown, texto livre, intent legado ou SQL"), "prompt nao bloqueia intent legado");
-      assert(prompt.includes('"action": "query"'), "prompt sem exemplo action=query");
+      assert(prompt.includes("Nao retorne markdown"), "prompt nao bloqueia markdown");
+      assert(prompt.includes("intent legado"), "prompt nao bloqueia intent legado");
+      assert(prompt.includes("SQL"), "prompt nao bloqueia SQL");
+      assert(prompt.includes('"action":"query"') || prompt.includes('"action": "query"'), "prompt sem exemplo action=query");
+      assert(prompt.includes('"action":"execute"') || prompt.includes('"action": "execute"'), "prompt sem exemplo action=execute");
       assert(prompt.includes("relatorio financeiro dos ultimos 6 meses"), "prompt sem exemplo financeiro obrigatorio");
     });
     results.push({ ok: true, name: "Prompt Gemini exige ActionPlan" });

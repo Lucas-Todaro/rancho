@@ -1,4 +1,4 @@
-export type ActionPlanAction = "query" | "import_table" | "create" | "update" | "clarify" | "block";
+export type ActionPlanAction = "query" | "import_table" | "create" | "update" | "execute" | "clarify" | "block";
 
 export type FilterOperator =
   | "eq"
@@ -96,6 +96,19 @@ export type UpdateActionPlan = {
   safety?: ActionPlanSafety;
 };
 
+export type ExecuteCapabilityActionPlan = {
+  action: "execute";
+  capability: string;
+  domain?: string;
+  confidence: number;
+  data: Record<string, unknown>;
+  requiresConfirmation: boolean;
+  operation?: string;
+  missingFields?: string[];
+  userQuestion?: string | null;
+  safety?: ActionPlanSafety;
+};
+
 export type ClarifyActionPlan = {
   action: "clarify";
   domain?: string;
@@ -126,6 +139,7 @@ export type ActionPlan =
   | ImportTableActionPlan
   | CreateActionPlan
   | UpdateActionPlan
+  | ExecuteCapabilityActionPlan
   | ClarifyActionPlan
   | BlockActionPlan;
 
@@ -134,6 +148,7 @@ export const ACTION_PLAN_ACTIONS: readonly ActionPlanAction[] = [
   "import_table",
   "create",
   "update",
+  "execute",
   "clarify",
   "block"
 ];

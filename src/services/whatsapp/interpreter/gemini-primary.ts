@@ -1062,6 +1062,7 @@ function actionPlanDebug(plan: ActionPlan | null | undefined, structuredDetectio
   return {
     action_plan_used: false,
     action: plan?.action || null,
+    capability: plan?.action === "execute" ? plan.capability : null,
     domain: plan && "domain" in plan ? plan.domain : null,
     action_plan_validation_error: reason || null,
     import_table_validation_error: plan?.action === "import_table" ? reason || null : null,
@@ -1273,18 +1274,21 @@ async function convertActionPlanInterpretation(
   recordActionPlanRuntime(result.logEvent === "table_action_plan_used" ? "tableActionPlanUsed" : result.logEvent === "action_plan_blocked" ? "blocked" : "actionPlanUsed");
   logActionPlan(result.logEvent, {
     action: plan.action,
+    capability: plan.action === "execute" ? plan.capability : null,
     domain: "domain" in plan ? plan.domain : null,
     route,
     finalIntent: result.parsed.tipo
   });
   logActionPlan("action_plan_priority_used", {
     action: plan.action,
+    capability: plan.action === "execute" ? plan.capability : null,
     domain: "domain" in plan ? plan.domain : null
   });
   if (input.localParsed.tipo !== "DESCONHECIDO" && input.localParsed.tipo !== result.parsed.tipo) {
     logActionPlan("legacy_local_ignored_action_plan_valid", {
       legacyIntent: input.localParsed.tipo,
       action: plan.action,
+      capability: plan.action === "execute" ? plan.capability : null,
       domain: "domain" in plan ? plan.domain : null
     });
   }

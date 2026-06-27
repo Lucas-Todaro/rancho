@@ -6,11 +6,16 @@ import {
   type ActionPlan,
   type AggregationPlan,
   type CreateActionPlan,
+  type ExecuteCapabilityActionPlan,
   type FilterPlan,
   type ImportTableActionPlan,
   type QueryActionPlan,
   type UpdateActionPlan
 } from "@/lib/whatsapp/gemini/action-plan-types";
+import {
+  capabilityRequiresConfirmation,
+  normalizeActionPlanCapability
+} from "@/lib/whatsapp/gemini/action-plan-capabilities";
 import {
   RANCHO_DOMAIN_MANIFEST,
   type DomainFieldDefinition,
@@ -645,6 +650,33 @@ function validateBlock(plan: AnyRecord, warnings: string[]): ActionPlanValidatio
   };
 }
 
+function validateExecuteCapability(plan: AnyRecord, minConfidence: number, warnings: string[]): ActionPlanValidationResult {
+  const errors: string[] = [];
+  const capability = normalizeActionPlanCapability(plan.capability || plan.operation);
+  if (!capability) errors.push("execute.capability inexistente ou nao permitida");
+  validateConfidence(plan, minConfidence, errors);
+  if (!isPlainObject(plan.data)) errors.push("execute.data deve ser objeto");
+  if (capability) {
+    const requiresConfirmation = capabilityRequiresConfirmation(capability);
+    if (plan.requiresConfirmation !== requiresConfirmation) {
+      errors.push(`execute.${capability} exige requiresConfirmation=${requiresConfirmation}`);
+    }
+  }
+  if (errors.length) return invalid(errors.join("; "), warnings);
+  return {
+    ok: true,
+    status: "valid",
+    value: {
+      ...plan,
+      capability,
+      data: { ...plan.data },
+      requiresConfirmation: capability ? capabilityRequiresConfirmation(capability) : Boolean(plan.requiresConfirmation)
+    } as ExecuteCapabilityActionPlan,
+    warnings,
+    executable: true
+  };
+}
+
 export function validateImportTableActionPlan(
   plan: unknown,
   parsedTable: ParsedTableForValidation,
@@ -670,6 +702,7 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
   if (!ACTION_PLAN_ACTIONS.includes(action as never)) return invalid("action inexistente ou nao permitida", warnings);
   if (action === "clarify") return validateClarify(plan, warnings);
   if (action === "block") return validateBlock(plan, warnings);
+  if (action === "execute") return validateExecuteCapability(plan, minConfidence, warnings);
 
   const domainName = String(plan.domain || "").trim();
   if (!domainName) errors.push("domain obrigatorio");

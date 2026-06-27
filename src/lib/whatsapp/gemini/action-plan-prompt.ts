@@ -4,8 +4,9 @@ import {
   type DomainManifest,
   RANCHO_DOMAIN_MANIFEST
 } from "@/lib/whatsapp/gemini/domain-manifest";
+import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v4";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v5";
 
 const EXAMPLES = [
   {
@@ -56,7 +57,7 @@ const EXAMPLES = [
   {
     user: "adicionar entrada de mil reais",
     plan: {
-      action: "create", domain: "financeiro", confidence: 0.92,
+      action: "execute", capability: "registrar_financeiro", confidence: 0.92,
       data: { tipo: "entrada", valor: 1000, categoria: "receita via WhatsApp", descricao: "receita via WhatsApp", data: "hoje" },
       requiresConfirmation: true
     }
@@ -64,7 +65,7 @@ const EXAMPLES = [
   {
     user: "adicionar saida de mil reais",
     plan: {
-      action: "create", domain: "financeiro", confidence: 0.92,
+      action: "execute", capability: "registrar_financeiro", confidence: 0.92,
       data: { tipo: "saida", valor: 1000, categoria: "despesa via WhatsApp", descricao: "despesa via WhatsApp", data: "hoje" },
       requiresConfirmation: true
     }
@@ -93,7 +94,7 @@ const EXAMPLES = [
   {
     user: "comprei 10 sacos de racao por 500 reais",
     plan: {
-      action: "create", domain: "estoque", operation: "compra_estoque", confidence: 0.92,
+      action: "execute", capability: "registrar_movimento_estoque", operation: "compra_estoque", confidence: 0.92,
       data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 10, unidade: "saco", valor_total: 500, gera_financeiro: true },
       requiresConfirmation: true
     }
@@ -101,7 +102,7 @@ const EXAMPLES = [
   {
     user: "vendi 4 sacos de milho por 320 reais",
     plan: {
-      action: "create", domain: "estoque", operation: "venda_estoque", confidence: 0.92,
+      action: "execute", capability: "registrar_movimento_estoque", operation: "venda_estoque", confidence: 0.92,
       data: { tipo_movimento: "saida", item_ref: "milho", quantidade: 4, unidade: "saco", valor_total: 320, gera_financeiro: true },
       requiresConfirmation: true
     }
@@ -158,15 +159,31 @@ const EXAMPLES = [
   {
     user: "a vaca B-002 morreu hoje",
     plan: {
-      action: "create", domain: "saude_sanitario", operation: "registro_morte", confidence: 0.94,
-      data: { animal_ref: "B-002", evento: "morte", data: "hoje" },
+      action: "execute", capability: "registrar_evento_animal", operation: "registro_morte", confidence: 0.94,
+      data: { animal_ref: "B-002", tipo_evento: "morte", data: "hoje" },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "cadastrar vaca B-120 chamada Estrela",
+    plan: {
+      action: "execute", capability: "cadastrar_animal", confidence: 0.92,
+      data: { brinco: "B-120", categoria: "vaca", nome: "Estrela" },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "paguei 1500 de salario para Joao",
+    plan: {
+      action: "execute", capability: "registrar_pagamento_funcionario", confidence: 0.92,
+      data: { funcionario_ref: "Joao", valor: 1500, pagamento_tipo: "salario", data: "hoje" },
       requiresConfirmation: true
     }
   },
   {
     user: "Joao chegou agora",
     plan: {
-      action: "create", domain: "ponto_funcionario", operation: "registrar_ponto", confidence: 0.9,
+      action: "execute", capability: "registrar_ponto_funcionario", operation: "registrar_ponto", confidence: 0.9,
       data: { funcionario_ref: "Joao", tipo: "entrada", data: "hoje" },
       requiresConfirmation: true
     }
@@ -186,9 +203,13 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     `ActionPlan prompt version: ${ACTION_PLAN_PROMPT_VERSION}`,
     "Retorne somente um objeto JSON ActionPlan. Nao retorne markdown, texto livre, bloco ```json, intent legado ou SQL.",
     "Voce interpreta a intencao. O backend valida e executa. Voce nunca acessa o banco e nunca decide salvar.",
-    "Use somente action=query|create|update|import_table|clarify|block e somente dominios, campos e enums do manifest.",
+    "Use somente action=query|create|update|execute|import_table|clarify|block e somente dominios, campos e enums do manifest.",
+    "Para mensagens comuns de operacao do usuario, prefira action=execute com uma capability permitida. Isso da liberdade sem inventar intent legado.",
+    "Capabilities permitidas: " + ACTION_PLAN_CAPABILITIES.join(", ") + ".",
+    "Em action=execute, use capability, data, confidence e requiresConfirmation. Mutacoes exigem requiresConfirmation=true; consultas exigem false.",
+    "Use action=query quando precisar de filtros/agregacoes mais ricos. Use action=import_table para tabelas.",
     "Nao invente IDs, valores, sexo da cria, pai, codigo, data, resultado financeiro, tabela ou coluna Supabase.",
-    "query exige requiresConfirmation=false. create, update e import_table exigem requiresConfirmation=true.",
+    "query exige requiresConfirmation=false. create, update, execute mutacional e import_table exigem requiresConfirmation=true.",
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
     "Lancamento financeiro puro sem item fisico usa create domain=financeiro. Entrada, entrou, recebi, receita e ganhei viram tipo=entrada/receita. Saida, saiu, paguei, gastei e despesa viram tipo=saida/despesa.",
