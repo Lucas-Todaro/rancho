@@ -4485,9 +4485,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       ? structuredMessage
       : originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const legacyParserCanDecide = !isGeminiPrimaryMode();
-    const localParsedPreview = legacyParserCanDecide
-      ? parseRanchoMessage(parserMessage)
-      : finalize("DESCONHECIDO", {}, [], 0.2);
+    const localParsedPreview = parseRanchoMessage(parserMessage);
     const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_DOMINIO", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;

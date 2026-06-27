@@ -1908,10 +1908,10 @@ test("Gemini-first bloqueia intent legado como caminho principal quando ActionPl
       should_confirm: true,
       response_hint: null
     }), async () => {
-      const text = "090 pariu";
+      const text = "pedido operacional sensivel sem action plan";
       const result = await parseWithConfiguredInterpreter({
         text,
-        localParsed: parseRanchoMessage(text),
+        localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
@@ -2411,7 +2411,7 @@ test("ActionPlan invalido com flags true nao faz fallback legado", async () => {
       const text = "vaca 1 deu 15 litros";
       const result = await parseWithConfiguredInterpreter({
         text,
-        localParsed: parseRanchoMessage(text),
+        localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
@@ -2534,13 +2534,13 @@ test("runtime encontra fixture ActionPlan partos ultimos 6 meses", async () => {
 });
 
 test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback legado", async () => {
-  const text = "relatorio financeiro dos ultimos 7 meses";
+  const text = "xablau sem contexto operacional para fixture";
   const fixture = findGeminiMockFixture({ text });
   assert(!fixture, "entrada sem fixture nao deveria casar");
 
   const result = await parseWithConfiguredInterpreter({
     text,
-    localParsed: parseRanchoMessage(text),
+    localParsed: parseRanchoMessage("mensagem propositalmente desconhecida"),
     owner: ADMIN_OWNER,
     supabase: createActionPlanSupabase({})
   });
@@ -2548,6 +2548,49 @@ test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback le
   assert(result.reason === "mock_fixture_missing", "reason esperado mock_fixture_missing, recebido " + result.reason);
   assert(result.message.includes("resposta de teste"), "mensagem deveria orientar ambiente de teste");
   assertCleanVisibleText(result.message, "mensagem sem fixture");
+});
+
+test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture", async () => {
+  const cases = [
+    {
+      text: "adicionar entrada de mil reais",
+      intent: "RECEITA_VENDA",
+      valor: 1000,
+      descricao: "receita via WhatsApp"
+    },
+    {
+      text: "adicionar saida de mil reais",
+      intent: "DESPESA",
+      valor: 1000,
+      descricao: "despesa via WhatsApp"
+    },
+    {
+      text: "paguei mil reais de energia",
+      intent: "DESPESA",
+      valor: 1000,
+      descricao: "energia"
+    }
+  ];
+
+  for (const current of cases) {
+    const fixture = findGeminiMockFixture({ text: current.text });
+    assert(!fixture, `${current.text}: entrada sem fixture nao deveria casar`);
+
+    const result = await parseWithConfiguredInterpreter({
+      text: current.text,
+      localParsed: parseRanchoMessage(current.text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    assert(result.kind === "local", `${current.text}: esperado fallback local seguro, recebido ${result.kind}`);
+    assert(parsed?.tipo === current.intent, `${current.text}: intent esperado ${current.intent}, recebido ${parsed?.tipo}`);
+    assert(Number(parsed.dados?.valor) === current.valor, `${current.text}: valor esperado ${current.valor}, recebido ${parsed.dados?.valor}`);
+    assert(String(parsed.dados?.descricao || "") === current.descricao, `${current.text}: descricao esperada ${current.descricao}, recebida ${parsed.dados?.descricao}`);
+    assert(parsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", `${current.text}: fallback seguro nao marcado`);
+    assert(parsed.dados?.action_plan_used === false, `${current.text}: nao deveria marcar ActionPlan usado`);
+    assert(parsed.perguntas_faltantes.length === 0, `${current.text}: nao deveria ter pendencias`);
+  }
 });
 
 test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {

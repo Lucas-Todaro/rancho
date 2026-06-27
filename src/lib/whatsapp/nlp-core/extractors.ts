@@ -412,6 +412,7 @@ function cleanFinanceDescriptionCandidate(value: string) {
     .replace(/\b(?:despeza)\b/gi, "despesa")
     .replace(/\b(?:slario|salaro)\b/gi, "salario")
     .replace(/\b(?:con)\b/gi, "com")
+    .replace(/\b(?:adicionar|adiciona|adicione|adicionado|adicionada)\b/gi, " ")
     .replace(/\b(?:cliente|comprador|pagamento|recebido|recebida|dinheiro|caixa)\b/gi, " ")
     .replace(/^\s*(?:foi|era|foram)\s+/gi, " ")
     .replace(/^\s*(?:de|do|da|com|no|na|em|o|a|um|uma|pra|para)\s+/gi, " ")
@@ -433,11 +434,17 @@ export function extractFinanceDescription(original: string, normalized: string, 
     if (item) return item;
   }
 
-  const cleanedOriginal = cleanFinanceDescriptionCandidate(original.replace(/\b(?:registrar|registra|lancar|lanca|lançar|lança|anotar|anota|gastei|gasto|despesa|despeza|paguei|pagamento|comprei|conprei|recebi|recebemos|vendi|vendii|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida|saída)\b/gi, ""));
+  const cleanedOriginal = cleanFinanceDescriptionCandidate(original.replace(/\b(?:adicionar|adiciona|adicione|adicionado|adicionada|registrar|registra|lancar|lanca|lançar|lança|anotar|anota|gastei|gasto|despesa|despeza|paguei|pagamento|comprei|conprei|recebi|recebemos|vendi|vendii|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida|saída)\b/gi, ""));
   if (cleanedOriginal) return cleanedOriginal;
 
-  const cleanedNormalized = cleanFinanceDescriptionCandidate(normalized.replace(/\b(?:registrar|registra|lancar|lanca|anotar|anota|gastei|gasto|despesa|paguei|pagamento|comprei|recebi|recebemos|vendi|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida)\b/g, ""));
+  const cleanedNormalized = cleanFinanceDescriptionCandidate(normalized.replace(/\b(?:adicionar|adiciona|adicione|adicionado|adicionada|registrar|registra|lancar|lanca|anotar|anota|gastei|gasto|despesa|paguei|pagamento|comprei|recebi|recebemos|vendi|venda|receita|entrada|entrou|ganhei|faturei|faturou|saida)\b/g, ""));
   if (cleanedNormalized) return cleanedNormalized;
+
+  const commandOnlyExpense = tipo === "DESPESA"
+    && /\b(?:adicionar|adiciona|adicione|registrar|registra|lancar|lanca|anotar|anota)\b/.test(normalized)
+    && /\b(?:saida|despesa)\b/.test(normalized)
+    && extractMoneyValue(normalized) !== undefined;
+  if (commandOnlyExpense) return "despesa via WhatsApp";
 
   return tipo === "RECEITA_VENDA" ?"receita via WhatsApp" : undefined;
 }

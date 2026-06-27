@@ -999,6 +999,56 @@ function anyActionPlanFlagEnabled() {
   return geminiActionPlanEnabled() || geminiTableActionPlanEnabled();
 }
 
+const BASIC_LOCAL_FALLBACK_INTENTS = new Set<RanchoIntent>([
+  "RECEITA_VENDA",
+  "DESPESA",
+  "ESTOQUE_ENTRADA",
+  "ESTOQUE_SAIDA",
+  "PRODUCAO_LEITE",
+  "CONSULTA_FINANCEIRO",
+  "CONSULTA_ESTOQUE",
+  "CONSULTA_ESTOQUE_ITEM",
+  "CONSULTA_ESTOQUE_GERAL",
+  "CONSULTA_PRODUCAO",
+  "CONSULTA_PRODUCAO_HOJE",
+  "CONSULTA_PRODUCAO_ANIMAL",
+  "CONSULTA_REBANHO",
+  "CONSULTA_ANIMAL",
+  "CONSULTA_REGISTROS_HOJE",
+  "PONTO_FUNCIONARIO",
+  "PAGAMENTO_FUNCIONARIO",
+  "CADASTRO_ANIMAL",
+  "CRIAR_ITEM_ESTOQUE",
+  "VACINA_MEDICAMENTO",
+  "PARTO",
+  "ATUALIZACAO_ANIMAL"
+]);
+
+const LOCAL_FALLBACK_BLOCKED_FLAGS = new Set([
+  "compound_message",
+  "multiple_intents_detected",
+  "conflicting_intents",
+  "correction_message",
+  "unsafe_to_apply_correction",
+  "possible_duplicate_risk"
+]);
+
+function canUseBasicLocalFallback(
+  input: ParseWithInterpreterInput,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+) {
+  const parsed = input.localParsed;
+  if (route !== "normal_message" || structuredDetection.isStructured || structuredDetection.usefulLineCount > 1) return false;
+  if (input.hasPendingAction) return false;
+  if (!BASIC_LOCAL_FALLBACK_INTENTS.has(parsed.tipo)) return false;
+  if ((parsed.confianca || 0) < 0.55) return false;
+  if (detectDestructiveBulkAction(input.text)) return false;
+  const flags = parsed.flags || [];
+  if (flags.some((flag) => LOCAL_FALLBACK_BLOCKED_FLAGS.has(flag))) return false;
+  return true;
+}
+
 function logActionPlan(event: string, details: AnyRecord) {
   console.log("[BOT ACTION PLAN]", {
     event,
@@ -1065,6 +1115,9 @@ async function convertActionPlanInterpretation(
       if (botInterpreterMode() !== "gemini" && botAllowsLegacyRollback()) {
         return null;
       }
+      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+        return localFallbackResult(input, "legacy_intent_returned_basic_local_fallback", route, structuredDetection);
+      }
       return {
         kind: "clarify",
         threshold: 0.7,
@@ -1082,6 +1135,9 @@ async function convertActionPlanInterpretation(
     if (botInterpreterMode() === "gemini") {
       recordActionPlanRuntime("invalid");
       logActionPlan("action_plan_invalid", { reason: "action_plan_absent", route });
+      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+        return localFallbackResult(input, "action_plan_absent_basic_local_fallback", route, structuredDetection);
+      }
       return {
         kind: "clarify",
         threshold: 0.7,
@@ -1132,6 +1188,9 @@ async function convertActionPlanInterpretation(
         domain: plan && "domain" in plan ? plan.domain : null,
         messageLength: input.text.length
       });
+      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+        return localFallbackResult(input, `${error.reason}_basic_local_fallback`, route, structuredDetection);
+      }
     }
     return {
       kind: "clarify",
@@ -1189,6 +1248,9 @@ async function convertActionPlanInterpretation(
         domain: "domain" in plan ? plan.domain : null,
         messageLength: input.text.length
       });
+      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+        return localFallbackResult(input, `${result.reason}_basic_local_fallback`, route, structuredDetection);
+      }
     }
     return {
       kind: "clarify",
@@ -1416,6 +1478,10 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       return legacyRollbackResult(input.localParsed, gemini.reason);
     }
 
+    if (gemini.reason === "empty_response" && canUseBasicLocalFallback(input, route, structuredDetection)) {
+      return localFallbackResult(input, `${gemini.reason}_basic_local_fallback`, route, structuredDetection);
+    }
+
     return {
       kind: "clarify",
       threshold: 0.7,
@@ -1447,6 +1513,10 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   }
 
   const geminiMockFixtureMissing = (gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found");
+  if (geminiMockFixtureMissing && canUseBasicLocalFallback(input, route, structuredDetection)) {
+    return localFallbackResult(input, "gemini_mock_fixture_not_found_basic_local_fallback", route, structuredDetection);
+  }
+
   if (geminiMockFixtureMissing && anyActionPlanFlagEnabled() && !botAllowsLegacyRollback()) {
     return mockFixtureMissingResult();
   }
@@ -1462,6 +1532,9 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   if (tableImportResult) return tableImportResult;
 
   if (botInterpreterMode() === "gemini") {
+    if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+      return localFallbackResult(input, "action_plan_required_basic_local_fallback", route, structuredDetection);
+    }
     return {
       kind: "clarify",
       threshold: 0.7,

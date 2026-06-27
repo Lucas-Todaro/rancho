@@ -54,6 +54,22 @@ const EXAMPLES = [
     }
   },
   {
+    user: "adicionar entrada de mil reais",
+    plan: {
+      action: "create", domain: "financeiro", confidence: 0.92,
+      data: { tipo: "entrada", valor: 1000, categoria: "receita via WhatsApp", descricao: "receita via WhatsApp", data: "hoje" },
+      requiresConfirmation: true
+    }
+  },
+  {
+    user: "adicionar saida de mil reais",
+    plan: {
+      action: "create", domain: "financeiro", confidence: 0.92,
+      data: { tipo: "saida", valor: 1000, categoria: "despesa via WhatsApp", descricao: "despesa via WhatsApp", data: "hoje" },
+      requiresConfirmation: true
+    }
+  },
+  {
     user: "quanto gastei com racao nos ultimos 90 dias",
     plan: {
       action: "query", domain: "financeiro", confidence: 0.94,
@@ -167,6 +183,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "query exige requiresConfirmation=false. create, update e import_table exigem requiresConfirmation=true.",
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
+    "Lancamento financeiro puro sem item fisico usa create domain=financeiro. Entrada, entrou, recebi, receita e ganhei viram tipo=entrada/receita. Saida, saiu, paguei, gastei e despesa viram tipo=saida/despesa.",
     "Compra ou venda de item fisico com quantidade, unidade, item e valor deve usar domain=estoque, gera_financeiro=true. Compra vira entrada de estoque + despesa; venda vira saida de estoque + receita. Nao use somente financeiro nesses casos.",
     "Consultas coletivas como dados do rebanho, dados das vacas, dados das vagas, lista das vacas, vacas cadastradas ou meus animais usam action=query domain=animais. Nao use animal_ref para plural/coletivo; use categoria quando houver vaca, boi, bezerro, novilha ou touro.",
     "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
