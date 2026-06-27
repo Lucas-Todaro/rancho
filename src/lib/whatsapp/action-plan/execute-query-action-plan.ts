@@ -138,6 +138,75 @@ function isFinanceQueryText(text: unknown) {
   return hasFinanceTopic && hasQueryShape;
 }
 
+function genericEventReportText(text: unknown) {
+  const normalized = normalizedText(text);
+  if (!normalized) return false;
+  const hasGenericEventTopic = /\b(?:eventos?|registros?|ocorrencias?|ocorridos?|aconteceu|aconteceram|movimentacoes?|atividades?|fechamento|resumo|relatorio|tudo)\b/.test(normalized);
+  const hasQueryShape = /\b(?:quais?|qual|como|me fala|mostra|mostrar|ver|teve|houve|lista|listar|resumo|relatorio|fechamento|hoje|ontem|semana|mes|ano|ultimos?)\b/.test(normalized);
+  const hasSpecificTopic = /\b(?:vacinas?|vacinacao|tratamentos?|medicamentos?|vermifugos?|antibioticos?|doencas?|sanitario|saude|partos?|pariu|pariram|prenhas?|prenhez|inseminacoes?|inseminadas?|protocolos?|retestes?|cios?|financeiro|receitas?|despesas?|estoque|leite|ordenhas?|ponto|funcionarios?|lotes?|genealogia)\b/.test(normalized);
+  return hasGenericEventTopic && hasQueryShape && !hasSpecificTopic;
+}
+
+function eventReportPeriod(input: { text?: string; plan: QueryActionPlan }) {
+  const normalized = normalizedText(input.text);
+  const dateFilter = input.plan.filters.find((filter) => ["data", "data_evento", "created_at", "registrado_em"].includes(filter.field));
+  if (/\bhoje\b/.test(normalized)) return { period: "hoje" };
+  if (/\bontem\b/.test(normalized)) return { period: "ontem" };
+  if (/\bsemana passada\b/.test(normalized)) return { period: "semana_passada" };
+  if (/\bmes passado\b/.test(normalized)) return { period: "mes_passado" };
+  if (/\bsemana\b/.test(normalized)) return { period: "semana" };
+  if (/\bmes\b/.test(normalized)) return { period: "mes" };
+  if (/\bano\b/.test(normalized)) return { period: "ano" };
+  const daysMatch = normalized.match(/\bultim[oa]s?\s+(\d+)\s+dias?\b/);
+  if (daysMatch) return { period: `ultimos_${daysMatch[1]}`, days: Number(daysMatch[1]) };
+  if (dateFilter?.op === "current_month") return { period: "mes" };
+  if (dateFilter?.op === "current_year") return { period: "ano" };
+  if (dateFilter?.op === "last_days" && Number(dateFilter.value) === 1) return { period: "hoje" };
+  if (dateFilter?.op === "last_days" && Number(dateFilter.value)) return { period: `ultimos_${Number(dateFilter.value)}`, days: Number(dateFilter.value) };
+  if (dateFilter?.op === "eq" && String(dateFilter.value || "").toLowerCase() === "ontem") return { period: "ontem" };
+  return { period: "hoje" };
+}
+
+function genericEventReportMode(text: unknown) {
+  const normalized = normalizedText(text);
+  if (/\b(?:tudo|detalhado|movimentacoes?|atividades?)\b/.test(normalized)) return "detalhado";
+  if (/\b(?:resumo rapido|rapido)\b/.test(normalized)) return "rapido";
+  if (/\b(?:foi bem|indo bem|analise|analisar)\b/.test(normalized)) return "analise";
+  return undefined;
+}
+
+function shouldUseGeneralEventReport(plan: QueryActionPlan, originalText?: string) {
+  if (!["saude_sanitario", "reproducao", "observacoes", "agenda_tarefas"].includes(plan.domain)) return false;
+  if (!genericEventReportText(originalText)) return false;
+  return !plan.filters.some((filter) => ["animal_ref", "lote_ref", "funcionario_ref", "item_ref"].includes(filter.field));
+}
+
+function executeGeneralEventReportQuery(input: ExecuteQueryActionPlanInput, plan: QueryActionPlan): ExecuteQueryActionPlanResult {
+  const { period, days } = eventReportPeriod({ text: input.originalText, plan });
+  const mode = genericEventReportMode(input.originalText);
+  const parsed = finalizeActionPlanParsed("CONSULTA_REGISTROS_HOJE", {
+    consulta: true,
+    consulta_registros: /\b(?:relatorio|resumo|fechamento|como foi|aconteceu|tudo)\b/.test(normalizedText(input.originalText)) ? "relatorio" : "eventos",
+    data_referencia: period,
+    periodo: period,
+    ...(days ? { dias: days } : {}),
+    ...(mode ? { relatorio_modo: mode } : {})
+  }, [], plan.confidence, plan, {
+    interpreterFinal: "action_plan_query_normalized",
+    extra: {
+      action_plan_domain: "eventos_gerais",
+      action_plan_original_domain: plan.domain,
+      action_plan_query_normalized: true
+    }
+  });
+  return {
+    ok: true,
+    parsed,
+    response: "Consulta geral de eventos preparada.",
+    rows: []
+  };
+}
+
 function financeQueryDateFilter(text: unknown): FilterPlan {
   const normalized = normalizedText(text);
   const lastDays = normalized.match(/\bultimos?\s+(\d+)\s+dias?\b/);
@@ -852,6 +921,9 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
   let plan = validation.value as QueryActionPlan;
   if (plan.domain === "animais") {
     plan = normalizeAnimalQueryPlan(plan, input.originalText);
+  }
+  if (shouldUseGeneralEventReport(plan, input.originalText)) {
+    return executeGeneralEventReportQuery(input, plan);
   }
   const domain = getDomainManifest(plan.domain);
 

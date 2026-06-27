@@ -880,6 +880,77 @@ test("ActionPlan execute consulta generica passa pelo executor de query", async 
   assert(result.parsed.dados?.action_plan_capability === "consultar_dados", "capability de consulta ausente");
 });
 
+test("ActionPlan consulta generica de eventos nao vira relatorio sanitario estreito", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "saude_sanitario",
+      operation: "eventos_gerais",
+      confidence: 0.95,
+      filters: [{ field: "data", op: "last_days", value: 1 }],
+      limit: 100,
+      requiresConfirmation: false
+    },
+    originalText: "quais eventos teve hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+
+  assert(result.ok, `consulta generica de eventos deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_REGISTROS_HOJE", `intent esperado CONSULTA_REGISTROS_HOJE, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.consulta_registros === "eventos", "consulta generica deveria manter tipo eventos");
+  assert(result.parsed.dados?.data_referencia === "hoje", "consulta generica de hoje deveria preservar periodo");
+  assert(result.parsed.dados?.action_plan_domain === "eventos_gerais", "consulta generica deveria ser normalizada para eventos_gerais");
+  assert(result.parsed.dados?.action_plan_original_domain === "saude_sanitario", "dominio original deveria ficar auditavel");
+  assert(!result.parsed.dados?.action_plan_response, "consulta generica nao deve trazer resposta sanitaria pre-montada");
+});
+
+test("ActionPlan execute consultar_eventos usa rota geral quando texto e amplo", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "consultar_eventos",
+      operation: "eventos_gerais",
+      confidence: 0.94,
+      data: { periodo: "hoje" },
+      requiresConfirmation: false
+    },
+    text: "quais eventos teve hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+
+  assert(result.ok, `execute consultar_eventos deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_REGISTROS_HOJE", `intent esperado CONSULTA_REGISTROS_HOJE, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.action_plan_domain === "eventos_gerais", "execute consultar_eventos deveria cair em eventos_gerais");
+  assert(result.parsed.dados?.action_plan_capability === "consultar_eventos", "capability consultar_eventos deveria ser preservada");
+  assert(result.parsed.dados?.action_plan_capability_query_domain === "observacoes", "capability generica deveria consultar observacoes");
+  assert(!result.parsed.dados?.action_plan_response, "execute consultar_eventos generico nao deve trazer resposta fechada de um dominio especifico");
+});
+
+test("ActionPlan execute consulta respeita dominio explicito de saude", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "consultar_dados",
+      confidence: 0.92,
+      data: { domain: "saude_sanitario", periodo: "hoje" },
+      requiresConfirmation: false
+    },
+    text: "quais registros de saude teve hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24",
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+
+  assert(result.ok, `consulta explicita de saude deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_REGISTROS_HOJE", `intent esperado CONSULTA_REGISTROS_HOJE, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.action_plan_capability_query_domain === "saude_sanitario", "dominio explicito saude_sanitario deveria ser preservado");
+  assert(result.parsed.dados?.action_plan_domain === "saude_sanitario", "consulta especifica de saude nao deve virar eventos_gerais");
+});
+
 test("Gemini-first usa ActionPlan de morte quando o modelo entende o evento", async () => {
   await withGeminiMock(() => ({
     action: "create",
@@ -924,6 +995,32 @@ test("Gemini-first usa ActionPlan execute quando o modelo escolhe capacidade gen
     assert(parsed?.tipo === "MORTE", `Gemini execute deveria virar MORTE, recebeu ${parsed?.tipo}`);
     assert(parsed.dados?.action_plan_used === true, "Gemini execute deveria marcar ActionPlan");
     assert(parsed.dados?.action_plan_capability === "registrar_evento_animal", "capability deveria ser preservada");
+  });
+});
+
+test("Gemini-first normaliza consulta ampla de eventos para relatorio geral", async () => {
+  await withGeminiMock(() => ({
+    action: "query",
+    domain: "saude_sanitario",
+    operation: "eventos_gerais",
+    confidence: 0.95,
+    filters: [{ field: "data", op: "last_days", value: 1 }],
+    limit: 100,
+    requiresConfirmation: false
+  }), async () => {
+    const text = "quais eventos teve hoje";
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      currentDate: "2026-06-24",
+      supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.tipo === "CONSULTA_REGISTROS_HOJE", `consulta ampla deveria virar CONSULTA_REGISTROS_HOJE, recebeu ${parsed?.tipo}`);
+    assert(parsed.dados?.action_plan_domain === "eventos_gerais", "consulta ampla deveria ser normalizada para eventos_gerais");
+    assert(parsed.dados?.action_plan_original_domain === "saude_sanitario", "dominio original deveria ficar registrado");
+    assert(!parsed.dados?.action_plan_response, "consulta ampla nao deve trazer resposta sanitaria pre-montada");
   });
 });
 

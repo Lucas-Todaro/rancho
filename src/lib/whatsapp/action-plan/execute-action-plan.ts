@@ -208,7 +208,11 @@ function capabilityQueryDomain(plan: ExecuteCapabilityActionPlan, data: Record<s
   if (explicit.includes("funcionario")) return "funcionarios";
   if (explicit.includes("ponto")) return "ponto_funcionario";
   if (explicit.includes("genealogia")) return "genealogia";
-  if (explicit.includes("reproducao") || explicit.includes("evento")) return "reproducao";
+  if (explicit.includes("saude") || explicit.includes("sanitario")) return "saude_sanitario";
+  if (explicit.includes("reproducao")) return "reproducao";
+  if (explicit.includes("observacao") || explicit.includes("observacoes")) return "observacoes";
+  if (explicit.includes("agenda") || explicit.includes("tarefa")) return "agenda_tarefas";
+  if (/\b(evento|registro|ocorrencia|aconteceu)\b/.test(explicit)) return "observacoes";
   if (explicit.includes("lote")) return "lotes";
   if (explicit.includes("animal") || explicit.includes("rebanho")) return "animais";
 
@@ -218,7 +222,12 @@ function capabilityQueryDomain(plan: ExecuteCapabilityActionPlan, data: Record<s
   if (plan.capability === "consultar_funcionarios") return "funcionarios";
   if (plan.capability === "consultar_ponto") return "ponto_funcionario";
   if (plan.capability === "consultar_genealogia") return "genealogia";
-  if (plan.capability === "consultar_eventos") return "reproducao";
+  if (plan.capability === "consultar_eventos") {
+    const eventText = capabilityEventText(plan, data);
+    if (/\b(vacina|vacinacao|tratamento|medicamento|vermifugo|antibiotico|doenca|sanitario|saude|morte)\b/.test(eventText)) return "saude_sanitario";
+    if (/\b(parto|pariu|prenhez|prenha|inseminacao|protocolo|reteste|cio|pre parto)\b/.test(eventText)) return "reproducao";
+    return "observacoes";
+  }
   if (plan.capability === "consultar_animal" || plan.capability === "consultar_rebanho") return "animais";
   return null;
 }
@@ -255,7 +264,7 @@ function capabilityFilters(plan: ExecuteCapabilityActionPlan, data: Record<strin
     add("evento", data.evento || data.tipo_evento || data.tipo);
   }
   const period = normalizeRanchoText(String(data.periodo || data.data_periodo || ""));
-  const dateField = domain === "financeiro" || domain === "producao_leite" || domain === "reproducao" || domain === "ponto_funcionario" ? "data" : null;
+  const dateField = ["financeiro", "producao_leite", "reproducao", "ponto_funcionario", "saude_sanitario", "observacoes"].includes(String(domain)) ? "data" : null;
   if (dateField && period.includes("mes")) filters.push({ field: dateField, op: "current_month" });
   if (dateField && period.includes("ano")) filters.push({ field: dateField, op: "current_year" });
   const lastDays = firstNumber(data, ["ultimos_dias", "dias"]);

@@ -55,6 +55,14 @@ const EXAMPLES = [
     }
   },
   {
+    user: "quais eventos teve hoje?",
+    plan: {
+      action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
+      filters: [{ field: "data", op: "last_days", value: 1 }],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
     user: "adicionar entrada de mil reais",
     plan: {
       action: "execute", capability: "registrar_financeiro", confidence: 0.92,
@@ -215,6 +223,8 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Lancamento financeiro puro sem item fisico usa create domain=financeiro. Entrada, entrou, recebi, receita e ganhei viram tipo=entrada/receita. Saida, saiu, paguei, gastei e despesa viram tipo=saida/despesa.",
     "Compra ou venda de item fisico com quantidade, unidade, item e valor deve usar domain=estoque, gera_financeiro=true. Compra vira entrada de estoque + despesa; venda vira saida de estoque + receita. Nao use somente financeiro nesses casos.",
     "Consultas coletivas como dados do rebanho, dados das vacas, dados das vagas, lista das vacas, vacas cadastradas ou meus animais usam action=query domain=animais. Nao use animal_ref para plural/coletivo; use categoria quando houver vaca, boi, bezerro, novilha ou touro.",
+    "Consultas genericas como quais eventos teve hoje, eventos de hoje, registros de hoje, o que aconteceu hoje, movimentacoes de hoje, resumo do dia ou fechamento de hoje usam action=query domain=observacoes, operation=eventos_gerais, requiresConfirmation=false.",
+    "Nao classifique consulta generica de eventos como saude_sanitario ou reproducao. Use saude_sanitario apenas quando houver vacina, tratamento, medicamento, vermifugo, antibiotico, doenca, morte, saude ou sanitario; use reproducao apenas quando houver parto, prenhez, inseminacao, protocolo, reteste ou cio.",
     "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
     "Para lista estruturada simples ja normalizada, import_table tambem pode usar data.rows com objetos por linha.",
     "A ordem e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais.",
