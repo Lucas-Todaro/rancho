@@ -1,16 +1,53 @@
 import type { MetadataRoute } from "next";
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://rancho-seven.vercel.app";
+import { absoluteSiteUrl } from "@/lib/seo";
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/landing", "/login", "/criar-conta", "/aceitar-convite", "/redefinir-senha"],
+        allow: ["/", "/landing", "/icon.svg", "/landing/screenshots/"],
         disallow: [
           "/api/",
           "/admin-interno",
+          "/login",
+          "/register",
+          "/signup",
+          "/cadastro",
+          "/criar-conta",
+          "/aceitar-convite",
+          "/redefinir-senha",
+          "/dashboard",
+          "/rebanho",
+          "/producao",
+          "/estoque",
+          "/financeiro",
+          "/funcionarios",
+          "/ponto",
+          "/folha",
+          "/genealogia",
+          "/reproducao",
+          "/relatorios",
+          "/configuracoes",
+          "/whatsapp",
+          "/eventos",
+          "/suporte",
+          "/lotes"
+        ]
+      },
+      {
+        userAgent: "Googlebot",
+        allow: ["/", "/landing", "/icon.svg", "/landing/screenshots/"],
+        disallow: [
+          "/api/",
+          "/admin-interno",
+          "/login",
+          "/register",
+          "/signup",
+          "/cadastro",
+          "/criar-conta",
+          "/aceitar-convite",
+          "/redefinir-senha",
           "/dashboard",
           "/rebanho",
           "/producao",
@@ -30,6 +67,6 @@ export default function robots(): MetadataRoute.Robots {
         ]
       }
     ],
-    sitemap: new URL("/sitemap.xml", siteUrl).toString()
+    sitemap: [absoluteSiteUrl("/sitemap.xml"), absoluteSiteUrl("/image-sitemap.xml")]
   };
 }

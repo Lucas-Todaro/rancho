@@ -24,24 +24,10 @@ import {
   Warehouse,
   type LucideIcon
 } from "lucide-react";
+import { landingMetadata, landingStructuredData, SUPPORT_EMAIL } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Rancho | Gestao agropecuaria inteligente",
-  description: "Sistema de gestao agropecuaria com painel, rebanho, producao de leite, estoque, financeiro, funcionarios, genealogia e bot de WhatsApp.",
-  alternates: {
-    canonical: "/"
-  },
-  openGraph: {
-    title: "Rancho | Gestao agropecuaria inteligente",
-    description: "Organize rebanho, leite, estoque, financeiro, equipe e registros pelo WhatsApp em uma plataforma para fazendas.",
-    url: "/",
-    siteName: "Rancho",
-    locale: "pt_BR",
-    type: "website"
-  }
-};
+export const metadata: Metadata = landingMetadata;
 
-const SUPPORT_EMAIL = "projeto.fazenda00@gmail.com";
 const CONTACT_HREF = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Quero conhecer o Rancho")}&body=${encodeURIComponent("Olá, gostaria de solicitar uma demonstração do Rancho.\n\nNome:\nFazenda:\nTelefone:")}`;
 
 const painPoints = [
@@ -98,6 +84,47 @@ const benefits = [
   "Decisões com mais velocidade",
   "Operação mais organizada",
   "Uso simples para a equipe"
+];
+
+const managementAreas = [
+  "Controle de rebanho bovino",
+  "Gestão de gado leiteiro",
+  "Produção de leite e ordenha",
+  "Controle de estoque rural",
+  "Financeiro rural e fluxo de caixa",
+  "Reprodução, partos e genealogia",
+  "Vacinas, tratamentos e eventos",
+  "Funcionários, ponto e folha"
+];
+
+const messageExamples = [
+  { area: "Produção de leite", text: "B-002 deu 32 litros hoje" },
+  { area: "Estoque e financeiro", text: "vendi 4 sacos de milho por 320 reais" },
+  { area: "Compra de insumos", text: "comprei 12 sacos de ração por 960 reais" },
+  { area: "Parto e cria", text: "a vaca B-5 pariu uma bezerra hoje, código B-941" },
+  { area: "Saúde animal", text: "vacinei a Mimosa contra aftosa hoje" },
+  { area: "Morte de animal", text: "a vaca Estrela morreu hoje" },
+  { area: "Funcionários", text: "João entrou às 7h e saiu às 17h" },
+  { area: "Relatórios", text: "como foi o financeiro desse mês?" }
+];
+
+const faqItems = [
+  {
+    question: "O Rancho serve para controlar rebanho e produção de leite?",
+    answer: "Sim. O sistema reúne ficha dos animais, lotes, reprodução, genealogia, ordenhas, produção de leite, estoque, financeiro e relatórios."
+  },
+  {
+    question: "Consigo registrar dados da fazenda pelo WhatsApp?",
+    answer: "Sim. A equipe pode enviar mensagens simples para o bot, revisar a confirmação e salvar o registro no módulo correto do Rancho."
+  },
+  {
+    question: "O Rancho substitui planilhas e cadernos da fazenda?",
+    answer: "Ele foi pensado exatamente para centralizar informações que normalmente ficam em cadernos, planilhas e conversas soltas."
+  },
+  {
+    question: "Quais áreas da fazenda o sistema acompanha?",
+    answer: "O Rancho acompanha rebanho, produção de leite, estoque, financeiro, funcionários, ponto, folha, reprodução, genealogia e eventos sanitários."
+  }
 ];
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -217,8 +244,18 @@ function ScreenshotMockup({ item }: { item: (typeof showcaseItems)[number] }) {
 }
 
 export default function LandingPage() {
+  const structuredData = landingStructuredData();
+
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f8fafc] text-slate-950">
+    <>
+      {structuredData.map((item, index) => (
+        <script
+          key={index}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(item) }}
+        />
+      ))}
+      <main className="min-h-screen overflow-hidden bg-[#f8fafc] text-slate-950">
       <header className="sticky top-0 z-40 border-b border-white/70 bg-white/90 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <a href="#topo" className="flex items-center gap-3 font-black text-slate-950">
@@ -233,7 +270,9 @@ export default function LandingPage() {
           <div className="hidden items-center gap-6 text-sm font-bold text-slate-600 md:flex">
             <a className="transition hover:text-emerald-700" href="#funcionalidades">Funcionalidades</a>
             <a className="transition hover:text-emerald-700" href="#whatsapp">WhatsApp</a>
+            <a className="transition hover:text-emerald-700" href="#exemplos">Exemplos</a>
             <a className="transition hover:text-emerald-700" href="#prints">Telas</a>
+            <a className="transition hover:text-emerald-700" href="#faq">FAQ</a>
             <a className="transition hover:text-emerald-700" href="#contato">Contato</a>
           </div>
           <div className="flex items-center gap-2">
@@ -256,10 +295,10 @@ export default function LandingPage() {
               Plataforma para fazendas que querem mais controle
             </div>
             <h1 className="max-w-3xl text-4xl font-black leading-tight text-slate-950 sm:text-5xl lg:text-6xl">
-              Gestão agropecuária inteligente para fazendas modernas
+              Software de gestão agropecuária para controlar fazendas, rebanho e leite
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              O Rancho centraliza rebanho, produção, estoque, financeiro, funcionários, genealogia e registros pelo WhatsApp em um só lugar.
+              O Rancho centraliza controle de rebanho bovino, produção de leite, estoque rural, financeiro, funcionários, genealogia e registros pelo WhatsApp em um só lugar.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a href={CONTACT_HREF} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-6 py-3 text-base font-black text-white shadow-xl shadow-emerald-800/20 transition hover:-translate-y-1 hover:bg-emerald-800">
@@ -277,6 +316,11 @@ export default function LandingPage() {
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" />
                   {item}
                 </div>
+              ))}
+            </div>
+            <div className="mt-6 flex max-w-2xl flex-wrap gap-2 text-xs font-black text-emerald-800">
+              {["software para fazenda", "controle leiteiro", "financeiro rural", "bot WhatsApp para fazenda"].map((item) => (
+                <span key={item} className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1 shadow-sm">{item}</span>
               ))}
             </div>
           </div>
@@ -322,6 +366,28 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className="bg-white py-16">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
+          <div>
+            <SectionLabel>Áreas cobertas</SectionLabel>
+            <h2 className="text-3xl font-black text-slate-950 sm:text-4xl">
+              Controle completo para fazenda de leite, pecuária e operação rural.
+            </h2>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              O Rancho reúne as rotinas mais importantes da fazenda em uma plataforma web simples para acompanhar dados, reduzir retrabalho e tomar decisões com mais clareza.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {managementAreas.map((area) => (
+              <div key={area} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-black text-slate-800">
+                <ClipboardCheck className="h-5 w-5 shrink-0 text-emerald-700" />
+                {area}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="whatsapp" className="bg-slate-950 py-16 text-white">
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
           <div>
@@ -363,6 +429,27 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="exemplos" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-3xl text-center">
+          <SectionLabel>Exemplos de mensagens</SectionLabel>
+          <h2 className="text-3xl font-black text-slate-950 sm:text-4xl">
+            O bot entende mensagens simples da rotina da fazenda.
+          </h2>
+          <p className="mt-4 text-base leading-7 text-slate-600">
+            A equipe pode registrar produção de leite, movimentações de estoque, financeiro, partos, vacinas, mortes, ponto e relatórios sem abrir várias telas.
+          </p>
+        </div>
+        <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {messageExamples.map((example) => (
+            <article key={example.text} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">{example.area}</p>
+              <p className="mt-3 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold leading-6 text-white">&ldquo;{example.text}&rdquo;</p>
+              <p className="mt-3 text-sm leading-6 text-slate-600">O Rancho interpreta, organiza os campos e pede confirmação antes de salvar.</p>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -418,6 +505,25 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section id="faq" className="bg-white py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl">
+            <SectionLabel>Perguntas frequentes</SectionLabel>
+            <h2 className="text-3xl font-black text-slate-950 sm:text-4xl">
+              Dúvidas comuns sobre o sistema de gestão agropecuária Rancho.
+            </h2>
+          </div>
+          <div className="mt-8 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50">
+            {faqItems.map((item) => (
+              <article key={item.question} className="p-5">
+                <h3 className="text-lg font-black text-slate-950">{item.question}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.answer}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="contato" className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl rounded-lg bg-gradient-to-br from-emerald-800 to-slate-950 p-8 text-center text-white shadow-2xl shadow-emerald-950/20 sm:p-12">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-lg bg-white/10 text-emerald-200">
@@ -450,6 +556,7 @@ export default function LandingPage() {
           <a className="font-black text-emerald-700 transition hover:text-emerald-900" href={CONTACT_HREF}>{SUPPORT_EMAIL}</a>
         </div>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

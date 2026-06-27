@@ -1,51 +1,50 @@
 import type { Metadata } from "next";
 import { RootProviders } from "@/app/providers";
+import { LANDING_DESCRIPTION, LANDING_TITLE, SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://rancho-seven.vercel.app";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  applicationName: "Rancho",
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
-    default: "Rancho | Gestao agropecuaria para fazendas",
-    template: "%s | Rancho"
+    default: LANDING_TITLE,
+    template: `%s | ${SITE_NAME}`
   },
-  description: "Sistema de gestao agropecuaria para rebanho, producao de leite, estoque, financeiro, funcionarios e registros pelo WhatsApp.",
-  keywords: [
-    "gestao agropecuaria",
-    "gestao de fazenda",
-    "software para fazenda",
-    "controle de rebanho",
-    "controle leiteiro",
-    "controle de estoque rural",
-    "financeiro rural",
-    "bot WhatsApp fazenda",
-    "Rancho"
-  ],
-  authors: [{ name: "Rancho" }],
-  creator: "Rancho",
-  publisher: "Rancho",
+  description: LANDING_DESCRIPTION,
+  keywords: SEO_KEYWORDS,
+  authors: [{ name: SITE_NAME }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
   alternates: {
     canonical: "/"
   },
   openGraph: {
-    title: "Rancho | Gestao agropecuaria para fazendas",
-    description: "Controle rebanho, producao, estoque, financeiro, equipe e registros pelo WhatsApp em uma plataforma para fazendas.",
+    title: LANDING_TITLE,
+    description: LANDING_DESCRIPTION,
     url: "/",
-    siteName: "Rancho",
+    siteName: SITE_NAME,
     locale: "pt_BR",
-    type: "website"
+    type: "website",
+    images: [
+      {
+        url: "/landing/screenshots/dashboard.png",
+        width: 1200,
+        height: 630,
+        alt: "Dashboard do Rancho para gestão agropecuária"
+      }
+    ]
   },
   twitter: {
-    card: "summary",
-    title: "Rancho | Gestao agropecuaria para fazendas",
-    description: "Gestao agropecuaria com rebanho, leite, estoque, financeiro e bot de WhatsApp."
+    card: "summary_large_image",
+    title: LANDING_TITLE,
+    description: LANDING_DESCRIPTION,
+    images: ["/landing/screenshots/dashboard.png"]
   },
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg"
-  }
+  },
+  category: "Agriculture software"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
