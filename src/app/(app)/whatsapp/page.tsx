@@ -62,6 +62,7 @@ type BotTestHistoryItem = {
 
 const defaultBotTestMessage = "vaca B-002 deu 32 litros";
 const botProcessingNoticePreview = "Recebi sua mensagem. Estou conferindo os dados do rancho e já te respondo.";
+const botProcessingNoticeDelayMs = 2700;
 
 const WHATSAPP_USERS_SELECT = [
   "id",
@@ -351,7 +352,7 @@ export default function WhatsAppPage() {
     setBotTestProcessingNoticeVisible(false);
     const processingNoticeTimer = window.setTimeout(() => {
       setBotTestProcessingNoticeVisible(true);
-    }, 1500);
+    }, botProcessingNoticeDelayMs);
     try {
       const response = await fetch("/api/whatsapp/testar-bot", {
         method: "POST",

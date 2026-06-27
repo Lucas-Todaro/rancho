@@ -628,7 +628,7 @@ async function saveWhatsAppMessage(
 }
 
 const PROCESSING_NOTICE_TEXT = "Recebi sua mensagem. Estou conferindo os dados do rancho e já te respondo.";
-const DEFAULT_PROCESSING_NOTICE_DELAY_MS = 1500;
+const DEFAULT_PROCESSING_NOTICE_DELAY_MS = 2700;
 
 function processingNoticeDelayMs() {
   const value = Number(process.env.BOT_PROCESSING_NOTICE_DELAY_MS || "");
