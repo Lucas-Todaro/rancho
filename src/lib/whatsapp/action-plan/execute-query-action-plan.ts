@@ -386,6 +386,96 @@ function animalLabel(row?: AnyRecord | null) {
   return brinco || nome || String(row.id || "Animal");
 }
 
+function animalCategoryFromQueryText(value: unknown) {
+  const text = normalizedText(value);
+  if (/\b(?:vacas?|vagas?|matrizes?)\b/.test(text)) return "vaca";
+  if (/\bbois?\b/.test(text)) return "boi";
+  if (/\btouros?\b/.test(text)) return "touro";
+  if (/\bbezerras?\b/.test(text)) return "bezerro";
+  if (/\bbezerros?\b/.test(text)) return "bezerro";
+  if (/\bnovilhas?\b/.test(text)) return "novilha";
+  return null;
+}
+
+function animalCategoryPlural(category: unknown) {
+  const text = normalizedText(category);
+  if (text === "vaca") return "vacas";
+  if (text === "boi") return "bois";
+  if (text === "touro") return "touros";
+  if (text === "bezerro") return "bezerros";
+  if (text === "novilha") return "novilhas";
+  return "animais";
+}
+
+function isCollectiveAnimalRef(value: unknown) {
+  const text = normalizedText(value);
+  return /^(?:vaca|vacas|vaga|vagas|animal|animais|rebanho|gado|boi|bois|touro|touros|bezerro|bezerros|bezerra|bezerras|novilha|novilhas|meus animais|minhas vacas)$/.test(text);
+}
+
+function hasSpecificAnimalRefFilter(plan: QueryActionPlan) {
+  return plan.filters.some((filter) => filter.field === "animal_ref" && !isCollectiveAnimalRef(filter.value));
+}
+
+function normalizeAnimalQueryPlan(plan: QueryActionPlan, originalText?: string): QueryActionPlan {
+  if (plan.domain !== "animais") return plan;
+
+  const text = normalizedText([originalText, plan.userQuestion].filter(Boolean).join(" "));
+  const collectiveText = /\b(?:dados|lista|listar|relatorio|resumo|rebanho|gado|animais|vacas?|vagas?|bois?|touros?|bezerros?|bezerras?|novilhas?|cadastrados?|cadastradas?)\b/.test(text);
+  const cleanedFilters = plan.filters.filter((filter) => !(filter.field === "animal_ref" && isCollectiveAnimalRef(filter.value)));
+  const existingCategory = cleanedFilters.find((filter) => filter.field === "categoria")?.value;
+  const category = existingCategory || animalCategoryFromQueryText(text || plan.filters.map((filter) => filter.value).join(" "));
+
+  if (collectiveText && category && !cleanedFilters.some((filter) => filter.field === "categoria")) {
+    cleanedFilters.push({ field: "categoria", op: "eq", value: category });
+  }
+
+  return {
+    ...plan,
+    filters: cleanedFilters,
+    limit: Math.max(plan.limit || 0, collectiveText ? 100 : plan.limit || 20),
+    userQuestion: plan.userQuestion || originalText || null
+  };
+}
+
+function countByText(rows: AnyRecord[], selector: (row: AnyRecord) => unknown) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const key = String(selector(row) || "sem informação").trim() || "sem informação";
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([label, total]) => `${label}: ${total}`)
+    .join(", ");
+}
+
+function buildAnimalCollectiveResponse(rows: AnyRecord[], plan: QueryActionPlan) {
+  const category = plan.filters.find((filter) => filter.field === "categoria")?.value || animalCategoryFromQueryText(plan.userQuestion);
+  const label = animalCategoryPlural(category);
+  if (!rows.length) return `Não encontrei ${label} cadastrados no rebanho.`;
+
+  const active = rows.filter((row) => !["morto", "inativo", "vendido"].includes(normalizedText(row.status || "ativo"))).length;
+  const categories = countByText(rows, (row) => row.categoria || "sem categoria");
+  const statuses = countByText(rows, (row) => row.status || "ativo");
+  const sample = rows.slice(0, 8).map((row, index) => {
+    const categoryText = row.categoria ? ` - ${row.categoria}` : "";
+    const statusText = row.status ? ` - ${row.status}` : "";
+    return `${index + 1}. ${animalLabel(row)}${categoryText}${statusText}`;
+  });
+
+  return [
+    category ? `Dados das ${label}:` : "Resumo do rebanho:",
+    `Total encontrado: ${rows.length}.`,
+    `Ativos: ${active}.`,
+    `Categorias: ${categories || "sem dados"}.`,
+    `Status: ${statuses || "sem dados"}.`,
+    "",
+    "Amostra:",
+    ...sample,
+    rows.length > sample.length ? `...e mais ${rows.length - sample.length} animal(is).` : ""
+  ].filter(Boolean).join("\n");
+}
+
 function stockAmount(quantity: unknown, unit: unknown) {
   return `${numberText(Number(quantity || 0))} ${String(unit || "unidade")}`.trim();
 }
@@ -664,6 +754,7 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
     const saidas = rows.filter((row) => normalizeFinanceType(row.tipo) === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
     const total = Number(Object.values(metrics.totals || {})[0] || entradas + saidas);
     const period = periodText(plan);
+    const aggregateText = plan.aggregations?.length && total !== entradas + saidas ? `Total filtrado: ${money(total)}.` : "";
     const title = plan.filters.some((filter) => filter.op === "contains")
       ? "Resumo financeiro"
       : period ? `Relatório financeiro ${period}` : "Resumo financeiro";
@@ -671,27 +762,34 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
       `${title}:`,
       `Registros: ${rows.length}.`,
       `Entradas: ${money(entradas)}.`,
-      `Saidas: ${money(saidas)}.`,
+      `Saídas: ${money(saidas)}.`,
       `Saldo: ${money(entradas - saidas)}.`,
-      plan.aggregations?.length ? `Agregado principal: ${money(total)}.` : ""
+      aggregateText
     ].filter(Boolean).join("\n");
   }
 
   if (domain.domain === "producao_leite") {
     const total = Number(metrics.totals?.total_litros || metrics.totals?.sum_litros || 0);
+    const average = rows.length ? total / rows.length : 0;
     const animal = plan.filters.find((filter) => filter.field === "animal_ref")?.value;
     return [
       `Produção de leite${animal ? ` da ${animal}` : ""}:`,
       `Registros: ${rows.length}.`,
-      `Total: ${numberText(total)} litros.`
+      `Total: ${numberText(total)} litros.`,
+      `Média por registro: ${numberText(average)} litros.`
     ].join("\n");
   }
 
   if (domain.domain === "animais") {
-    if (!rows.length) return "Não encontrei esse animal no rebanho.";
+    const specificAnimal = hasSpecificAnimalRefFilter(plan);
+    if (!rows.length) {
+      return specificAnimal ? "Não encontrei esse animal no rebanho." : buildAnimalCollectiveResponse(rows, plan);
+    }
+    if (!specificAnimal || rows.length > 1) return buildAnimalCollectiveResponse(rows, plan);
+
     const animal = rows[0];
     return [
-      `Ficha da ${animalLabel(animal)}:`,
+      `Ficha de ${animalLabel(animal)}:`,
       `Categoria: ${animal.categoria || "sem categoria"}.`,
       `Sexo: ${animal.sexo || "não informado"}.`,
       `Status: ${animal.status || "ativo"}.`,
@@ -751,7 +849,10 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
     };
   }
 
-  const plan = validation.value as QueryActionPlan;
+  let plan = validation.value as QueryActionPlan;
+  if (plan.domain === "animais") {
+    plan = normalizeAnimalQueryPlan(plan, input.originalText);
+  }
   const domain = getDomainManifest(plan.domain);
 
   if (domain?.domain === "reproducao") {

@@ -91,7 +91,7 @@ function animalRef(fields: AnyRecord) {
 }
 
 function herdCategoryFromText(text: string) {
-  if (/\b(?:vacas?|vaca)\b/.test(text)) return "vaca";
+  if (/\b(?:vacas?|vagas?|vaca)\b/.test(text)) return "vaca";
   if (/\b(?:bois?|boi)\b/.test(text)) return "boi";
   if (/\b(?:touros?|touro)\b/.test(text)) return "touro";
   if (/\b(?:bezerras?|bezerra)\b/.test(text)) return "bezerra";
@@ -115,15 +115,15 @@ function herdModeFromText(text: string) {
 }
 
 function hasCollectiveHerdCue(text: string) {
-  const directCollective = /\b(?:minhas?\s+vacas|minhas?\s+bezerras|meus\s+animais|dados\s+das|dados\s+dos|vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
+  const directCollective = /\b(?:minhas?\s+vacas|minhas?\s+vagas|minhas?\s+bezerras|meus\s+animais|dados\s+das|dados\s+dos|vacas|vagas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
   const listCue = /\b(?:lista|listar|liste|mostra|mostrar|mostre|relatorio|resumo|quais|quantos|quantas)\b/.test(text);
-  const groupCue = /\b(?:vacas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
+  const groupCue = /\b(?:vacas|vagas|bois|touros|bezerros|bezerras|novilhas|animais|rebanho|gado|cadastrados?|cadastradas?)\b/.test(text);
   return directCollective || (listCue && groupCue);
 }
 
 function hasSpecificAnimalCue(fields: AnyRecord, text: string) {
   const ref = animalRef(fields);
-  if (ref && !/\b(?:vacas?|bois?|touros?|bezerros?|bezerras?|novilhas?|animais|rebanho|gado|minhas?|meus|cadastrados?|cadastradas?)\b/.test(normalizeRanchoText(ref))) {
+  if (ref && !/\b(?:vacas?|vagas?|bois?|touros?|bezerros?|bezerras?|novilhas?|animais|rebanho|gado|minhas?|meus|cadastrados?|cadastradas?)\b/.test(normalizeRanchoText(ref))) {
     return true;
   }
   return /\b(?:brinco|codigo|cod|numero|n)\s+[a-z]*\d[a-z0-9-]*\b/.test(text)

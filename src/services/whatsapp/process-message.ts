@@ -2339,7 +2339,14 @@ async function handleHerdConsultation(supabase: SupabaseAdmin, owner: WhatsAppOw
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     const categories = Object.entries(categoryCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
     const statuses = Object.entries(statusCounts).map(([key, value]) => `${key}: ${value}`).join(", ");
-    return `Resumo do rebanho (${label}): ${filtered.length} animais.\nCategorias: ${categories || "sem dados"}.\nStatus: ${statuses || "sem dados"}.`;
+    const activeCount = filtered.filter((animal) => !["morto", "vendido", "inativo"].includes(normalizeRanchoText(String(animal.status || "ativo")))).length;
+    return [
+      `Resumo do rebanho (${label}):`,
+      `Total encontrado: ${filtered.length} animal(is).`,
+      `Ativos: ${activeCount}.`,
+      `Categorias: ${categories || "sem dados"}.`,
+      `Status: ${statuses || "sem dados"}.`
+    ].join("\n");
   }
 
   const page = paginateRows(filtered, dados.pagina, HERD_PAGE_SIZE);

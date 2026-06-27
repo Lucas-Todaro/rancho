@@ -1015,6 +1015,37 @@ test("executor query producao Mimosa desde janeiro usa relacao animal", async ()
   assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total_litros || 0) === 35, "total_litros deveria ser 35");
 });
 
+test("executor query animais trata dados das vagas como resumo coletivo de vacas", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "animais",
+      confidence: 0.9,
+      filters: [{ field: "animal_ref", op: "eq", value: "vagas" }],
+      requiresConfirmation: false,
+      limit: 20,
+      userQuestion: "dados das vagas"
+    },
+    owner: ADMIN_OWNER,
+    originalText: "dados das vagas",
+    supabase: createActionPlanSupabase({
+      [TABLES.animais]: [
+        { id: "animal-1", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "B-001", nome: "Estrela", categoria: "vaca", sexo: "femea", status: "ativo", fase: "lactacao" },
+        { id: "animal-2", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "B-002", nome: "Lua", categoria: "vaca", sexo: "femea", status: "ativo", fase: "gestante" },
+        { id: "animal-3", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "T-001", nome: "Touro", categoria: "touro", sexo: "macho", status: "ativo" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query animais deveria executar: ${result.reason}`);
+  assert(result.rows.length === 2, `esperado 2 vacas, recebido ${result.rows.length}`);
+  assert(result.parsed.tipo === "CONSULTA_REBANHO", `intent esperado CONSULTA_REBANHO, recebido ${result.parsed.tipo}`);
+  assert(result.response.includes("Dados das vacas:"), "resposta deveria ser resumo coletivo de vacas");
+  assert(result.response.includes("Total encontrado: 2."), "resposta deveria trazer total coletivo");
+  assert(!result.response.includes("Ficha de"), "consulta coletiva nao deveria virar ficha individual");
+  assertCleanVisibleText(result.response, "resposta query animais coletiva");
+});
+
 test("executor import_table producao gera preview sem salvar", async () => {
   const fixture = fixtureByName("import-table-producao");
   const result = await executeImportTableActionPlan({

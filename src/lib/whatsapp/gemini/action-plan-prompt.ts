@@ -28,6 +28,14 @@ const EXAMPLES = [
     }
   },
   {
+    user: "dados das vacas",
+    plan: {
+      action: "query", domain: "animais", confidence: 0.94,
+      filters: [{ field: "categoria", op: "eq", value: "vaca" }],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
     user: "relatorio financeiro dos ultimos 6 meses",
     plan: {
       action: "query", domain: "financeiro", confidence: 0.94,
@@ -160,6 +168,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
     "Compra ou venda de item fisico com quantidade, unidade, item e valor deve usar domain=estoque, gera_financeiro=true. Compra vira entrada de estoque + despesa; venda vira saida de estoque + receita. Nao use somente financeiro nesses casos.",
+    "Consultas coletivas como dados do rebanho, dados das vacas, dados das vagas, lista das vacas, vacas cadastradas ou meus animais usam action=query domain=animais. Nao use animal_ref para plural/coletivo; use categoria quando houver vaca, boi, bezerro, novilha ou touro.",
     "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
     "Para lista estruturada simples ja normalizada, import_table tambem pode usar data.rows com objetos por linha.",
     "A ordem e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais.",
