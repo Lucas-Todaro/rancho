@@ -1,29 +1,18 @@
-"use client";
+import type { Metadata } from "next";
+import LandingPage from "@/app/landing/page";
+import { RecoveryRedirect } from "@/app/recovery-redirect";
 
-import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/"
+  }
+};
 
 export default function Home() {
-  const router = useRouter();
-
-  useEffect(() => {
-    const hash = window.location.hash;
-    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
-    if (hashParams.get("type") === "recovery" && hashParams.get("access_token")) {
-      router.replace(`/redefinir-senha${hash}`);
-      return;
-    }
-
-    router.replace("/dashboard");
-  }, [router]);
-
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">
-      <div className="flex items-center gap-2 text-sm font-bold">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Carregando...
-      </div>
-    </main>
+    <>
+      <RecoveryRedirect />
+      <LandingPage />
+    </>
   );
 }

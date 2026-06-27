@@ -156,6 +156,14 @@ const EXAMPLES = [
     }
   },
   {
+    user: "a vaca B-002 morreu hoje",
+    plan: {
+      action: "create", domain: "saude_sanitario", operation: "registro_morte", confidence: 0.94,
+      data: { animal_ref: "B-002", evento: "morte", data: "hoje" },
+      requiresConfirmation: true
+    }
+  },
+  {
     user: "Joao chegou agora",
     plan: {
       action: "create", domain: "ponto_funcionario", operation: "registrar_ponto", confidence: 0.9,
@@ -198,6 +206,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Em import_table de reproducao, parto sem dados da cria ainda e uma linha valida de evento da mae. Nao use clarify para cada parto da tabela.",
     "Em import_table de reproducao, nao invente sexo, codigo, nome ou pai da cria. Se a tabela trouxer cria_sexo, cria_codigo, cria_nome ou pai_ref, preencha esses campos; se nao trouxer, deixe ausente para o backend tratar complemento em lote.",
     "Vacina, vermifugo, medicamento, antibiotico e tratamento usam create no dominio saude_sanitario, operation=registro_sanitario.",
+    "Morte, morreu, morta, morto, obito, obito com acento, faleceu ou falecimento de animal usam create domain=saude_sanitario, operation=registro_morte, evento=morte. O backend registra o evento e marca o animal como morto somente apos confirmacao.",
     "Em saude_sanitario use animal_ref, item, quantidade, unidade, tipo e data. Normalize vermifugo e antibiotico como medicamento ou tratamento sem inventar dose.",
     "Se houver lote_ref sem animal individual e o plano nao puder ser executado por lote com seguranca, use clarify. Nao gere baixa de estoque implicitamente.",
     "Ponto de funcionario em fala natural, como 'Joao chegou agora' ou 'Maria saiu', usa create domain=ponto_funcionario com funcionario_ref igual ao nome informado e tipo entrada/saida. Nao peca codigo se houver nome.",

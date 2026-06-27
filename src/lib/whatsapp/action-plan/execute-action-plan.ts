@@ -85,6 +85,11 @@ function compactTradeText(value: unknown) {
     .trim();
 }
 
+function actionPlanDeathCue(...values: unknown[]) {
+  const text = normalizeRanchoText(values.filter(Boolean).join(" "));
+  return /\b(?:morte|morreu|morto|morta|obito|faleceu|falecida|falecido|falecimento|registro_morte)\b/.test(text);
+}
+
 function extractPhysicalStockTrade(text: string): PhysicalStockTrade | null {
   const raw = compactTradeText(text);
   if (!raw) return null;
@@ -227,6 +232,16 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
   }
 
   if (plan.domain === "animais") {
+    if (actionPlanDeathCue(plan.operation, data.status, data.observacoes, data.descricao)) {
+      const dados = {
+        animal_codigo: data.animal_ref || data.brinco,
+        data_referencia: date,
+        observacoes: data.observacoes || data.descricao || undefined,
+        ...metadata
+      };
+      return finalize("MORTE", dados, buildMissing("MORTE", dados), plan.confidence);
+    }
+
     const optional = ["sexo", "nome", "peso", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
     const dados = {
       animal_codigo: data.brinco || data.animal_ref,
@@ -273,6 +288,16 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
   }
 
   if (plan.domain === "saude_sanitario") {
+    if (actionPlanDeathCue(plan.operation, data.evento, data.tipo, data.descricao, data.observacoes)) {
+      const dados = {
+        animal_codigo: data.animal_ref,
+        data_referencia: date,
+        observacoes: data.observacoes || data.descricao || undefined,
+        ...metadata
+      };
+      return finalize("MORTE", dados, buildMissing("MORTE", dados), plan.confidence);
+    }
+
     const rawType = String(data.tipo || data.evento || "tratamento").trim().toLowerCase();
     const eventType = rawType === "vacina" ? "vacina" : "tratamento";
     const quantity = data.quantidade;

@@ -110,6 +110,18 @@ function normalizeReproductionData(data: unknown) {
   return normalized;
 }
 
+function normalizeLooseText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isDeathCue(value: unknown) {
+  return /\b(?:morte|morreu|morto|morta|obito|faleceu|falecida|falecido|falecimento|registro_morte)\b/.test(normalizeLooseText(value));
+}
+
 function normalizeImportRowsForDomain(data: unknown, domainName: string) {
   if (!isPlainObject(data)) return data;
   if (!Array.isArray(data.rows)) return data;
@@ -125,6 +137,10 @@ function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPla
     const data = { ...plan.data };
     if (!hasValue(data.evento) && hasValue(data.tipo)) data.evento = data.tipo;
     if (!hasValue(data.produto) && hasValue(data.item)) data.produto = data.item;
+    if (isDeathCue([plan.operation, data.evento, data.tipo, data.descricao, data.observacoes].filter(Boolean).join(" "))) {
+      data.evento = "morte";
+      data.tipo = "morte";
+    }
     return { ...plan, data };
   }
   if (domainName !== "reproducao") return plan;

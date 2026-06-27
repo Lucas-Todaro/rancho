@@ -55,6 +55,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
       lote_id: field("relation", { relationDomain: "lotes" }),
       lote_ref: field("relation", { relationDomain: "lotes", sourceField: "lote_id" }),
       data_nascimento: field("date"),
+      data: field("date"),
+      data_evento: field("datetime"),
       peso: field("number"),
       status: field("enum", { enumValues: ["ativo", "vendido", "morto", "inativo"] }),
       observacoes: field("string"),
@@ -68,7 +70,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
     },
     searchableFields: ["animal_ref", "brinco", "nome", "categoria", "sexo", "fase", "raca", "status", "observacoes"],
     aggregatableFields: ["peso"],
-    dateFields: ["data_nascimento"],
+    dateFields: ["data_nascimento", "data", "data_evento"],
     relationFields: ["animal_ref", "lote_id", "lote_ref", "pai_ref", "mae_ref"],
     enumFields: {
       categoria: ["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "outro"],
@@ -359,8 +361,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
     fields: {
       animal_ref: field("relation", { relationDomain: "animais", sourceField: "animal_id" }),
       lote_ref: field("relation", { relationDomain: "lotes" }),
-      evento: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao"] }),
-      tipo: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao"] }),
+      evento: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao", "morte"] }),
+      tipo: field("enum", { sourceField: "tipo", enumValues: ["vacina", "doenca", "tratamento", "medicamento", "observacao", "morte"] }),
       item: field("string", { sourceField: "medicamento" }),
       quantidade: field("number"),
       unidade: field("string"),
@@ -385,8 +387,8 @@ export const RANCHO_DOMAIN_MANIFEST = {
     dateFields: ["data", "data_evento"],
     relationFields: ["animal_ref", "lote_ref"],
     enumFields: {
-      evento: ["vacina", "doenca", "tratamento", "medicamento", "observacao"],
-      tipo: ["vacina", "doenca", "tratamento", "medicamento", "observacao"]
+      evento: ["vacina", "doenca", "tratamento", "medicamento", "observacao", "morte"],
+      tipo: ["vacina", "doenca", "tratamento", "medicamento", "observacao", "morte"]
     },
     maxLimit: 500
   },

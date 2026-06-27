@@ -708,6 +708,67 @@ test("ActionPlan compra e venda fisica geram estoque com reflexo financeiro", as
   assert(use.parsed.dados?.compra !== true, "saida comum nao deveria marcar compra");
 });
 
+test("ActionPlan de morte vira MORTE e nao cadastro generico", async () => {
+  const healthDeath = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "saude_sanitario",
+      operation: "registro_morte",
+      confidence: 0.94,
+      data: { animal_ref: "B-002", evento: "morte", data: "hoje" },
+      requiresConfirmation: true
+    },
+    text: "a vaca B-002 morreu hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(healthDeath.ok, `morte sanitaria deveria executar: ${healthDeath.reason}`);
+  assert(healthDeath.parsed.tipo === "MORTE", `morte sanitaria deveria virar MORTE, recebeu ${healthDeath.parsed.tipo}`);
+  assert(healthDeath.parsed.dados?.animal_codigo === "B-002", "morte sanitaria deveria preservar animal_ref");
+  assert(healthDeath.parsed.dados?.data_referencia === "2026-06-24", "morte sanitaria deveria usar data local");
+
+  const animalDeath = await executeActionPlan({
+    plan: {
+      action: "update",
+      domain: "animais",
+      operation: "alterar_status",
+      confidence: 0.92,
+      data: { animal_ref: "B-003", status: "morto", data: "hoje" },
+      requiresConfirmation: true
+    },
+    text: "B-003 morreu hoje",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(animalDeath.ok, `status morto deveria executar: ${animalDeath.reason}`);
+  assert(animalDeath.parsed.tipo === "MORTE", `status morto deveria virar MORTE, recebeu ${animalDeath.parsed.tipo}`);
+  assert(animalDeath.parsed.dados?.animal_codigo === "B-003", "status morto deveria preservar animal_ref");
+});
+
+test("Gemini-first usa ActionPlan de morte quando o modelo entende o evento", async () => {
+  await withGeminiMock(() => ({
+    action: "create",
+    domain: "saude_sanitario",
+    operation: "registro_morte",
+    confidence: 0.94,
+    data: { animal_ref: "B-002", evento: "morte", data: "hoje" },
+    requiresConfirmation: true
+  }), async () => {
+    const text = "a vaca B-002 morreu hoje";
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.tipo === "MORTE", `Gemini ActionPlan de morte deveria virar MORTE, recebeu ${parsed?.tipo}`);
+    assert(parsed.dados?.animal_codigo === "B-002", "ActionPlan deveria preservar animal_ref");
+    assert(parsed.dados?.action_plan_used === true, "ActionPlan de morte deveria ser marcado");
+    assert(parsed.dados?.action_plan_domain === "saude_sanitario", "domain saude_sanitario ausente");
+  });
+});
+
 test("ActionPlan create de ponto vira PONTO_FUNCIONARIO", async () => {
   const result = await executeActionPlan({
     plan: {
@@ -2591,6 +2652,20 @@ test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture"
     assert(parsed.dados?.action_plan_used === false, `${current.text}: nao deveria marcar ActionPlan usado`);
     assert(parsed.perguntas_faltantes.length === 0, `${current.text}: nao deveria ter pendencias`);
   }
+
+  const deathText = "morreu a 002";
+  const deathResult = await parseWithConfiguredInterpreter({
+    text: deathText,
+    localParsed: parseRanchoMessage(deathText),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const deathParsed = finalParsed(deathResult);
+  assert(deathResult.kind === "local", `${deathText}: esperado fallback local seguro, recebido ${deathResult.kind}`);
+  assert(deathParsed?.tipo === "MORTE", `${deathText}: intent esperado MORTE, recebido ${deathParsed?.tipo}`);
+  assert(deathParsed.dados?.animal_codigo === "002", `${deathText}: animal esperado 002, recebido ${deathParsed.dados?.animal_codigo}`);
+  assert(deathParsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", `${deathText}: fallback seguro nao marcado`);
+  assert(deathParsed.dados?.action_plan_used === false, `${deathText}: nao deveria marcar ActionPlan usado`);
 });
 
 test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {

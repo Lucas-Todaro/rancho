@@ -26,8 +26,19 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Rancho | Gestão agropecuária inteligente",
-  description: "Landing page comercial do Rancho, uma plataforma de gestão agropecuária com painel, rebanho, produção, estoque, financeiro, funcionários e WhatsApp."
+  title: "Rancho | Gestao agropecuaria inteligente",
+  description: "Sistema de gestao agropecuaria com painel, rebanho, producao de leite, estoque, financeiro, funcionarios, genealogia e bot de WhatsApp.",
+  alternates: {
+    canonical: "/"
+  },
+  openGraph: {
+    title: "Rancho | Gestao agropecuaria inteligente",
+    description: "Organize rebanho, leite, estoque, financeiro, equipe e registros pelo WhatsApp em uma plataforma para fazendas.",
+    url: "/",
+    siteName: "Rancho",
+    locale: "pt_BR",
+    type: "website"
+  }
 };
 
 const SUPPORT_EMAIL = "projeto.fazenda00@gmail.com";
