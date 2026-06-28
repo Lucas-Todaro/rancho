@@ -85,13 +85,13 @@ export function composeMissingDataText(parsed: ParsedRanchoMessage) {
   if (fields.length && !required.length) {
     const labels = optionalLabels(optional);
     return [
-      `O cadastro principal já está completo. Faltam apenas dados opcionais.`,
+      `Já tenho o básico para esse cadastro.`,
       "",
-      `Quer adicionar algum destes dados?`,
+      `Quer completar mais algum detalhe?`,
       ...labels.map((item) => `- ${item}`),
       "",
       `Pode mandar tudo em uma mensagem, por exemplo: "fêmea, 420 kg, lote Lactação".`,
-      `Se quiser seguir sem esses dados, responda "concluir".`
+      `Se quiser deixar assim, responda "concluir".`
     ].join("\n");
   }
 
@@ -100,7 +100,7 @@ export function composeMissingDataText(parsed: ParsedRanchoMessage) {
       `Para continuar com ${label}, preciso de um dado:`,
       questionForField(parsed, required[0]),
       "",
-      `Pode responder só com essa informação. Para parar, envie "cancelar".`
+      `Pode responder só com isso. Para parar, envie "cancelar".`
     ].join("\n");
   }
 
@@ -118,7 +118,7 @@ export function composeMissingDataText(parsed: ParsedRanchoMessage) {
 
 export function composeOptionalFieldsFinishedText(parsed: ParsedRanchoMessage) {
   return [
-    "Tudo certo, vou seguir sem os dados opcionais que faltavam.",
+    "Combinado, vou seguir só com o que já temos.",
     "",
     confirmationText(parsed)
   ].join("\n");
@@ -131,12 +131,12 @@ function hasOperationalCue(command: string) {
 function pendingSummary(session?: BotSession | null) {
   const pending = session?.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo || !session?.etapa || session.etapa === "livre") {
-    return "Não tenho uma ação pendente nesta conversa. Para ver o que aconteceu hoje, você pode pedir: \"resumo de hoje\".";
+    return "Não tem nenhum registro em aberto nesta conversa. Para ver o que aconteceu hoje, você pode pedir: \"resumo de hoje\".";
   }
 
   if (session.etapa === "aguardando_confirmacao") {
     return [
-      `A ação pendente agora é: ${pending.resumo}.`,
+      `Tem um registro esperando sua confirmação: ${pending.resumo}.`,
       "",
       `Responda 1 para confirmar, 2 para corrigir ou "cancelar" para sair.`
     ].join("\n");
@@ -144,13 +144,13 @@ function pendingSummary(session?: BotSession | null) {
 
   if (session.etapa === "aguardando_dado") {
     return [
-      `Estou completando esta ação: ${pending.resumo}.`,
+      `Estou completando este registro: ${pending.resumo}.`,
       "",
       composeMissingDataText(pending)
     ].join("\n");
   }
 
-  return "Não tenho uma ação pendente nesta conversa.";
+  return "Não tem nenhum registro em aberto nesta conversa.";
 }
 
 export function composeGeneralConversationText(commandOrText: string, session?: BotSession | null) {
@@ -164,7 +164,7 @@ export function composeGeneralConversationText(commandOrText: string, session?: 
   if (/^(?:oi|ola|olá|opa|bom dia|boa tarde|boa noite|tudo bem|td bem|e ai|e aí)[\s!.?]*$/.test(command)) {
     return [
       "Oi! Eu sou o assistente do Rancho.",
-      "Pode me mandar registros ou consultas da fazenda em linguagem normal. Eu organizo a informação e peço confirmação antes de salvar."
+      "Pode me mandar os registros ou perguntas da fazenda do jeito que você falaria no dia a dia. Eu organizo tudo e peço confirmação antes de salvar."
     ].join("\n");
   }
 
@@ -174,12 +174,12 @@ export function composeGeneralConversationText(commandOrText: string, session?: 
 
   if (!hasOperationalCue(command) && /\b(?:o que voce faz|o que você faz|o que voce pode fazer|o que você pode fazer|o que pode fazer|como funciona|quais mensagens|que mensagens|exemplos|me ajuda|ajuda)\b/.test(command)) {
     return [
-      "Você pode falar comigo do jeito natural. Eu ajudo com produção de leite, rebanho, parto, saúde, estoque, financeiro, funcionários, ponto, lotes, genealogia e relatórios.",
+      "Pode falar comigo do seu jeito. Eu ajudo com produção de leite, rebanho, parto, saúde, estoque, financeiro, funcionários, ponto, lotes, genealogia e relatórios.",
       "",
       "Exemplos:",
       ...BOT_EXAMPLES,
       "",
-      "Quando uma ação puder alterar dados, eu mostro um resumo e peço confirmação antes de salvar."
+      "Quando algo puder mexer nos dados, eu mostro um resumo e peço confirmação antes de salvar."
     ].join("\n");
   }
 

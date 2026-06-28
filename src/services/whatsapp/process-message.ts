@@ -3858,7 +3858,7 @@ async function handleConversationActMessage(
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return {
       handled: true,
-      response: "Nao consegui entender uma confirmacao pendente. Envie um novo registro."
+      response: "Não consegui entender essa confirmação porque não tem nenhum registro esperando confirmação. Me envie o registro de novo."
     };
   }
 
@@ -4140,7 +4140,7 @@ async function handleConfirmation(
   const pending = session.dados?.pending as ParsedRanchoMessage | undefined;
   if (!pending?.tipo) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Não encontrei uma confirmação pendente. Envie um novo registro.";
+    return "Não consegui entender essa confirmação porque não tem nenhum registro esperando confirmação. Me envie o registro de novo.";
   }
 
   if (isDestructiveBulkParsed(pending)) {
@@ -4323,7 +4323,7 @@ async function handleConfirmation(
     }
 
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-    return "Tudo bem. Nada foi salvo. Me envie a informação novamente quando quiser.";
+    return "Tudo bem. Nada foi salvo. Me mande de novo quando quiser.";
   }
 
   const replacement = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, parseRanchoMessage(text));
@@ -4358,11 +4358,11 @@ async function handleConfirmation(
 
     if (replacement.perguntas_faltantes.length) {
       await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: replacement } });
-      return `Troquei a operação pendente.\n${composeMissingDataText(replacement)}`;
+      return `Certo, deixei esse novo registro no lugar do anterior.\n${composeMissingDataText(replacement)}`;
     }
 
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: replacement } });
-    return `Troquei a operação pendente.\n${confirmationText(replacement)}`;
+    return `Certo, deixei esse novo registro no lugar do anterior.\n${confirmationText(replacement)}`;
   }
 
   return "Responda 1 para confirmar ou 2 para corrigir. Se quiser parar, envie cancelar.";
@@ -4617,7 +4617,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         response = confirmationText(parsed);
       } else {
         await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-        response = "Não há operação pendente para repetir. Envie um novo registro.";
+        response = "Não tem nenhum registro em aberto para repetir. Me envie um novo registro.";
       }
     } else if (previousSession.etapa === "aguardando_confirmacao" && input.modoTeste && !salvarRealNoTeste && isDryRunConfirmationCommand(previousSession, command)) {
       parsed = pendingFromSession(previousSession);

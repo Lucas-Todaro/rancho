@@ -1,7 +1,7 @@
 import { BOT_EXAMPLES, type ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
 
 export const PENDING_ACTION_CANCELLED_MESSAGE = "Beleza, cancelei essa acao. Nada foi salvo.";
-export const NO_PENDING_ACTION_MESSAGE = "Nao ha acao pendente para cancelar.";
+export const NO_PENDING_ACTION_MESSAGE = "Não tem nenhum registro em aberto para cancelar.";
 
 export function intentLabel(tipo: ParsedRanchoMessage["tipo"]) {
   const labels: Record<ParsedRanchoMessage["tipo"], string> = {

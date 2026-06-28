@@ -132,7 +132,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: null,
               estadoNovo: "livre",
-              responseIncludes: "Nao ha acao pendente"
+              responseIncludes: "registro em aberto"
             }
           },
           {
@@ -140,7 +140,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: null,
               estadoNovo: "livre",
-              responseIncludes: "Nao ha acao pendente"
+              responseIncludes: "registro em aberto"
             }
           },
           {
@@ -148,7 +148,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: null,
               estadoNovo: "livre",
-              responseIncludes: "confirmacao pendente"
+              responseIncludes: "esperando confirmação"
             }
           },
           {
@@ -665,7 +665,7 @@ module.exports = function loadBotTestSection(context) {
               estadoAnterior: "aguardando_confirmacao",
               estadoNovo: "aguardando_confirmacao",
               dados: { item_nome: "Milho", quantidade: 3, unidade: "saco", valor: 120 },
-              responseIncludes: "Troquei"
+              responseIncludes: "novo registro no lugar do anterior"
             }
           },
           {
@@ -874,7 +874,7 @@ module.exports = function loadBotTestSection(context) {
               intent: "PRODUCAO_LEITE",
               estadoAnterior: "aguardando_confirmacao",
               estadoNovo: "aguardando_confirmacao",
-              responseIncludes: "ação pendente"
+              responseIncludes: "registro esperando"
             }
           }
         ]
@@ -889,7 +889,7 @@ module.exports = function loadBotTestSection(context) {
             expected: {
               intent: "CADASTRO_ANIMAL",
               estadoNovo: "aguardando_dado",
-              responseIncludes: "dados opcionais",
+              responseIncludes: "detalhe",
               responseRawNotIncludes: "Entendi que é"
             }
           },
@@ -899,7 +899,7 @@ module.exports = function loadBotTestSection(context) {
               intent: "CADASTRO_ANIMAL",
               estadoAnterior: "aguardando_dado",
               estadoNovo: "aguardando_confirmacao",
-              responseIncludes: "seguir sem os dados opcionais",
+              responseIncludes: "seguir só com o que já temos",
               dados: { animal_codigo: "B-950", categoria: "vaca" }
             }
           }
