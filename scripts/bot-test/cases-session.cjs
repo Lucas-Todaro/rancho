@@ -830,6 +830,80 @@ module.exports = function loadBotTestSection(context) {
             }
           }
         ]
+      },
+      {
+        name: "conversa comum responde sem tentar criar registro",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        messages: [
+          {
+            text: "oi",
+            expected: {
+              intent: null,
+              responseIncludes: "assistente do Rancho"
+            }
+          },
+          {
+            text: "qual seu nome?",
+            expected: {
+              intent: null,
+              responseIncludes: "assistente do Rancho"
+            }
+          },
+          {
+            text: "o que voce pode fazer?",
+            expected: {
+              intent: null,
+              responseIncludes: "produção de leite"
+            }
+          }
+        ]
+      },
+      {
+        name: "consulta de acao pendente mostra resumo sem salvar",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        initialSession: () => ({
+          etapa: "aguardando_confirmacao",
+          dados: { pending: parseResolved("B-002 deu 18 litros") }
+        }),
+        messages: [
+          {
+            text: "qual foi a ultima acao?",
+            expected: {
+              intent: "PRODUCAO_LEITE",
+              estadoAnterior: "aguardando_confirmacao",
+              estadoNovo: "aguardando_confirmacao",
+              responseIncludes: "ação pendente"
+            }
+          }
+        ]
+      },
+      {
+        name: "cadastro de animal agrupa opcionais e permite concluir",
+        phone: BOT_TEST_ADMIN_PHONE,
+        expectNoBusinessWrites: true,
+        messages: [
+          {
+            text: "cadastrar vaca com brinco B-950",
+            expected: {
+              intent: "CADASTRO_ANIMAL",
+              estadoNovo: "aguardando_dado",
+              responseIncludes: "dados opcionais",
+              responseRawNotIncludes: "Entendi que é"
+            }
+          },
+          {
+            text: "não quero mais informar nada",
+            expected: {
+              intent: "CADASTRO_ANIMAL",
+              estadoAnterior: "aguardando_dado",
+              estadoNovo: "aguardando_confirmacao",
+              responseIncludes: "seguir sem os dados opcionais",
+              dados: { animal_codigo: "B-950", categoria: "vaca" }
+            }
+          }
+        ]
       }
     ];
 

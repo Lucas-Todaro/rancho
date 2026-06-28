@@ -19,12 +19,19 @@ import { resolveWhatsAppOwner, type WhatsAppOwner } from "@/services/whatsapp/id
 import { getSession, pendingFromSession, saveSession as persistSession, type BotSession } from "@/services/whatsapp/session-service";
 import {
   helpText,
-  missingText,
   NO_PENDING_ACTION_MESSAGE,
   ownerBlockedMessage,
   PENDING_ACTION_CANCELLED_MESSAGE,
   unknownText
 } from "@/services/whatsapp/messages";
+import {
+  canFinishMissingFields,
+  composeGeneralConversationText,
+  composeMissingDataText,
+  composeOptionalFieldsFinishedText,
+  finishMissingFieldsForConfirmation,
+  isFinishOptionalFieldsCommand
+} from "@/services/whatsapp/bot-response-composer";
 import { handleConsultation as runConsultation } from "@/services/whatsapp/consultation/index";
 import type { ConsultationDependencies } from "@/services/whatsapp/consultation/types";
 import { saveConfirmedRecordByDomain } from "@/services/whatsapp/save-record/index";
@@ -3419,7 +3426,7 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     && (parsed.flags || []).some((flag) => ["use_gemini_fallback", "compound_message", "multiple_intents_detected", "conflicting_intents", "correction_message"].includes(flag));
   if (CONSULT_INTENTS.has(parsed.tipo) && parsed.perguntas_faltantes.length && !parsed.dados?.animal_referencia_nao_encontrada) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
-    return missingText(parsed);
+    return composeMissingDataText(parsed);
   }
   if (criticalLocalFallback && CONSULT_INTENTS.has(parsed.tipo)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -3501,7 +3508,7 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
       nextStep: "pedir_dado"
     });
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
-    return missingText(parsed);
+    return composeMissingDataText(parsed);
   }
 
   if (milkStockNeedsDecision(parsed)) {
@@ -3555,7 +3562,7 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
       return confirmationText(parsed);
     }
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: parsed } });
-    return missingText(parsed);
+    return composeMissingDataText(parsed);
   }
 
   await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -3785,7 +3792,7 @@ async function saveCorrectedPending(
 
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
-    return { response: [prefix, missingText(next)].filter(Boolean).join("\n"), parsed: next };
+    return { response: [prefix, composeMissingDataText(next)].filter(Boolean).join("\n"), parsed: next };
   }
 
   if (milkStockNeedsDecision(next)) {
@@ -3812,6 +3819,26 @@ async function handleConversationActMessage(
 ): Promise<ConversationActHandlingResult> {
   const pending = pendingFromSession(session);
   const command = act.normalizedText;
+
+  if (pending && session.etapa === "aguardando_dado" && isFinishOptionalFieldsCommand(command)) {
+    const finished = finishMissingFieldsForConfirmation(pending);
+    if (finished) {
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: finished } });
+      return {
+        handled: true,
+        parsed: finished,
+        response: composeOptionalFieldsFinishedText(finished)
+      };
+    }
+
+    if (!canFinishMissingFields(pending)) {
+      return {
+        handled: true,
+        parsed: pending,
+        response: composeMissingDataText(pending)
+      };
+    }
+  }
 
   if (act.messageType === "new_action" || act.messageType === "clarification") {
     return { handled: false };
@@ -3965,7 +3992,7 @@ async function handleMissingData(
       };
       const next = refreshRanchoMessage({ ...pending, tipo: "CRIAR_ITEM_ESTOQUE", dados: createData }, createData);
       await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ?"aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
-      return next.perguntas_faltantes.length ?missingText(next) : confirmationText(next);
+      return next.perguntas_faltantes.length ?composeMissingDataText(next) : confirmationText(next);
     }
 
     if (command === "2" || /\b(?:despesa|financeiro)\b/.test(command)) {
@@ -3976,7 +4003,7 @@ async function handleMissingData(
       };
       const next = refreshRanchoMessage({ ...pending, tipo: "DESPESA", dados: financeData }, financeData);
       await saveSession(supabase, owner, { etapa: next.perguntas_faltantes.length ?"aguardando_dado" : "aguardando_confirmacao", dados: { pending: next } });
-      return next.perguntas_faltantes.length ?missingText(next) : confirmationText(next);
+      return next.perguntas_faltantes.length ?composeMissingDataText(next) : confirmationText(next);
     }
 
     return "Responda 1 para criar o item de estoque ou 2 para registrar apenas como despesa.";
@@ -4085,7 +4112,7 @@ async function handleMissingData(
   }
   if (next.perguntas_faltantes.length) {
     await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
-    return missingText(next);
+    return composeMissingDataText(next);
   }
 
   if (milkStockNeedsDecision(next)) {
@@ -4288,7 +4315,7 @@ async function handleConfirmation(
       }
       if (next.perguntas_faltantes.length) {
         await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: next } });
-        return missingText(next);
+        return composeMissingDataText(next);
       }
 
       await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
@@ -4331,7 +4358,7 @@ async function handleConfirmation(
 
     if (replacement.perguntas_faltantes.length) {
       await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: replacement } });
-      return `Troquei a operação pendente.\n${missingText(replacement)}`;
+      return `Troquei a operação pendente.\n${composeMissingDataText(replacement)}`;
     }
 
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: replacement } });
@@ -4522,8 +4549,14 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       pending: pendingFromSession(previousSession)
     });
     logConversationAct(message, conversationAct);
+    const generalConversationText = !structuredDetection.isStructured && !tableParsedPreview
+      ? composeGeneralConversationText(command, previousSession)
+      : null;
 
-    if (structuredDetection.isStructured && !tableParsedPreview) {
+    if (generalConversationText) {
+      parsed = pendingFromSession(previousSession);
+      response = generalConversationText;
+    } else if (structuredDetection.isStructured && !tableParsedPreview) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       suppressPreviousPending = true;
       const interpreted = await withProcessingNotice(input, supabase, owner!, phone, "structured_interpreter", () => parseWithConfiguredInterpreter({
