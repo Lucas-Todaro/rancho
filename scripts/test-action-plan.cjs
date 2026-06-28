@@ -829,6 +829,28 @@ test("ActionPlan execute cobre capacidades genericas principais", async () => {
   assert(animal.ok, `execute cadastro animal deveria executar: ${animal.reason}`);
   assert(animal.parsed.tipo === "CADASTRO_ANIMAL", `execute cadastro animal deveria virar CADASTRO_ANIMAL, recebeu ${animal.parsed.tipo}`);
   assert(animal.parsed.dados?.animal_codigo === "B-120", "execute cadastro animal deveria preservar brinco");
+  assert(animal.parsed.perguntas_faltantes?.length > 0, "execute cadastro animal deve manter opcionais para o usuario revisar ou concluir");
+
+  const ambiguousAnimal = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "cadastrar_animal",
+      confidence: 0.92,
+      data: { brinco: "felipe", codigo: "felipe", categoria: "vaca", nome: "felipe" },
+      requiresConfirmation: true
+    },
+    text: "cria uma vaca felipe",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(ambiguousAnimal.ok, `execute cadastro animal ambiguo deveria executar: ${ambiguousAnimal.reason}`);
+  assert(ambiguousAnimal.parsed.tipo === "CADASTRO_ANIMAL", `cadastro ambiguo deveria virar CADASTRO_ANIMAL, recebeu ${ambiguousAnimal.parsed.tipo}`);
+  assert(!ambiguousAnimal.parsed.dados?.animal_codigo, "cadastro ambiguo nao deve usar nome como brinco/codigo");
+  assert(ambiguousAnimal.parsed.dados?.nome === "felipe", "cadastro ambiguo deve preservar a palavra solta como nome");
+  assert(
+    ambiguousAnimal.parsed.perguntas_faltantes?.some((question) => /brinco|codigo|código/i.test(String(question))),
+    "cadastro ambiguo deve pedir brinco/codigo"
+  );
 
   const payroll = await executeActionPlan({
     plan: {

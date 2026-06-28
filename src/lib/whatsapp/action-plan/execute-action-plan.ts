@@ -175,6 +175,48 @@ function firstNumber(data: Record<string, unknown>, keys: string[]) {
   return undefined;
 }
 
+function actionPlanText(value: unknown) {
+  const text = String(value ?? "").trim();
+  return text || undefined;
+}
+
+function isCodeLikeAnimalRegistration(value: unknown) {
+  const text = actionPlanText(value);
+  return Boolean(text && /\d|-/.test(text));
+}
+
+function hasExplicitAnimalRegistrationCodeCue(text?: string, candidate?: unknown) {
+  const normalizedText = normalizeRanchoText(text || "");
+  if (!normalizedText) return false;
+  const normalizedCandidate = normalizeRanchoText(String(candidate ?? ""));
+  if (!normalizedCandidate) return /\b(?:brinco|codigo|cod|numero|n)\b/.test(normalizedText);
+  const escaped = normalizedCandidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b(?:brinco|codigo|cod|numero|n)\\s+(?:e|eh|foi|era|para|pra)?\\s*${escaped}\\b`).test(normalizedText);
+}
+
+function normalizeAnimalRegistrationForActionPlan(data: Record<string, unknown>, originalText?: string) {
+  const rawCode = firstValue(data, ["brinco", "animal_ref", "animal_codigo", "codigo"]);
+  let animal_codigo = actionPlanText(rawCode);
+  let nome = actionPlanText(data.nome);
+  const sameNameAndCode = Boolean(
+    animal_codigo
+    && nome
+    && normalizeRanchoText(animal_codigo) === normalizeRanchoText(nome)
+  );
+  const ambiguousCode = Boolean(
+    animal_codigo
+    && !isCodeLikeAnimalRegistration(animal_codigo)
+    && !hasExplicitAnimalRegistrationCodeCue(originalText, animal_codigo)
+  );
+
+  if (ambiguousCode && (sameNameAndCode || !nome)) {
+    nome = nome || animal_codigo;
+    animal_codigo = undefined;
+  }
+
+  return { animal_codigo, nome };
+}
+
 function capabilityAnimalRef(data: Record<string, unknown>) {
   return firstValue(data, ["animal_ref", "animal_id", "animal_codigo", "brinco", "codigo", "mae_ref"]);
 }
@@ -363,10 +405,10 @@ function capabilityMutationParsed(plan: ExecuteCapabilityActionPlan, currentDate
   }
 
   if (plan.capability === "cadastrar_animal") {
-    const optional = ["sexo", "nome", "peso", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
+    const animalRegistration = normalizeAnimalRegistrationForActionPlan(data, originalText);
     const dados = {
-      animal_codigo: firstValue(data, ["brinco", "animal_ref", "animal_codigo", "codigo"]),
-      nome: data.nome || undefined,
+      animal_codigo: animalRegistration.animal_codigo,
+      nome: animalRegistration.nome,
       categoria: data.categoria,
       sexo: data.sexo || undefined,
       fase: data.fase || undefined,
@@ -375,10 +417,6 @@ function capabilityMutationParsed(plan: ExecuteCapabilityActionPlan, currentDate
       lote_nome: data.lote_ref || data.lote_nome || undefined,
       data_nascimento: data.data_nascimento || undefined,
       observacoes: data.observacoes || undefined,
-      campos_opcionais_pulados: optional.filter((field) => {
-        const source = field === "lote_animal" ? data.lote_ref || data.lote_nome : data[field];
-        return source === undefined || source === null || String(source).trim() === "";
-      }),
       ...metadata
     };
     return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados), plan.confidence);
@@ -672,10 +710,10 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
       return finalize("MORTE", dados, buildMissing("MORTE", dados), plan.confidence);
     }
 
-    const optional = ["sexo", "nome", "peso", "fase", "raca", "lote_animal", "data_nascimento", "observacoes"];
+    const animalRegistration = normalizeAnimalRegistrationForActionPlan(data, originalText);
     const dados = {
-      animal_codigo: data.brinco || data.animal_ref,
-      nome: data.nome || undefined,
+      animal_codigo: animalRegistration.animal_codigo,
+      nome: animalRegistration.nome,
       categoria: data.categoria,
       sexo: data.sexo || undefined,
       fase: data.fase || undefined,
@@ -684,10 +722,6 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
       lote_nome: data.lote_ref || undefined,
       data_nascimento: data.data_nascimento || undefined,
       observacoes: data.observacoes || undefined,
-      campos_opcionais_pulados: optional.filter((field) => {
-        const source = field === "lote_animal" ? data.lote_ref : data[field];
-        return source === undefined || source === null || String(source).trim() === "";
-      }),
       ...metadata
     };
     return finalize("CADASTRO_ANIMAL", dados, buildMissing("CADASTRO_ANIMAL", dados), plan.confidence);
