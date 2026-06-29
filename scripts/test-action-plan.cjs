@@ -1617,6 +1617,85 @@ test("preview import_table estoque mostra produtos e movimento", async () => {
   assert(preview.includes("Racao"), "preview deveria mostrar pelo menos uma linha pronta");
 });
 
+test("executor import_table estoque aceita cadastro inicial de itens", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "estoque",
+    confidence: 0.95,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        item: "Produto",
+        categoria: "Categoria",
+        unidade: "Unidade",
+        quantidade_atual: "Quantidade atual",
+        quantidade_minima: "Quantidade mínima",
+        valor_unitario: "Valor unitário"
+      },
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({
+    plan,
+    text: [
+      "Produto;Categoria;Unidade;Quantidade atual;Quantidade mínima;Valor unitário",
+      "Milho;ração;saco;20;5;80",
+      "Ração lactação;ração;saco;15;6;120",
+      "Sal mineral;insumo;kg;100;30;4"
+    ].join("\n")
+  });
+  assert(result.ok, `cadastro inicial de estoque deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_ESTOQUE_TABELA", `intent esperado IMPORTACAO_ESTOQUE_TABELA, recebido ${result.parsed.tipo}`);
+  const rows = result.parsed.dados?.linhas || [];
+  assert(rows.length === 3, `esperava 3 linhas, recebeu ${rows.length}`);
+  assert(rows[0]?.tipo_linha_estoque === "cadastro_item", `tipo de linha incorreto: ${rows[0]?.tipo_linha_estoque}`);
+  assert(rows[0]?.quantidade_atual === 20, `quantidade_atual incorreta: ${rows[0]?.quantidade_atual}`);
+  assert(rows[0]?.quantidade_minima === 5, `quantidade_minima incorreta: ${rows[0]?.quantidade_minima}`);
+  assert(rows[0]?.valor_unitario === 80, `valor_unitario incorreto: ${rows[0]?.valor_unitario}`);
+  assert((rows[0]?.problemas || []).length === 0, `linha inicial nao deveria ter problemas: ${(rows[0]?.problemas || []).join(", ")}`);
+  const preview = confirmationText(result.parsed);
+  assert(preview.includes("cadastro inicial"), "preview deveria explicar cadastro inicial");
+  assert(preview.includes("Milho"), "preview deveria mostrar Milho");
+});
+
+test("executor import_table estoque normaliza columnMapping invertido da IA", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "estoque",
+    confidence: 0.95,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        Produto: "item",
+        Categoria: "categoria",
+        Unidade: "unidade",
+        "Quantidade atual": "quantidade_atual",
+        "Quantidade mínima": "quantidade_minima",
+        "Valor unitário": "valor_unitario"
+      },
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({
+    plan,
+    text: [
+      "Produto;Categoria;Unidade;Quantidade atual;Quantidade mínima;Valor unitário",
+      "Milho;ração;saco;20;5;80"
+    ].join("\n")
+  });
+  assert(result.ok, `columnMapping invertido deveria executar: ${result.reason}`);
+  assert(result.parsed.dados?.linhas?.[0]?.item_nome === "Milho", "item deveria ser lido da coluna Produto");
+  assert(result.parsed.dados?.linhas?.[0]?.tipo_linha_estoque === "cadastro_item", "linha deveria ser cadastro inicial");
+});
+
 test("executor import_table reproducao aceita lista codigo evento com data.rows", async () => {
   const plan = {
     action: "import_table",

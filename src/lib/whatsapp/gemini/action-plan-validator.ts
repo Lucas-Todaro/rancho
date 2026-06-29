@@ -91,6 +91,48 @@ function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
+const DATA_META_FIELDS = new Set(["semantic_scope"]);
+
+function stripDataMetaFields(data: unknown) {
+  if (!isPlainObject(data)) return data;
+  const next: AnyRecord = { ...data };
+  DATA_META_FIELDS.forEach((fieldName) => {
+    delete next[fieldName];
+  });
+  return next;
+}
+
+function manifestFieldName(domain: DomainManifestEntry, value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (domain.fields[text]) return text;
+  const normalized = normalizedHeader(text);
+  return Object.keys(domain.fields).find((fieldName) => normalizedHeader(fieldName) === normalized) || null;
+}
+
+function normalizeColumnMappingForDomain(domainName: string, columnMapping: unknown): Record<string, string | number> {
+  if (!isPlainObject(columnMapping)) return {};
+  const domain = domainFromContext(domainName, RANCHO_DOMAIN_MANIFEST);
+  if (!domain) return columnMapping as Record<string, string | number>;
+  const normalized: Record<string, string | number> = {};
+  for (const [rawKey, rawValue] of Object.entries(columnMapping)) {
+    const exactKeyField = domain.fields[rawKey] ? rawKey : null;
+    const valueField = typeof rawValue === "string" ? manifestFieldName(domain, rawValue) : null;
+    const looseKeyField = manifestFieldName(domain, rawKey);
+
+    if (exactKeyField) {
+      normalized[exactKeyField] = rawValue as string | number;
+    } else if (valueField) {
+      normalized[valueField] = rawKey;
+    } else if (looseKeyField) {
+      normalized[looseKeyField] = rawValue as string | number;
+    } else {
+      normalized[rawKey] = rawValue as string | number;
+    }
+  }
+  return normalized;
+}
+
 function normalizeReproductionValue(fieldName: string, value: unknown) {
   if (["evento", "tipo"].includes(fieldName)) return normalizeReproductionEvent(value) || value;
   if (["data", "data_evento"].includes(fieldName)) return normalizeDate(value) || value;
@@ -139,6 +181,30 @@ function normalizeImportRowsForDomain(data: unknown, domainName: string) {
 }
 
 function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPlan {
+  if (plan.action === "create" || plan.action === "update") {
+    plan = { ...plan, data: stripDataMetaFields(plan.data) as Record<string, unknown> };
+  }
+  if (plan.action === "import_table") {
+    const table: AnyRecord = isPlainObject(plan.table) ? plan.table : {};
+    plan = {
+      ...plan,
+      data: isPlainObject(plan.data)
+        ? {
+          ...plan.data,
+          rows: Array.isArray(plan.data.rows)
+            ? plan.data.rows.map((row) => stripDataMetaFields(row))
+            : plan.data.rows
+        } as ImportTableActionPlan["data"]
+        : plan.data,
+      table: {
+        ...table,
+        hasHeader: table.hasHeader === false ? false : true,
+        columnMapping: normalizeColumnMappingForDomain(domainName, table.columnMapping),
+        defaultFields: stripDataMetaFields(table.defaultFields || {}) as Record<string, unknown>
+      }
+    };
+  }
+
   if (domainName === "saude_sanitario" && (plan.action === "create" || plan.action === "update")) {
     const data = { ...plan.data };
     if (!hasValue(data.evento) && hasValue(data.tipo)) data.evento = data.tipo;
@@ -422,7 +488,7 @@ function validateRequiredFields(
   errors: string[]
 ) {
   for (const required of domain.requiredFieldsByAction[action] || []) {
-    if (domain.domain === "estoque" && action === "create" && required === "item" && (fields.has("item_ref") || fields.has("nome"))) {
+    if (domain.domain === "estoque" && ["create", "import_table"].includes(action) && required === "item" && (fields.has("item_ref") || fields.has("nome"))) {
       continue;
     }
     if (!fields.has(required)) errors.push(`${action}.${required} obrigatorio para ${domain.domain}`);

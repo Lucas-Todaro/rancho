@@ -58,6 +58,11 @@ export type ParsedTabularStockImportRow = {
   item_nome: string;
   quantidade_original: string;
   quantidade: number | null;
+  tipo_linha_estoque?: "cadastro_item" | "movimentacao";
+  categoria_original?: string;
+  categoria?: string | null;
+  quantidade_atual?: number | null;
+  quantidade_minima?: number | null;
   unidade_original: string;
   unidade: string | null;
   tipo_original: string;
@@ -66,6 +71,9 @@ export type ParsedTabularStockImportRow = {
   data_referencia: string | null;
   valor_original: string;
   valor: number | null;
+  valor_unitario?: number | null;
+  fornecedor?: string;
+  ativo?: boolean | null;
   observacoes: string;
   problemas: string[];
 };
@@ -153,8 +161,12 @@ type HeaderMap = {
   birthDate?: number;
   item?: number;
   quantity?: number;
+  quantityCurrent?: number;
+  quantityMinimum?: number;
   unit?: number;
   value?: number;
+  unitValue?: number;
+  active?: number;
   liters?: number;
   movementType?: number;
   movementTypeDefault?: "entrada" | "saida" | null;
@@ -383,8 +395,12 @@ function columnMappingFromHeader(header: HeaderMap) {
   if (header.birthDate !== undefined) mapping.birth_date = header.birthDate;
   if (header.item !== undefined) mapping.item = header.item;
   if (header.quantity !== undefined) mapping.quantity = header.quantity;
+  if (header.quantityCurrent !== undefined) mapping.quantidade_atual = header.quantityCurrent;
+  if (header.quantityMinimum !== undefined) mapping.quantidade_minima = header.quantityMinimum;
   if (header.unit !== undefined) mapping.unit = header.unit;
   if (header.value !== undefined) mapping.value = header.value;
+  if (header.unitValue !== undefined) mapping.valor_unitario = header.unitValue;
+  if (header.active !== undefined) mapping.ativo = header.active;
   if (header.liters !== undefined) mapping.litros = header.liters;
   if (header.movementType !== undefined) mapping.movement_type = header.movementType;
   if (header.movementTypeDefault) mapping.default_movement_type = header.movementTypeDefault;
@@ -421,10 +437,14 @@ function buildHeaderMap(headerLine: string): HeaderMap {
     status: headerIndex(cells, [/^(?:status|situacao)$/]),
     weight: headerIndex(cells, [/^(?:peso|kg)$/]),
     birthDate: headerIndex(cells, [/^(?:nascimento|data\s+nascimento|data\s+de\s+nascimento|nasc)$/]),
-    item: headerIndex(cells, [/^(?:item|produto|insumo|material)$/]),
+    item: headerIndex(cells, [/^(?:item|produto|insumo|material|nome)$/]),
     quantity: headerIndex(cells, [/^(?:quantidade|qtd|qtde)$/]) ?? stockMovement.index,
+    quantityCurrent: headerIndex(cells, [/^(?:quantidade\s+atual|saldo\s+atual|estoque\s+atual|qtd\s+atual|qtde\s+atual)$/]),
+    quantityMinimum: headerIndex(cells, [/^(?:quantidade\s+minima|quantidade\s+minima|quantidade\s+mínima|minimo|mínimo|estoque\s+minimo|estoque\s+mínimo|qtd\s+minima|qtd\s+mínima)$/]),
     unit: headerIndex(cells, [/^(?:unidade|un|medida)$/]),
     value: headerIndex(cells, [/^(?:valor|preco|preco\s+unitario|valor\s+unitario|valor\s+total|valor_total|custo|total)$/]),
+    unitValue: headerIndex(cells, [/^(?:valor\s+unitario|valor\s+unitário|preco\s+unitario|preço\s+unitário|custo\s+unitario|custo\s+unitário)$/]),
+    active: headerIndex(cells, [/^(?:ativo|ativa|status|situacao|situação)$/]),
     liters: headerIndex(cells, [/^(?:litro|litros|leite|producao|producao\s+litros|qtd|qtde|quantidade|quantidade\s+litros|volume|total\s+litros)$/]),
     movementType: headerIndex(cells, [/^(?:movimento|tipo\s+movimento|entrada\s+ou\s+saida)$/]),
     movementTypeDefault: stockMovement.movementTypeDefault
@@ -484,7 +504,12 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
 function hasStockHeaderShape(line: string) {
   if (!line.includes(";")) return false;
   const header = buildHeaderMap(line);
-  return header.item !== undefined && header.quantity !== undefined;
+  return header.item !== undefined && (
+    header.quantity !== undefined
+    || header.quantityCurrent !== undefined
+    || header.quantityMinimum !== undefined
+    || header.unitValue !== undefined
+  );
 }
 
 function tableKindFromStructuredLine(line: string): TableKind {
@@ -494,7 +519,7 @@ function tableKindFromStructuredLine(line: string): TableKind {
 function looksLikeStructuredHeaderLine(line: string) {
   if (!line.includes(";")) return false;
   const cells = splitHeaderCells(line);
-  const headerTokens = cells.filter((cell) => /^(?:codigo|cod|brinco|id|animal|animal id|animal ref|nome|apelido|identificacao|categoria|tipo|classe|sexo|genero|raca|lote|piquete|grupo|pasto|nascimento|data nascimento|peso|kg|status|situacao|fase|estagio|pai|pai ref|mae|mae ref|matriz|touro|reprodutor|filho|cria|bezerro|bezerra|codigo cria|brinco cria|sexo cria|nome cria|evento|status tipo|ocorrencia|procedimento|data|dia|quando|horario|hora|turno|ordenha|observacoes|observacao|obs|nota|item|produto|insumo|material|estoque|quantidade|qtd|qtde|entrada|saida|uso|unidade|un|medida|valor|preco|total|fornecedor|destino|descricao|motivo|historico|forma|pagamento|pessoa|cliente|funcionario|colaborador|cargo|funcao|telefone|celular|whatsapp|salario|admissao|intervalo|pausa|almoco|horas|vacina|medicamento|remedio|dose|sintomas|problema|doenca|responsavel|aplicador|tarefa|titulo|atividade|compromisso|recorrencia)$/ .test(cell));
+  const headerTokens = cells.filter((cell) => /^(?:codigo|cod|brinco|id|animal|animal id|animal ref|nome|apelido|identificacao|categoria|tipo|classe|sexo|genero|raca|lote|piquete|grupo|pasto|nascimento|data nascimento|peso|kg|status|situacao|fase|estagio|pai|pai ref|mae|mae ref|matriz|touro|reprodutor|filho|cria|bezerro|bezerra|codigo cria|brinco cria|sexo cria|nome cria|evento|status tipo|ocorrencia|procedimento|data|dia|quando|horario|hora|turno|ordenha|observacoes|observacao|obs|nota|item|produto|insumo|material|estoque|quantidade|quantidade atual|quantidade minima|qtd|qtd atual|qtd minima|qtde|qtde atual|qtde minima|entrada|saida|uso|unidade|un|medida|valor|valor unitario|valor total|preco|preco unitario|custo|custo unitario|total|fornecedor|destino|ativo|descricao|motivo|historico|forma|pagamento|pessoa|cliente|funcionario|colaborador|cargo|funcao|telefone|celular|whatsapp|salario|admissao|intervalo|pausa|almoco|horas|vacina|medicamento|remedio|dose|sintomas|problema|doenca|responsavel|aplicador|tarefa|titulo|atividade|compromisso|recorrencia)$/ .test(cell));
   return headerTokens.length >= Math.max(2, Math.ceil(cells.length * 0.6));
 }
 
@@ -622,6 +647,17 @@ function parsePositiveTableNumber(value: string) {
   return Number.isFinite(number) && number > 0 ?number : null;
 }
 
+function parseNonNegativeTableNumber(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text) || /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(text)) return null;
+  const normalized = text.replace(/\s+/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+  const match = normalized.match(/^(\d+(?:\.\d+)?)(?:[a-zA-ZÀ-ÿ]+)?$/);
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isFinite(number) && number >= 0 ?number : null;
+}
+
 function normalizeProductionTurno(value: string) {
   const normalized = normalizeRanchoText(value);
   if (!normalized) return null;
@@ -664,41 +700,76 @@ function normalizeStockMovementType(value: string): ParsedTabularStockImportRow[
   return null;
 }
 
+function parseOptionalTableBoolean(value: string) {
+  const normalized = normalizeRanchoText(value);
+  if (!normalized) return null;
+  if (/^(?:sim|s|true|ativo|ativa|1)$/.test(normalized)) return true;
+  if (/^(?:nao|n|false|inativo|inativa|0)$/.test(normalized)) return false;
+  return null;
+}
+
 function parseStockImportLine(line: string, lineNumber: number, header: HeaderMap): ParsedTabularStockImportRow | null {
   const cells = rowCellsForHeader(line, header);
   if (cells.length < 3) return null;
   if (cells.every((cell) => !cell)) return null;
 
   const itemOriginal = cellAt(cells, header.item ?? 0);
+  const categoryOriginal = cellAt(cells, header.category);
   const quantityOriginal = cellAt(cells, header.quantity);
+  const currentQuantityOriginal = cellAt(cells, header.quantityCurrent);
+  const minimumQuantityOriginal = cellAt(cells, header.quantityMinimum);
   const unitOriginal = cellAt(cells, header.unit);
   const typeOriginal = cellAt(cells, header.movementType ?? header.eventType ?? header.status);
   const dateOriginal = cellAt(cells, header.date);
   const valueOriginal = cellAt(cells, header.value);
+  const unitValueOriginal = cellAt(cells, header.unitValue ?? header.value);
+  const activeOriginal = cellAt(cells, header.active);
   const quantity = parsePositiveTableNumber(quantityOriginal);
+  const currentQuantity = parseNonNegativeTableNumber(currentQuantityOriginal);
+  const minimumQuantity = parseNonNegativeTableNumber(minimumQuantityOriginal);
   const unit = normalizeStockUnit(unitOriginal);
   const movementType = normalizeStockMovementType(typeOriginal) || header.movementTypeDefault || null;
   const parsedDate = dateOriginal ?parseTableDate(dateOriginal) : null;
   const value = parseOptionalMoney(valueOriginal);
+  const unitValue = parseOptionalMoney(unitValueOriginal);
+  const active = parseOptionalTableBoolean(activeOriginal);
+  const isItemRegistration = !movementType && (
+    Boolean(currentQuantityOriginal.trim())
+    || Boolean(minimumQuantityOriginal.trim())
+    || Boolean(unitValueOriginal.trim())
+    || Boolean(categoryOriginal.trim())
+    || Boolean(activeOriginal.trim())
+  );
   const problemas: string[] = [];
 
   if (!itemOriginal.trim()) problemas.push("item_ausente");
-  if (!quantityOriginal.trim()) problemas.push("quantidade_ausente");
-  else if (quantity === null) problemas.push("quantidade_invalida");
   if (!unitOriginal.trim()) problemas.push("unidade_ausente");
   else if (!unit) problemas.push("unidade_invalida");
-  if (!typeOriginal.trim() && !header.movementTypeDefault) problemas.push("tipo_movimento_ausente");
-  else if (!movementType) problemas.push("tipo_movimento_desconhecido");
+  if (isItemRegistration) {
+    if (currentQuantityOriginal.trim() && currentQuantity === null) problemas.push("quantidade_invalida");
+    if (minimumQuantityOriginal.trim() && minimumQuantity === null) problemas.push("quantidade_minima_invalida");
+    if (unitValueOriginal.trim() && unitValue === null) problemas.push("valor_invalido");
+  } else {
+    if (!quantityOriginal.trim()) problemas.push("quantidade_ausente");
+    else if (quantity === null) problemas.push("quantidade_invalida");
+    if (!typeOriginal.trim() && !header.movementTypeDefault) problemas.push("tipo_movimento_ausente");
+    else if (!movementType) problemas.push("tipo_movimento_desconhecido");
+  }
   if (dateOriginal.trim() && !parsedDate) problemas.push("data_invalida");
-  if (valueOriginal.trim() && value === null) problemas.push("valor_invalido");
+  if (!isItemRegistration && valueOriginal.trim() && value === null) problemas.push("valor_invalido");
 
   return {
     lineNumber,
     rawText: line,
+    tipo_linha_estoque: isItemRegistration ? "cadastro_item" : "movimentacao",
     item_original: itemOriginal,
     item_nome: itemOriginal.trim(),
     quantidade_original: quantityOriginal,
-    quantidade: quantity,
+    quantidade: isItemRegistration ?(currentQuantity ?? quantity ?? 0) : quantity,
+    categoria_original: categoryOriginal,
+    categoria: categoryOriginal.trim() || null,
+    quantidade_atual: currentQuantity,
+    quantidade_minima: minimumQuantity,
     unidade_original: unitOriginal,
     unidade: unit,
     tipo_original: typeOriginal,
@@ -707,6 +778,9 @@ function parseStockImportLine(line: string, lineNumber: number, header: HeaderMa
     data_referencia: parsedDate,
     valor_original: valueOriginal,
     valor: value,
+    valor_unitario: unitValue,
+    fornecedor: "",
+    ativo: active,
     observacoes: cellAt(cells, header.notes),
     problemas
   };
@@ -924,7 +998,7 @@ function animalImportCounts(rows: ParsedTabularAnimalImportRow[]) {
 
 function stockImportCounts(rows: ParsedTabularStockImportRow[]) {
   return rows.reduce<Record<string, number>>((counts, row) => {
-    const key = row.tipo_movimento || "desconhecido";
+    const key = row.tipo_linha_estoque || row.tipo_movimento || "desconhecido";
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
@@ -1455,6 +1529,7 @@ function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: n
 
   const validParseRows = rows.filter((row) => row.problemas.length === 0);
   const invalidParseRows = rows.filter((row) => row.problemas.length > 0);
+  const allItemRegistrations = rows.length > 0 && rows.every((row) => row.tipo_linha_estoque === "cadastro_item");
 
   return finalize("IMPORTACAO_ESTOQUE_TABELA", {
     origem_parser: "tabela_local",
@@ -1462,7 +1537,7 @@ function parseStockImportTable(text: string, lines: ParsedLine[], headerIndex: n
     tipo_tabela: "stock_import",
     column_mapping: columnMapping,
     importacao_tabela_estoque: true,
-    tabela_destino: "estoque_movimentacoes",
+    tabela_destino: allItemRegistrations ? "estoque_itens" : "estoque_movimentacoes",
     total_linhas: rows.length,
     total_linhas_parse_validas: validParseRows.length,
     total_linhas_parse_invalidas: invalidParseRows.length,

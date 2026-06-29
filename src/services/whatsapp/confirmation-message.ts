@@ -642,6 +642,8 @@ export function stockImportIssueLabel(issue: string) {
     tipo_movimento_desconhecido: "tipo de movimento desconhecido",
     data_invalida: "data inválida",
     valor_invalido: "valor inválido",
+    quantidade_minima_invalida: "quantidade mínima inválida",
+    item_ja_cadastrado: "item já cadastrado",
     duplicado_na_tabela: "linha repetida na tabela"
   };
   return labels[issue] || userFacingCodeLabel(issue);
@@ -682,6 +684,16 @@ function stockImportReadyPreview(parsed: ParsedRanchoMessage, maxRows = 5) {
 
   const lines = readyRows.slice(0, maxRows).map((row) => {
     const item = row.item_nome || row.item_original || "item";
+    if (row.tipo_linha_estoque === "cadastro_item") {
+      const quantity = row.quantidade_atual ?? row.quantidade ?? row.quantidade_original;
+      const unit = row.unidade || row.unidade_original || "";
+      const amount = [quantity, unit].filter((value) => value !== undefined && value !== null && String(value).trim() !== "").join(" ");
+      const details = [
+        row.quantidade_minima !== undefined && row.quantidade_minima !== null ?`mínimo ${row.quantidade_minima}` : "",
+        row.valor_unitario !== undefined && row.valor_unitario !== null ?`valor unitário ${formatMoney(Number(row.valor_unitario))}` : ""
+      ].filter(Boolean).join(", ");
+      return `- ${item}: cadastro inicial${amount ?` com ${amount}` : ""}${details ?` (${details})` : ""}`;
+    }
     const movement = normalizeRanchoText(String(row.tipo_movimento || row.tipo_original || row.tipo || ""));
     const movementLabel = movement === "saida" ? "saída" : movement === "entrada" ? "entrada" : (row.tipo_original || "movimento");
     const quantity = row.quantidade ?? row.quantidade_original;

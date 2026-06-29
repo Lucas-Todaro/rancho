@@ -243,7 +243,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
     requiredFieldsByAction: {
       create: ["item", "quantidade"],
       update: ["item_ref"],
-      import_table: ["item", "quantidade"]
+      import_table: ["item"]
     },
     searchableFields: ["item", "nome", "categoria", "unidade", "fornecedor", "destino", "observacoes", "motivo"],
     aggregatableFields: ["quantidade", "quantidade_atual", "quantidade_minima", "valor_total", "valor_unitario"],

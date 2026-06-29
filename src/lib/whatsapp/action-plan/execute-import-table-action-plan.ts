@@ -436,33 +436,73 @@ function stockMovement(value: unknown) {
   return null;
 }
 
+function hasTableValue(value: unknown) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function optionalTableNumber(value: unknown) {
+  return hasTableValue(value) ?parseNumber(value) : null;
+}
+
+function booleanTableValue(value: unknown) {
+  const normalized = normalizeRanchoText(String(value || "").trim());
+  if (!normalized) return null;
+  if (["sim", "s", "true", "ativo", "ativa", "1"].includes(normalized)) return true;
+  if (["nao", "n", "false", "inativo", "inativa", "0"].includes(normalized)) return false;
+  return null;
+}
+
 function stockImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], preview: string): ParsedRanchoMessage {
   const normalizedRows = rows.map((row) => {
     const values = row.parsedValues || {};
     const item = String(values.item || values.nome || "").trim();
     const quantity = parseNumber(values.quantidade);
+    const currentQuantity = optionalTableNumber(values.quantidade_atual);
+    const minimumQuantity = optionalTableNumber(values.quantidade_minima);
+    const unitValue = optionalTableNumber(values.valor_unitario);
     const unit = String(values.unidade || values.unidade_medida || "").trim();
     const movement = stockMovement(values.tipo_movimento || values.tipo);
+    const isItemRegistration = !movement && (
+      hasTableValue(values.quantidade_atual)
+      || hasTableValue(values.quantidade_minima)
+      || hasTableValue(values.valor_unitario)
+      || hasTableValue(values.categoria)
+      || hasTableValue(values.ativo)
+    );
     const problems: string[] = [];
     if (!item) problems.push("item_ausente");
-    if (quantity === null || quantity <= 0) problems.push("quantidade_invalida");
     if (!unit) problems.push("unidade_ausente");
-    if (!movement) problems.push("tipo_movimento_desconhecido");
+    if (isItemRegistration) {
+      if (hasTableValue(values.quantidade_atual) && (currentQuantity === null || currentQuantity < 0)) problems.push("quantidade_invalida");
+      if (hasTableValue(values.quantidade_minima) && (minimumQuantity === null || minimumQuantity < 0)) problems.push("quantidade_minima_invalida");
+      if (hasTableValue(values.valor_unitario) && (unitValue === null || unitValue < 0)) problems.push("valor_invalido");
+    } else {
+      if (quantity === null || quantity <= 0) problems.push("quantidade_invalida");
+      if (!movement) problems.push("tipo_movimento_desconhecido");
+    }
     return {
       lineNumber: row.lineNumber,
       rawText: row.rawText,
+      tipo_linha_estoque: isItemRegistration ? "cadastro_item" : "movimentacao",
       item_original: item,
       item_nome: item,
       quantidade_original: values.quantidade,
-      quantidade: quantity,
+      quantidade: isItemRegistration ?(currentQuantity ?? quantity ?? 0) : quantity,
+      quantidade_atual: currentQuantity,
+      quantidade_minima: minimumQuantity,
       unidade_original: unit,
       unidade: unit || null,
+      categoria_original: values.categoria || "",
+      categoria: values.categoria || null,
       tipo_original: values.tipo_movimento || values.tipo || "",
       tipo_movimento: movement,
       data_original: values.data || "",
       data_referencia: values.data || null,
       valor_original: values.valor_total || values.valor_unitario || "",
       valor: parseNumber(values.valor_total),
+      valor_unitario: unitValue,
+      fornecedor: values.fornecedor || "",
+      ativo: booleanTableValue(values.ativo),
       observacoes: values.observacoes || values.motivo || "",
       problemas: problems
     };

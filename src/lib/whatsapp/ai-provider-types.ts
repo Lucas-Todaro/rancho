@@ -56,9 +56,46 @@ export function parseJsonObjectText(text: string): unknown {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("JSON object not found");
-    return JSON.parse(cleaned.slice(start, end + 1));
+    const candidate = firstBalancedJsonObject(cleaned);
+    if (!candidate) throw new Error("JSON object not found");
+    return JSON.parse(candidate);
   }
+}
+
+function firstBalancedJsonObject(text: string) {
+  for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = inString;
+        continue;
+      }
+      if (char === "\"") {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (char === "{") depth += 1;
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = text.slice(start, index + 1);
+          try {
+            JSON.parse(candidate);
+            return candidate;
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }

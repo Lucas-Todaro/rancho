@@ -193,20 +193,25 @@ export const TABULAR_DOMAIN_SCHEMAS: Record<KnownTabularTableDomain, TabularDoma
   ESTOQUE: schema(
     "ESTOQUE",
     "IMPORTACAO_ESTOQUE_TABELA",
-    ["item", "quantidade", "unidade", "tipo_movimento", "valor_total", "data", "fornecedor", "destino", "observacoes"],
+    ["item", "categoria", "quantidade", "quantidade_atual", "quantidade_minima", "unidade", "tipo_movimento", "valor_total", "valor_unitario", "data", "fornecedor", "destino", "ativo", "observacoes"],
     {
       item: ["item", "produto", "insumo", "material", "estoque"],
+      categoria: ["categoria", "tipo item", "tipo de item", "classe"],
       quantidade: ["entrada", "qtd entrada", "qtde entrada", "quantidade entrada", "quantidade", "qtd", "qtde", "saida", "uso", "usado", "consumo", "baixa"],
+      quantidade_atual: ["quantidade atual", "saldo atual", "estoque atual", "qtd atual", "qtde atual"],
+      quantidade_minima: ["quantidade minima", "quantidade mínima", "minimo", "mínimo", "estoque minimo", "estoque mínimo", "qtd minima", "qtd mínima"],
       unidade: ["unidade", "un", "medida"],
       tipo_movimento: ["tipo", "movimento", "tipo movimento", "entrada ou saida"],
       valor_total: ["valor", "preco", "total", "valor_total", "valor total", "custo"],
+      valor_unitario: ["valor unitario", "valor unitário", "preco unitario", "preço unitário", "custo unitario", "custo unitário"],
       data: ["data", "dia"],
       fornecedor: ["fornecedor", "origem", "comprado de", "comprado_de"],
       destino: ["destino", "usado em", "usado_em", "lote destino", "lote_destino"],
+      ativo: ["ativo", "status", "situacao", "situação"],
       observacoes: ["obs", "observacao", "observacoes", "motivo"]
     },
-    ["item", "quantidade", "unidade", "tipo_movimento"],
-    ["item", "quantidade"]
+    ["item", "quantidade", "quantidade_atual", "quantidade_minima", "unidade", "tipo_movimento", "valor_unitario"],
+    ["item"]
   ),
   FINANCEIRO: schema(
     "FINANCEIRO",

@@ -175,7 +175,6 @@ function semanticData(plan: ActionPlan, manifest: DomainManifest) {
   put(data, "data", semantic.date, allowedFields);
   put(data, "data_referencia", semantic.date, allowedFields);
   put(data, "periodo", semantic.period, allowedFields);
-  put(data, "semantic_scope", semantic.scope);
 
   const text = semanticText(semantic, plan);
   if (/\b(parto|pariu)\b/.test(text)) {

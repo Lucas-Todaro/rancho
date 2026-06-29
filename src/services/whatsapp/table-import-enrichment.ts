@@ -239,6 +239,7 @@ export async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: W
 
   for (const row of rows) {
     const problems = Array.isArray(row.problemas) ?row.problemas.map(String) : [];
+    const isItemRegistration = row.tipo_linha_estoque === "cadastro_item";
     const next: AnyRecord = {
       ...row,
       problemas_validacao: [...problems],
@@ -247,10 +248,13 @@ export async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: W
     const itemName = String(row.item_nome || row.item_original || "").trim();
     const duplicateKey = [
       normalizeCatalogText(itemName),
-      row.tipo_movimento || "",
+      isItemRegistration ? "cadastro_item" : (row.tipo_movimento || ""),
       row.quantidade ?? "",
       row.unidade || "",
-      row.data_referencia || row.data_original || ""
+      row.data_referencia || row.data_original || "",
+      row.categoria || "",
+      row.quantidade_minima ?? "",
+      row.valor_unitario ?? ""
     ].join("|");
 
     if (duplicateKey && seenKeys.has(duplicateKey)) {
@@ -266,6 +270,9 @@ export async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: W
         next.item_id = resolved.row.id;
         next.item_resolvido = resolved.row.nome;
         next.unidade_resolvida = resolved.row.unidade_medida || row.unidade || null;
+        if (isItemRegistration) next.problemas_validacao.push("item_ja_cadastrado");
+      } else if (isItemRegistration) {
+        next.criar_item_estoque = true;
       } else if (createMissingItems) {
         next.criar_item_estoque = true;
       } else {
@@ -280,7 +287,7 @@ export async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: W
     const uniqueProblems = Array.from(new Set(next.problemas_validacao.map(String)));
     next.problemas_validacao = uniqueProblems;
     const onlyMissingItem = uniqueProblems.length === 1 && uniqueProblems[0] === "item_nao_encontrado";
-    const noProblems = uniqueProblems.length === 0 || (createMissingItems && onlyMissingItem);
+    const noProblems = uniqueProblems.length === 0 || (!isItemRegistration && createMissingItems && onlyMissingItem);
     if (noProblems) next.status_validacao = "pronto";
     else if (uniqueProblems.includes("duplicado_na_tabela")) next.status_validacao = "duplicado";
     else next.status_validacao = "invalido";
@@ -313,8 +320,9 @@ export async function enrichTabularStockImport(supabase: SupabaseAdmin, owner: W
     unidades_invalidas: countIssue("unidade_ausente") + countIssue("unidade_invalida"),
     tipos_desconhecidos: countIssue("tipo_movimento_ausente") + countIssue("tipo_movimento_desconhecido"),
     valores_invalidos: countIssue("valor_invalido"),
+    cadastros_itens: validatedRows.filter((row) => row.tipo_linha_estoque === "cadastro_item").length,
     por_tipo: validatedRows.reduce<Record<string, number>>((counts, row) => {
-      const key = String(row.tipo_movimento || "desconhecido");
+      const key = String(row.tipo_linha_estoque || row.tipo_movimento || "desconhecido");
       counts[key] = (counts[key] || 0) + 1;
       return counts;
     }, {})

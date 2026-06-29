@@ -500,6 +500,25 @@ module.exports = function loadBotTestSection(context) {
         }
 
         for (const row of rows.filter((item) => item.status_validacao === "pronto")) {
+          if (row.tipo_linha_estoque === "cadastro_item") {
+            actions.push({
+              ...base,
+              table: BOT_TEST_TABLES.estoqueItens,
+              payload: {
+                fazenda_id: fazendaId,
+                nome: row.item_nome || row.item_original,
+                categoria: row.categoria || "outro",
+                unidade_medida: row.unidade || row.unidade_original || "unidade",
+                quantidade_atual: Number(row.quantidade_atual ?? row.quantidade ?? 0),
+                quantidade_minima: Number(row.quantidade_minima ?? 0),
+                valor_unitario: Number(row.valor_unitario ?? 0),
+                ativo: row.ativo === false ? false : true,
+                origem: "whatsapp"
+              }
+            });
+            continue;
+          }
+
           actions.push({
             ...base,
             table: BOT_TEST_TABLES.estoqueMovimentacoes,

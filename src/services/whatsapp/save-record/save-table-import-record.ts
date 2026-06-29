@@ -273,6 +273,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
     const balanceByItemId = new Map<string, number>();
     const savedTables = new Set<string>();
     let saved = 0;
+    let registeredItemCount = 0;
     let createdItemCount = 0;
     let skippedInsufficientStock = 0;
     const insufficientStockItems: string[] = [];
@@ -313,6 +314,32 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
     }
 
     for (const row of rows) {
+      if (row.tipo_linha_estoque === "cadastro_item") {
+        const itemName = String(row.item_nome || row.item_original || "").trim();
+        if (!itemName) continue;
+
+        const existingItem = await findStockItem(supabase, owner, itemName);
+        if (existingItem?.row && (existingItem.exact || existingItem.score >= 0.86)) {
+          continue;
+        }
+
+        await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
+          fazenda_id: owner.fazenda_id,
+          nome: itemName,
+          categoria: normalizeEnumValue(row.categoria || row.categoria_original || stockCategoryFromName(itemName), ["racao", "medicamento", "insumo", "equipamento", "outro"], "outro"),
+          unidade_medida: row.unidade || row.unidade_original || "unidade",
+          quantidade_atual: Number(row.quantidade_atual ?? row.quantidade ?? 0),
+          quantidade_minima: Number(row.quantidade_minima ?? 0),
+          valor_unitario: Number(row.valor_unitario ?? 0),
+          fornecedor: row.fornecedor || null,
+          ativo: row.ativo === false ?false : true,
+          created_by: owner.usuario_id || null
+        });
+        savedTables.add(TABLES.estoqueItens);
+        registeredItemCount += 1;
+        continue;
+      }
+
       let itemId = row.item_id || null;
       let itemName = row.item_resolvido || row.item_nome || row.item_original || "item";
       let unit = row.unidade_resolvida || row.unidade || "unidade";
@@ -385,12 +412,14 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       saved += 1;
     }
 
-    if (!saved && !createdItemCount) return { response: "Nenhuma movimentação de estoque foi importada. Nada foi salvo." };
+    if (!saved && !createdItemCount && !registeredItemCount) return { response: "Nenhuma movimentação de estoque foi importada. Nada foi salvo." };
 
-    const itemText = createdItemCount ?`\nItens criados: ${createdItemCount}.` : "";
+    const registeredText = registeredItemCount ?`\nItens cadastrados: ${registeredItemCount}.` : "";
+    const movementText = saved ?`\nMovimentações importadas: ${saved}.` : "";
+    const itemText = createdItemCount ?`\nItens criados automaticamente para movimentações: ${createdItemCount}.` : "";
     const skippedText = skippedInsufficientStock
       ?`\nBaixas ignoradas por saldo insuficiente: ${skippedInsufficientStock}.${insufficientStockItems.length ?`\n${insufficientStockItems.slice(0, 5).map((item) => `- ${item}`).join("\n")}` : ""}`
       : "";
-    return realSaveResult(`Importação de estoque concluída:\n- ${saved} linha(s) importada(s).${itemText}${skippedText}`, Array.from(savedTables));
+    return realSaveResult(`Importação de estoque concluída:${registeredText}${movementText}${itemText}${skippedText}`, Array.from(savedTables));
   }
 }

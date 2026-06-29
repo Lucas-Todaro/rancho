@@ -171,6 +171,14 @@ module.exports = function loadBotTestSection(context) {
       "kg;Sal mineral;saída;20",
       "litros;Diesel;entrada;30"
     ].join("\n");
+    const initialStockItemsTableMessage = [
+      "Produto;Categoria;Unidade;Quantidade atual;Quantidade mínima;Valor unitário",
+      "Milho;ração;saco;20;5;80",
+      "Ração lactação;ração;saco;15;6;120",
+      "Sal mineral;insumo;kg;100;30;4",
+      "Vacina clostridial;medicamento;dose;30;10;18",
+      "Diesel;insumo;litro;80;20;6"
+    ].join("\n");
     const shuffledAnimalEventsMessage = [
       "Data;Observacoes;Animal;Evento",
       "2026-03-01;;A-10;Inseminacao",
@@ -1001,6 +1009,18 @@ module.exports = function loadBotTestSection(context) {
           total_linhas: 2,
           total_linhas_parse_validas: 2,
           tableRow: { lineNumber: 2, item_nome: "Racao de boi", quantidade: 10, unidade: "kg", tipo_movimento: "entrada" }
+        }
+      },
+      {
+        name: "tabela de estoque cadastra itens iniciais sem movimento",
+        module: "tabela-estoque",
+        phrase: initialStockItemsTableMessage,
+        expected: {
+          exactTipo: true,
+          tipo: "IMPORTACAO_ESTOQUE_TABELA",
+          total_linhas: 5,
+          total_linhas_parse_validas: 5,
+          tableRow: { lineNumber: 2, item_nome: "Milho", tipo_linha_estoque: "cadastro_item", quantidade_atual: 20, quantidade_minima: 5, valor_unitario: 80 }
         }
       },
       {
@@ -2000,6 +2020,23 @@ module.exports = function loadBotTestSection(context) {
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque cadastra itens iniciais ao confirmar",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        stockItems: [],
+        messages: [initialStockItemsTableMessage, "1"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 5,
+          savedTables: [BOT_TEST_TABLES.estoqueItens],
+          shouldSaveValues: { nome: "Milho", quantidade_atual: 20, valor_unitario: 80 },
           shouldNotWriteBusiness: true
         }
       },
