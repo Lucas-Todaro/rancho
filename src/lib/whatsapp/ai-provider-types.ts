@@ -1,6 +1,6 @@
 export type AIProviderName = "gemini" | "openrouter";
 
-export type GenerateStructuredPurpose = "action_plan" | "pending_patch" | "pending_action";
+export type GenerateStructuredPurpose = "action_plan" | "pending_patch" | "pending_action" | "response_composer";
 
 export type GenerateStructuredInput = {
   purpose: GenerateStructuredPurpose;

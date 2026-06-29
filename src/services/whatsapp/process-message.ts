@@ -108,6 +108,7 @@ import {
 } from "@/services/whatsapp/catalog-service";
 import { confirmationText, dryRunConfirmationText, isDestructiveBulkParsed } from "@/services/whatsapp/confirmation-message";
 import { sendOutboundWhatsAppText } from "@/services/whatsapp/outbound";
+import { composeBotResponseWithAI } from "@/services/whatsapp/ai-response-composer";
 import {
   applyPendingPatchToSession,
   interpretPendingPatchWithGemini,
@@ -4890,6 +4891,16 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     }
 
     nextSession = await getSession(supabase, owner);
+    const composedResponse = await composeBotResponseWithAI({
+      response,
+      userMessage: message,
+      parsed,
+      previousSession,
+      nextSession,
+      eventConfirmed,
+      modoTeste: input.modoTeste
+    });
+    response = composedResponse.response;
 
     if (!input.modoTeste) {
       await saveWhatsAppMessage(supabase, {

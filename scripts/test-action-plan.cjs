@@ -110,6 +110,9 @@ const {
   polishBotResponse,
   userFacingCodeLabel
 } = require("../src/lib/whatsapp/user-facing-text.ts");
+const {
+  validateComposedBotResponse
+} = require("../src/services/whatsapp/ai-response-composer.ts");
 
 resetGeminiRuntimeStats();
 resetActionPlanRuntimeStats();
@@ -1736,6 +1739,57 @@ test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () =>
   assert(extra.includes("movimentação"), "movimentacao deveria ter acento");
   assert(extra.includes("último lançamento"), "ultimo lancamento deveria ter acento");
   assert(extra.includes("segurança"), "seguranca deveria ter acento");
+});
+
+test("AI Response Composer aceita texto natural preservando opcoes obrigatorias", () => {
+  const original = [
+    "Entendi que voce quer registrar producao de leite do animal B-002 com 20 litros.",
+    "",
+    "Esta correto?",
+    "1 - Confirmar",
+    "2 - Corrigir"
+  ].join("\n");
+  const result = validateComposedBotResponse(original, {
+    type: "bot_response_composition",
+    confidence: 0.9,
+    message: [
+      "Vou registrar uma producao de leite para o animal B-002 com 20 litros.",
+      "",
+      "Esta correto?",
+      "1 - Confirmar",
+      "2 - Corrigir"
+    ].join("\n")
+  });
+  assert(result.usedAI === true, `composer deveria aceitar resposta segura: ${result.reason}`);
+  assert(result.response.includes("1 - Confirmar"), "composer deveria preservar opcao 1");
+  assert(result.response.includes("2 - Corrigir"), "composer deveria preservar opcao 2");
+});
+
+test("AI Response Composer rejeita perda de opcao ou falsa afirmacao de salvamento", () => {
+  const original = [
+    "Recebi uma tabela de reproducao.",
+    "Pre-validacao concluida. Nenhum dado foi salvo ainda.",
+    "",
+    "1 - Importar",
+    "2 - Cancelar"
+  ].join("\n");
+  const missingOption = validateComposedBotResponse(original, {
+    type: "bot_response_composition",
+    confidence: 0.9,
+    message: "Revisei a tabela. 1 - Importar"
+  });
+  assert(missingOption.usedAI === false && missingOption.reason === "missing_mandatory_option", "composer deveria rejeitar opcao ausente");
+
+  const unsafeSave = validateComposedBotResponse(original, {
+    type: "bot_response_composition",
+    confidence: 0.9,
+    message: [
+      "Importei a tabela com sucesso.",
+      "1 - Importar",
+      "2 - Cancelar"
+    ].join("\n")
+  });
+  assert(unsafeSave.usedAI === false && unsafeSave.reason === "unsafe_save_claim", "composer deveria rejeitar salvamento falso");
 });
 
 test("ActionPlan de estoque entende saida acentuada com colunas embaralhadas", async () => {
