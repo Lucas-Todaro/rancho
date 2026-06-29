@@ -114,6 +114,13 @@ function parseValue(domain: DomainManifestEntry, field: string, value: unknown) 
     if (["true", "sim", "1", "ativo"].includes(text)) return true;
     if (["false", "nao", "não", "0", "inativo"].includes(text)) return false;
   }
+  if (definition.type === "enum") {
+    const text = String(value || "").trim();
+    const normalizedText = normalizeRanchoText(text).replace(/\s+/g, "_");
+    const enumValues = definition.enumValues || domain.enumFields[field] || [];
+    const matched = enumValues.find((item) => normalizeRanchoText(item).replace(/\s+/g, "_") === normalizedText);
+    return matched || text;
+  }
   return String(value || "").trim();
 }
 

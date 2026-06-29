@@ -1526,6 +1526,45 @@ test("executor import_table producao gera preview sem salvar", async () => {
   assertCleanVisibleText(result.preview, "preview import producao");
 });
 
+test("executor import_table animais normaliza enums antes de salvar", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "animais",
+    confidence: 0.95,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        brinco: "Brinco",
+        nome: "Nome",
+        categoria: "Categoria",
+        sexo: "Sexo",
+        fase: "Fase",
+        raca: "Raça",
+        lote_ref: "Lote",
+        peso: "Peso"
+      },
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const text = [
+    "Brinco;Nome;Categoria;Sexo;Fase;Raça;Lote;Peso",
+    "B-101;Mimosa;vaca;fêmea;lactação;Girolando;Lactação;540",
+    "T-01;Imperador;touro;macho;não aplicável;Gir;;760"
+  ].join("\n");
+  const result = await executeImportTableActionPlan({ plan, text });
+  assert(result.ok, `import animais deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_ANIMAIS_TABELA", `intent esperado IMPORTACAO_ANIMAIS_TABELA, recebido ${result.parsed.tipo}`);
+  const rows = result.parsed.dados?.linhas || [];
+  assert(rows[0]?.fase === "lactacao", `fase lactacao deveria estar normalizada, recebeu ${rows[0]?.fase}`);
+  assert(rows[0]?.sexo === "femea", `sexo femea deveria estar normalizado, recebeu ${rows[0]?.sexo}`);
+  assert(rows[1]?.fase === "nao_aplicavel", `fase nao_aplicavel deveria estar normalizada, recebeu ${rows[1]?.fase}`);
+  assert(rows[1]?.sexo === "macho", `sexo macho deveria estar normalizado, recebeu ${rows[1]?.sexo}`);
+});
+
 test("executor import_table estoque aceita defaultFields seguros", async () => {
   const fixture = fixtureByName("import-table-estoque");
   const plan = clone(fixture.plan);

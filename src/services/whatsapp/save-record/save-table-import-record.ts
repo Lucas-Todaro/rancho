@@ -9,6 +9,11 @@ import { whatsappNumbersMatch } from "@/lib/phone";
 import type { SaveRecordHandlerContext, SaveResult } from "@/services/whatsapp/save-record/types";
 import { createSaveRecordScope, prepareAnimalRecord } from "@/services/whatsapp/save-record/helpers";
 
+function normalizeEnumValue(value: unknown, allowedValues: string[], fallback: string) {
+  const normalized = normalizeRanchoText(String(value || "")).replace(/\s+/g, "_");
+  return allowedValues.find((item) => normalizeRanchoText(item).replace(/\s+/g, "_") === normalized) || fallback;
+}
+
 export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Promise<SaveResult> {
   const { supabase, owner, pending } = ctx;
   const {
@@ -221,14 +226,14 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
         fazenda_id: owner.fazenda_id,
         brinco: code,
         nome: row.nome || null,
-        categoria: row.categoria || "outro",
-        sexo: row.sexo || "nao_informado",
-        fase: row.fase || "nao_aplicavel",
+        categoria: normalizeEnumValue(row.categoria, ["vaca", "boi", "bezerro", "bezerra", "novilha", "touro", "outro"], "outro"),
+        sexo: normalizeEnumValue(row.sexo, ["femea", "macho", "nao_informado"], "nao_informado"),
+        fase: normalizeEnumValue(row.fase, ["lactacao", "seca", "gestante", "vazia", "crescimento", "engorda", "nao_aplicavel"], "nao_aplicavel"),
         raca: row.raca || null,
         peso: row.peso !== undefined && row.peso !== null && row.peso !== "" ?Number(row.peso) : null,
         lote_id: lotId,
         data_nascimento: row.data_nascimento || null,
-        status: row.status || "ativo",
+        status: normalizeEnumValue(row.status, ["ativo", "vendido", "morto", "inativo"], "ativo"),
         created_by: owner.usuario_id || null,
         observacoes: row.observacoes || "Cadastrado via importacao tabular do WhatsApp"
       });
