@@ -80,6 +80,9 @@ const {
 const {
   applyReproductionImportChildComplement
 } = require("../src/lib/whatsapp/action-plan/reproduction-import-child.ts");
+const {
+  interpretPendingActionMessage
+} = require("../src/services/whatsapp/pending-action-interpreter.ts");
 const { confirmationText } = require("../src/services/whatsapp/confirmation-message.ts");
 const {
   normalizeDate,
@@ -2224,6 +2227,71 @@ test("ActionPlan import_table reproducao aceita variacoes de complemento de cria
   assert(rows.find((row) => row.animal_codigo === "084")?.child_status === "not_registered", "linha 084 deveria ficar sem cria");
   assert(patched.dados?.resumo_partos?.partos_com_cria_completa === 4, "deveria contar 4 crias completas");
   assert(patched.dados?.resumo_partos?.partos_sem_cria_cadastrada === 1, "deveria contar 1 parto sem cria");
+});
+
+test("PendingActionInterpreter remove linha de importacao de estoque por nome", () => {
+  const pending = {
+    tipo: "IMPORTACAO_ESTOQUE_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, rawText: "sacos;Racao;entrada;10", item_nome: "Racao", tipo_movimento: "entrada", quantidade: 10, unidade: "sacos" },
+        { lineNumber: 2, rawText: "litros;Diesel;entrada;30", item_nome: "Diesel", tipo_movimento: "entrada", quantidade: 30, unidade: "litros" },
+        { lineNumber: 3, rawText: "kg;Sal mineral;saida;20", item_nome: "Sal mineral", tipo_movimento: "saida", quantidade: 20, unidade: "kg" }
+      ],
+      total_linhas: 3
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "nao importa diesel");
+  assert(result?.operation === "remove_rows", `esperado remove_rows, recebido ${result?.operation}`);
+  const rows = result.parsed.dados?.linhas || [];
+  assert(rows.length === 2, "deveria remover uma linha");
+  assert(!rows.some((row) => row.item_nome === "Diesel"), "linha Diesel deveria sair");
+  assert(result.parsed.dados?.linhas_removidas_pelo_usuario?.length === 1, "deveria registrar linha removida pelo usuario");
+});
+
+test("PendingActionInterpreter corrige movimento de estoque sem salvar", () => {
+  const pending = {
+    tipo: "IMPORTACAO_ESTOQUE_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, rawText: "Sal mineral;entrada;20;kg", item_nome: "Sal mineral", tipo_movimento: "entrada", quantidade: 20, unidade: "kg", status_validacao: "pronto" }
+      ],
+      total_linhas: 1
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "corrige o movimento do sal mineral para saida");
+  assert(result?.operation === "update_rows", `esperado update_rows, recebido ${result?.operation}`);
+  const row = result.parsed.dados?.linhas?.[0];
+  assert(row?.tipo_movimento === "saida", "movimento deveria virar saida");
+  assert(!row.status_validacao, "metadata de validacao antiga deveria ser limpa");
+});
+
+test("PendingActionInterpreter remove linha de dominio por contexto de lote", () => {
+  const pending = {
+    tipo: "IMPORTACAO_TABELA_DOMINIO",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      dominio_tabela: "LOTES",
+      linhas: [
+        { lineNumber: 1, rawText: "30;Lactacao Teste;Vacas em producao;sim", status_linha: "pronto", values: { nome: "Lactacao Teste", capacidade: 30, descricao: "Vacas em producao", status: "ativo" }, parsedValues: { nome: "Lactacao Teste", capacidade: 30, descricao: "Vacas em producao", status: "ativo" } },
+        { lineNumber: 2, rawText: "20;Piquete Teste;Animais em crescimento;sim", status_linha: "pronto", values: { nome: "Piquete Teste", capacidade: 20, descricao: "Animais em crescimento", status: "ativo" }, parsedValues: { nome: "Piquete Teste", capacidade: 20, descricao: "Animais em crescimento", status: "ativo" } }
+      ],
+      total_linhas: 2
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "cancela a importacao do lote Piquete Teste");
+  assert(result?.operation === "remove_rows", `esperado remove_rows, recebido ${result?.operation}`);
+  const rows = result.parsed.dados?.linhas || [];
+  assert(rows.length === 1, "deveria manter apenas um lote");
+  assert(rows[0].values.nome === "Lactacao Teste", "lote errado foi removido");
 });
 
 test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async () => {

@@ -32,6 +32,7 @@ import {
   finishMissingFieldsForConfirmation,
   isFinishOptionalFieldsCommand
 } from "@/services/whatsapp/bot-response-composer";
+import { interpretPendingActionMessage } from "@/services/whatsapp/pending-action-interpreter";
 import { handleConsultation as runConsultation } from "@/services/whatsapp/consultation/index";
 import type { ConsultationDependencies } from "@/services/whatsapp/consultation/types";
 import { saveConfirmedRecordByDomain } from "@/services/whatsapp/save-record/index";
@@ -3810,6 +3811,46 @@ async function saveCorrectedPending(
   return { response: [intro, confirmationText(next)].filter(Boolean).join("\n"), parsed: next };
 }
 
+async function handlePendingActionInterpretation(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  session: BotSession,
+  text: string
+): Promise<ConversationActHandlingResult | null> {
+  if (session.etapa !== "aguardando_confirmacao") return null;
+  const pending = pendingFromSession(session);
+  if (!pending?.tipo) return null;
+
+  const interpreted = interpretPendingActionMessage(pending, text);
+  if (!interpreted) return null;
+
+  const next = interpreted.operation === "clarify"
+    ? interpreted.parsed
+    : await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, interpreted.parsed);
+
+  await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+  botLog("pending_action_interpreter_applied", owner, {
+    operation: interpreted.operation,
+    targetIntent: pending.tipo,
+    matchedRows: interpreted.matchedRows,
+    rowsAfter: Array.isArray(next.dados?.linhas) ?next.dados.linhas.length : null
+  });
+  if (next.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    botTabularImportLog("pending_action_interpreter_event_import_updated", owner, {
+      ...tabularImportSummary(next),
+      partos: next.dados?.resumo_partos || null
+    });
+  }
+
+  return {
+    handled: true,
+    parsed: next,
+    response: interpreted.operation === "clarify"
+      ? interpreted.message
+      : `${interpreted.message}\n${confirmationText(next)}`
+  };
+}
+
 async function handleConversationActMessage(
   supabase: SupabaseAdmin,
   owner: WhatsAppOwner,
@@ -4552,8 +4593,16 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     const generalConversationText = !structuredDetection.isStructured && !tableParsedPreview
       ? composeGeneralConversationText(command, previousSession)
       : null;
+    const pendingActionInterpretation = previousSession.etapa === "aguardando_confirmacao"
+      ? await handlePendingActionInterpretation(supabase, owner, previousSession, message)
+      : null;
 
-    if (generalConversationText) {
+    if (pendingActionInterpretation?.handled) {
+      parsed = pendingActionInterpretation.parsed;
+      suppressPreviousPending = Boolean(pendingActionInterpretation.suppressPreviousPending);
+      eventConfirmed = false;
+      response = pendingActionInterpretation.response || "";
+    } else if (generalConversationText) {
       parsed = pendingFromSession(previousSession);
       response = generalConversationText;
     } else if (structuredDetection.isStructured && !tableParsedPreview) {

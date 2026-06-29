@@ -1304,6 +1304,21 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "acao pendente permite remover lote da importacao por conversa",
+        module: "tabela-dominio",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [lotsTableMessage, "cancela a importacao do lote Piquete 1"],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          responseIncludes: "Removi 1 linha",
+          responseNotIncludes: "Piquete 1",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "validacao dominio genealogia bloqueia pais inexistentes",
         module: "tabela-dominio-validacao",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -2034,6 +2049,21 @@ module.exports = function loadBotTestSection(context) {
         expected: {
           finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
           responseIncludes: "linha 4",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "acao pendente permite remover linha de estoque por conversa",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [cleanStockImportTableMessage, "nao importa Aftosa"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Removi 1 linha",
+          responseNotIncludes: "Aftosa: entrada",
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
