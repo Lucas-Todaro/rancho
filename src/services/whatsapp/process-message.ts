@@ -32,7 +32,7 @@ import {
   finishMissingFieldsForConfirmation,
   isFinishOptionalFieldsCommand
 } from "@/services/whatsapp/bot-response-composer";
-import { interpretPendingActionMessage } from "@/services/whatsapp/pending-action-interpreter";
+import { interpretPendingActionMessageSmart } from "@/services/whatsapp/pending-action-interpreter";
 import { handleConsultation as runConsultation } from "@/services/whatsapp/consultation/index";
 import type { ConsultationDependencies } from "@/services/whatsapp/consultation/types";
 import { saveConfirmedRecordByDomain } from "@/services/whatsapp/save-record/index";
@@ -3821,7 +3821,7 @@ async function handlePendingActionInterpretation(
   const pending = pendingFromSession(session);
   if (!pending?.tipo) return null;
 
-  const interpreted = interpretPendingActionMessage(pending, text);
+  const interpreted = await interpretPendingActionMessageSmart(pending, text);
   if (!interpreted) return null;
 
   const next = interpreted.operation === "clarify"
@@ -3845,7 +3845,7 @@ async function handlePendingActionInterpretation(
   return {
     handled: true,
     parsed: next,
-    response: interpreted.operation === "clarify"
+    response: interpreted.operation === "clarify" || interpreted.operation === "answer_question"
       ? interpreted.message
       : `${interpreted.message}\n${confirmationText(next)}`
   };

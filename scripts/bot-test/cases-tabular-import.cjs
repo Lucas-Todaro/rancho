@@ -2071,6 +2071,21 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "acao pendente responde pergunta sobre linha sem alterar importacao",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [cleanStockImportTableMessage, "mostra a segunda linha"],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Aftosa",
+          responseNotIncludes: "Removi",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "tabela de estoque cancela sem salvar",
         module: "tabela-estoque",
         phone: BOT_TEST_ADMIN_PHONE,

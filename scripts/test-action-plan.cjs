@@ -81,7 +81,8 @@ const {
   applyReproductionImportChildComplement
 } = require("../src/lib/whatsapp/action-plan/reproduction-import-child.ts");
 const {
-  interpretPendingActionMessage
+  interpretPendingActionMessage,
+  interpretPendingActionMessageSmart
 } = require("../src/services/whatsapp/pending-action-interpreter.ts");
 const { confirmationText } = require("../src/services/whatsapp/confirmation-message.ts");
 const {
@@ -2292,6 +2293,88 @@ test("PendingActionInterpreter remove linha de dominio por contexto de lote", ()
   const rows = result.parsed.dados?.linhas || [];
   assert(rows.length === 1, "deveria manter apenas um lote");
   assert(rows[0].values.nome === "Lactacao Teste", "lote errado foi removido");
+});
+
+test("PendingActionInterpreter entende ordinal para remover linha", () => {
+  const pending = {
+    tipo: "IMPORTACAO_ESTOQUE_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, item_nome: "Racao", tipo_movimento: "entrada", quantidade: 10, unidade: "sacos" },
+        { lineNumber: 2, item_nome: "Diesel", tipo_movimento: "entrada", quantidade: 30, unidade: "litros" },
+        { lineNumber: 3, item_nome: "Sal mineral", tipo_movimento: "saida", quantidade: 20, unidade: "kg" }
+      ],
+      total_linhas: 3
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "remove a segunda linha");
+  assert(result?.operation === "remove_rows", `esperado remove_rows, recebido ${result?.operation}`);
+  const rows = result.parsed.dados?.linhas || [];
+  assert(rows.length === 2, "deveria remover uma linha por ordinal");
+  assert(!rows.some((row) => row.item_nome === "Diesel"), "segunda linha deveria sair");
+});
+
+test("PendingActionInterpreter responde pergunta sobre preview sem alterar", () => {
+  const pending = {
+    tipo: "IMPORTACAO_TABELA_DOMINIO",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      dominio_tabela: "LOTES",
+      linhas: [
+        { lineNumber: 1, status_linha: "pronto", values: { nome: "Lactacao Teste" }, parsedValues: { nome: "Lactacao Teste" } },
+        { lineNumber: 2, status_linha: "pronto", values: { nome: "Piquete Teste" }, parsedValues: { nome: "Piquete Teste" } }
+      ],
+      total_linhas: 2
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "mostra a segunda linha");
+  assert(result?.operation === "answer_question", `esperado answer_question, recebido ${result?.operation}`);
+  assert(result.message.includes("Piquete Teste"), "resposta deveria citar a segunda linha");
+  assert((result.parsed.dados?.linhas || []).length === 2, "pergunta nao deveria alterar linhas");
+});
+
+test("PendingActionInterpreter smart nao intercepta confirmacao ou cancelamento puro", async () => {
+  const pending = {
+    tipo: "IMPORTACAO_ESTOQUE_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, item_nome: "Racao", tipo_movimento: "entrada", quantidade: 10, unidade: "sacos" }
+      ],
+      total_linhas: 1
+    }
+  };
+  for (const text of ["1", "sim", "cancelar", "menu", "repete"]) {
+    const result = await interpretPendingActionMessageSmart(pending, text);
+    assert(result === null, `mensagem pura nao deveria ser tratada como patch: ${text}`);
+  }
+});
+
+test("PendingActionInterpreter corrige data e tipo de evento por linha", () => {
+  const pending = {
+    tipo: "IMPORTACAO_EVENTOS_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, animal_codigo: "080", evento_tipo: "parto", db_tipo: "parto", data_referencia: "2026-06-01" }
+      ],
+      total_linhas: 1
+    }
+  };
+  const result = interpretPendingActionMessage(pending, "corrige a linha 1 para cio em 02/06/2026");
+  assert(result?.operation === "update_rows", `esperado update_rows, recebido ${result?.operation}`);
+  const row = result.parsed.dados?.linhas?.[0];
+  assert(row?.evento_tipo === "cio", "evento deveria virar cio");
+  assert(row?.data_referencia === "02/06/2026", "data deveria ser atualizada");
 });
 
 test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async () => {
