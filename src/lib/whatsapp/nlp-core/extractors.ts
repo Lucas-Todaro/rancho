@@ -159,11 +159,11 @@ export function extractAnimalFromProductionQuery(text: string) {
 }
 
 export function cleanStockQueryItem(original: string, normalized: string) {
-  const direct = original.match(/\b(?:estoque\s+de|quanto\s+tem\s+de|tem\s+quanto\s+de|ainda\s+tem|como\s+(?:esta|estÃ¡|ta|tÃ¡)\s+o\s+estoque\s+de)\s+(.+)$/i)?.[1];
+  const direct = original.match(/\b(?:estoque\s+de|quanto\s+tem\s+de|tem\s+quanto\s+de|ainda\s+tem|como\s+(?:esta|está|ta|tá)\s+o\s+estoque\s+de)\s+(.+)$/i)?.[1];
   const directTenho = original.match(/\bquanto\s+(?:eu\s+)?tenho\s+de\s+(.+)$/i)?.[1];
   const fallback = direct || directTenho || extractStockItem(original);
   const cleaned = cleanAnswer(fallback || normalized)
-    .replace(/\b(?:ainda|tem|quanto|estoque|como|esta|estÃ¡|ta|tÃ¡)\b/gi, " ")
+    .replace(/\b(?:ainda|tem|quanto|estoque|como|esta|está|ta|tá)\b/gi, " ")
     .replace(/^\s*(?:de|do|da|o|a)\s+/i, " ")
     .replace(/\s+(?:no|na)\s+estoque\s*$/i, " ")
     .replace(/[.,;:!?()[\]{}]/g, " ")
@@ -655,7 +655,7 @@ export function extractEmployeeName(original: string, normalized: string) {
   const afterConnector = original.match(/\b(?:do|da|de)\s+([a-zA-ZÀ-ÿ\s]+?)(?:\s+as|\s+às|\s+\d|$)/i)?.[1];
   if (afterConnector) return cleanAnswer(afterConnector);
 
-  const beforeVerb = normalized.match(/^([a-z][a-z\s]+?)\s+(?:entrou|saiu|bateu|registrou)\b/)?.[1];
+  const beforeVerb = normalized.match(/^([a-z][a-z\s]+?)\s+(?:entrou|chegou|cheguei|saiu|bateu|registrou|comecou|começou|iniciou|terminou|encerrou)\b/)?.[1];
   if (beforeVerb) return cleanAnswer(beforeVerb);
 
   return undefined;
@@ -919,8 +919,8 @@ export function cleanAnimalRegistrationName(value?: string | null) {
     .replace(/\b(?:brinco|codigo|código|cod|numero|número|n)\b.*$/i, "")
     .replace(/\b(?:peso|pesou|com)\s*\d+(?:[,.]\d+)?\s*(?:kg|kgs|quilo|quilos)?\b.*$/i, "")
     .replace(/\b\d+(?:[,.]\d+)?\s*(?:kg|kgs|quilo|quilos)\b.*$/i, "")
-    .replace(/\b(?:raca|raÃ§a|lote|nascimento|nasceu)\b.*$/i, "")
-    .replace(/\b(?:macho|maxo|femea|fÃªmea|feme|feminino|masculino|gestante|lactante|lactacao|lactaÃ§Ã£o|seca|vazia|crescimento|engorda)\b.*$/i, "")
+    .replace(/\b(?:raca|raça|lote|nascimento|nasceu)\b.*$/i, "")
+    .replace(/\b(?:macho|maxo|femea|fêmea|feme|feminino|masculino|gestante|lactante|lactacao|lactação|seca|vazia|crescimento|engorda)\b.*$/i, "")
     .replace(/\b(?:[a-z]+-\d[a-z0-9-]*|[a-z]*\d[a-z0-9-]*)\b/gi, "")
     .replace(/\b(?:com|de|do|da|no|na|para|pra)\b\s*$/i, "")
     .replace(/\s+/g, " ")

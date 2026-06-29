@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const enabled = forceDisabled === true ? false : employee.ativo !== false && !employee.deleted_at;
     if (!enabled && employee.usuario_id === permission.user.id) {
-      return invitationError("VocÃª nÃ£o pode desativar seu prÃ³prio acesso por esta tela.", 400);
+      return invitationError("Você não pode desativar seu próprio acesso por esta tela.", 400);
     }
 
     console.log("[Employee access sync]", {

@@ -234,8 +234,8 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     if (expectedField === "mae_nome" && original) dados.mae_nome = normalizeAnimalCandidate(original) || original;
     if (expectedField === "pai_nome" && original) dados.pai_nome = normalizeAnimalCandidate(original) || original;
     if (expectedField === "genealogia_campo" && original) {
-      if (/\b(?:os dois|ambos|pai e mae|pai e mÃ£e|mae e pai|mÃ£e e pai)\b/.test(normalized)) dados.genealogia_campo = "ambos";
-      else if (/\b(?:mae|mÃ£e)\b/.test(normalized)) dados.genealogia_campo = "mae";
+      if (/\b(?:os dois|ambos|pai e mae|pai e mãe|mae e pai|mãe e pai)\b/.test(normalized)) dados.genealogia_campo = "ambos";
+      else if (/\b(?:mae|mãe)\b/.test(normalized)) dados.genealogia_campo = "mae";
       else if (/\bpai\b/.test(normalized)) dados.genealogia_campo = "pai";
     }
   }
@@ -329,8 +329,8 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
     const animalCategory = extractAnimalCategory(normalized);
     const animalSex = extractAnimalSex(normalized);
     const animalWeight = extractAnimalWeight(original);
-    const correctionText = original.replace(/^(?:nao|nÃ£o|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b\s*,?\s*/i, "").trim();
-    const nameCorrection = correctionText.replace(/^(?:o\s+|a\s+)?nome\s+(?:e|eh|Ã©|era|foi|para|pra)?\s*/i, "").trim();
+    const correctionText = original.replace(/^(?:nao|não|n|na verdade|verdade|corrigir|corrige|errado|incorreto|foi|era|troca|trocar|corrija|ajusta|ajustar|atualiza|atualizar)\b\s*,?\s*/i, "").trim();
+    const nameCorrection = correctionText.replace(/^(?:o\s+|a\s+)?nome\s+(?:e|eh|é|era|foi|para|pra)?\s*/i, "").trim();
 
     if (registrationCode && (!dados.animal_codigo || expectedField === "animal_codigo" || isCorrection)) {
       dados.animal_codigo = registrationCode;
@@ -364,9 +364,9 @@ export function mergeRanchoMessageData(current: ParsedRanchoMessage, answer: str
 
   if (current.tipo === "ATUALIZACAO_GENEALOGIA") {
     if (isCorrection) {
-      const cleaned = original.replace(/^(?:nao|nÃ£o|n|errado|incorreto|corrigir|corrige|na verdade|foi|era)\b\s*,?\s*/i, "").trim();
+      const cleaned = original.replace(/^(?:nao|não|n|errado|incorreto|corrigir|corrige|na verdade|foi|era)\b\s*,?\s*/i, "").trim();
       if (cleaned) {
-        if (/\b(?:mae|mÃ£e)\b/.test(normalized) || dados.genealogia_campo === "mae") {
+        if (/\b(?:mae|mãe)\b/.test(normalized) || dados.genealogia_campo === "mae") {
           dados.mae_nome = normalizeAnimalCandidate(cleaned) || cleaned;
           dados.mae_id = undefined;
         } else if (/\bpai\b/.test(normalized) || dados.genealogia_campo === "pai") {

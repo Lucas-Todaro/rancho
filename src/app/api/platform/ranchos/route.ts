@@ -218,9 +218,9 @@ async function deleteFarmCompletely(input: {
 function platformErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message || "");
   if (/owner_name_required/i.test(message)) return "Informe o nome do dono.";
-  if (/owner_email_invalid/i.test(message)) return "Informe um e-mail vÃ¡lido para o dono.";
-  if (/owner_email_already_used/i.test(message)) return "Este e-mail jÃ¡ estÃ¡ vinculado a outro usuÃ¡rio.";
-  if (/cannot_delete_own_farm/i.test(message)) return "NÃ£o Ã© possÃ­vel excluir o rancho vinculado ao admin logado.";
+  if (/owner_email_invalid/i.test(message)) return "Informe um e-mail válido para o dono.";
+  if (/owner_email_already_used/i.test(message)) return "Este e-mail já está vinculado a outro usuário.";
+  if (/cannot_delete_own_farm/i.test(message)) return "Não é possível excluir o rancho vinculado ao admin logado.";
   if (/is_platform_admin|status|cidade|estado|dono_|schema cache|column|relation/i.test(message)) {
     return "A estrutura de Admin Interno ainda não está completa no Supabase. Execute a migration de Admin Interno e tente novamente.";
   }
@@ -422,7 +422,7 @@ export async function PATCH(request: NextRequest) {
       const donoEmail = normalizeInviteEmail(body.donoEmail || body.ownerEmail);
       if (donoNome || donoEmail) {
         if (!donoNome) return platformAdminError("Informe o nome do dono.", 400);
-        if (!isValidInviteEmail(donoEmail)) return platformAdminError("Informe um e-mail vÃ¡lido para o dono.", 400);
+        if (!isValidInviteEmail(donoEmail)) return platformAdminError("Informe um e-mail válido para o dono.", 400);
       }
       if (nome) payload.nome = nome;
       if (plano) payload.plano = plano;
@@ -503,7 +503,7 @@ export async function DELETE(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const ranchoId = asText(body.ranchoId || body.id);
-    if (!ranchoId) return platformAdminError("Rancho invÃ¡lido.", 400);
+    if (!ranchoId) return platformAdminError("Rancho inválido.", 400);
 
     const result = await deleteFarmCompletely({
       supabase: permission.supabase,
@@ -514,7 +514,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       deletedUsers: result.deletedUsers,
-      message: result.farmName ? `Rancho ${result.farmName} excluÃ­do completamente.` : "Rancho excluÃ­do completamente."
+      message: result.farmName ? `Rancho ${result.farmName} excluído completamente.` : "Rancho excluído completamente."
     });
   } catch (error) {
     console.error("[Platform ranchos DELETE]", error);

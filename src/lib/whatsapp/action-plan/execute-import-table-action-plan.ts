@@ -259,7 +259,7 @@ function reproductionTableParsed(plan: ImportTableActionPlan, rows: AnyRecord[],
     const eventOriginal = String(row.values?.evento || row.parsedValues?.evento || "").trim();
     const eventKind = normalizeReproductiveEventType(eventOriginal);
     const mappedDate = String(row.values?.data || row.parsedValues?.data || "").trim();
-    const embeddedDate = eventOriginal.match(/\b(?:hoje|ontem|anteontem|amanha|amanhÃ£|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/i)?.[0] || "";
+    const embeddedDate = eventOriginal.match(/\b(?:hoje|ontem|anteontem|amanha|amanhã|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/i)?.[0] || "";
     const dateOriginal = mappedDate || embeddedDate || "hoje";
     const date = parseDate(dateOriginal);
     const problems: string[] = [];

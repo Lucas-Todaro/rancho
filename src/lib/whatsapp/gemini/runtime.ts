@@ -179,16 +179,16 @@ function reproductionTableMapping(text: unknown) {
     "animal",
     "vaca",
     "codigo",
-    "cÃ³digo",
+    "código",
     "brinco",
     "codigo animal",
-    "cÃ³digo / animal"
+    "código / animal"
   ]);
   const event = findHeader(header.headers, ["evento", "tipo", "status tipo", "status / tipo", "ocorrencia"]);
   const date = findHeader(header.headers, ["data", "dia"]);
   if (!animal || !event || !date) return null;
 
-  const observations = findHeader(header.headers, ["observacoes", "observaÃ§Ãµes", "observacao", "observaÃ§Ã£o", "obs"]);
+  const observations = findHeader(header.headers, ["observacoes", "observações", "observacao", "observação", "obs"]);
   return {
     separator: header.separator,
     hasHeader: true,

@@ -212,13 +212,13 @@ export default function AdminInternoPage() {
         body: JSON.stringify({ ranchoId: row.id })
       });
       const data = await response.json().catch(() => ({})) as ApiResult;
-      if (!response.ok) throw new Error(data.error || "NÃ£o foi possÃ­vel excluir o rancho.");
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o rancho.");
 
-      setSuccess(data.message || "Rancho excluÃ­do completamente.");
+      setSuccess(data.message || "Rancho excluído completamente.");
       if (editing?.id === row.id) resetForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "NÃ£o foi possÃ­vel excluir o rancho.");
+      setError(err instanceof Error ? err.message : "Não foi possível excluir o rancho.");
     } finally {
       setBusy(false);
     }

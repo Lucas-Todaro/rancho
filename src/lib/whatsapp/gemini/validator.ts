@@ -121,6 +121,13 @@ function validateRawActionPlan(plan: unknown, context: GeminiValidationContext) 
 }
 
 function numberOrDefault(value: unknown, fallback: number, min: number, max: number) {
+  if (typeof value === "string") {
+    const parsed = Number(value.trim().replace("%", "").replace(",", "."));
+    if (Number.isFinite(parsed)) {
+      const normalized = parsed > 1 && parsed <= 100 ? parsed / 100 : parsed;
+      return Math.min(max, Math.max(min, normalized));
+    }
+  }
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
 }

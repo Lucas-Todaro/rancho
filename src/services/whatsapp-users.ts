@@ -140,13 +140,13 @@ async function findOwnerWhatsAppUserRows(user: AnyRecord, phone: string, context
 
 export async function syncOwnerWhatsAppUser(user: AnyRecord, context?: DataContext) {
   requireFarm(context);
-  if (!user.id) throw new Error("NÃ£o foi possÃ­vel vincular o WhatsApp ao usuÃ¡rio salvo.");
+  if (!user.id) throw new Error("Não foi possível vincular o WhatsApp ao usuário salvo.");
 
   const role = String(user.papel || context?.papel || "");
   if (!["dono", "admin"].includes(role)) return;
 
   const phone = normalizeBrazilianWhatsApp(user.telefone);
-  if (!isValidBrazilianPhone(phone)) throw new Error("Informe um WhatsApp vÃ¡lido para o dono.");
+  if (!isValidBrazilianPhone(phone)) throw new Error("Informe um WhatsApp válido para o dono.");
 
   const payload = {
     fazenda_id: context?.fazendaId,

@@ -908,6 +908,10 @@ function isGeminiConfigurationFailure(result: { reason: string; status?: number;
     || details.includes("permission denied");
 }
 
+function isRecoverableGeminiContractFailure(result: { reason: string }) {
+  return ["empty_response", "invalid_json", "invalid_schema"].includes(result.reason);
+}
+
 function geminiFailureClassification(result: { reason: string; status?: number; message?: string; rawText?: string }) {
   if (isTransientGeminiFailure(result)) return "external_gemini";
   if (isGeminiConfigurationFailure(result)) return "configuration";
@@ -1025,6 +1029,14 @@ const BASIC_LOCAL_FALLBACK_INTENTS = new Set<RanchoIntent>([
   "ATUALIZACAO_ANIMAL"
 ]);
 
+const STRUCTURED_LOCAL_FALLBACK_INTENTS = new Set<RanchoIntent>([
+  "IMPORTACAO_EVENTOS_TABELA",
+  "IMPORTACAO_ANIMAIS_TABELA",
+  "IMPORTACAO_ESTOQUE_TABELA",
+  "IMPORTACAO_TABELA_DOMINIO",
+  "LOTE_REGISTROS"
+]);
+
 const LOCAL_FALLBACK_BLOCKED_FLAGS = new Set([
   "compound_message",
   "multiple_intents_detected",
@@ -1048,6 +1060,29 @@ function canUseBasicLocalFallback(
   const flags = parsed.flags || [];
   if (flags.some((flag) => LOCAL_FALLBACK_BLOCKED_FLAGS.has(flag))) return false;
   return true;
+}
+
+function canUseStructuredLocalFallback(
+  input: ParseWithInterpreterInput,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+) {
+  const parsed = input.localParsed;
+  if (route !== "structured_input" || !structuredDetection.isStructured) return false;
+  if (input.hasPendingAction) return false;
+  if (!STRUCTURED_LOCAL_FALLBACK_INTENTS.has(parsed.tipo)) return false;
+  if ((parsed.confianca || 0) < 0.55) return false;
+  if (detectDestructiveBulkAction(input.text)) return false;
+  return true;
+}
+
+function canUseSafeLocalFallback(
+  input: ParseWithInterpreterInput,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+) {
+  return canUseBasicLocalFallback(input, route, structuredDetection)
+    || canUseStructuredLocalFallback(input, route, structuredDetection);
 }
 
 function logActionPlan(event: string, details: AnyRecord) {
@@ -1117,7 +1152,7 @@ async function convertActionPlanInterpretation(
       if (botInterpreterMode() !== "gemini" && botAllowsLegacyRollback()) {
         return null;
       }
-      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+      if (canUseSafeLocalFallback(input, route, structuredDetection)) {
         return localFallbackResult(input, "legacy_intent_returned_basic_local_fallback", route, structuredDetection);
       }
       return {
@@ -1137,7 +1172,7 @@ async function convertActionPlanInterpretation(
     if (botInterpreterMode() === "gemini") {
       recordActionPlanRuntime("invalid");
       logActionPlan("action_plan_invalid", { reason: "action_plan_absent", route });
-      if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+      if (canUseSafeLocalFallback(input, route, structuredDetection)) {
         return localFallbackResult(input, "action_plan_absent_basic_local_fallback", route, structuredDetection);
       }
       return {
@@ -1483,7 +1518,10 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
       return legacyRollbackResult(input.localParsed, gemini.reason);
     }
 
-    if (gemini.reason === "empty_response" && canUseBasicLocalFallback(input, route, structuredDetection)) {
+    if (
+      (isRecoverableGeminiContractFailure(gemini) || isTransientGeminiFailure(gemini))
+      && canUseSafeLocalFallback(input, route, structuredDetection)
+    ) {
       return localFallbackResult(input, `${gemini.reason}_basic_local_fallback`, route, structuredDetection);
     }
 
@@ -1518,7 +1556,7 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   }
 
   const geminiMockFixtureMissing = (gemini.interpretation.warnings || []).includes("gemini_mock_fixture_not_found");
-  if (geminiMockFixtureMissing && canUseBasicLocalFallback(input, route, structuredDetection)) {
+  if (geminiMockFixtureMissing && canUseSafeLocalFallback(input, route, structuredDetection)) {
     return localFallbackResult(input, "gemini_mock_fixture_not_found_basic_local_fallback", route, structuredDetection);
   }
 
@@ -1537,7 +1575,7 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   if (tableImportResult) return tableImportResult;
 
   if (botInterpreterMode() === "gemini") {
-    if (canUseBasicLocalFallback(input, route, structuredDetection)) {
+    if (canUseSafeLocalFallback(input, route, structuredDetection)) {
       return localFallbackResult(input, "action_plan_required_basic_local_fallback", route, structuredDetection);
     }
     return {

@@ -101,6 +101,17 @@ function isReproductiveProtocolResult(normalized: string) {
     && /\b(?:protocolo|reteste|\d[a-z0-9]*(?:\s+[a-z]{1,4})?)\b/.test(normalized);
 }
 
+function isStandaloneUpdateAction(normalized: string) {
+  const updateVerb = /\b(?:troca|trocar|altera|alterar|atualiza|atualizar|muda|mudar|coloca|colocar)\b/.test(normalized);
+  if (!updateVerb) return false;
+
+  const targetField = /\b(?:lote|fase|status|situacao|peso|nome|apelido|raca|raça|brinco|codigo|categoria|funcao|função|cargo|salario|telefone|whatsapp|pai|mae|mãe)\b/.test(normalized);
+  const newValueCue = /\b(?:para|pra|como|por)\b/.test(normalized);
+  const entityCue = /\b(?:vaca|animal|boi|touro|bezerro|bezerra|novilha|funcionario|funcionaria|colaborador|colaboradora|item|produto|estoque|[a-z]+-\d[a-z0-9-]*|\d{2,})\b/.test(normalized);
+
+  return targetField && newValueCue && entityCue;
+}
+
 function uniqueFlags(values: ParserRiskFlag[]) {
   return Array.from(new Set(values));
 }
@@ -217,6 +228,18 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
       flags: uniqueFlags(flags),
       decision: "new_action",
       reason: "Resultado de protocolo reprodutivo tratado como nova acao."
+    };
+  }
+
+  if (!base.hasPendingAction && isCorrection && isStandaloneUpdateAction(normalized)) {
+    return {
+      ...base,
+      messageType: "new_action",
+      confidence: 0.82,
+      correction: null,
+      flags: uniqueFlags(flags),
+      decision: "new_action",
+      reason: "Atualizacao explicita com alvo e novo valor tratada como nova acao."
     };
   }
 

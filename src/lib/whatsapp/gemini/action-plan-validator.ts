@@ -87,6 +87,12 @@ function normalizedHeader(value: unknown) {
   return normalizeKey(value).replace(/[^a-z0-9_]/g, "");
 }
 
+function normalizedLooseHeader(value: unknown) {
+  return normalizeLooseText(value)
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
 function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
@@ -107,7 +113,127 @@ function manifestFieldName(domain: DomainManifestEntry, value: unknown) {
   if (!text) return null;
   if (domain.fields[text]) return text;
   const normalized = normalizedHeader(text);
-  return Object.keys(domain.fields).find((fieldName) => normalizedHeader(fieldName) === normalized) || null;
+  const loose = normalizedLooseHeader(text);
+  return Object.keys(domain.fields).find((fieldName) => (
+    normalizedHeader(fieldName) === normalized || normalizedLooseHeader(fieldName) === loose
+  )) || null;
+}
+
+const FIELD_ALIASES_BY_DOMAIN: Record<string, Record<string, string>> = {
+  animais: {
+    animal: "animal_ref",
+    vaca: "animal_ref",
+    codigo: "brinco",
+    codigo_animal: "brinco",
+    cod: "brinco",
+    identificacao: "brinco",
+    identificador: "brinco",
+    lote: "lote_ref",
+    nascimento: "data_nascimento",
+    data_nasc: "data_nascimento",
+    mae: "mae_ref",
+    pai: "pai_ref"
+  },
+  estoque: {
+    produto: "item",
+    produto_nome: "item",
+    item_nome: "item",
+    movimento: "tipo_movimento",
+    movimentacao: "tipo_movimento",
+    entrada_saida: "tipo_movimento",
+    qtd: "quantidade",
+    quantidade_atual: "quantidade",
+    quantidade_inicial: "quantidade",
+    estoque_atual: "quantidade",
+    minimo: "quantidade_minima",
+    minimo_estoque: "quantidade_minima",
+    quantidade_minima: "quantidade_minima",
+    unidade_padrao: "unidade",
+    preco_unitario: "valor_unitario"
+  },
+  producao_leite: {
+    animal: "animal_ref",
+    vaca: "animal_ref",
+    codigo: "animal_ref",
+    brinco: "animal_ref",
+    quantidade: "litros",
+    leite: "litros",
+    volume: "litros",
+    dia: "data"
+  },
+  financeiro: {
+    valor_total: "valor",
+    quantia: "valor",
+    movimento: "tipo",
+    entrada_saida: "tipo",
+    pagamento: "metodo_pagamento"
+  },
+  lotes: {
+    lote: "nome",
+    ativo_inativo: "ativo"
+  },
+  funcionarios: {
+    funcionario: "nome",
+    colaborador: "nome",
+    telefone: "contato_whatsapp",
+    whatsapp: "contato_whatsapp",
+    salario: "salario_base",
+    admissao: "data_admissao"
+  },
+  ponto_funcionario: {
+    funcionario: "funcionario_ref",
+    colaborador: "funcionario_ref",
+    movimento: "tipo",
+    horario: "registrado_em"
+  },
+  saude_sanitario: {
+    animal: "animal_ref",
+    vaca: "animal_ref",
+    codigo: "animal_ref",
+    evento_sanitario: "evento",
+    medicamento_produto: "produto"
+  },
+  reproducao: {
+    animal: "animal_ref",
+    vaca: "animal_ref",
+    codigo: "animal_ref",
+    mae: "mae_ref",
+    pai: "pai_ref",
+    evento_reprodutivo: "evento",
+    cria: "cria_codigo",
+    codigo_cria: "cria_codigo",
+    sexo_da_cria: "cria_sexo"
+  },
+  genealogia: {
+    animal: "animal_ref",
+    codigo: "animal_ref",
+    filho: "filho_ref",
+    mae: "mae_ref",
+    pai: "pai_ref",
+    cria: "cria_codigo",
+    sexo_da_cria: "sexo_cria"
+  },
+  observacoes: {
+    texto: "observacao",
+    descricao: "observacao",
+    animal: "animal_ref",
+    item: "item_ref",
+    funcionario: "funcionario_ref",
+    lote: "lote_ref"
+  },
+  agenda_tarefas: {
+    lembrete: "titulo",
+    compromisso: "titulo",
+    atividade: "titulo",
+    responsavel_nome: "responsavel"
+  }
+};
+
+function fieldNameForDomain(domainName: string, domain: DomainManifestEntry, value: unknown) {
+  const manifestName = manifestFieldName(domain, value);
+  if (manifestName) return manifestName;
+  const alias = FIELD_ALIASES_BY_DOMAIN[domainName]?.[normalizedLooseHeader(value)];
+  return alias && domain.fields[alias] ? alias : null;
 }
 
 function normalizeColumnMappingForDomain(domainName: string, columnMapping: unknown): Record<string, string | number> {
@@ -117,8 +243,8 @@ function normalizeColumnMappingForDomain(domainName: string, columnMapping: unkn
   const normalized: Record<string, string | number> = {};
   for (const [rawKey, rawValue] of Object.entries(columnMapping)) {
     const exactKeyField = domain.fields[rawKey] ? rawKey : null;
-    const valueField = typeof rawValue === "string" ? manifestFieldName(domain, rawValue) : null;
-    const looseKeyField = manifestFieldName(domain, rawKey);
+    const valueField = typeof rawValue === "string" ? fieldNameForDomain(domainName, domain, rawValue) : null;
+    const looseKeyField = fieldNameForDomain(domainName, domain, rawKey);
 
     if (exactKeyField) {
       normalized[exactKeyField] = rawValue as string | number;
@@ -173,10 +299,19 @@ function isDeathCue(value: unknown) {
 function normalizeImportRowsForDomain(data: unknown, domainName: string) {
   if (!isPlainObject(data)) return data;
   if (!Array.isArray(data.rows)) return data;
-  if (domainName !== "reproducao") return data;
   return {
     ...data,
-    rows: data.rows.map((row) => normalizeReproductionData(row))
+    rows: data.rows.map((row) => {
+      if (!isPlainObject(row)) return row;
+      const domain = domainFromContext(domainName, RANCHO_DOMAIN_MANIFEST);
+      if (!domain) return domainName === "reproducao" ? normalizeReproductionData(row) : row;
+      const normalized: AnyRecord = {};
+      for (const [fieldName, value] of Object.entries(row)) {
+        const targetField = fieldNameForDomain(domainName, domain, fieldName) || fieldName;
+        normalized[targetField] = value;
+      }
+      return domainName === "reproducao" ? normalizeReproductionData(normalized) : normalized;
+    })
   };
 }
 
@@ -202,6 +337,10 @@ function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPla
         columnMapping: normalizeColumnMappingForDomain(domainName, table.columnMapping),
         defaultFields: stripDataMetaFields(table.defaultFields || {}) as Record<string, unknown>
       }
+    };
+    plan = {
+      ...plan,
+      data: normalizeImportRowsForDomain(plan.data || {}, domainName) as ImportTableActionPlan["data"]
     };
   }
 
@@ -320,6 +459,14 @@ function validateNoFreeSql(value: unknown, errors: string[], path = "plan") {
 }
 
 function validateConfidence(plan: AnyRecord, minConfidence: number, errors: string[]) {
+  if (typeof plan.confidence === "string") {
+    const raw = plan.confidence.trim();
+    const parsed = Number(raw.replace("%", "").replace(",", "."));
+    if (Number.isFinite(parsed)) {
+      plan.confidence = parsed > 1 && parsed <= 100 ? parsed / 100 : parsed;
+    }
+  }
+
   if (typeof plan.confidence !== "number" || !Number.isFinite(plan.confidence)) {
     errors.push("confidence deve ser numero");
     return;
@@ -356,8 +503,8 @@ function validateEnumValue(
 ) {
   const enumValues = enumValuesFor(domain, fieldName, definition);
   if (!enumValues.length || !hasValue(value)) return;
-  const received = String(value).trim().toLowerCase();
-  const allowed = enumValues.map((item) => String(item).trim().toLowerCase());
+  const received = normalizeLooseText(value).replace(/\s+/g, "_");
+  const allowed = enumValues.map((item) => normalizeLooseText(item).replace(/\s+/g, "_"));
   if (!allowed.includes(received)) {
     errors.push(`${path} possui valor enum fora do manifest`);
   }

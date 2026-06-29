@@ -32,7 +32,7 @@ const batchableIntents = new Set<RanchoIntent>([
 
 function splitBatchSegments(text: string) {
   const nextActionStart = "(?:\\d|vaca|animal|boi|touro|bezerro|bezerra|novilha|brinco|[a-z]+-?\\d|[a-z]*\\d[a-z0-9-]*\\s+(?:\\d|deu|produziu|fez|pariu|morreu)|[a-zÃ-ÿ]+(?:\\s+[a-zÃ-ÿ]+){0,3}\\s+por\\s+\\d|comprei|compramos|chegou|entrou|usei|gastei|vendi|recebi|paguei|tira|tirar|tirei|retirei|apliquei|vacinei|mediquei|morreu|pariu)";
-  const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é|Ã©)m|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
+  const connectorPattern = new RegExp(`\\s+\\b(?:e|tamb(?:e|é)m|mais)\\b\\s+(?:a\\s+)?(?=${nextActionStart})`, "i");
 
   return cleanAnswer(String(text || ""))
     .split(/[\n;]+|,(?!\d)(?=\s*\S)/g)

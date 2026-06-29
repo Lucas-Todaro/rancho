@@ -217,6 +217,33 @@ function normalizeAnimalRegistrationForActionPlan(data: Record<string, unknown>,
   return { animal_codigo, nome };
 }
 
+function animalUpdateChangeForActionPlan(data: Record<string, unknown>, originalText?: string) {
+  const normalizedText = normalizeRanchoText(originalText || "");
+  if (/\b(?:lote|piquete|pasto)\b/.test(normalizedText)) {
+    const value = firstValue(data, ["lote_ref", "lote_id", "lote_nome", "fase"]);
+    if (value !== undefined) return { field: "lote_id", value };
+  }
+
+  const candidates = [
+    ["lote_id", firstValue(data, ["lote_ref", "lote_id", "lote_nome"])],
+    ["fase", data.fase],
+    ["status", data.status],
+    ["peso", data.peso],
+    ["categoria", data.categoria],
+    ["sexo", data.sexo],
+    ["nome", data.nome],
+    ["raca", data.raca],
+    ["data_nascimento", data.data_nascimento],
+    ["observacoes", data.observacoes || data.descricao]
+  ] as const;
+
+  for (const [field, value] of candidates) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") return { field, value };
+  }
+
+  return { field: undefined, value: undefined };
+}
+
 function capabilityAnimalRef(data: Record<string, unknown>) {
   return firstValue(data, ["animal_ref", "animal_id", "animal_codigo", "brinco", "codigo", "mae_ref"]);
 }
@@ -710,6 +737,20 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
       return finalize("MORTE", dados, buildMissing("MORTE", dados), plan.confidence);
     }
 
+    if (plan.action === "update") {
+      const change = animalUpdateChangeForActionPlan(data, originalText);
+      const dados = {
+        animal_codigo: firstValue(data, ["animal_ref", "brinco", "animal_id", "codigo"]),
+        campo_alterado: change.field,
+        novo_valor: change.value,
+        lote_nome: change.field === "lote_id" ? change.value : undefined,
+        descricao: data.descricao || data.observacoes || undefined,
+        data_referencia: date,
+        ...metadata
+      };
+      return finalize("ATUALIZACAO_ANIMAL", dados, buildMissing("ATUALIZACAO_ANIMAL", dados), plan.confidence);
+    }
+
     const animalRegistration = normalizeAnimalRegistrationForActionPlan(data, originalText);
     const dados = {
       animal_codigo: animalRegistration.animal_codigo,
@@ -734,6 +775,19 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
       ...metadata
     };
     return finalize("CRIAR_LOTE", dados, buildMissing("CRIAR_LOTE", dados), plan.confidence);
+  }
+
+  if (plan.domain === "genealogia") {
+    const dados = {
+      animal_codigo: firstValue(data, ["animal_ref", "filho_ref", "cria_ref", "animal_id", "codigo", "brinco"]),
+      mae_nome: firstValue(data, ["mae_ref", "mae_nome", "mae"]),
+      pai_nome: firstValue(data, ["pai_ref", "pai_nome", "pai"]),
+      remover_mae: data.remover_mae || undefined,
+      remover_pai: data.remover_pai || undefined,
+      data_referencia: date,
+      ...metadata
+    };
+    return finalize("ATUALIZACAO_GENEALOGIA", dados, buildMissing("ATUALIZACAO_GENEALOGIA", dados), plan.confidence);
   }
 
   if (plan.domain === "observacoes" && data.animal_ref) {

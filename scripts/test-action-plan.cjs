@@ -85,6 +85,7 @@ const {
   interpretPendingActionMessage,
   interpretPendingActionMessageSmart
 } = require("../src/services/whatsapp/pending-action-interpreter.ts");
+const { detectConversationAct } = require("../src/services/whatsapp/conversation-act.ts");
 const { confirmationText } = require("../src/services/whatsapp/confirmation-message.ts");
 const {
   normalizeDate,
@@ -784,6 +785,33 @@ test("ActionPlan execute valida capacidades genericas com confirmacao correta", 
   });
   assert(!invalid.ok, "execute mutacional sem confirmacao deveria ser invalido");
   assert(invalid.reason.includes("requiresConfirmation=true"), `motivo inesperado: ${invalid.reason}`);
+});
+
+test("ActionPlan validator aceita confidence string numerica e enum com acento", () => {
+  const update = validateActionPlan({
+    action: "update",
+    domain: "animais",
+    confidence: "94%",
+    data: { animal_ref: "B-002", lote_ref: "Lactação" },
+    requiresConfirmation: true
+  });
+  assert(update.ok, `confidence string deveria validar: ${update.reason}`);
+  assert(update.value.confidence === 0.94, `confidence deveria normalizar para 0.94, recebeu ${update.value.confidence}`);
+
+  const stockImport = validateActionPlan({
+    action: "import_table",
+    domain: "estoque",
+    confidence: "0.95",
+    data: {
+      rows: [
+        { item: "Milho", categoria: "ração", unidade: "saco", quantidade: 20 },
+        { item: "Sal mineral", categoria: "insumo", unidade: "kg", quantidade: 100 }
+      ]
+    },
+    requiresConfirmation: true
+  });
+  assert(stockImport.ok, `categoria acentuada de estoque deveria validar: ${stockImport.reason}`);
+  assert(stockImport.value.confidence === 0.95, `confidence deveria normalizar para 0.95, recebeu ${stockImport.value.confidence}`);
 });
 
 test("ActionPlan execute cobre capacidades genericas principais", async () => {
@@ -3123,7 +3151,7 @@ test("Gemini-first 090 pariu usa ActionPlan create de reproducao", async () => {
   });
 });
 
-test("Gemini live JSON invalido nao retorna instabilidade", async () => {
+test("Gemini live JSON invalido usa fallback local seguro", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3140,15 +3168,15 @@ test("Gemini live JSON invalido nao retorna instabilidade", async () => {
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "clarify", `JSON invalido deveria pedir clarify, recebido ${result.kind}`);
-      assert(!String(result.message).includes("Estou com instabilidade"), "JSON invalido nao deve usar mensagem de instabilidade");
-      assert(result.debug?.error_classification === "contract", "JSON invalido deveria ser erro de contrato");
+      assert(result.kind === "local", `JSON invalido recuperavel deveria usar fallback local, recebido ${result.kind}`);
+      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
+      assert(result.parsed.dados?.gemini_failure_reason === "invalid_json_basic_local_fallback", "motivo de fallback invalid_json ausente");
     });
     resetGeminiRuntimeStats();
   });
 });
 
-test("Gemini live HTTP 503 retorna instabilidade diagnosticada", async () => {
+test("Gemini live HTTP 503 usa fallback local seguro quando possivel", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3165,17 +3193,15 @@ test("Gemini live HTTP 503 retorna instabilidade diagnosticada", async () => {
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "clarify", `HTTP 503 deveria retornar clarify, recebido ${result.kind}`);
-      assert(String(result.message).includes("Estou com instabilidade"), "HTTP 503 deve usar mensagem de instabilidade");
-      assert(result.debug?.error_classification === "external_gemini", "HTTP 503 deveria ser falha externa Gemini");
-      assert(result.debug?.responseStatus === 503, "status 503 ausente no debug");
-      assert(result.debug?.gemini_status === 503, "gemini_status 503 ausente no debug");
+      assert(result.kind === "local", `HTTP 503 recuperavel deveria usar fallback local, recebido ${result.kind}`);
+      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
+      assert(result.parsed.dados?.gemini_failure_reason === "api_error_basic_local_fallback", "motivo de fallback api_error ausente");
     });
     resetGeminiRuntimeStats();
   });
 });
 
-test("Gemini live HTTP 429 retorna instabilidade diagnosticada", async () => {
+test("Gemini live HTTP 429 usa fallback local seguro quando possivel", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3192,10 +3218,9 @@ test("Gemini live HTTP 429 retorna instabilidade diagnosticada", async () => {
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "clarify", `HTTP 429 deveria retornar clarify, recebido ${result.kind}`);
-      assert(String(result.message).includes("Estou com instabilidade"), "HTTP 429 deve usar mensagem de instabilidade");
-      assert(result.debug?.error_classification === "external_gemini", "HTTP 429 deveria ser falha externa Gemini");
-      assert(result.debug?.gemini_status === 429, "gemini_status 429 ausente no debug");
+      assert(result.kind === "local", `HTTP 429 recuperavel deveria usar fallback local, recebido ${result.kind}`);
+      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
+      assert(result.parsed.dados?.gemini_failure_reason === "rate_limit_basic_local_fallback", "motivo de fallback rate_limit ausente");
     });
     resetGeminiRuntimeStats();
   });
@@ -3372,6 +3397,84 @@ test("fluxo Gemini-first usa ActionPlan na tabela de lotes", async () => {
   assert(parsed.dados?.table_action_plan_used === true, "lotes deveria usar ActionPlan");
   assert(parsed.dados?.action_plan?.domain === "lotes", "domain lotes ausente no plano");
   assert(parsed.dados?.linhas?.[0]?.parsedValues?.ativo === true, "ativo nao chegou normalizado ao preview");
+});
+
+test("ActionPlan aceita confidence textual e headers originais em rows de tabela", () => {
+  const animalTable = validateActionPlan({
+    action: "import_table",
+    domain: "animais",
+    confidence: "94%",
+    requiresConfirmation: true,
+    data: {
+      rows: [{
+        Fase: "lactação",
+        Nome: "Mimosa",
+        Peso: 540,
+        Raça: "Girolando",
+        Sexo: "fêmea",
+        Status: "ativo",
+        Categoria: "vaca",
+        Código: "A-001"
+      }]
+    }
+  });
+
+  assert(animalTable.ok, `tabela de animais deveria validar: ${animalTable.ok ? "" : animalTable.reason}`);
+  assert(animalTable.value.confidence === 0.94, "confidence textual deveria virar 0.94");
+  assert(animalTable.value.data.rows[0].brinco === "A-001", "Código deveria mapear para brinco");
+  assert(animalTable.value.data.rows[0].raca === "Girolando", "Raça deveria mapear para raca");
+  assert(animalTable.value.data.rows[0].fase === "lactação", "Fase deveria mapear para fase");
+
+  const update = validateInterpretedAction({
+    action_plan: {
+      action: "update",
+      domain: "animais",
+      confidence: "0,93",
+      requiresConfirmation: true,
+      data: { animal_ref: "B-5", lote_ref: "Lactação" }
+    }
+  });
+  assert(update.ok, `ActionPlan update com confidence string deveria validar: ${update.ok ? "" : update.reason}`);
+  assert(update.value.action_plan.confidence === 0.93, "confidence com virgula deveria virar 0.93");
+});
+
+test("frases naturais de ponto entram como PONTO_FUNCIONARIO", () => {
+  const entrada = parseRanchoMessage("João chegou agora");
+  assert(entrada.tipo === "PONTO_FUNCIONARIO", `esperado PONTO_FUNCIONARIO, recebido ${entrada.tipo}`);
+  assert(entrada.dados.funcionario_nome === "joao", "nome do funcionario deveria ser joao");
+  assert(entrada.dados.ponto_tipo === "entrada", "chegou deveria virar entrada");
+  assert(entrada.dados.agora === true, "agora deveria marcar horario atual");
+
+  const saida = parseRanchoMessage("Maria saiu agora");
+  assert(saida.tipo === "PONTO_FUNCIONARIO", `esperado PONTO_FUNCIONARIO, recebido ${saida.tipo}`);
+  assert(saida.dados.funcionario_nome === "maria", "nome do funcionario deveria ser maria");
+  assert(saida.dados.ponto_tipo === "saida", "saiu deveria virar saida");
+});
+
+test("ActionPlan update de animais vira ATUALIZACAO_ANIMAL", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "update",
+      domain: "animais",
+      confidence: 0.95,
+      operation: "atualizar_animal",
+      requiresConfirmation: true,
+      data: {
+        animal_ref: "B-002",
+        brinco: "B-002",
+        fase: "lactacao"
+      }
+    },
+    text: "troca o lote da B-002 para Lactação",
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+
+  assert(result.ok, `update de animais deveria executar: ${result.ok ? "" : result.reason}`);
+  assert(result.parsed.tipo === "ATUALIZACAO_ANIMAL", `esperado ATUALIZACAO_ANIMAL, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados.animal_codigo === "B-002", "animal B-002 ausente");
+  assert(result.parsed.dados.campo_alterado === "lote_id", "texto com lote deveria atualizar lote_id");
+  assert(result.parsed.dados.novo_valor === "lactacao", "valor lactacao ausente");
 });
 
 test("parse flags true usa ActionPlan para 777 pariu sem mensagem de revisao", async () => {
@@ -3602,6 +3705,62 @@ test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture"
   assert(deathParsed.dados?.animal_codigo === "002", `${deathText}: animal esperado 002, recebido ${deathParsed.dados?.animal_codigo}`);
   assert(deathParsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", `${deathText}: fallback seguro nao marcado`);
   assert(deathParsed.dados?.action_plan_used === false, `${deathText}: nao deveria marcar ActionPlan usado`);
+});
+
+test("Gemini-first recupera JSON invalido com fallback local seguro em mensagem basica", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    BOT_AI_PROVIDER: "openrouter",
+    BOT_AI_MODEL: "google/gemini-2.5-flash-lite",
+    OPENROUTER_API_KEY: "or-test-key",
+    GEMINI_MODE: "live",
+    ALLOW_LIVE_AI_TESTS: "true"
+  }, async () => {
+    await withFetchMock(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "texto sem json" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+      const text = "adicionar entrada de mil reais";
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: createActionPlanSupabase({})
+      });
+      const parsed = finalParsed(result);
+      assert(result.kind === "local", `esperado fallback local seguro, recebido ${result.kind}`);
+      assert(parsed?.tipo === "RECEITA_VENDA", `intent esperado RECEITA_VENDA, recebido ${parsed?.tipo}`);
+      assert(Number(parsed.dados?.valor) === 1000, `valor esperado 1000, recebido ${parsed?.dados?.valor}`);
+      assert(parsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", "fallback seguro nao marcado");
+    });
+  });
+});
+
+test("mensagem explicita de troca de lote sem pendencia vira nova acao", () => {
+  const act = detectConversationAct({
+    text: "troca o lote da B-002 para Lactação",
+    session: { etapa: "livre", dados: {} }
+  });
+  assert(act.messageType === "new_action", `esperado new_action, recebido ${act.messageType}`);
+  assert(act.decision === "new_action", `esperado decision new_action, recebido ${act.decision}`);
+});
+
+test("ActionPlan update de genealogia vira atualizacao genealogica segura", async () => {
+  const result = await executeActionPlan({
+    plan: {
+      action: "update",
+      domain: "genealogia",
+      confidence: 0.94,
+      data: { animal_ref: "B-003", mae_ref: "B-002" },
+      requiresConfirmation: true
+    },
+    text: "mãe da B-003 é B-002",
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  assert(result.ok, `genealogia deveria executar: ${result.ok ? "" : result.reason}`);
+  assert(result.parsed.tipo === "ATUALIZACAO_GENEALOGIA", `intent esperado ATUALIZACAO_GENEALOGIA, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.animal_codigo === "B-003", "animal B-003 ausente");
+  assert(result.parsed.dados?.mae_nome === "B-002", "mae B-002 ausente");
 });
 
 test("runtime encontra fixture ActionPlan para tabela de producao com turno e observacoes", async () => {
