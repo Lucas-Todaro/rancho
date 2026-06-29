@@ -74,6 +74,8 @@ const ORTHOGRAPHY: Record<string, string> = {
   atualizacao: "atualização",
   ambiguo: "ambíguo",
   ambiguos: "ambíguos",
+  basico: "básico",
+  basicos: "básicos",
   codigo: "código",
   codigos: "códigos",
   confirmacao: "confirmação",
@@ -94,12 +96,18 @@ const ORTHOGRAPHY: Record<string, string> = {
   informacao: "informação",
   informacoes: "informações",
   inseminacao: "inseminação",
+  lancamento: "lançamento",
+  lancamentos: "lançamentos",
+  lancar: "lançar",
+  lanca: "lança",
   invalida: "inválida",
   invalidas: "inválidas",
   invalido: "inválido",
   invalidos: "inválidos",
   lactacao: "lactação",
   mae: "mãe",
+  movimentacao: "movimentação",
+  movimentacoes: "movimentações",
   nao: "não",
   observacao: "observação",
   observacoes: "observações",
@@ -127,11 +135,18 @@ const ORTHOGRAPHY: Record<string, string> = {
   salario: "salário",
   salarios: "salários",
   sanitario: "sanitário",
+  saude: "saúde",
+  seguranca: "segurança",
   simulacao: "simulação",
+  so: "só",
   temporario: "temporário",
   temporarios: "temporários",
   transacao: "transação",
   transacoes: "transações",
+  ultima: "última",
+  ultimas: "últimas",
+  ultimo: "último",
+  ultimos: "últimos",
   valida: "válida",
   validas: "válidas",
   valido: "válido",
@@ -161,8 +176,15 @@ export function polishBotResponse(value: unknown) {
   let text = String(value ?? "");
   text = text
     .replace(/\b[Ee]sta correto\b/g, (phrase) => preserveCase(phrase, "está correto"))
+    .replace(/\b[Ee]sta errad[oa]\b/g, (phrase) => preserveCase(phrase, "está errado"))
+    .replace(/\b[Nn]ao e\b/g, (phrase) => preserveCase(phrase, "não é"))
     .replace(/\b[Nn]ao ha\b/g, (phrase) => preserveCase(phrase, "não há"))
-    .replace(/\b[Ee]ntao\b/g, (word) => preserveCase(word, "então"));
+    .replace(/\b[Qq]ual e\b/g, (phrase) => preserveCase(phrase, "qual é"))
+    .replace(/\b[Ee]ntao\b/g, (word) => preserveCase(word, "então"))
+    .replace(/\b[Ss]era\b/g, (word) => preserveCase(word, "será"))
+    .replace(/\b[Ff]uncao\b/g, (word) => preserveCase(word, "função"))
+    .replace(/\b[Aa]dmissao\b/g, (word) => preserveCase(word, "admissão"))
+    .replace(/\b[Hh]istorico\b/g, (word) => preserveCase(word, "histórico"));
   text = text.replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (code) => userFacingCodeLabel(code));
   text = text.replace(/\b[A-Za-zÀ-ÿ]+\b/g, (word) => {
     const replacement = ORTHOGRAPHY[word.toLowerCase()];

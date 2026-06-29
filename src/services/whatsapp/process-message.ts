@@ -3754,6 +3754,25 @@ function buildCorrectedPending(pending: ParsedRanchoMessage, text: string, act: 
   };
 }
 
+function correctionIntroForConfirmation(prefix?: string | null) {
+  if (!prefix?.trim()) return "Agora entendi:";
+
+  let message = prefix
+    .trim()
+    .replace(/^(?:agora\s+)?entendi\.?\s*/i, "")
+    .replace(/^voce\s+quer\s+/i, "Vou ")
+    .replace(/^você\s+quer\s+/i, "Vou ")
+    .replace(/^quer\s+corrigir\b/i, "Vou corrigir")
+    .replace(/^quer\s+alterar\b/i, "Vou alterar")
+    .replace(/^quer\s+trocar\b/i, "Vou trocar")
+    .trim();
+
+  if (!message) return "Agora entendi:";
+  message = message.replace(/\?+$/g, ".");
+  if (!/[.!]$/.test(message)) message += ".";
+  return `Agora entendi. ${message}`;
+}
+
 async function saveCorrectedPending(
   supabase: SupabaseAdmin,
   owner: WhatsAppOwner,
@@ -3807,8 +3826,95 @@ async function saveCorrectedPending(
   }
 
   await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
-  const intro = prefix ?`Agora entendi. ${prefix}` : "Agora entendi:";
+  const intro = correctionIntroForConfirmation(prefix);
   return { response: [intro, confirmationText(next)].filter(Boolean).join("\n"), parsed: next };
+}
+
+async function handleSemanticPendingPatch(
+  supabase: SupabaseAdmin,
+  owner: WhatsAppOwner,
+  session: BotSession,
+  text: string,
+  processingInput?: ProcessWhatsappMessageInput,
+  processingPhone?: string
+): Promise<ConversationActHandlingResult | null> {
+  const pending = pendingFromSession(session);
+  if (!pending?.tipo) return null;
+  if (!isGeminiPrimaryMode()) return null;
+  if (!shouldUsePendingPatchForText(text)) return null;
+
+  const interpretPatch = () => interpretPendingPatchWithGemini({
+    text,
+    pending,
+    status: session.etapa || "livre",
+    currentDate: getRanchTodayISO(),
+    timezone: "America/Sao_Paulo"
+  });
+  const patchResult = processingInput
+    ? await withProcessingNotice(processingInput, supabase, owner, processingPhone || owner.telefone_e164 || "", "pending_patch_interpreter", interpretPatch)
+    : await interpretPatch();
+
+  if (!patchResult.ok) {
+    botLog("pending_patch_invalid", owner, {
+      reason: patchResult.reason,
+      targetIntent: pending.tipo
+    });
+    return null;
+  }
+
+  const patch = patchResult.patch;
+  if (patch.confidence < 0.72 || patch.operation === "none") return null;
+
+  botLog("pending_patch_applied", owner, {
+    targetIntent: pending.tipo,
+    operation: patch.operation || "update",
+    status: session.etapa,
+    fields: Object.keys(patch.data || {})
+  });
+
+  if (patch.operation === "cancel") {
+    await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+    return {
+      handled: true,
+      parsed: pending,
+      suppressPreviousPending: true,
+      response: PENDING_ACTION_CANCELLED_MESSAGE
+    };
+  }
+
+  if (patch.operation === "clarify") {
+    return {
+      handled: true,
+      parsed: pending,
+      response: patch.clarificationQuestion || "Entendi que você quer ajustar o registro em aberto, mas preciso de um pouco mais de detalhe."
+    };
+  }
+
+  if (patch.operation === "finish_optional") {
+    const finished = finishMissingFieldsForConfirmation(pending);
+    if (finished) {
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: finished } });
+      return {
+        handled: true,
+        parsed: finished,
+        response: composeOptionalFieldsFinishedText(finished)
+      };
+    }
+    return {
+      handled: true,
+      parsed: pending,
+      response: composeMissingDataText(pending)
+    };
+  }
+
+  const patched = applyPendingPatchToSession(pending, patch);
+  if (JSON.stringify(patched.dados || {}) === JSON.stringify(pending.dados || {})) return null;
+  const result = await saveCorrectedPending(supabase, owner, patched);
+  return {
+    handled: true,
+    parsed: result.parsed,
+    response: result.response
+  };
 }
 
 async function handlePendingActionInterpretation(
@@ -3879,6 +3985,11 @@ async function handleConversationActMessage(
         response: composeMissingDataText(pending)
       };
     }
+  }
+
+  if (pending && session.etapa === "aguardando_confirmacao" && (act.messageType === "new_action" || act.messageType === "clarification")) {
+    const semanticPatch = await handleSemanticPendingPatch(supabase, owner, session, text);
+    if (semanticPatch?.handled) return semanticPatch;
   }
 
   if (act.messageType === "new_action" || act.messageType === "clarification") {
@@ -3954,6 +4065,9 @@ async function handleConversationActMessage(
       response: "Entendi, nao e parto. Como voce quer registrar essa informacao? Pode ser cio, observacao de saude, manejo ou outro evento."
     };
   }
+
+  const semanticPatch = await handleSemanticPendingPatch(supabase, owner, session, text);
+  if (semanticPatch?.handled) return semanticPatch;
 
   if (act.messageType === "negation" && /^(?:nao|n|nao e isso|errado|incorreto|negativo)$/.test(command)) {
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
@@ -4085,35 +4199,8 @@ async function handleMissingData(
     return "Responda 1 para dar baixa no estoque ou 2 para registrar apenas a receita.";
   }
 
-  if (isGeminiPrimaryMode() && pending.tipo === "PARTO" && shouldUsePendingPatchForText(text)) {
-    const missingBefore = [...(pending.perguntas_faltantes || [])];
-    const interpretPatch = () => interpretPendingPatchWithGemini({
-      text,
-      pending,
-      status: session.etapa,
-      currentDate: getRanchTodayISO(),
-      timezone: "America/Sao_Paulo"
-    });
-    const patchResult = processingInput
-      ? await withProcessingNotice(processingInput, supabase, owner, processingPhone || owner.telefone_e164 || "", "pending_patch_interpreter", interpretPatch)
-      : await interpretPatch();
-    if (patchResult.ok) {
-      const patched = applyPendingPatchToSession(pending, patchResult.patch);
-      const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, patched);
-      botLog("pending_patch_applied", owner, {
-        targetIntent: pending.tipo,
-        missingFieldsBefore: missingBefore,
-        missingFieldsAfter: next.perguntas_faltantes || [],
-        nextStep: next.perguntas_faltantes.length ?"pedir_dado" : "confirmar"
-      });
-      const result = await saveCorrectedPending(supabase, owner, next);
-      return result.response;
-    }
-    botLog("pending_patch_invalid", owner, {
-      reason: patchResult.reason,
-      targetIntent: pending.tipo
-    });
-  }
+  const semanticPatch = await handleSemanticPendingPatch(supabase, owner, session, text, processingInput, processingPhone);
+  if (semanticPatch?.handled) return semanticPatch.response || "";
 
   const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, mergeRanchoMessageData(pending, text));
   botLog("contextual_reply", owner, {

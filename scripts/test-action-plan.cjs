@@ -93,7 +93,8 @@ const {
 const {
   applyPendingPatchToSession,
   interpretPendingPatchWithGemini,
-  shouldUsePendingPatchForText
+  shouldUsePendingPatchForText,
+  validatePendingPatch
 } = require("../src/lib/whatsapp/gemini/pending-patch.ts");
 const { mergeRanchoMessageData, parseRanchoMessage } = require("../src/lib/whatsapp/nlp.ts");
 const { parseWithConfiguredInterpreter } = require("../src/services/whatsapp/interpreter/gemini-primary.ts");
@@ -1728,6 +1729,12 @@ test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () =>
   assert(polished.includes("linhas válidas"), "ortografia de validas deveria ser corrigida");
   assert(polished.includes("Está correto?"), "pergunta de confirmacao deveria ter acento");
   assert(polishBotResponse("Animal B_002 preservado.") === "Animal B_002 preservado.", "codigo de animal nao deve ser alterado");
+  const extra = polishBotResponse("Nao e parto. Voce quer corrigir a movimentacao do ultimo lancamento com seguranca?");
+  assert(extra.includes("Não é parto"), "frase nao e deveria virar não é");
+  assert(extra.includes("Você"), "voce deveria ter acento");
+  assert(extra.includes("movimentação"), "movimentacao deveria ter acento");
+  assert(extra.includes("último lançamento"), "ultimo lancamento deveria ter acento");
+  assert(extra.includes("segurança"), "seguranca deveria ter acento");
 });
 
 test("ActionPlan de estoque entende saida acentuada com colunas embaralhadas", async () => {
@@ -2473,6 +2480,88 @@ test("PendingPatch PARTO aplica pai separado sem apagar sexo e codigo", async ()
   assert(patched.dados?.pai_ref === "t-50", "pai separado nao aplicou pai");
 });
 
+test("PendingPatch PARTO aceita deixar sem pai informado", () => {
+  const pending = applyPendingPatchToSession(parseRanchoMessage("090 pariu"), {
+    type: "pending_patch",
+    targetIntent: "PARTO",
+    confidence: 0.9,
+    data: { confirm_child: true, child_sex: "femea", child_code: "C-00691", father_ref: "t-50" }
+  });
+  const patched = applyPendingPatchToSession(pending, {
+    type: "pending_patch",
+    operation: "update",
+    targetIntent: "PARTO",
+    confidence: 0.9,
+    data: { father_unknown: true }
+  });
+  assert(patched.dados?.pai_nao_informado === true, "sem pai deveria marcar pai_nao_informado");
+  assert(!patched.dados?.pai_ref && !patched.dados?.pai_nome && !patched.dados?.pai_id, "sem pai deveria limpar pai anterior");
+});
+
+test("PendingPatch generico corrige quantidade e item de estoque", () => {
+  const pending = {
+    tipo: "ESTOQUE_SAIDA",
+    confianca: 0.9,
+    resumo: "dar baixa de ração",
+    perguntas_faltantes: [],
+    dados: { item_nome: "ração", quantidade: 5, unidade: "saco" }
+  };
+  const validated = validatePendingPatch({
+    type: "pending_patch",
+    operation: "update",
+    targetIntent: "ESTOQUE_SAIDA",
+    confidence: 0.91,
+    data: { item_nome: "sal mineral", quantidade: 12 }
+  }, pending);
+  assert(validated.ok, `patch de estoque deveria validar: ${validated.reason}`);
+  const patched = applyPendingPatchToSession(pending, validated.patch);
+  assert(patched.dados?.item_nome === "sal mineral", "item deveria ser corrigido para sal mineral");
+  assert(patched.dados?.quantidade === 12, "quantidade deveria ser corrigida para 12");
+  assert(patched.dados?.unidade === "saco", "unidade existente deveria ser preservada");
+});
+
+test("PendingPatch generico transforma lote em atualizacao segura de animal", () => {
+  const pending = {
+    tipo: "ATUALIZACAO_ANIMAL",
+    confianca: 0.9,
+    resumo: "atualizar animal B-002",
+    perguntas_faltantes: [],
+    dados: { animal_codigo: "B-002", campo_alterado: "peso", novo_valor: "420" }
+  };
+  const validated = validatePendingPatch({
+    type: "pending_patch",
+    operation: "update",
+    targetIntent: "ATUALIZACAO_ANIMAL",
+    confidence: 0.9,
+    data: { lote_nome: "Lactação" }
+  }, pending);
+  assert(validated.ok, `patch de lote deveria validar: ${validated.reason}`);
+  const patched = applyPendingPatchToSession(pending, validated.patch);
+  assert(patched.dados?.campo_alterado === "lote_id", "lote deveria virar campo_alterado lote_id");
+  assert(patched.dados?.novo_valor === "Lactação", "novo_valor deveria receber nome do lote");
+  assert(patched.dados?.lote_nome === "Lactação", "lote_nome deveria ficar disponivel para enriquecimento");
+});
+
+test("PendingPatch reconhece cancelar e concluir opcionais sem salvar direto", () => {
+  const cancel = validatePendingPatch({
+    type: "pending_patch",
+    operation: "cancel",
+    targetIntent: "CADASTRO_ANIMAL",
+    confidence: 0.93,
+    data: { cancel_current: true }
+  }, { tipo: "CADASTRO_ANIMAL", confianca: 0.9, resumo: "", perguntas_faltantes: [], dados: {} });
+  assert(cancel.ok && cancel.patch.operation === "cancel", "nao cadastra deveria virar cancel");
+
+  const finish = validatePendingPatch({
+    type: "pending_patch",
+    operation: "finish_optional",
+    targetIntent: "CADASTRO_ANIMAL",
+    confidence: 0.9,
+    data: { skip_optional_fields: true }
+  }, { tipo: "CADASTRO_ANIMAL", confianca: 0.9, resumo: "", perguntas_faltantes: ["peso"], dados: {} });
+  assert(finish.ok && finish.patch.operation === "finish_optional", "nao quero informar mais nada deveria virar finish_optional");
+});
+
 test("PendingPatch PARTO sem cria segue para parto sem cadastro de cria", async () => {
   const pending = parseRanchoMessage("090 pariu");
   const result = await interpretPendingPatchWithGemini({
@@ -2492,6 +2581,8 @@ test("PendingPatch nao captura confirmacao ou cancelamento simples", () => {
   assert(shouldUsePendingPatchForText("sim") === false, "sim simples nao deve chamar PendingPatch");
   assert(shouldUsePendingPatchForText("cancelar") === false, "cancelar nao deve chamar PendingPatch");
   assert(shouldUsePendingPatchForText("sexo:femea codigo:c-140 pai:t-50") === true, "dados livres deveriam chamar PendingPatch");
+  assert(shouldUsePendingPatchForText("nao quero informar mais nada") === true, "concluir opcionais deveria chamar PendingPatch");
+  assert(shouldUsePendingPatchForText("pode deixar sem pai") === true, "sem pai deveria chamar PendingPatch");
 });
 
 test("BOT_INTERPRETER=gemini usa ActionPlan mesmo com flags antigas false", async () => {
