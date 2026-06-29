@@ -1,7 +1,12 @@
 import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { generateStructuredAI, parseJsonObjectText, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
-import { applyReproductionImportChildComplement } from "@/lib/whatsapp/action-plan/reproduction-import-child";
+import {
+  applyReproductionImportChildComplement,
+  classifyReproductionImportChild,
+  reproductionImportChildSummary,
+  warningCodesForChildStatus
+} from "@/lib/whatsapp/action-plan/reproduction-import-child";
 import {
   detectReproductiveEventKind,
   normalizeRanchoText,
@@ -25,29 +30,38 @@ const ROW_REMOVAL_RE = /\b(?:nao\s+(?:importa|importar|salva|salvar|cadastre|cad
 const ROW_UPDATE_RE = /\b(?:corrige|corrigir|muda|mudar|troca|trocar|altera|alterar|ajusta|ajustar|atualiza|atualizar|coloca|colocar|define|definir|marca|marcar)\b/;
 
 export type PendingActionInterpretation = {
-  operation: "birth_child_complement" | "remove_rows" | "update_rows" | "answer_question" | "clarify";
+  operation: "birth_child_complement" | "remove_rows" | "update_rows" | "batch_update_rows" | "answer_question" | "clarify";
   parsed: ParsedRanchoMessage;
   message: string;
   matchedRows: number;
 };
 
+type SemanticPendingTarget = {
+  lineNumbers?: number[];
+  ordinal?: "first" | "second" | "third" | "last" | null;
+  searchText?: string | null;
+};
+
+type SemanticPendingUpdate = {
+  target?: SemanticPendingTarget;
+  patch?: AnyRecord;
+};
+
 type SemanticPendingAction = {
   type: "pending_action_interpretation";
-  operation: "remove_rows" | "update_rows" | "answer_question" | "clarify" | "none";
+  operation: "remove_rows" | "update_rows" | "batch_update_rows" | "answer_question" | "clarify" | "none";
   confidence: number;
-  target?: {
-    lineNumbers?: number[];
-    ordinal?: "first" | "second" | "third" | "last" | null;
-    searchText?: string | null;
-  };
+  target?: SemanticPendingTarget;
   patch?: AnyRecord;
+  updates?: SemanticPendingUpdate[];
   answer?: string | null;
   clarificationQuestion?: string | null;
 };
 type RowOrdinal = NonNullable<NonNullable<SemanticPendingAction["target"]>["ordinal"]>;
 
 function rowsFromParsed(parsed: ParsedRanchoMessage) {
-  return Array.isArray(parsed.dados?.linhas) ? parsed.dados.linhas as AnyRecord[] : [];
+  const rows = parsed.dados?.linhas_validadas || parsed.dados?.linhas || [];
+  return Array.isArray(rows) ? rows as AnyRecord[] : [];
 }
 
 function primitiveValues(value: unknown): string[] {
@@ -240,13 +254,75 @@ function withoutValidationMetadata(row: AnyRecord) {
   return next;
 }
 
-function parsedWithRows(parsed: ParsedRanchoMessage, rows: AnyRecord[]) {
-  const dados = {
-    ...(parsed.dados || {}),
-    linhas: rows,
-    total_linhas: rows.length,
-    total_linhas_parse_validas: rows.length
+function rowValidationIssues(row: AnyRecord) {
+  return Array.isArray(row.problemas_validacao)
+    ? row.problemas_validacao
+    : Array.isArray(row.problemas)
+      ? row.problemas
+      : [];
+}
+
+function eventImportRowsWithDerivedState(rows: AnyRecord[]) {
+  return rows.map((row) => {
+    if (String(row.evento_tipo || "").toLowerCase() !== "parto") return row;
+    const child = classifyReproductionImportChild(row);
+    return {
+      ...row,
+      ...child,
+      avisos: warningCodesForChildStatus(child.child_status)
+    };
+  });
+}
+
+function eventImportSummaryForRows(rows: AnyRecord[], current: AnyRecord) {
+  const readyRows = rows.filter((row) => row.status_validacao === "pronto" || (!row.status_validacao && rowValidationIssues(row).length === 0));
+  const invalidRows = rows.filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+  const countIssue = (issue: string) => rows.filter((row) => rowValidationIssues(row).includes(issue)).length;
+  const births = reproductionImportChildSummary(rows);
+  return {
+    ...current,
+    total: rows.length,
+    prontas: readyRows.length,
+    invalidas: invalidRows.length,
+    revisao: rows.filter((row) => Array.isArray(row.avisos) && row.avisos.length > 0).length,
+    partos: births,
+    duplicadas: countIssue("duplicado"),
+    animais_nao_encontrados: countIssue("animal_nao_encontrado"),
+    animais_ambiguos: countIssue("animal_ambiguo"),
+    animais_inativos: countIssue("animal_inativo"),
+    datas_ausentes: countIssue("data_ausente"),
+    datas_invalidas: countIssue("data_invalida"),
+    tipos_desconhecidos: countIssue("tipo_evento_desconhecido"),
+    por_tipo: rows.reduce<Record<string, number>>((counts, row) => {
+      const key = String(row.evento_tipo || "desconhecido");
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {})
   };
+}
+
+function rowsForParsedOutput(parsed: ParsedRanchoMessage, rows: AnyRecord[]) {
+  if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") return eventImportRowsWithDerivedState(rows);
+  return rows;
+}
+
+function parsedWithRows(parsed: ParsedRanchoMessage, rows: AnyRecord[]) {
+  const nextRows = rowsForParsedOutput(parsed, rows);
+  const dados: AnyRecord = {
+    ...(parsed.dados || {}),
+    linhas: nextRows,
+    total_linhas: nextRows.length,
+    total_linhas_parse_validas: nextRows.length
+  };
+  if (Array.isArray(parsed.dados?.linhas_validadas)) dados.linhas_validadas = nextRows;
+  if (parsed.tipo === "IMPORTACAO_EVENTOS_TABELA") {
+    const readyRows = nextRows.filter((row) => row.status_validacao === "pronto" || (!row.status_validacao && rowValidationIssues(row).length === 0));
+    const invalidRows = nextRows.filter((row) => row.status_validacao && row.status_validacao !== "pronto");
+    dados.linhas_prontas = readyRows;
+    dados.linhas_invalidas = invalidRows;
+    dados.resumo_partos = reproductionImportChildSummary(nextRows);
+    dados.resumo_validacao = eventImportSummaryForRows(nextRows, (dados.resumo_validacao || {}) as AnyRecord);
+  }
   return refreshRanchoMessage(parsed, dados);
 }
 
@@ -370,8 +446,14 @@ function buildRowPatch(parsed: ParsedRanchoMessage, command: string) {
   return Object.keys(patch).length ? patch : null;
 }
 
-function mergePatchIntoRow(row: AnyRecord, patch: AnyRecord) {
-  const next = withoutValidationMetadata(row);
+function isChildOnlyEventPatch(patch: AnyRecord) {
+  const allowed = new Set(["cria_codigo", "cria_sexo", "cria_nome", "pai_ref", "parto_cria_cadastro"]);
+  const keys = Object.keys(patch);
+  return keys.length > 0 && keys.every((key) => allowed.has(key));
+}
+
+function mergePatchIntoRow(row: AnyRecord, patch: AnyRecord, preserveValidation = false) {
+  const next = preserveValidation ? { ...row } : withoutValidationMetadata(row);
   const valuesPatch = patch.values as AnyRecord | undefined;
   const parsedValuesPatch = patch.parsedValues as AnyRecord | undefined;
   delete patch.values;
@@ -385,8 +467,22 @@ function mergePatchIntoRow(row: AnyRecord, patch: AnyRecord) {
 function updateRows(parsed: ParsedRanchoMessage, selectedRows: AnyRecord[], patch: AnyRecord) {
   const selected = new Set(selectedRows.map(normalizedRowKey));
   const nextRows = rowsFromParsed(parsed).map((row) => (
-    selected.has(normalizedRowKey(row)) ? mergePatchIntoRow(row, { ...patch }) : row
+    selected.has(normalizedRowKey(row)) ? mergePatchIntoRow(row, { ...patch }, parsed.tipo === "IMPORTACAO_EVENTOS_TABELA" && isChildOnlyEventPatch(patch)) : row
   ));
+  return parsedWithRows(parsed, nextRows);
+}
+
+function updateRowsWithIndependentPatches(parsed: ParsedRanchoMessage, patches: Array<{ row: AnyRecord; patch: AnyRecord }>) {
+  const patchByRow = new Map<string, AnyRecord>();
+  for (const item of patches) {
+    const key = normalizedRowKey(item.row);
+    patchByRow.set(key, { ...(patchByRow.get(key) || {}), ...item.patch });
+  }
+  const nextRows = rowsFromParsed(parsed).map((row) => {
+    const patch = patchByRow.get(normalizedRowKey(row));
+    if (!patch) return row;
+    return mergePatchIntoRow(row, { ...patch }, parsed.tipo === "IMPORTACAO_EVENTOS_TABELA" && isChildOnlyEventPatch(patch));
+  });
   return parsedWithRows(parsed, nextRows);
 }
 
@@ -427,6 +523,7 @@ function buildPendingActionPrompt(pending: ParsedRanchoMessage, text: string) {
     "Operacoes permitidas:",
     "- remove_rows: remover uma ou mais linhas da importacao pendente.",
     "- update_rows: alterar campos de uma ou mais linhas da importacao pendente.",
+    "- batch_update_rows: aplicar varias alteracoes independentes, cada uma com seu alvo e campos.",
     "- answer_question: responder uma pergunta sobre o preview pendente sem alterar nada.",
     "- clarify: pedir mais contexto quando nao souber linha/campo.",
     "- none: mensagem nao relacionada a acao pendente.",
@@ -438,6 +535,21 @@ function buildPendingActionPrompt(pending: ParsedRanchoMessage, text: string) {
       confidence: 0.9,
       target: { lineNumbers: [2], ordinal: null, searchText: "sal mineral" },
       patch: { tipo_movimento: "saida", quantidade: 20, unidade: "kg" },
+      updates: [],
+      answer: null,
+      clarificationQuestion: null
+    }, null, 2),
+    "Exemplo de varias alteracoes na mesma mensagem:",
+    JSON.stringify({
+      type: "pending_action_interpretation",
+      operation: "batch_update_rows",
+      confidence: 0.9,
+      target: null,
+      patch: null,
+      updates: [
+        { target: { searchText: "398" }, patch: { cria_codigo: "040", cria_sexo: "femea" } },
+        { target: { searchText: "143" }, patch: { cria_codigo: "567", cria_sexo: "macho" } }
+      ],
       answer: null,
       clarificationQuestion: null
     }, null, 2),
@@ -452,6 +564,9 @@ function buildPendingActionPrompt(pending: ParsedRanchoMessage, text: string) {
     "- Se o usuario falar segunda/terceira/ultima linha, use target.ordinal.",
     "- Se citar numero de linha, use target.lineNumbers.",
     "- Se citar item/lote/animal pelo nome, use target.searchText.",
+    "- Se a mensagem trouxer valores diferentes para linhas diferentes, use batch_update_rows com updates[].",
+    "- Em complementos de cria de partos, o alvo deve ser a mae/animal que ja existe nas Linhas disponiveis; o outro codigo informado deve ir em patch.cria_codigo.",
+    "- Se receber algo como 040;398;femea e a linha pendente existente for 398, use target.searchText=398 e patch.cria_codigo=040.",
     "- Se a frase puder atingir varias linhas e nao for claro, operation=clarify.",
     "- Nunca invente valores ausentes. Se nao souber, operation=clarify.",
     "",
@@ -466,34 +581,55 @@ function buildPendingActionPrompt(pending: ParsedRanchoMessage, text: string) {
 
 function semanticOperation(value: unknown): SemanticPendingAction["operation"] | null {
   const normalized = String(value || "").trim();
-  if (["remove_rows", "update_rows", "answer_question", "clarify", "none"].includes(normalized)) {
+  if (["remove_rows", "update_rows", "batch_update_rows", "answer_question", "clarify", "none"].includes(normalized)) {
     return normalized as SemanticPendingAction["operation"];
   }
   return null;
+}
+
+function normalizeSemanticTarget(value: unknown): SemanticPendingTarget {
+  const target = value && typeof value === "object" && !Array.isArray(value) ? value as AnyRecord : {};
+  const ordinal = ["first", "second", "third", "last"].includes(String(target.ordinal || "")) ? String(target.ordinal) as RowOrdinal : null;
+  const lineNumbers = Array.isArray(target.lineNumbers)
+    ? target.lineNumbers.map(Number).filter((line) => Number.isFinite(line) && line > 0)
+    : [];
+  return {
+    lineNumbers,
+    ordinal,
+    searchText: typeof target.searchText === "string" ? target.searchText : null
+  };
+}
+
+function normalizeSemanticUpdate(value: unknown): SemanticPendingUpdate | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as AnyRecord;
+  const patch = record.patch && typeof record.patch === "object" && !Array.isArray(record.patch) ? record.patch as AnyRecord : {};
+  if (!Object.keys(patch).length) return null;
+  return {
+    target: normalizeSemanticTarget(record.target),
+    patch
+  };
 }
 
 function normalizeSemanticAction(value: unknown): SemanticPendingAction | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as AnyRecord;
   if (record.type !== "pending_action_interpretation") return null;
-  const operation = semanticOperation(record.operation);
+  const updates = Array.isArray(record.updates)
+    ? record.updates.map(normalizeSemanticUpdate).filter(Boolean) as SemanticPendingUpdate[]
+    : [];
+  const operation = updates.length && record.operation === "update_rows"
+    ? "batch_update_rows"
+    : semanticOperation(record.operation);
   if (!operation) return null;
   const confidence = Number(record.confidence || 0);
-  const target = record.target && typeof record.target === "object" && !Array.isArray(record.target) ? record.target as AnyRecord : {};
-  const ordinal = ["first", "second", "third", "last"].includes(String(target.ordinal || "")) ? String(target.ordinal) as RowOrdinal : null;
-  const lineNumbers = Array.isArray(target.lineNumbers)
-    ? target.lineNumbers.map(Number).filter((line) => Number.isFinite(line) && line > 0)
-    : [];
   return {
     type: "pending_action_interpretation",
     operation,
     confidence: Number.isFinite(confidence) ? confidence : 0,
-    target: {
-      lineNumbers,
-      ordinal,
-      searchText: typeof target.searchText === "string" ? target.searchText : null
-    },
+    target: normalizeSemanticTarget(record.target),
     patch: record.patch && typeof record.patch === "object" && !Array.isArray(record.patch) ? record.patch as AnyRecord : {},
+    updates,
     answer: typeof record.answer === "string" ? record.answer : null,
     clarificationQuestion: typeof record.clarificationQuestion === "string" ? record.clarificationQuestion : null
   };
@@ -562,7 +698,8 @@ function semanticPatchForPending(parsed: ParsedRanchoMessage, semantic: Semantic
     }
     if (semanticText(source.data_referencia || source.data)) patch.data_referencia = semanticText(source.data_referencia || source.data);
     if (semanticText(source.observacoes || source.obs)) patch.observacoes = semanticText(source.observacoes || source.obs);
-    if (semanticText(source.cria_codigo)) patch.cria_codigo = semanticText(source.cria_codigo);
+    if (semanticText(source.cria_codigo || source.codigo_cria || source.child_code || source.brinco_cria)) patch.cria_codigo = semanticText(source.cria_codigo || source.codigo_cria || source.child_code || source.brinco_cria);
+    if (semanticText(source.cria_nome || source.nome_cria || source.child_name)) patch.cria_nome = semanticText(source.cria_nome || source.nome_cria || source.child_name);
     if (semanticText(source.pai_ref)) patch.pai_ref = semanticText(source.pai_ref);
     const childSex = sexFromCommand(normalizeRanchoText(String(source.cria_sexo || source.sexo_cria || "")));
     if (childSex) patch.cria_sexo = childSex;
@@ -583,6 +720,56 @@ function semanticPatchForPending(parsed: ParsedRanchoMessage, semantic: Semantic
   }
 
   return Object.keys(patch).length ? patch : null;
+}
+
+function applySemanticBatchUpdate(pending: ParsedRanchoMessage, semantic: SemanticPendingAction): PendingActionInterpretation {
+  const updates = semantic.updates || [];
+  const rowPatches: Array<{ row: AnyRecord; patch: AnyRecord }> = [];
+  const unresolved: string[] = [];
+  const unsafe: string[] = [];
+
+  for (let index = 0; index < updates.length; index += 1) {
+    const update = updates[index];
+    const rows = rowsMatchingSemanticTarget(pending, update.target);
+    const targetLabel = update.target?.searchText || update.target?.lineNumbers?.join(", ") || update.target?.ordinal || `alteracao ${index + 1}`;
+    if (rows.length !== 1) {
+      unresolved.push(String(targetLabel));
+      continue;
+    }
+    const patch = semanticPatchForPending(pending, {
+      ...semantic,
+      operation: "update_rows",
+      target: update.target,
+      patch: update.patch || {}
+    });
+    if (!patch) {
+      unsafe.push(String(targetLabel));
+      continue;
+    }
+    rowPatches.push({ row: rows[0], patch });
+  }
+
+  if (unresolved.length || unsafe.length || !rowPatches.length) {
+    const details = [
+      unresolved.length ? `nao encontrei alvo unico para: ${unresolved.join(", ")}` : "",
+      unsafe.length ? `nao encontrei campos seguros para: ${unsafe.join(", ")}` : ""
+    ].filter(Boolean).join("; ");
+    return {
+      operation: "clarify",
+      parsed: pending,
+      message: details
+        ? `Entendi a mudanca, mas preciso revisar: ${details}. Me envie a mae/linha e os dados corretos de cada cria.`
+        : "Entendi a mudanca, mas preciso que cada alteracao tenha uma linha ou item claro.",
+      matchedRows: rowPatches.length
+    };
+  }
+
+  return {
+    operation: "batch_update_rows",
+    parsed: updateRowsWithIndependentPatches(pending, rowPatches),
+    message: `Atualizei ${rowPatches.length} linha(s) da importacao pendente. Revise o resumo atualizado:`,
+    matchedRows: rowPatches.length
+  };
 }
 
 function answerQuestionFromPending(parsed: ParsedRanchoMessage, semantic: SemanticPendingAction) {
@@ -614,6 +801,7 @@ function applySemanticAction(pending: ParsedRanchoMessage, semantic: SemanticPen
       matchedRows: rowsMatchingSemanticTarget(pending, semantic.target).length
     };
   }
+  if (semantic.operation === "batch_update_rows") return applySemanticBatchUpdate(pending, semantic);
 
   const rows = rowsMatchingSemanticTarget(pending, semantic.target);
   if (!rows.length) {
@@ -652,6 +840,11 @@ function applySemanticAction(pending: ParsedRanchoMessage, semantic: SemanticPen
   };
 }
 
+export function applyPendingActionSemanticPlan(pending: ParsedRanchoMessage, value: unknown): PendingActionInterpretation | null {
+  const semantic = normalizeSemanticAction(value);
+  return semantic ? applySemanticAction(pending, semantic) : null;
+}
+
 async function interpretPendingActionWithSemanticAI(pending: ParsedRanchoMessage, text: string) {
   if (!TABLE_IMPORT_INTENTS.has(pending.tipo)) return null;
   if (!shouldUseSemanticAI(text)) return null;
@@ -663,8 +856,7 @@ async function interpretPendingActionWithSemanticAI(pending: ParsedRanchoMessage
       maxTokens: 700
     });
     if (!generated.ok) return null;
-    const semantic = normalizeSemanticAction(parseJsonObjectText(generated.rawText));
-    return semantic ? applySemanticAction(pending, semantic) : null;
+    return applyPendingActionSemanticPlan(pending, parseJsonObjectText(generated.rawText));
   } catch {
     return null;
   }

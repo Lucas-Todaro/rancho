@@ -81,6 +81,7 @@ const {
   applyReproductionImportChildComplement
 } = require("../src/lib/whatsapp/action-plan/reproduction-import-child.ts");
 const {
+  applyPendingActionSemanticPlan,
   interpretPendingActionMessage,
   interpretPendingActionMessageSmart
 } = require("../src/services/whatsapp/pending-action-interpreter.ts");
@@ -2382,6 +2383,84 @@ test("PendingActionInterpreter corrige data e tipo de evento por linha", () => {
   const row = result.parsed.dados?.linhas?.[0];
   assert(row?.evento_tipo === "cio", "evento deveria virar cio");
   assert(row?.data_referencia === "02/06/2026", "data deveria ser atualizada");
+});
+
+test("PendingAction semantic aplica varias crias em uma unica mensagem natural", () => {
+  const pending = {
+    tipo: "IMPORTACAO_EVENTOS_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas: [
+        { lineNumber: 1, animal_codigo: "305", evento_tipo: "protocolo", evento_label: "Protocolo", status_validacao: "pronto" },
+        { lineNumber: 2, animal_codigo: "032", evento_tipo: "reteste", evento_label: "Reteste de protocolo", status_validacao: "pronto" },
+        { lineNumber: 3, animal_codigo: "398", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] },
+        { lineNumber: 4, animal_codigo: "064", evento_tipo: "pre_parto", evento_label: "Pre-parto", status_validacao: "pronto" },
+        { lineNumber: 5, animal_codigo: "143", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] }
+      ],
+      linhas_validadas: [
+        { lineNumber: 1, animal_codigo: "305", evento_tipo: "protocolo", evento_label: "Protocolo", status_validacao: "pronto" },
+        { lineNumber: 2, animal_codigo: "032", evento_tipo: "reteste", evento_label: "Reteste de protocolo", status_validacao: "pronto" },
+        { lineNumber: 3, animal_codigo: "398", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] },
+        { lineNumber: 4, animal_codigo: "064", evento_tipo: "pre_parto", evento_label: "Pre-parto", status_validacao: "pronto" },
+        { lineNumber: 5, animal_codigo: "143", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] }
+      ],
+      total_linhas: 5,
+      resumo_partos: { total_partos: 2, partos_com_cria_completa: 0, partos_sem_cria_cadastrada: 2, partos_com_cria_pendente: 0 },
+      resumo_validacao: { total: 5, prontas: 5, invalidas: 0, partos: { total_partos: 2, partos_com_cria_completa: 0, partos_sem_cria_cadastrada: 2, partos_com_cria_pendente: 0 } }
+    }
+  };
+  const result = applyPendingActionSemanticPlan(pending, {
+    type: "pending_action_interpretation",
+    operation: "batch_update_rows",
+    confidence: 0.94,
+    updates: [
+      { target: { searchText: "398" }, patch: { cria_sexo: "femea", cria_codigo: "540" } },
+      { target: { searchText: "143" }, patch: { cria_sexo: "macho", cria_codigo: "004" } }
+    ]
+  });
+  assert(result?.operation === "batch_update_rows", `esperado batch_update_rows, recebido ${result?.operation}`);
+  const rows = result.parsed.dados?.linhas_validadas || [];
+  const row398 = rows.find((row) => row.animal_codigo === "398");
+  const row143 = rows.find((row) => row.animal_codigo === "143");
+  assert(row398?.child_status === "complete", "398 deveria ficar com cria completa");
+  assert(row398?.cria_sexo === "femea" && row398?.cria_codigo === "540", "398 perdeu sexo/codigo da cria");
+  assert(row143?.child_status === "complete", "143 deveria ficar com cria completa");
+  assert(row143?.cria_sexo === "macho" && row143?.cria_codigo === "004", "143 perdeu sexo/codigo da cria");
+  assert(result.parsed.dados?.resumo_partos?.partos_com_cria_completa === 2, "resumo deveria contar duas crias completas");
+  assert(result.parsed.dados?.resumo_partos?.partos_sem_cria_cadastrada === 0, "resumo nao deveria manter partos sem cria");
+  assert(result.parsed.dados?.resumo_validacao?.partos?.partos_com_cria_completa === 2, "resumo_validacao deveria ser recalculado");
+});
+
+test("PendingAction semantic aceita plano de formato compacto invertido validado por alvo", () => {
+  const pending = {
+    tipo: "IMPORTACAO_EVENTOS_TABELA",
+    confianca: 0.94,
+    resumo: "",
+    perguntas_faltantes: [],
+    dados: {
+      linhas_validadas: [
+        { lineNumber: 3, animal_codigo: "398", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] },
+        { lineNumber: 5, animal_codigo: "143", evento_tipo: "parto", evento_label: "Parto", status_validacao: "pronto", child_status: "pending_child_optional", avisos: ["dados_da_cria_ausentes"] }
+      ],
+      total_linhas: 2
+    }
+  };
+  const result = applyPendingActionSemanticPlan(pending, {
+    type: "pending_action_interpretation",
+    operation: "batch_update_rows",
+    confidence: 0.92,
+    updates: [
+      { target: { searchText: "398" }, patch: { cria_codigo: "040", cria_sexo: "femea" } },
+      { target: { searchText: "143" }, patch: { cria_codigo: "567", cria_sexo: "macho" } }
+    ]
+  });
+  assert(result?.operation === "batch_update_rows", `esperado batch_update_rows, recebido ${result?.operation}`);
+  const rows = result.parsed.dados?.linhas_validadas || [];
+  assert(rows.find((row) => row.animal_codigo === "398")?.cria_codigo === "040", "398 deveria receber codigo 040 da cria");
+  assert(rows.find((row) => row.animal_codigo === "143")?.cria_codigo === "567", "143 deveria receber codigo 567 da cria");
+  assert(result.parsed.dados?.resumo_partos?.partos_com_cria_completa === 2, "formato compacto deveria gerar duas crias completas");
 });
 
 test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async () => {
