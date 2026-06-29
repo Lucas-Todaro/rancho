@@ -18,10 +18,82 @@ function codeKey(value: unknown) {
   return normalizeRanchoText(clean(value)).replace(/[^a-z0-9]/g, "");
 }
 
+function looksLikeCode(value: unknown) {
+  return /[\d-]/.test(clean(value));
+}
+
 function childCodeFrom(value: unknown) {
   const text = clean(value);
   if (!text) return "";
-  return text.match(/\b(?:codigo|c[oó]digo|brinco)\s*(?:e|eh|é|:)?\s*([a-zA-Z0-9-]+)/i)?.[1] || text;
+  const explicit = text.match(/\b(?:codigo|c[o\u00f3]digo|brinco|cria)\s*(?:e|eh|\u00e9|:)?\s*([a-zA-Z0-9-]+)/i)?.[1];
+  return explicit || text;
+}
+
+function childCodeFromToken(value: unknown) {
+  const code = childCodeFrom(value);
+  return looksLikeCode(code) ? code : "";
+}
+
+function taggedValue(text: string, labels: string[]) {
+  for (const label of labels) {
+    const match = text.match(new RegExp(`\\b${label}\\s*:?\\s*([a-zA-Z0-9-]+)`, "i"))?.[1];
+    if (match) return match;
+  }
+  return "";
+}
+
+function codeTokens(text: string) {
+  const tokens: string[] = [];
+  const regex = /\b[a-zA-Z0-9-]*\d[a-zA-Z0-9-]*\b/g;
+  let match: RegExpExecArray | null = regex.exec(text);
+  while (match) {
+    tokens.push(match[0]);
+    match = regex.exec(text);
+  }
+  return tokens;
+}
+
+function pickSemicolonChildFields(cells: string[]) {
+  const second = clean(cells[1]);
+  const third = clean(cells[2]);
+  const secondSex = normalizeCalfSex(second);
+  const thirdSex = normalizeCalfSex(third);
+
+  if (secondSex && !thirdSex) {
+    return {
+      cria_sexo: secondSex,
+      cria_codigo: childCodeFromToken(third),
+      pai_ref: clean(cells[3])
+    };
+  }
+
+  if (!secondSex && thirdSex) {
+    return {
+      cria_sexo: thirdSex,
+      cria_codigo: childCodeFromToken(second),
+      pai_ref: clean(cells[3])
+    };
+  }
+
+  return {
+    cria_sexo: secondSex || thirdSex,
+    cria_codigo: childCodeFromToken(second) || childCodeFromToken(third),
+    pai_ref: clean(cells[3])
+  };
+}
+
+function childPatchFromFreeText(text: string, animalRef: string) {
+  const sex = normalizeCalfSex(taggedValue(text, ["sexo"])) || normalizeCalfSex(text);
+  const father = clean(taggedValue(text, ["pai", "touro"]));
+  const explicitCode = childCodeFromToken(taggedValue(text, ["cria", "codigo", "c[o\\u00f3]digo", "brinco"]));
+  const fallbackCode = codeTokens(text)
+    .find((candidate) => codeKey(candidate) !== codeKey(animalRef) && codeKey(candidate) !== codeKey(father)) || "";
+
+  return {
+    cria_sexo: sex,
+    cria_codigo: explicitCode || fallbackCode,
+    pai_ref: father
+  };
 }
 
 export function classifyReproductionImportChild(row: AnyRecord) {
@@ -81,23 +153,16 @@ function parseComplementLine(line: string) {
     const animalRef = cells[0];
     if (!animalRef) return null;
     if (semCria || normalizeRanchoText(cells[1] || "") === "sem cria") return { animalRef, semCria: true };
-    return {
-      animalRef,
-      cria_sexo: normalizeCalfSex(cells[1]),
-      cria_codigo: childCodeFrom(cells[2]),
-      pai_ref: clean(cells[3])
-    };
+    return { animalRef, ...pickSemicolonChildFields(cells) };
   }
 
   const animalRef = text.match(/^([a-zA-Z0-9-]+)/)?.[1] || "";
   if (!animalRef) return null;
   if (semCria) return { animalRef, semCria: true };
 
-  const sex = normalizeCalfSex(text.match(/\bsexo\s*:?\s*([a-zA-ZÀ-ÿ]+)/i)?.[1] || text);
-  const code = childCodeFrom(text.match(/\b(?:codigo|c[oó]digo|brinco)\s*:?\s*([a-zA-Z0-9-]+)/i)?.[1] || "");
-  const father = clean(text.match(/\bpai\s*:?\s*([a-zA-Z0-9-]+)/i)?.[1]);
-  if (!sex && !code && !father) return null;
-  return { animalRef, cria_sexo: sex, cria_codigo: code, pai_ref: father };
+  const patch = childPatchFromFreeText(text, animalRef);
+  if (!patch.cria_sexo && !patch.cria_codigo && !patch.pai_ref) return null;
+  return { animalRef, ...patch };
 }
 
 function applyPatchToRows(rows: AnyRecord[], patches: Map<string, AnyRecord>) {

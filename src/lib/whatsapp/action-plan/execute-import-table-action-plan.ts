@@ -237,7 +237,7 @@ function reproductionPreview(rows: AnyRecord[]) {
     `Sem cria cadastrada agora: ${childSummary.partos_sem_cria_cadastrada}.`,
     `Com dados de cria faltando: ${childSummary.partos_com_cria_pendente}.`,
     childSummary.partos_sem_cria_cadastrada || childSummary.partos_com_cria_pendente
-      ? "Voce pode confirmar para salvar os partos das maes, ou complementar as crias em lote no formato: 094;femea;C-094;T-50"
+      ? "Se confirmar agora, os partos serao salvos nas maes sem cadastrar crias. Para cadastrar crias antes de importar, envie: 094;C-094;femea;T-50. Formato: codigo_da_mae;codigo_da_cria;sexo_da_cria;pai_opcional."
       : ""
   ].filter(Boolean).join(" ") : "";
   return [

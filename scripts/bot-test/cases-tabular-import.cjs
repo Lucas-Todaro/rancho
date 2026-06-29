@@ -105,6 +105,16 @@ module.exports = function loadBotTestSection(context) {
       "001;Pré-parto;20.09.26;Previsao de parto proxima",
       "001;Pariu;10.10.26;"
     ].join("\n");
+    const mixedBirthPendingEventsMessage = [
+      "Codigo / Animal;Status / Tipo;Data;Observacoes",
+      "316;PROTOCOLO;01/06/26;",
+      "387;PROTOCOLO;01/06/26;",
+      "395;RETESTE;01/06/26;",
+      "5202;PARIU;01/06/26;",
+      "397;PRE PARTO;01/06/26;",
+      "396;PRE PARTO;01/06/26;",
+      "080;PARIU;01/06/26;"
+    ].join("\n");
     const prePartoVariationsEventsMessage = [
       "Codigo / Animal;Status / Tipo;Data;Observacoes",
       "002;Pre-parto;20.09.26;",
@@ -1231,6 +1241,22 @@ module.exports = function loadBotTestSection(context) {
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,
           shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de reproducao pendente aceita complemento de cria antes de importar",
+        module: "tabela-eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [mixedBirthPendingEventsMessage, "080;C-080;femea;T-137"],
+        expected: {
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          responseIncludes: "Com cria completa: 1",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true,
+          tableRow: { index: 6, animal: "080", cria_codigo: "C-080", cria_sexo: "femea", parto_cria_cadastro: true }
         }
       },
       {

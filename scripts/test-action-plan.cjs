@@ -2064,6 +2064,8 @@ test("ActionPlan import_table reproducao aceita tabela mista com parto sem cria"
   const preview = confirmationText(result.parsed);
   assert(preview.includes("Partos no lote"), "preview deveria resumir partos em lote");
   assert(preview.includes("Sem cria cadastrada agora: 1"), "preview deveria indicar parto sem cria");
+  assert(preview.includes("partos serao salvos nas maes"), "preview deveria explicar confirmacao sem cria");
+  assert(preview.includes("codigo_da_mae;codigo_da_cria;sexo_da_cria;pai_opcional"), "preview deveria mostrar formato aceito");
   assert(!/Qual foi o sexo da cria/i.test(preview), "preview nao deve perguntar sexo de cria individualmente");
 });
 
@@ -2094,7 +2096,7 @@ test("ActionPlan import_table reproducao resume varios partos sem pergunta indiv
   assert(result.parsed.dados?.resumo_partos?.total_partos === 3, "deveria contar 3 partos");
   assert(result.parsed.dados?.resumo_partos?.partos_sem_cria_cadastrada === 3, "deveria marcar 3 partos sem cria");
   const preview = confirmationText(result.parsed);
-  assert(preview.includes("094;femea;C-094;T-50"), "preview deveria mostrar formato de complemento em lote");
+  assert(preview.includes("094;C-094;femea;T-50"), "preview deveria mostrar formato de complemento em lote");
   assert(!/Qual foi o sexo da cria/i.test(preview), "nao deve perguntar parto por parto");
 });
 
@@ -2167,7 +2169,7 @@ test("ActionPlan import_table reproducao aplica complemento de crias em lote", a
   };
   const result = await executeImportTableActionPlan({ plan, text });
   assert(result.ok, `partos deveriam executar: ${result.reason}`);
-  const patched = applyReproductionImportChildComplement(result.parsed, "094;femea;C-094;T-50\n204;macho;C-204\n398;sem cria");
+  const patched = applyReproductionImportChildComplement(result.parsed, "094;C-094;femea;T-50\n204;macho;C-204\n398;sem cria");
   assert(patched, "complemento em lote deveria aplicar patch");
   const rows = patched.dados?.linhas || [];
   const row094 = rows.find((row) => row.animal_codigo === "094");
@@ -2177,6 +2179,51 @@ test("ActionPlan import_table reproducao aplica complemento de crias em lote", a
   assert(row204?.child_status === "complete" && row204.cria_sexo === "macho" && row204.cria_codigo === "C-204", "linha 204 nao recebeu cria completa");
   assert(row398?.child_status === "not_registered", "linha 398 deveria ficar sem cria cadastrada");
   assert(patched.dados?.resumo_partos?.partos_com_cria_completa === 2, "deveria contar 2 crias completas");
+});
+
+test("ActionPlan import_table reproducao aceita variacoes de complemento de crias", async () => {
+  const text = "080:PARTO\n081:PARTO\n082:PARTO\n083:PARTO\n084:PARTO";
+  const plan = {
+    action: "import_table",
+    domain: "reproducao",
+    confidence: 0.92,
+    data: { rows: [
+      { animal_ref: "080", evento: "parto" },
+      { animal_ref: "081", evento: "parto" },
+      { animal_ref: "082", evento: "parto" },
+      { animal_ref: "083", evento: "parto" },
+      { animal_ref: "084", evento: "parto" }
+    ] },
+    table: {
+      hasHeader: false,
+      columnMapping: { animal_ref: "animal_ref", evento: "evento" },
+      defaultFields: { data: "hoje" },
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({ plan, text });
+  assert(result.ok, `partos deveriam executar: ${result.reason}`);
+
+  const patched = applyReproductionImportChildComplement(result.parsed, [
+    "080;C-080;femea;T-137",
+    "081;C-081;f\u00eamea",
+    "082 sexo:femea codigo:C-082 pai:T-137",
+    "083 cria:C-083 sexo:femea pai:T-137",
+    "084;sem cria"
+  ].join("\n"));
+  assert(patched, "variacoes de complemento deveriam aplicar patch");
+  const rows = patched.dados?.linhas || [];
+  for (const code of ["080", "081", "082", "083"]) {
+    const row = rows.find((item) => item.animal_codigo === code);
+    assert(row?.child_status === "complete", `linha ${code} deveria ficar completa`);
+    assert(row?.cria_codigo === `C-${code}`, `linha ${code} perdeu codigo da cria`);
+    assert(row?.cria_sexo === "femea", `linha ${code} perdeu sexo da cria`);
+  }
+  assert(rows.find((row) => row.animal_codigo === "084")?.child_status === "not_registered", "linha 084 deveria ficar sem cria");
+  assert(patched.dados?.resumo_partos?.partos_com_cria_completa === 4, "deveria contar 4 crias completas");
+  assert(patched.dados?.resumo_partos?.partos_sem_cria_cadastrada === 1, "deveria contar 1 parto sem cria");
 });
 
 test("runtime mock adapta tabela de reproducao com colunas embaralhadas", async () => {

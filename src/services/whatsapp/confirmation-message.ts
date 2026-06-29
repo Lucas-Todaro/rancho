@@ -425,7 +425,11 @@ export function tabularImportConfirmationText(parsed: ParsedRanchoMessage) {
     `- Sem cria cadastrada agora: ${Number(births.partos_sem_cria_cadastrada || 0)}.`,
     `- Com dados de cria faltando: ${Number(births.partos_com_cria_pendente || 0)}.`,
     Number(births.partos_sem_cria_cadastrada || 0) || Number(births.partos_com_cria_pendente || 0)
-      ? "Para complementar em lote, envie linhas como: 094;femea;C-094;T-50 ou 398;sem cria."
+      ? [
+        "Se confirmar sem complementar, esses partos serao salvos nas maes, mas nenhuma cria sera cadastrada.",
+        "Para cadastrar crias agora, envie uma ou mais linhas como: 094;C-094;femea;T-50 ou 398;sem cria.",
+        "Formato: codigo_da_mae;codigo_da_cria;sexo_da_cria;pai_opcional."
+      ].join("\n")
       : ""
   ].filter(Boolean).join("\n") : "";
   const issueText = tabularImportIssueDetails(parsed, 6);
