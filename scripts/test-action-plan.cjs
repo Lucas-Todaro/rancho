@@ -3477,6 +3477,32 @@ test("ActionPlan update de animais vira ATUALIZACAO_ANIMAL", async () => {
   assert(result.parsed.dados.novo_valor === "lactacao", "valor lactacao ausente");
 });
 
+test("ActionPlan update aceita alvo em filtro e confidence ausente", async () => {
+  const validation = validateInterpretedAction({
+    action: "update",
+    domain: "animais",
+    filters: [{ field: "brinco", op: "eq", value: "B-010" }],
+    data: { lote_ref: "Bezerras" },
+    requiresConfirmation: true
+  });
+
+  assert(validation.ok, `ActionPlan sem confidence deveria validar: ${validation.ok ? "" : validation.reason}`);
+  assert(validation.value.action_plan.confidence === 0.8, "confidence ausente deveria usar padrao seguro 0.8");
+
+  const result = await executeActionPlan({
+    plan: validation.value.action_plan,
+    text: "troca o lote da B-010 para Bezerras",
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+
+  assert(result.ok, `update com alvo em filtro deveria executar: ${result.ok ? "" : result.reason}`);
+  assert(result.parsed.tipo === "ATUALIZACAO_ANIMAL", `esperado ATUALIZACAO_ANIMAL, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados.animal_codigo === "B-010", "brinco vindo do filtro deveria virar animal_codigo");
+  assert(result.parsed.dados.campo_alterado === "lote_id", "lote_ref deveria atualizar lote_id");
+  assert(result.parsed.dados.novo_valor === "Bezerras", "lote Bezerras deveria ser o novo valor");
+});
+
 test("parse flags true usa ActionPlan para 777 pariu sem mensagem de revisao", async () => {
   const text = "777 pariu";
   const fixture = findGeminiMockFixture({ text });

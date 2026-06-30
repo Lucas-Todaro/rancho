@@ -80,6 +80,24 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "vacina com custo salva evento sanitario e despesa financeira",
+        module: "eventos",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: ["apliquei vacina clostridial na B-001 hoje, dose 5 ml, custo 18 reais", "sim"],
+        expected: {
+          finalIntent: "VACINA_MEDICAMENTO",
+          entities: { animal_codigo: "B-001", produto: "clostridial", evento_tipo: "vacina", custo: 18 },
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          simulatedSaveCount: 2,
+          savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.transacoesFinanceiras],
+          shouldSaveValues: { animal_codigo: "B-001", produto: "clostridial", evento_tipo: "vacina", custo: 18 },
+          shouldNotWriteBusiness: true,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "parto salva uma vez apos confirmacao em dry-run",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,

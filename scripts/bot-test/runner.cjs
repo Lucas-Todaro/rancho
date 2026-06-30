@@ -602,7 +602,7 @@ module.exports = function loadBotTestSection(context) {
       }
 
       if (tipo === "VACINA_MEDICAMENTO" || tipo === "PARTO" || tipo === "MORTE") {
-        return [{
+        const actions = [{
           ...base,
           table: BOT_TEST_TABLES.eventosAnimal,
           payload: {
@@ -611,9 +611,26 @@ module.exports = function loadBotTestSection(context) {
             animal_codigo: dados.animal_codigo,
             produto: dados.produto || null,
             evento_tipo: dados.evento_tipo || tipo,
+            custo: Number(dados.custo || 0),
             origem: "whatsapp"
           }
         }];
+
+        if (tipo === "VACINA_MEDICAMENTO" && Number(dados.custo || 0) > 0) {
+          actions.push({
+            ...base,
+            table: BOT_TEST_TABLES.transacoesFinanceiras,
+            payload: {
+              fazenda_id: fazendaId,
+              tipo: "saida",
+              valor: Number(dados.custo),
+              descricao: dados.produto || dados.evento_tipo || "saude animal",
+              origem: "whatsapp"
+            }
+          });
+        }
+
+        return actions;
       }
 
       if (tipo === "CRIAR_ITEM_ESTOQUE" || tipo === "ESTOQUE_CADASTRO") {

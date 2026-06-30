@@ -79,6 +79,11 @@ function hasClinicalObservationCue(normalized: string) {
   return clinicalObservationCue.test(normalized) || extendedClinicalObservationCue.test(normalized);
 }
 
+function extractMedicineDose(original: string) {
+  const match = original.match(/\bdose\s+(?:de\s+)?([0-9]+(?:[,.][0-9]+)?\s*(?:ml|mL|l|litros?|doses?|mg|g|kg|cc|unidades?)?)\b/i);
+  return match?.[1]?.trim();
+}
+
 function animalObservationEventType(normalized: string) {
   if (hasClinicalObservationCue(normalized)) return "clinico";
   if (hasReproductiveEventCue(normalized) || reproductiveObservationCue.test(normalized)) return "reprodutivo";
@@ -1637,6 +1642,23 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
     return finalize("ATUALIZACAO_ANIMAL", animalObservationBeforeFinanceData, buildMissing("ATUALIZACAO_ANIMAL", animalObservationBeforeFinanceData), 0.88);
   }
 
+  const medicineAnimalCode = extractAnimalCode(normalized, "VACINA_MEDICAMENTO");
+  const hasMedicineProductCue = vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized);
+  const hasMedicineActionCue = /\b(?:apliquei|aplicar|aplicou|recebeu|tomou|dose|vacinei|vacinou|mediquei|medicar|medicou|tratei|tratou|tratamento|registrar|registra)\b/.test(normalized);
+  const hasPureFinanceCue = /\b(?:paguei|gastei|gasto|despesa|custou|custo)\b/.test(normalized);
+  const isMedicine = hasMedicineProductCue && (hasMedicineActionCue || !hasPureFinanceCue);
+  if (isMedicine) {
+    const dados = {
+      animal_codigo: medicineAnimalCode,
+      produto: extractProduct(original, normalized),
+      evento_tipo: vaccineProductCue.test(normalized) ?"vacina" : "tratamento",
+      dose: extractMedicineDose(original),
+      custo: extractMoneyValue(normalized),
+      data_referencia: extractDateReference(normalized)
+    };
+    return finalize("VACINA_MEDICAMENTO", dados, buildMissing("VACINA_MEDICAMENTO", dados));
+  }
+
   const isExpense = /\b(?:gastei|gasto|despesa|paguei|comprei|conprei|custo|saida|saída|pagamento funcionario|pagamento de funcionario|salario|folha|diaria)\b/.test(normalized);
   const isRevenue = /\b(?:vendi|vendii|venda|recebi|recebemos|receita|entrada|entrou|faturou|faturei|ganhei|pagamento recebido|cliente pagou)\b/.test(normalized)
     && !hasClinicalObservationCue(normalized)
@@ -1672,19 +1694,6 @@ export function parseSingleRanchoMessage(text: string): ParsedRanchoMessage {
       ...childData
     };
     return finalize("PARTO", dados, buildMissing("PARTO", dados));
-  }
-
-  const isMedicine = /\b(?:apliquei|aplicar|aplicou|recebeu|tomou|dose)\b/.test(normalized) && (vaccineProductCue.test(normalized) || treatmentProductCue.test(normalized))
-    || vaccineProductCue.test(normalized)
-    || treatmentProductCue.test(normalized);
-  if (isMedicine) {
-    const dados = {
-      animal_codigo: extractAnimalCode(normalized, "VACINA_MEDICAMENTO"),
-      produto: extractProduct(original, normalized),
-      evento_tipo: vaccineProductCue.test(normalized) ?"vacina" : "tratamento",
-      data_referencia: extractDateReference(normalized)
-    };
-    return finalize("VACINA_MEDICAMENTO", dados, buildMissing("VACINA_MEDICAMENTO", dados));
   }
 
   const isDeath = /\b(?:morreu|morta|morto|obito|óbito)\b/.test(normalized);

@@ -161,6 +161,22 @@ function firstValue(data: Record<string, unknown>, keys: string[]) {
   return undefined;
 }
 
+function eqFilterValue(plan: ActionPlan, keys: string[]) {
+  const filters = "filters" in plan && Array.isArray(plan.filters) ? plan.filters : [];
+  const accepted = new Set(keys.map((key) => normalizeRanchoText(key)));
+  for (const filter of filters) {
+    if (!filter || filter.op !== "eq") continue;
+    const field = normalizeRanchoText(filter.field || "");
+    const value = filter.value;
+    if (accepted.has(field) && value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  return undefined;
+}
+
+function firstValueFromDataOrFilters(plan: ActionPlan, data: Record<string, unknown>, keys: string[]) {
+  return firstValue(data, keys) ?? eqFilterValue(plan, keys);
+}
+
 function firstText(data: Record<string, unknown>, keys: string[]) {
   const value = firstValue(data, keys);
   const text = String(value ?? "").trim();
@@ -729,7 +745,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
   if (plan.domain === "animais") {
     if (actionPlanDeathCue(plan.operation, data.status, data.observacoes, data.descricao)) {
       const dados = {
-        animal_codigo: data.animal_ref || data.brinco,
+        animal_codigo: firstValueFromDataOrFilters(plan, data, ["animal_ref", "brinco", "animal_id", "codigo"]),
         data_referencia: date,
         observacoes: data.observacoes || data.descricao || undefined,
         ...metadata
@@ -740,7 +756,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
     if (plan.action === "update") {
       const change = animalUpdateChangeForActionPlan(data, originalText);
       const dados = {
-        animal_codigo: firstValue(data, ["animal_ref", "brinco", "animal_id", "codigo"]),
+        animal_codigo: firstValueFromDataOrFilters(plan, data, ["animal_ref", "brinco", "animal_id", "codigo"]),
         campo_alterado: change.field,
         novo_valor: change.value,
         lote_nome: change.field === "lote_id" ? change.value : undefined,
@@ -779,7 +795,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
 
   if (plan.domain === "genealogia") {
     const dados = {
-      animal_codigo: firstValue(data, ["animal_ref", "filho_ref", "cria_ref", "animal_id", "codigo", "brinco"]),
+      animal_codigo: firstValueFromDataOrFilters(plan, data, ["animal_ref", "filho_ref", "cria_ref", "animal_id", "codigo", "brinco"]),
       mae_nome: firstValue(data, ["mae_ref", "mae_nome", "mae"]),
       pai_nome: firstValue(data, ["pai_ref", "pai_nome", "pai"]),
       remover_mae: data.remover_mae || undefined,
@@ -790,10 +806,13 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
     return finalize("ATUALIZACAO_GENEALOGIA", dados, buildMissing("ATUALIZACAO_GENEALOGIA", dados), plan.confidence);
   }
 
-  if (plan.domain === "observacoes" && data.animal_ref) {
+  const observationAnimalRef = plan.domain === "observacoes"
+    ? firstValueFromDataOrFilters(plan, data, ["animal_ref", "animal_id", "codigo", "brinco"])
+    : undefined;
+  if (plan.domain === "observacoes" && observationAnimalRef) {
     const observation = data.observacao || data.observacoes;
     const dados = {
-      animal_codigo: data.animal_ref,
+      animal_codigo: observationAnimalRef,
       campo_alterado: "observacoes",
       novo_valor: observation,
       descricao: observation,
@@ -808,7 +827,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
   if (plan.domain === "saude_sanitario") {
     if (actionPlanDeathCue(plan.operation, data.evento, data.tipo, data.descricao, data.observacoes)) {
       const dados = {
-        animal_codigo: data.animal_ref,
+        animal_codigo: firstValueFromDataOrFilters(plan, data, ["animal_ref", "animal_id", "codigo", "brinco"]),
         data_referencia: date,
         observacoes: data.observacoes || data.descricao || undefined,
         ...metadata
@@ -824,7 +843,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
       ? `${quantity}${unit ? ` ${unit}` : ""}`
       : undefined);
     const dados = {
-      animal_codigo: data.animal_ref,
+      animal_codigo: firstValueFromDataOrFilters(plan, data, ["animal_ref", "animal_id", "codigo", "brinco"]),
       lote_nome: data.lote_ref || undefined,
       produto: data.item || data.produto || data.medicamento || rawType,
       dose,

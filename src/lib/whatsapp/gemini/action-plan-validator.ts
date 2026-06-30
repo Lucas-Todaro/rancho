@@ -229,6 +229,22 @@ const FIELD_ALIASES_BY_DOMAIN: Record<string, Record<string, string>> = {
   }
 };
 
+const REQUIRED_FIELD_COVERAGE_BY_DOMAIN: Record<string, Record<string, string[]>> = {
+  animais: {
+    animal_ref: ["animal_ref", "brinco"]
+  },
+  genealogia: {
+    animal_ref: ["animal_ref", "filho_ref", "cria_ref"],
+    filho_ref: ["filho_ref", "animal_ref", "cria_ref"]
+  },
+  funcionarios: {
+    funcionario_ref: ["funcionario_ref", "nome"]
+  },
+  estoque: {
+    item: ["item", "item_ref", "nome"]
+  }
+};
+
 function fieldNameForDomain(domainName: string, domain: DomainManifestEntry, value: unknown) {
   const manifestName = manifestFieldName(domain, value);
   if (manifestName) return manifestName;
@@ -459,6 +475,10 @@ function validateNoFreeSql(value: unknown, errors: string[], path = "plan") {
 }
 
 function validateConfidence(plan: AnyRecord, minConfidence: number, errors: string[]) {
+  if (plan.confidence === undefined || plan.confidence === null || plan.confidence === "") {
+    plan.confidence = 0.8;
+  }
+
   if (typeof plan.confidence === "string") {
     const raw = plan.confidence.trim();
     const parsed = Number(raw.replace("%", "").replace(",", "."));
@@ -635,10 +655,10 @@ function validateRequiredFields(
   errors: string[]
 ) {
   for (const required of domain.requiredFieldsByAction[action] || []) {
-    if (domain.domain === "estoque" && ["create", "import_table"].includes(action) && required === "item" && (fields.has("item_ref") || fields.has("nome"))) {
-      continue;
+    const coverage = REQUIRED_FIELD_COVERAGE_BY_DOMAIN[domain.domain]?.[required] || [required];
+    if (!coverage.some((fieldName) => fields.has(fieldName))) {
+      errors.push(`${action}.${required} obrigatorio para ${domain.domain}`);
     }
-    if (!fields.has(required)) errors.push(`${action}.${required} obrigatorio para ${domain.domain}`);
   }
 }
 
@@ -729,12 +749,25 @@ function updateHasTarget(plan: UpdateActionPlan, domain: DomainManifestEntry) {
   return Array.isArray(plan.filters) && plan.filters.length > 0;
 }
 
+function fieldsFromEqFilters(plan: UpdateActionPlan, domain: DomainManifestEntry) {
+  const fields = new Set<string>();
+  if (!Array.isArray(plan.filters)) return fields;
+  for (const filter of plan.filters) {
+    if (!filter || filter.op !== "eq" || !hasValue(filter.value)) continue;
+    if (fieldDefinition(domain, filter.field)) fields.add(filter.field);
+  }
+  return fields;
+}
+
 function validateUpdatePlan(plan: UpdateActionPlan, domain: DomainManifestEntry, errors: string[]) {
   validateConfirmation("update", plan.requiresConfirmation, errors);
   const fields = validateDataObject(domain, plan.data, "update", errors);
   if (plan.filters !== undefined) validateFilters(domain, plan.filters, errors, "filters");
   if (!updateHasTarget(plan, domain)) errors.push("update precisa de filtro ou identificador para evitar update em massa");
-  if (fields.size) validateRequiredFields(domain, "update", fields, errors);
+  if (fields.size) {
+    const targetFields = fieldsFromEqFilters(plan, domain);
+    validateRequiredFields(domain, "update", new Set(Array.from(fields).concat(Array.from(targetFields))), errors);
+  }
 }
 
 function validateImportTableCore(
