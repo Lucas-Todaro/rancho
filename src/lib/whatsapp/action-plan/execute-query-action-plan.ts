@@ -6,6 +6,7 @@ import { validateActionPlan } from "@/lib/whatsapp/gemini/action-plan-validator"
 import { getDomainManifest, type DomainFieldDefinition, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
+import { extractAnimalCode } from "@/lib/whatsapp/nlp-core/extractors";
 import { detectReproductiveEventKind, reproductiveEventLabel } from "@/lib/whatsapp/nlp-core/reproductive-events";
 import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 import { semanticPeriod, semanticReportType } from "@/lib/whatsapp/gemini/action-plan-semantic";
@@ -50,7 +51,7 @@ const SAFE_SELECT_FIELDS: Record<string, string[]> = {
   saude_sanitario: ["id", "animal_id", "tipo", "data_evento", "descricao", "medicamento", "dose", "custo", "created_at"],
   animais: ["id", "brinco", "nome", "categoria", "sexo", "fase", "raca", "lote_id", "data_nascimento", "peso", "status", "observacoes"],
   lotes: ["id", "nome", "descricao", "ativo", "created_at"],
-  funcionarios: ["id", "nome", "funcao", "cpf", "salario_base", "data_admissao", "contato_whatsapp", "ativo", "created_at"],
+  funcionarios: ["id", "nome", "funcao", "cpf", "salario_base", "data_admissao", "contato_whatsapp", "ativo", "deleted_at", "created_at"],
   ponto_funcionario: ["id", "funcionario_id", "tipo", "registrado_em", "observacao", "created_at"],
   observacoes: ["id", "animal_id", "tipo", "data_evento", "descricao", "created_at"],
   genealogia: ["id", "brinco", "nome", "pai_id", "mae_id", "data_nascimento", "observacoes"],
@@ -327,6 +328,45 @@ function normalizeFinanceType(value: unknown) {
   return text;
 }
 
+function compactComparable(value: unknown) {
+  return normalizedText(value).replace(/[^a-z0-9]/g, "");
+}
+
+function referenceMatches(candidates: unknown[], target: unknown) {
+  const normalizedTarget = normalizedText(target);
+  const compactTarget = compactComparable(target);
+  const numericTarget = /\d/.test(normalizedTarget);
+  if (!normalizedTarget) return false;
+  return candidates.some((candidate) => {
+    const normalizedCandidate = normalizedText(candidate);
+    const compactCandidate = compactComparable(candidate);
+    if (!normalizedCandidate) return false;
+    return normalizedCandidate === normalizedTarget
+      || compactCandidate === compactTarget
+      || (!numericTarget && normalizedCandidate.includes(normalizedTarget))
+      || (!numericTarget && compactTarget.length >= 3 && compactCandidate.includes(compactTarget));
+  });
+}
+
+function relationCandidateValues(row: AnyRecord, domain: DomainManifestEntry, fieldName: string, relations: AnyRecord) {
+  if (fieldName === "animal_ref") {
+    if (domain.domain === "genealogia" || domain.domain === "animais") {
+      return [row.brinco, row.nome, row.id].filter(Boolean);
+    }
+    const animal = relations.animalsById?.get(String(row.animal_id || ""));
+    return [animal?.brinco, animal?.nome, animal?.id, row.animal_id].filter(Boolean);
+  }
+  if (fieldName === "funcionario_ref") {
+    if (domain.domain === "funcionarios") return [row.nome, row.id].filter(Boolean);
+    const employee = relations.employeesById?.get(String(row.funcionario_id || ""));
+    return [employee?.nome, employee?.id, row.funcionario_id].filter(Boolean);
+  }
+  if (fieldName === "item_ref") {
+    return [row.item_id, row.item_ref, row.nome].filter(Boolean);
+  }
+  return [];
+}
+
 function rowValue(row: AnyRecord, domain: DomainManifestEntry, fieldName: string, relations: AnyRecord) {
   if (fieldName === "animal_ref") {
     if (domain.domain === "genealogia" || domain.domain === "animais") return [row.brinco, row.nome, row.categoria].filter(Boolean).join(" ");
@@ -339,6 +379,7 @@ function rowValue(row: AnyRecord, domain: DomainManifestEntry, fieldName: string
   }
   const source = sourceField(domain, fieldName);
   if (domain.domain === "financeiro" && fieldName === "tipo") return normalizeFinanceType(row[source]);
+  if (domain.domain === "financeiro" && fieldName === "descricao") return [row.descricao, row.categoria, row.metodo_pagamento].filter(Boolean).join(" ");
   if (domain.domain === "reproducao" && fieldName === "evento") return normalizedText(row[source]);
   return row[source];
 }
@@ -353,6 +394,12 @@ function filterMatches(row: AnyRecord, domain: DomainManifestEntry, filter: Filt
   const target = domain.domain === "financeiro" && filter.field === "tipo"
     ? normalizeFinanceType(filter.value)
     : normalizedText(filter.value);
+
+  const relationCandidates = relationCandidateValues(row, domain, filter.field, relations);
+  if (relationCandidates.length) {
+    if (filter.op === "eq") return referenceMatches(relationCandidates, filter.value);
+    if (filter.op === "contains") return relationCandidates.some((candidate) => normalizedText(candidate).includes(target));
+  }
 
   if (filter.op === "eq") return compareText(value, target);
   if (filter.op === "neq") return !compareText(value, target);
@@ -498,16 +545,29 @@ function hasSpecificAnimalRefFilter(plan: QueryActionPlan) {
   return plan.filters.some((filter) => filter.field === "animal_ref" && !isCollectiveAnimalRef(filter.value));
 }
 
+function specificAnimalRefFromQueryText(text?: string | null) {
+  const normalized = normalizedText(text);
+  if (!normalized) return null;
+  const code = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
+  const codeText = normalizedText(code);
+  if (code && !isCollectiveAnimalRef(code) && !/^(?:dados|lista|listar|relatorio|resumo|consulta|vaca|vacas|vaga|vagas|animal|animais|rebanho|gado)$/.test(codeText)) return code;
+  return null;
+}
+
 function normalizeAnimalQueryPlan(plan: QueryActionPlan, originalText?: string): QueryActionPlan {
   if (plan.domain !== "animais") return plan;
 
   const text = normalizedText([originalText, plan.userQuestion].filter(Boolean).join(" "));
   const collectiveText = /\b(?:dados|lista|listar|relatorio|resumo|rebanho|gado|animais|vacas?|vagas?|bois?|touros?|bezerros?|bezerras?|novilhas?|cadastrados?|cadastradas?)\b/.test(text);
   const cleanedFilters = plan.filters.filter((filter) => !(filter.field === "animal_ref" && isCollectiveAnimalRef(filter.value)));
+  const explicitAnimalRef = !cleanedFilters.some((filter) => filter.field === "animal_ref")
+    ? specificAnimalRefFromQueryText(text)
+    : null;
+  if (explicitAnimalRef) cleanedFilters.push({ field: "animal_ref", op: "eq", value: explicitAnimalRef });
   const existingCategory = cleanedFilters.find((filter) => filter.field === "categoria")?.value;
   const category = existingCategory || animalCategoryFromQueryText(text || plan.filters.map((filter) => filter.value).join(" "));
 
-  if (collectiveText && category && !cleanedFilters.some((filter) => filter.field === "categoria")) {
+  if (!explicitAnimalRef && collectiveText && category && !cleanedFilters.some((filter) => filter.field === "categoria")) {
     cleanedFilters.push({ field: "categoria", op: "eq", value: category });
   }
 
@@ -517,6 +577,48 @@ function normalizeAnimalQueryPlan(plan: QueryActionPlan, originalText?: string):
     limit: Math.max(plan.limit || 0, collectiveText ? 100 : plan.limit || 20),
     userQuestion: plan.userQuestion || originalText || null
   };
+}
+
+function financeSearchTermFromText(text?: string | null) {
+  const normalized = normalizedText(text);
+  if (!normalized) return null;
+  const match = normalized.match(/\b(?:com|de|do|da|sobre)\s+([a-z0-9][a-z0-9\s-]{1,50}?)(?:\s+(?:esse|este|essa|esta|nesse|neste|nessa|nesta|hoje|ontem|mes|semana|ano|ultimos?|ultimas?|dias?|meses?|reais?|real|r\$)|[?.!,]|$)/);
+  const raw = match?.[1]?.trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/\b(?:esse|este|essa|esta|mes|semana|ano|hoje|ontem)\b.*$/g, "").trim();
+  if (!cleaned || /^(?:financeiro|mes|semana|ano|hoje|ontem|periodo|relatorio|resumo)$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function normalizeFinanceQueryPlan(plan: QueryActionPlan, originalText?: string): QueryActionPlan {
+  if (plan.domain !== "financeiro") return plan;
+  const text = originalText || plan.userQuestion || "";
+  if (!isFinanceQueryText(text)) return plan;
+
+  const filters = [...plan.filters];
+  const typeFilter = financeQueryTypeFilter(text);
+  if (typeFilter && !filters.some((filter) => filter.field === "tipo")) filters.unshift(typeFilter);
+  if (!filters.some((filter) => domainDateFilterField(filter))) filters.push(financeQueryDateFilter(text));
+
+  const searchTerm = financeSearchTermFromText(text);
+  const hasSearch = filters.some((filter) => ["descricao", "categoria"].includes(filter.field) && String(filter.value || "").trim());
+  if (searchTerm && !hasSearch) filters.push({ field: "descricao", op: "contains", value: searchTerm });
+
+  const defaultAggregations: AggregationPlan[] = [{ field: "valor", op: "sum", as: "total" }];
+  const aggregations = plan.aggregations?.length ? plan.aggregations : defaultAggregations;
+  const groupBy = plan.groupBy?.length ? plan.groupBy : filters.some((filter) => filter.field === "tipo") ? undefined : ["tipo"];
+  return {
+    ...plan,
+    filters,
+    aggregations,
+    groupBy,
+    limit: Math.max(plan.limit || 0, 100),
+    userQuestion: plan.userQuestion || originalText || null
+  };
+}
+
+function domainDateFilterField(filter: FilterPlan) {
+  return ["data", "data_transacao", "created_at", "registrado_em", "ordenhado_em", "data_evento"].includes(filter.field);
 }
 
 function countByText(rows: AnyRecord[], selector: (row: AnyRecord) => unknown) {
@@ -830,15 +932,140 @@ function periodText(plan: QueryActionPlan) {
   return "";
 }
 
-function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: AnyRecord, plan: QueryActionPlan) {
+function employeeLabel(row?: AnyRecord | null) {
+  if (!row) return "Funcionario";
+  const name = String(row.nome || "").trim();
+  const role = String(row.funcao || "").trim();
+  return [name || String(row.id || "Funcionario"), role].filter(Boolean).join(" - ");
+}
+
+function employeeStatus(row: AnyRecord) {
+  return row.ativo === false || row.deleted_at ? "inativo" : "ativo";
+}
+
+function buildEmployeeResponse(rows: AnyRecord[], plan: QueryActionPlan) {
+  const specificEmployee = plan.filters.some((filter) => filter.field === "funcionario_ref");
+  if (!rows.length) return specificEmployee ? "Nao encontrei esse funcionario." : "Nao encontrei funcionarios cadastrados.";
+
+  if (specificEmployee && rows.length === 1) {
+    const employee = rows[0];
+    return [
+      `Dados de ${employee.nome || "funcionario"}:`,
+      `Funcao: ${employee.funcao || "nao informada"}.`,
+      `Status: ${employeeStatus(employee)}.`,
+      employee.data_admissao ? `Admissao: ${shortDate(employee.data_admissao)}.` : "Admissao: nao informada.",
+      employee.contato_whatsapp ? `WhatsApp: ${employee.contato_whatsapp}.` : "WhatsApp: nao informado."
+    ].join("\n");
+  }
+
+  const active = rows.filter((row) => employeeStatus(row) === "ativo").length;
+  const inactive = rows.length - active;
+  const roles = countByText(rows, (row) => row.funcao || "sem funcao");
+  const sample = rows.slice(0, 12).map((row, index) => `${index + 1}. ${employeeLabel(row)} - ${employeeStatus(row)}`);
+  return [
+    "Dados dos funcionarios:",
+    `Total encontrado: ${rows.length}.`,
+    `Ativos: ${active}.`,
+    inactive ? `Inativos: ${inactive}.` : "",
+    `Funcoes: ${roles || "sem dados"}.`,
+    "",
+    "Lista:",
+    ...sample,
+    rows.length > sample.length ? `...e mais ${rows.length - sample.length} funcionario(s).` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function pointTime(value: unknown) {
+  const text = String(value || "");
+  const match = text.match(/[T\s](\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : shortDate(value);
+}
+
+function buildPointResponse(rows: AnyRecord[], plan: QueryActionPlan, relations: AnyRecord) {
+  const period = periodText(plan) || "de hoje";
+  const specificEmployee = plan.filters.some((filter) => filter.field === "funcionario_ref");
+  if (!rows.length) return specificEmployee ? `Nao encontrei ponto registrado ${period} para esse funcionario.` : `Nao encontrei ponto registrado ${period}.`;
+
+  const entries = rows.filter((row) => normalizedText(row.tipo) === "entrada").length;
+  const exits = rows.filter((row) => normalizedText(row.tipo) === "saida").length;
+  const grouped = new Map<string, AnyRecord[]>();
+  for (const row of rows) {
+    const key = String(row.funcionario_id || "sem_funcionario");
+    grouped.set(key, [...(grouped.get(key) || []), row]);
+  }
+
+  const employeeLines = Array.from(grouped.entries()).slice(0, 12).map(([employeeId, employeeRows], index) => {
+    const employee = relations.employeesById?.get(employeeId);
+    const label = employee?.nome || employeeId || "Funcionario";
+    const parts = employeeRows
+      .slice()
+      .sort((left, right) => String(left.registrado_em || "").localeCompare(String(right.registrado_em || "")))
+      .map((row) => `${row.tipo || "registro"} ${pointTime(row.registrado_em)}`)
+      .join(", ");
+    return `${index + 1}. ${label}: ${parts}`;
+  });
+
+  return [
+    `Ponto ${period}:`,
+    `Registros: ${rows.length}.`,
+    `Entradas: ${entries}.`,
+    `Saidas: ${exits}.`,
+    "",
+    specificEmployee ? "Registros:" : "Funcionarios com ponto:",
+    ...employeeLines,
+    grouped.size > employeeLines.length ? `...e mais ${grouped.size - employeeLines.length} funcionario(s).` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function querySample(domain: DomainManifestEntry, rows: AnyRecord[], relations: AnyRecord) {
+  if (domain.domain === "animais") {
+    return rows.slice(0, 12).map((row) => ({
+      brinco: row.brinco || null,
+      nome: row.nome || null,
+      categoria: row.categoria || null,
+      status: row.status || null,
+      fase: row.fase || null
+    }));
+  }
+  if (domain.domain === "financeiro") {
+    return rows.slice(0, 12).map((row) => ({
+      data: row.data_transacao || row.created_at || null,
+      tipo: normalizeFinanceType(row.tipo),
+      valor: Number(row.valor || 0),
+      descricao: row.descricao || null,
+      categoria: row.categoria || null
+    }));
+  }
+  if (domain.domain === "funcionarios") {
+    return rows.slice(0, 12).map((row) => ({
+      nome: row.nome || null,
+      funcao: row.funcao || null,
+      ativo: row.ativo !== false
+    }));
+  }
+  if (domain.domain === "ponto_funcionario") {
+    return rows.slice(0, 12).map((row) => {
+      const employee = relations.employeesById?.get(String(row.funcionario_id || ""));
+      return {
+        funcionario: employee?.nome || row.funcionario_id || null,
+        tipo: row.tipo || null,
+        registrado_em: row.registrado_em || null
+      };
+    });
+  }
+  return rows.slice(0, 12);
+}
+
+function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: AnyRecord, plan: QueryActionPlan, relations: AnyRecord) {
   if (domain.domain === "financeiro") {
     const entradas = rows.filter((row) => normalizeFinanceType(row.tipo) === "entrada").reduce((sum, row) => sum + Number(row.valor || 0), 0);
     const saidas = rows.filter((row) => normalizeFinanceType(row.tipo) === "saida").reduce((sum, row) => sum + Number(row.valor || 0), 0);
     const total = Number(Object.values(metrics.totals || {})[0] || entradas + saidas);
     const period = periodText(plan);
+    const search = plan.filters.find((filter) => ["descricao", "categoria"].includes(filter.field) && String(filter.value || "").trim())?.value;
     const aggregateText = plan.aggregations?.length && total !== entradas + saidas ? `Total filtrado: ${money(total)}.` : "";
-    const title = plan.filters.some((filter) => filter.op === "contains")
-      ? "Resumo financeiro"
+    const title = search
+      ? `Resumo financeiro de ${search}${period ? ` ${period}` : ""}`
       : period ? `Relatório financeiro ${period}` : "Resumo financeiro";
     return [
       `${title}:`,
@@ -882,6 +1109,14 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
     ].join("\n");
   }
 
+  if (domain.domain === "funcionarios") {
+    return buildEmployeeResponse(rows, plan);
+  }
+
+  if (domain.domain === "ponto_funcionario") {
+    return buildPointResponse(rows, plan, relations);
+  }
+
   return [
     `Consulta de ${domain.label.toLowerCase()}:`,
     `Registros encontrados: ${rows.length}.`
@@ -892,7 +1127,7 @@ async function loadRelationContext(supabase: ActionPlanSupabaseLike | null | und
   const relations: AnyRecord = {};
   if (!supabase || !owner.fazenda_id) return relations;
 
-  if (plan.filters.some((filter) => filter.field === "animal_ref")) {
+  if (plan.domain === "animais" || plan.domain === "genealogia" || ["reproducao", "saude_sanitario", "producao_leite"].includes(plan.domain) || plan.filters.some((filter) => filter.field === "animal_ref")) {
     const { data } = await supabase
       .from(TABLES.animais)
       .select("id,brinco,nome,categoria")
@@ -901,10 +1136,10 @@ async function loadRelationContext(supabase: ActionPlanSupabaseLike | null | und
     relations.animalsById = new Map(((data || []) as AnyRecord[]).map((animal) => [String(animal.id), animal]));
   }
 
-  if (plan.filters.some((filter) => filter.field === "funcionario_ref")) {
+  if (plan.domain === "funcionarios" || plan.domain === "ponto_funcionario" || plan.filters.some((filter) => filter.field === "funcionario_ref")) {
     const { data } = await supabase
       .from(TABLES.funcionarios)
-      .select("id,nome,funcao")
+      .select("id,nome,funcao,ativo")
       .eq("fazenda_id", owner.fazenda_id)
       .limit(1000);
     relations.employeesById = new Map(((data || []) as AnyRecord[]).map((employee) => [String(employee.id), employee]));
@@ -934,6 +1169,9 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
   let plan = validation.value as QueryActionPlan;
   if (plan.domain === "animais") {
     plan = normalizeAnimalQueryPlan(plan, input.originalText);
+  }
+  if (plan.domain === "financeiro") {
+    plan = normalizeFinanceQueryPlan(plan, input.originalText);
   }
   if (shouldUseGeneralEventReport(plan, input.originalText)) {
     return executeGeneralEventReportQuery(input, plan);
@@ -1010,14 +1248,15 @@ export async function executeQueryActionPlan(input: ExecuteQueryActionPlanInput)
     .filter((row) => plan.filters.every((filter) => filterMatches(row, domain, filter, relationContext, baseDate)))
     .slice(0, limit);
   const metrics = buildAggregations(rows, plan, domain, relationContext);
-  const response = buildResponse(domain, rows, metrics, plan);
+  const response = buildResponse(domain, rows, metrics, plan, relationContext);
   const parsed = finalizeActionPlanParsed(QUERY_INTENT_BY_DOMAIN[domain.domain] || "DESCONHECIDO", {
     consulta: true,
     action_plan_response: response,
     resultado: {
       registros: rows.length,
       metrics,
-      filters: plan.filters
+      filters: plan.filters,
+      amostra: querySample(domain, rows, relationContext)
     }
   }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
 

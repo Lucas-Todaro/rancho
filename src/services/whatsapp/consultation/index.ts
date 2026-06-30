@@ -47,6 +47,11 @@ export async function handleConsultation(
   if (parsed.tipo === "AJUDA") return helpText();
 
   if (parsed.dados?.action_plan_response) {
+    if (["CONSULTA_FUNCIONARIO", "CONSULTA_PONTO"].includes(parsed.tipo) && !isBotAdmin(owner)) {
+      return parsed.tipo === "CONSULTA_PONTO"
+        ? "VocÃª nÃ£o tem permissÃ£o para consultar ponto pelo WhatsApp."
+        : "VocÃª nÃ£o tem permissÃ£o para consultar dados de funcionÃ¡rios pelo WhatsApp.";
+    }
     parsed.dados.consulta_executada = parsed.dados.consulta_executada || "action_plan";
     await saveSession(supabase, owner, { etapa: "livre", dados: {} });
     return String(parsed.dados.action_plan_response);

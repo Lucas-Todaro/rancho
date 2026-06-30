@@ -63,6 +63,25 @@ function includesComparable(text: string, expected: string) {
   return normalizeComparable(text).includes(normalizeComparable(expected));
 }
 
+function compactValueForPrompt(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= 3) return undefined;
+  if (Array.isArray(value)) {
+    return value.slice(0, 12).map((item) => compactValueForPrompt(item, depth + 1)).filter((item) => item !== undefined);
+  }
+  if (typeof value === "object") {
+    const output: AnyRecord = {};
+    for (const [key, item] of Object.entries(value as AnyRecord).slice(0, 24)) {
+      if (/token|secret|senha|password|service_role|api_key/i.test(key)) continue;
+      const compacted = compactValueForPrompt(item, depth + 1);
+      if (compacted !== undefined && compacted !== "") output[key] = compacted;
+    }
+    return Object.keys(output).length ? output : undefined;
+  }
+  return undefined;
+}
+
 function compactDataForPrompt(parsed?: ParsedRanchoMessage | null) {
   if (!parsed?.dados) return null;
   const dados = parsed.dados as AnyRecord;
@@ -81,12 +100,15 @@ function compactDataForPrompt(parsed?: ParsedRanchoMessage | null) {
     "resumo_partos",
     "resumo_validacao",
     "action_plan_domain",
-    "action_plan_capability"
+    "action_plan_capability",
+    "consulta_executada"
   ];
   const compact: AnyRecord = {};
   for (const key of keys) {
     if (dados[key] !== undefined && dados[key] !== null && dados[key] !== "") compact[key] = dados[key];
   }
+  const result = compactValueForPrompt(dados.resultado);
+  if (result) compact.resultado = result;
   return Object.keys(compact).length ? compact : null;
 }
 
@@ -124,6 +146,7 @@ function buildResponseComposerPrompt(input: ComposeBotResponseInput) {
     "",
     "Regras rigidas:",
     "- Use somente os fatos presentes em originalResponse e extractedData.",
+    "- Em consultas, extractedData.resultado contem os dados reais consultados. Voce pode reorganizar e explicar esses fatos, mas nao acrescentar nada fora deles.",
     "- Nao invente dados, valores, codigos, animais, datas, permissoes ou salvamentos.",
     "- Nao altere a acao definida pelo backend.",
     "- Nao diga que salvou, registrou, cadastrou ou importou se originalResponse estiver pedindo confirmacao ou dizendo que nada foi salvo.",

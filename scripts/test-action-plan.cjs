@@ -1540,6 +1540,123 @@ test("executor query animais trata dados das vagas como resumo coletivo de vacas
   assertCleanVisibleText(result.response, "resposta query animais coletiva");
 });
 
+test("executor query animais repara consulta especifica quando IA esquece animal_ref", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "animais",
+      confidence: 0.9,
+      filters: [{ field: "categoria", op: "eq", value: "vaca" }],
+      requiresConfirmation: false,
+      limit: 100,
+      userQuestion: "dados da vaca B-001"
+    },
+    owner: ADMIN_OWNER,
+    originalText: "dados da vaca B-001",
+    supabase: createActionPlanSupabase({
+      [TABLES.animais]: [
+        { id: "animal-1", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "B-001", nome: "Mimosa", categoria: "vaca", sexo: "femea", status: "ativo", fase: "lactacao", peso: 540 },
+        { id: "animal-2", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "B-002", nome: "Lua", categoria: "vaca", sexo: "femea", status: "ativo", fase: "gestante" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query animal especifico deveria executar: ${result.reason}`);
+  assert(result.rows.length === 1, `esperado apenas B-001, recebido ${result.rows.length}`);
+  assert(result.response.includes("Ficha de Mimosa"), "resposta deveria virar ficha individual");
+  assert(result.response.includes("B-001"), "resposta deveria citar o brinco");
+  assert(!result.response.includes("Dados das vacas"), "consulta especifica nao deveria virar resumo coletivo");
+});
+
+test("executor query financeiro preserva termo de gasto mesmo se IA omite filtro", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "financeiro",
+      confidence: 0.9,
+      filters: [{ field: "data", op: "current_month" }],
+      aggregations: [{ field: "valor", op: "sum", as: "total" }],
+      requiresConfirmation: false,
+      limit: 100,
+      userQuestion: "quanto gastei com racao esse mes?"
+    },
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-18",
+    originalText: "quanto gastei com racao esse mes?",
+    supabase: createActionPlanSupabase({
+      [TABLES.transacoesFinanceiras]: [
+        { id: "racao", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 960, descricao: "compra mensal", categoria: "racao", data_transacao: "2026-06-08" },
+        { id: "sal", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 120, descricao: "sal mineral", categoria: "insumo", data_transacao: "2026-06-09" },
+        { id: "leite", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "entrada", valor: 500, descricao: "venda leite", categoria: "leite", data_transacao: "2026-06-10" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query financeiro com termo deveria executar: ${result.reason}`);
+  assert(result.rows.length === 1, `esperado somente gasto com racao, recebido ${result.rows.length}`);
+  assert(Number(result.parsed.dados?.resultado?.metrics?.totals?.total || 0) === 960, "total deveria somar apenas racao");
+  assert(result.response.toLowerCase().includes("racao"), "resposta deveria citar o termo racao");
+});
+
+test("executor query funcionarios retorna lista factual em vez de resposta generica", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "funcionarios",
+      confidence: 0.94,
+      filters: [],
+      requiresConfirmation: false,
+      limit: 100,
+      userQuestion: "dados dos funcionarios"
+    },
+    owner: ADMIN_OWNER,
+    originalText: "dados dos funcionarios",
+    supabase: createActionPlanSupabase({
+      [TABLES.funcionarios]: [
+        { id: "func-1", fazenda_id: ADMIN_OWNER.fazenda_id, nome: "Joao", funcao: "Vaqueiro", ativo: true, data_admissao: "2026-06-01" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query funcionarios deveria executar: ${result.reason}`);
+  assert(result.response.includes("Joao"), "resposta deveria listar funcionario");
+  assert(result.response.includes("Vaqueiro"), "resposta deveria listar funcao");
+  assert(!result.response.includes("Consulta de Funcionarios"), "resposta nao deveria ser generica");
+});
+
+test("executor query ponto lista quem bateu ponto hoje", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "ponto_funcionario",
+      confidence: 0.94,
+      filters: [{ field: "data", op: "last_days", value: 1 }],
+      requiresConfirmation: false,
+      limit: 100,
+      userQuestion: "quem bateu ponto hoje"
+    },
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-18",
+    originalText: "quem bateu ponto hoje",
+    supabase: createActionPlanSupabase({
+      [TABLES.funcionarios]: [
+        { id: "func-1", fazenda_id: ADMIN_OWNER.fazenda_id, nome: "Joao", funcao: "Vaqueiro", ativo: true },
+        { id: "func-2", fazenda_id: ADMIN_OWNER.fazenda_id, nome: "Maria", funcao: "Ordenha", ativo: true }
+      ],
+      [TABLES.registrosPonto]: [
+        { id: "ponto-1", fazenda_id: ADMIN_OWNER.fazenda_id, funcionario_id: "func-1", tipo: "entrada", registrado_em: "2026-06-18T07:00:00" },
+        { id: "ponto-2", fazenda_id: ADMIN_OWNER.fazenda_id, funcionario_id: "func-2", tipo: "entrada", registrado_em: "2026-06-18T07:15:00" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query ponto deveria executar: ${result.reason}`);
+  assert(result.rows.length === 2, `esperado 2 registros de ponto, recebido ${result.rows.length}`);
+  assert(result.response.includes("Joao"), "resposta deveria citar Joao");
+  assert(result.response.includes("Maria"), "resposta deveria citar Maria");
+  assert(!result.response.includes("Consulta de ponto"), "resposta nao deveria ser generica");
+});
+
 test("executor import_table producao gera preview sem salvar", async () => {
   const fixture = fixtureByName("import-table-producao");
   const result = await executeImportTableActionPlan({

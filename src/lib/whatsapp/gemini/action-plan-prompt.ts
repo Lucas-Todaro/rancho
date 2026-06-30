@@ -7,7 +7,7 @@ import {
 import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
 import { ACTION_PLAN_DESIGN_MEMORY } from "@/lib/whatsapp/gemini/action-plan-memory";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v6";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v7";
 
 const EXAMPLES = [
   {
@@ -35,6 +35,14 @@ const EXAMPLES = [
       action: "query", domain: "animais", confidence: 0.94,
       filters: [{ field: "categoria", op: "eq", value: "vaca" }],
       limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "dados da vaca B-001",
+    plan: {
+      action: "query", domain: "animais", confidence: 0.94,
+      filters: [{ field: "animal_ref", op: "eq", value: "B-001" }],
+      limit: 20, requiresConfirmation: false
     }
   },
   {
@@ -109,6 +117,22 @@ const EXAMPLES = [
         { field: "data", op: "last_days", value: 90 }
       ],
       aggregations: [{ field: "valor", op: "sum", as: "total_gasto" }],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "dados dos funcionarios",
+    plan: {
+      action: "query", domain: "funcionarios", confidence: 0.94,
+      filters: [],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "quem bateu ponto hoje",
+    plan: {
+      action: "query", domain: "ponto_funcionario", confidence: 0.94,
+      filters: [{ field: "data", op: "last_days", value: 1 }],
       limit: 100, requiresConfirmation: false
     }
   },
@@ -316,8 +340,11 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",
     "Pedido destrutivo, SQL, delete ou update em massa deve usar block com safety.risk=high.",
     "Lancamento financeiro puro sem item fisico usa create domain=financeiro. Entrada, entrou, recebi, receita e ganhei viram tipo=entrada/receita. Saida, saiu, paguei, gastei e despesa viram tipo=saida/despesa.",
+    "Consultas financeiras com termo, como 'quanto gastei com racao esse mes', devem preservar tipo=despesa quando houver gasto/paguei e filtro descricao/categoria contains com o termo mencionado.",
     "Compra ou venda de item fisico com quantidade, unidade, item e valor deve usar domain=estoque, gera_financeiro=true. Compra vira entrada de estoque + despesa; venda vira saida de estoque + receita. Nao use somente financeiro nesses casos.",
     "Consultas coletivas como dados do rebanho, dados das vacas, dados das vagas, lista das vacas, vacas cadastradas ou meus animais usam action=query domain=animais. Nao use animal_ref para plural/coletivo; use categoria quando houver vaca, boi, bezerro, novilha ou touro.",
+    "Consultas de um animal especifico com brinco/codigo/nome claro, como dados da vaca B-001, ficha da Mimosa ou historico do animal 120, usam action=query domain=animais com filtro animal_ref. Nao transforme isso em consulta coletiva.",
+    "Consultas de funcionarios, equipe, dados dos funcionarios, salarios ou cargos usam action=query domain=funcionarios. Consultas de ponto, presenca, quem bateu ponto, entradas ou saidas de funcionario usam action=query domain=ponto_funcionario.",
     "Cadastro de animal: nao use a mesma palavra solta como nome e brinco/codigo. Se a mensagem disser apenas 'criar vaca Felipe', trate Felipe como nome e deixe brinco/codigo faltando. So preencha brinco/codigo quando houver marcador explicito (brinco, codigo, numero) ou formato claro de codigo com numero/hifen.",
     "Consultas genericas como quais eventos teve hoje, eventos de hoje, registros de hoje, o que aconteceu hoje, movimentacoes de hoje, resumo do dia ou fechamento de hoje usam action=query domain=observacoes, operation=eventos_gerais, requiresConfirmation=false.",
     "Nao classifique consulta generica de eventos como saude_sanitario ou reproducao. Use saude_sanitario apenas quando houver vacina, tratamento, medicamento, vermifugo, antibiotico, doenca, morte, saude ou sanitario; use reproducao apenas quando houver parto, prenhez, inseminacao, protocolo, reteste ou cio.",
