@@ -2,6 +2,7 @@ import type { AnyRecord } from "@/lib/types";
 import { geminiActionPlanEnabled } from "@/lib/whatsapp/gemini/config";
 import { validateActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
 import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
+import { RANCHO_DOMAIN_MANIFEST } from "@/lib/whatsapp/gemini/domain-manifest";
 import { GEMINI_CONSULT_INTENTS, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { allowedFieldsForGeminiIntent, schemaForGeminiIntent } from "@/lib/whatsapp/gemini/schemas";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
@@ -49,6 +50,23 @@ const PHYSICAL_UNITS = new Set(["kg", "g", "l", "litro", "litros", "saco", "saco
 const FINANCIAL_FIELDS = new Set(["valor", "valor_total", "preco", "preco_total", "salario_base"]);
 const DATE_FIELDS = new Set(["data", "nascimento", "horario"]);
 const GEMINI_BLOCKED_INTENTS = new Set(["ACAO_DESTRUTIVA_EM_MASSA"]);
+
+const TABLE_IMPORT_MANIFEST_DOMAIN: Record<GeminiTableDomain, string> = {
+  ANIMAIS: "animais",
+  LOTES: "lotes",
+  GENEALOGIA: "genealogia",
+  PRODUCAO: "producao_leite",
+  FINANCEIRO: "financeiro",
+  ESTOQUE: "estoque",
+  FUNCIONARIOS: "funcionarios",
+  PONTO_FUNCIONARIO: "ponto_funcionario",
+  SAUDE_SANITARIO: "saude_sanitario",
+  OBSERVACOES: "observacoes",
+  AGENDA_TAREFAS: "agenda_tarefas",
+  EVENTOS: "reproducao"
+};
+
+type ManifestDomainName = keyof typeof RANCHO_DOMAIN_MANIFEST;
 
 function isPlainObject(value: unknown): value is AnyRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -231,6 +249,14 @@ function normalizeTableFieldName(value: unknown) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+function allowedFieldsForTableImport(domain: GeminiTableDomain) {
+  const allowed = new Set(allowedFieldsForGeminiTableDomain(domain));
+  const manifestDomain = TABLE_IMPORT_MANIFEST_DOMAIN[domain];
+  const manifestFields = manifestDomain ? RANCHO_DOMAIN_MANIFEST[manifestDomain as ManifestDomainName]?.fields : null;
+  Object.keys(manifestFields || {}).forEach((field) => allowed.add(field));
+  return allowed;
+}
+
 function sanitizeTableRow(row: AnyRecord, allowedFields: Set<string>) {
   const output: AnyRecord = {};
   for (const [key, value] of Object.entries(row).slice(0, MAX_TABLE_COLUMNS)) {
@@ -260,7 +286,7 @@ function normalizeGeminiTableImport(
     return null;
   }
 
-  const allowedFields = allowedFieldsForGeminiTableDomain(domain);
+  const allowedFields = allowedFieldsForTableImport(domain);
   const unknownColumns = new Set(normalizeWarnings(raw.unknown_columns));
   const columnMapping: Record<string, string> = {};
   const rawMapping = isPlainObject(raw.column_mapping) ? raw.column_mapping : {};
@@ -455,8 +481,9 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
     }
   }
 
+  const tableImport = normalizeGeminiTableImport(result.table_import, errors, warnings);
   const topIntent = normalizeGeminiIntent(String(result.intent || ""));
-  if (actionPlanRequired && topIntent) {
+  if (actionPlanRequired && topIntent && !tableImport) {
     const legacyWarnings = Array.from(new Set([
       ...normalizeWarnings(result.warnings),
       "legacy_intent_returned_while_action_plan_enabled"
@@ -484,7 +511,6 @@ export function validateInterpretedAction(result: unknown, context: GeminiValida
   if (!topIntent) errors.push("intent inexistente ou nao permitido");
 
   const fields = normalizedFields(result.fields, errors, "fields");
-  const tableImport = normalizeGeminiTableImport(result.table_import, errors, warnings);
   const rawActions = Array.isArray(result.actions) ? result.actions : [];
   if (rawActions.length > MAX_ACTIONS) errors.push("actions excede limite");
 

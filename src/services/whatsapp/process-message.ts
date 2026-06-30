@@ -1799,7 +1799,9 @@ async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOw
   for (const row of domainImportReadyRows(parsed)) {
     const values = domainRowValues(row);
     const name = domainText(values.nome);
-    const phone = normalizeWhatsappNumber(values.telefone);
+    const phone = normalizeWhatsappNumber(values.telefone || values.contato_whatsapp || values.whatsapp);
+    const role = domainText(values.cargo || values.funcao || "Funcionario");
+    const salary = Number(values.salario ?? values.salario_base ?? 0);
     if (!name) {
       stats.failed.push({ line: domainLine(row), reason: "nome ausente" });
       continue;
@@ -1818,9 +1820,9 @@ async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOw
     const employee = await insertRealRecord(supabase, owner, TABLES.funcionarios, {
       fazenda_id: owner.fazenda_id,
       nome: name,
-      funcao: domainText(values.cargo || "Funcionario"),
+      funcao: role || "Funcionario",
       contato_whatsapp: phone,
-      salario_base: Number(values.salario || 0),
+      salario_base: Number.isFinite(salary) ? salary : 0,
       data_admissao: domainDateOnly(values.data_admissao),
       carga_horaria_mensal: 220,
       valor_hora_extra: 0,

@@ -943,6 +943,27 @@ function employeeStatus(row: AnyRecord) {
   return row.ativo === false || row.deleted_at ? "inativo" : "ativo";
 }
 
+function employeeSalary(row: AnyRecord) {
+  const salary = Number(row.salario_base);
+  return Number.isFinite(salary) && salary > 0 ? money(salary) : "nao informado";
+}
+
+function employeeContact(row: AnyRecord) {
+  const contact = String(row.contato_whatsapp || "").trim();
+  return contact || "nao informado";
+}
+
+function employeeDetailLine(row: AnyRecord, index: number) {
+  const parts = [
+    `${index + 1}. ${employeeLabel(row)}`,
+    employeeStatus(row),
+    `admissao ${row.data_admissao ? shortDate(row.data_admissao) : "nao informada"}`,
+    `salario ${employeeSalary(row)}`,
+    `WhatsApp ${employeeContact(row)}`
+  ];
+  return parts.join(" - ");
+}
+
 function buildEmployeeResponse(rows: AnyRecord[], plan: QueryActionPlan) {
   const specificEmployee = plan.filters.some((filter) => filter.field === "funcionario_ref");
   if (!rows.length) return specificEmployee ? "Nao encontrei esse funcionario." : "Nao encontrei funcionarios cadastrados.";
@@ -954,14 +975,15 @@ function buildEmployeeResponse(rows: AnyRecord[], plan: QueryActionPlan) {
       `Funcao: ${employee.funcao || "nao informada"}.`,
       `Status: ${employeeStatus(employee)}.`,
       employee.data_admissao ? `Admissao: ${shortDate(employee.data_admissao)}.` : "Admissao: nao informada.",
-      employee.contato_whatsapp ? `WhatsApp: ${employee.contato_whatsapp}.` : "WhatsApp: nao informado."
+      `Salario: ${employeeSalary(employee)}.`,
+      `WhatsApp: ${employeeContact(employee)}.`
     ].join("\n");
   }
 
   const active = rows.filter((row) => employeeStatus(row) === "ativo").length;
   const inactive = rows.length - active;
   const roles = countByText(rows, (row) => row.funcao || "sem funcao");
-  const sample = rows.slice(0, 12).map((row, index) => `${index + 1}. ${employeeLabel(row)} - ${employeeStatus(row)}`);
+  const sample = rows.slice(0, 12).map((row, index) => employeeDetailLine(row, index));
   return [
     "Dados dos funcionarios:",
     `Total encontrado: ${rows.length}.`,
@@ -1040,6 +1062,9 @@ function querySample(domain: DomainManifestEntry, rows: AnyRecord[], relations: 
     return rows.slice(0, 12).map((row) => ({
       nome: row.nome || null,
       funcao: row.funcao || null,
+      data_admissao: row.data_admissao || null,
+      salario_base: row.salario_base ?? null,
+      contato_whatsapp: row.contato_whatsapp || null,
       ativo: row.ativo !== false
     }));
   }

@@ -3,7 +3,7 @@ import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { configuredAIModel, configuredAIProviderName, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
 import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/action-plan/execute-action-plan";
 import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
-import type { ActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
+import type { ActionPlan, ImportTableActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ActionPlanSupabaseLike } from "@/lib/whatsapp/action-plan/execute-query-action-plan";
 import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
@@ -14,8 +14,8 @@ import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
 import { normalizeRanchoText } from "@/lib/whatsapp/nlp";
 import { calfCategoryForSex, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
-import { detectStructuredInput, parseTabularAnimalEventsMessageAs } from "@/lib/whatsapp/nlp-core/tabular-events";
-import { domainFromGeminiTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
+import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { domainFromGeminiTableDomain, type KnownTabularTableDomain } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
 import { detectDestructiveBulkAction, destructiveBulkActionParsed } from "@/lib/whatsapp/nlp-core/safety-guards";
 import { parseWithGeminiFallback, type GeminiFallbackParseResult } from "@/services/whatsapp/gemini-fallback";
 import type { WhatsAppOwner } from "@/services/whatsapp/identity";
@@ -65,6 +65,21 @@ const BOT_IMPORT_TABLE_VALIDATION_MESSAGE =
   "Não consegui validar essa lista para importação. Revise o formato ou tente com cabeçalho.";
 const BOT_CONFIGURATION_MESSAGE =
   "O interpretador do Rancho precisa de configuração. Fale com o administrador.";
+
+const TABLE_DOMAIN_TO_ACTION_PLAN_DOMAIN: Record<KnownTabularTableDomain, string> = {
+  REBANHO_ANIMAIS: "animais",
+  LOTES: "lotes",
+  GENEALOGIA: "genealogia",
+  REPRODUCAO: "reproducao",
+  PRODUCAO_LEITE: "producao_leite",
+  ESTOQUE: "estoque",
+  FINANCEIRO: "financeiro",
+  FUNCIONARIOS: "funcionarios",
+  PONTO_FUNCIONARIO: "ponto_funcionario",
+  SAUDE_SANITARIO: "saude_sanitario",
+  OBSERVACOES: "observacoes",
+  AGENDA_TAREFAS: "agenda_tarefas"
+};
 
 function hasValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
@@ -1141,6 +1156,9 @@ async function convertActionPlanInterpretation(
   const error = interpretation.action_plan_error || null;
 
   if (!plan && !error) {
+    if (interpretation.table_import && structuredDetection.isStructured) {
+      return null;
+    }
     if (interpretation.legacy_intent_returned) {
       recordActionPlanRuntime("legacyFallback");
       logActionPlan("legacy_intent_returned_while_action_plan_enabled", {
@@ -1389,12 +1407,57 @@ function geminiTableNeedsManualChoice(
   };
 }
 
-function convertGeminiTableImport(
+function actionPlanDomainFromGeminiTableImport(table: NonNullable<GeminiStructuredResult["table_import"]>) {
+  const internalDomain = domainFromGeminiTableDomain(table.domain);
+  return internalDomain ? TABLE_DOMAIN_TO_ACTION_PLAN_DOMAIN[internalDomain] : null;
+}
+
+function actionPlanFromGeminiTableImport(
+  table: NonNullable<GeminiStructuredResult["table_import"]>
+): ImportTableActionPlan | null {
+  const domain = actionPlanDomainFromGeminiTableImport(table);
+  if (!domain) return null;
+
+  const columnMapping = Object.fromEntries(
+    Object.entries(table.column_mapping || {})
+      .map(([originalColumn, canonicalField]) => [canonicalField, originalColumn])
+      .filter(([canonicalField, originalColumn]) => String(canonicalField || "").trim() && String(originalColumn || "").trim())
+  ) as Record<string, string>;
+
+  const dataRows = Array.isArray(table.normalized_rows) && table.normalized_rows.length
+    ? table.normalized_rows
+    : undefined;
+
+  return {
+    action: "import_table",
+    domain,
+    confidence: table.confidence || 0.8,
+    table: {
+      hasHeader: true,
+      columnMapping,
+      ignoredColumns: table.unknown_columns || [],
+      ambiguousColumns: table.errors || []
+    },
+    data: dataRows ? { rows: dataRows } : undefined,
+    requiresConfirmation: true,
+    semantic: {
+      intent: "importar_tabela",
+      scope: domain,
+      operation: "import_table",
+      attributes: {
+        source: "gemini_table_import",
+        originalDomain: table.domain
+      }
+    }
+  };
+}
+
+async function convertGeminiTableImport(
   input: ParseWithInterpreterInput,
   interpretation: GeminiStructuredResult,
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
-): GeminiFallbackParseResult | null {
+): Promise<GeminiFallbackParseResult | null> {
   const table = interpretation.table_import;
   if (!structuredDetection.isStructured || !table) return null;
 
@@ -1402,23 +1465,67 @@ function convertGeminiTableImport(
     return geminiTableNeedsManualChoice(input, interpretation, route, structuredDetection);
   }
 
-  const domain = domainFromGeminiTableDomain(table.domain);
-  if (!domain) return localFallbackResult(input, "gemini_table_domain_invalid", route, structuredDetection);
+  const plan = actionPlanFromGeminiTableImport(table);
+  if (!plan) return localFallbackResult(input, "gemini_table_domain_invalid", route, structuredDetection);
 
-  const parsedTable = parseTabularAnimalEventsMessageAs(input.text, domain);
-  if (!parsedTable) return localFallbackResult(input, "gemini_table_local_reprocess_failed", route, structuredDetection);
+  const result = await executeActionPlan({
+    plan,
+    text: input.text,
+    owner: {
+      fazenda_id: input.owner.fazenda_id,
+      usuario_id: input.owner.usuario_id
+    },
+    supabase: input.supabase || null,
+    currentDate: getRanchTodayISO()
+  });
+
+  if (!result.ok) {
+    recordActionPlanRuntime(result.status === "blocked" ? "blocked" : "invalid");
+    logActionPlan(result.logEvent, {
+      reason: result.reason,
+      action: plan.action,
+      domain: plan.domain,
+      route,
+      source: "gemini_table_import"
+    });
+    return {
+      kind: "clarify",
+      threshold: 0.7,
+      reason: result.reason,
+      message: result.message,
+      debug: {
+        ...actionPlanDebug(plan, structuredDetection, result.reason),
+        error_classification: result.status === "blocked" ? "safety" : "import_table",
+        action_plan_validation_error: result.reason,
+        import_table_validation_error: result.reason,
+        domain: plan.domain,
+        action: plan.action,
+        route
+      }
+    };
+  }
+
+  recordActionPlanRuntime("tableActionPlanUsed");
+  logActionPlan("table_action_plan_used", {
+    action: plan.action,
+    domain: plan.domain,
+    route,
+    finalIntent: result.parsed.tipo,
+    source: "gemini_table_import"
+  });
 
   return {
     kind: "parsed",
     threshold: 0.7,
     parsed: {
-      ...parsedTable,
+      ...result.parsed,
       dados: {
-        ...(parsedTable.dados || {}),
-        origem_parser: parsedTable.dados?.origem_parser || "tabela_local",
+        ...(result.parsed.dados || {}),
+        origem_parser: "gemini_action_plan",
         route,
         structuredDetection,
-        interpreter_final_usado: "gemini_table_domain_then_local_parser",
+        interpreter_final_usado: "gemini_table_import_action_plan",
+        action_plan_used: true,
         gemini_intent: interpretation.intent,
         gemini_confidence: interpretation.confidence,
         gemini_table_import: table,
@@ -1429,10 +1536,10 @@ function convertGeminiTableImport(
     gemini: {
       confidence: table.confidence,
       requiresConfirmation: true,
-      reason: "gemini_table_domain_then_local_parser",
+      reason: "gemini_table_import_action_plan",
       risk_flags: [...(interpretation.warnings || []), ...(table.warnings || [])],
       actions: [],
-      userResponse: interpretation.response_hint || ""
+      userResponse: result.response || interpretation.response_hint || ""
     }
   };
 }
@@ -1571,7 +1678,7 @@ async function parseWithGeminiPrimary(input: ParseWithInterpreterInput): Promise
   const actionPlanResult = await convertActionPlanInterpretation(input, gemini.interpretation, route, structuredDetection);
   if (actionPlanResult) return actionPlanResult;
 
-  const tableImportResult = convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
+  const tableImportResult = await convertGeminiTableImport(input, gemini.interpretation, route, structuredDetection);
   if (tableImportResult) return tableImportResult;
 
   if (botInterpreterMode() === "gemini") {

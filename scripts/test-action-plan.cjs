@@ -1985,6 +1985,110 @@ test("import_table invalido nao retorna instabilidade e expõe motivo", async ()
   });
 });
 
+test("table_import legado da IA vira ActionPlan generico sem parser local", async () => {
+  await withInterpreterEnv({
+    BOT_INTERPRETER: "gemini",
+    GEMINI_MODE: "mock",
+    GEMINI_ACTION_PLAN_ENABLED: "true",
+    GEMINI_TABLE_ACTION_PLAN_ENABLED: "true",
+    BOT_ALLOW_LEGACY_ROLLBACK: "false"
+  }, async () => {
+    const text = [
+      "Nome;Funcao;WhatsApp;Data admissao;Salario",
+      "Joao;Vaqueiro;+55 83 99999-0001;2026-06-01;1800",
+      "Maria;Ordenha;+55 83 99999-0002;2026-06-01;1700",
+      "Carlos;Servicos gerais;+55 83 99999-0003;2026-06-01;1600"
+    ].join("\n");
+    await withGeminiMock(() => ({
+      intent: "DESCONHECIDO",
+      confidence: 0.9,
+      riskScore: 0.1,
+      fields: {},
+      actions: [],
+      missing_fields: [],
+      warnings: [],
+      should_confirm: false,
+      table_import: {
+        domain: "FUNCIONARIOS",
+        confidence: 0.94,
+        column_mapping: {
+          "Nome": "nome",
+          "Funcao": "funcao",
+          "WhatsApp": "contato_whatsapp",
+          "Data admissao": "data_admissao",
+          "Salario": "salario_base"
+        },
+        normalized_rows: [
+          { nome: "Joao", funcao: "Vaqueiro", contato_whatsapp: "+55 83 99999-0001", data_admissao: "2026-06-01", salario_base: 1800 },
+          { nome: "Maria", funcao: "Ordenha", contato_whatsapp: "+55 83 99999-0002", data_admissao: "2026-06-01", salario_base: 1700 },
+          { nome: "Carlos", funcao: "Servicos gerais", contato_whatsapp: "+55 83 99999-0003", data_admissao: "2026-06-01", salario_base: 1600 }
+        ],
+        unknown_columns: [],
+        warnings: [],
+        errors: [],
+        ambiguous_domains: [],
+        needs_manual_choice: false
+      }
+    }), async () => {
+      const result = await parseWithConfiguredInterpreter({
+        text,
+        localParsed: parseRanchoMessage(text),
+        owner: ADMIN_OWNER,
+        supabase: null
+      });
+      assert(result.kind === "parsed", `table_import deveria virar parsed, recebido ${result.kind}`);
+      assert(result.parsed.tipo === "IMPORTACAO_TABELA_DOMINIO", `intent esperado IMPORTACAO_TABELA_DOMINIO, recebido ${result.parsed.tipo}`);
+      assert(result.parsed.dados?.dominio_tabela === "FUNCIONARIOS", "dominio funcionarios deveria ser preservado");
+      assert(result.parsed.dados?.total_linhas === 3, `esperado 3 linhas, recebido ${result.parsed.dados?.total_linhas}`);
+      assert(result.parsed.dados?.total_linhas_parse_validas === 3, "todas as linhas deveriam estar prontas");
+      assert(result.parsed.dados?.linhas?.[0]?.parsedValues?.contato_whatsapp, "WhatsApp canonico deveria ser preservado");
+      assert(result.parsed.dados?.interpreter_final_usado === "gemini_table_import_action_plan", "ponte deveria usar ActionPlan");
+      assert(result.gemini?.requiresConfirmation === true, "importacao deve exigir confirmacao");
+    });
+  });
+});
+
+test("executor import_table funcionarios aceita data.rows canonico da IA", async () => {
+  const text = [
+    "Nome;Funcao;WhatsApp;Data admissao;Salario",
+    "Joao;Vaqueiro;+55 83 99999-0001;2026-06-01;1800",
+    "Maria;Ordenha;+55 83 99999-0002;2026-06-01;1700",
+    "Carlos;Servicos gerais;+55 83 99999-0003;2026-06-01;1600"
+  ].join("\n");
+  const result = await executeImportTableActionPlan({
+    text,
+    plan: {
+      action: "import_table",
+      domain: "funcionarios",
+      confidence: 0.94,
+      data: {
+        rows: [
+          { nome: "Joao", funcao: "Vaqueiro", contato_whatsapp: "+55 83 99999-0001", data_admissao: "2026-06-01", salario_base: 1800 },
+          { nome: "Maria", funcao: "Ordenha", contato_whatsapp: "+55 83 99999-0002", data_admissao: "2026-06-01", salario_base: 1700 },
+          { nome: "Carlos", funcao: "Servicos gerais", contato_whatsapp: "+55 83 99999-0003", data_admissao: "2026-06-01", salario_base: 1600 }
+        ]
+      },
+      table: {
+        hasHeader: true,
+        separator: ";",
+        columnMapping: {
+          nome: "Nome",
+          funcao: "Funcao",
+          contato_whatsapp: "WhatsApp",
+          data_admissao: "Data admissao",
+          salario_base: "Salario"
+        }
+      },
+      requiresConfirmation: true
+    }
+  });
+  assert(result.ok, `import_table funcionarios deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "IMPORTACAO_TABELA_DOMINIO", `intent esperado IMPORTACAO_TABELA_DOMINIO, recebido ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.dominio_tabela === "FUNCIONARIOS", "dominio funcionarios deveria ser usado");
+  assert(result.parsed.dados?.total_linhas === 3, "deveria ter 3 funcionarios");
+  assert(result.parsed.dados?.total_linhas_parse_invalidas === 0, "nao deveria haver linha invalida");
+});
+
 test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () => {
   assert(userFacingCodeLabel("tarefa_com_data_passada") === "tarefa com data no passado", "codigo de tarefa deveria ser traduzido");
   assert(userFacingCodeLabel("novo_codigo_interno") === "novo codigo interno", "codigo desconhecido deveria perder underlines");

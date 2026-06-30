@@ -430,12 +430,12 @@ const cases = [
   {
     message: geminiTableFinanceValid,
     intent: "IMPORTACAO_TABELA_DOMINIO",
-    dados: { dominio_tabela: "FINANCEIRO", gemini_table_domain: "FINANCEIRO", interpreter_final_usado: "gemini_table_domain_then_local_parser" }
+    dados: { dominio_tabela: "FINANCEIRO", gemini_table_domain: "FINANCEIRO", interpreter_final_usado: "gemini_table_import_action_plan" }
   },
   {
     message: geminiTableStockInventedField,
     intent: "IMPORTACAO_ESTOQUE_TABELA",
-    dados: { gemini_table_domain: "ESTOQUE", interpreter_final_usado: "gemini_table_domain_then_local_parser" },
+    dados: { gemini_table_domain: "ESTOQUE", interpreter_final_usado: "gemini_table_import_action_plan" },
     notMappingKey: "coluna extra"
   },
   {

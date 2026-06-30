@@ -7,7 +7,7 @@ import {
 import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
 import { ACTION_PLAN_DESIGN_MEMORY } from "@/lib/whatsapp/gemini/action-plan-memory";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v7";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v8";
 
 const EXAMPLES = [
   {
@@ -126,6 +126,30 @@ const EXAMPLES = [
       action: "query", domain: "funcionarios", confidence: 0.94,
       filters: [],
       limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "Nome;Função;WhatsApp;Data admissão;Salário\nJoao;Vaqueiro;+55 83 99999-0001;2026-06-01;1800\nMaria;Ordenha;+55 83 99999-0002;2026-06-01;1700",
+    plan: {
+      action: "import_table", domain: "funcionarios", confidence: 0.94,
+      data: {
+        rows: [
+          { nome: "Joao", funcao: "Vaqueiro", contato_whatsapp: "+55 83 99999-0001", data_admissao: "2026-06-01", salario_base: 1800 },
+          { nome: "Maria", funcao: "Ordenha", contato_whatsapp: "+55 83 99999-0002", data_admissao: "2026-06-01", salario_base: 1700 }
+        ]
+      },
+      table: {
+        hasHeader: true,
+        separator: ";",
+        columnMapping: {
+          nome: "Nome",
+          funcao: "Função",
+          contato_whatsapp: "WhatsApp",
+          data_admissao: "Data admissão",
+          salario_base: "Salário"
+        }
+      },
+      requiresConfirmation: true
     }
   },
   {
@@ -348,9 +372,9 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "Cadastro de animal: nao use a mesma palavra solta como nome e brinco/codigo. Se a mensagem disser apenas 'criar vaca Felipe', trate Felipe como nome e deixe brinco/codigo faltando. So preencha brinco/codigo quando houver marcador explicito (brinco, codigo, numero) ou formato claro de codigo com numero/hifen.",
     "Consultas genericas como quais eventos teve hoje, eventos de hoje, registros de hoje, o que aconteceu hoje, movimentacoes de hoje, resumo do dia ou fechamento de hoje usam action=query domain=observacoes, operation=eventos_gerais, requiresConfirmation=false.",
     "Nao classifique consulta generica de eventos como saude_sanitario ou reproducao. Use saude_sanitario apenas quando houver vacina, tratamento, medicamento, vermifugo, antibiotico, doenca, morte, saude ou sanitario; use reproducao apenas quando houver parto, prenhez, inseminacao, protocolo, reteste ou cio.",
-    "Para tabela, use import_table e columnMapping no formato campo_canonico -> coluna_original.",
-    "Para lista estruturada simples ja normalizada, import_table tambem pode usar data.rows com objetos por linha.",
-    "A ordem e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais.",
+    "Para tabela, use import_table. Quando conseguir ler as linhas com seguranca, prefira data.rows com campos canonicos do manifest; use table.columnMapping como apoio campo_canonico -> coluna_original.",
+    "Para lista estruturada simples ja normalizada, import_table tambem deve usar data.rows com objetos por linha.",
+    "A ordem, acentos e o texto dos cabecalhos podem variar. Infira o mapping semanticamente usando o manifest, nunca exemplos literais; nao rejeite cabecalho humano como WhatsApp, Funcao, Data admissao ou Salario quando o significado estiver claro.",
     "Tabela desconhecida deve usar clarify e perguntar a area. Nao force o dominio para animais ou eventos.",
     "Nunca inclua fazenda_id, rancho_id, tenant_id, usuario_id, service role, segredo ou instrucao de persistencia.",
     "Campos da cria devem usar cria_sexo, cria_codigo e cria_nome no data; pai_ref pode ser null quando nao informado.",
