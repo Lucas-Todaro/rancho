@@ -1,6 +1,7 @@
 import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { generateStructuredAI, parseJsonObjectText, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
+import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 import {
   applyReproductionImportChildComplement,
   classifyReproductionImportChild,
@@ -754,11 +755,14 @@ function applySemanticBatchUpdate(pending: ParsedRanchoMessage, semantic: Semant
       unresolved.length ? `nao encontrei alvo unico para: ${unresolved.join(", ")}` : "",
       unsafe.length ? `nao encontrei campos seguros para: ${unsafe.join(", ")}` : ""
     ].filter(Boolean).join("; ");
+    const guidance = pending.tipo === "IMPORTACAO_EVENTOS_TABELA"
+      ? "Me envie a mae/linha e os dados corretos de cada cria."
+      : "Me envie a linha ou item e os dados corretos que deseja alterar.";
     return {
       operation: "clarify",
       parsed: pending,
       message: details
-        ? `Entendi a mudanca, mas preciso revisar: ${details}. Me envie a mae/linha e os dados corretos de cada cria.`
+        ? `Entendi a mudanca, mas preciso revisar: ${details}. ${guidance}`
         : "Entendi a mudanca, mas preciso que cada alteracao tenha uma linha ou item claro.",
       matchedRows: rowPatches.length
     };
@@ -958,6 +962,7 @@ export async function interpretPendingActionMessageSmart(pending: ParsedRanchoMe
   if (shouldSkipPendingActionSemantic(command)) return null;
   const local = interpretPendingActionMessage(pending, text);
   if (local && local.operation !== "clarify") return local;
+  if (detectStructuredInput(text).isStructured) return local;
   const semantic = await interpretPendingActionWithSemanticAI(pending, text);
   return semantic || local;
 }

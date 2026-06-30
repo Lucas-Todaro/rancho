@@ -1474,6 +1474,23 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "nova tabela substitui importacao pendente sem virar correcao de linhas",
+        module: "tabela-dominio",
+        phone: BOT_TEST_ADMIN_PHONE,
+        extraAnimals: tabularExtraAnimals,
+        messages: [mixedBirthPendingEventsMessage, newEmployeesTableMessage],
+        expected: {
+          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
+          entities: { dominio_tabela: "FUNCIONARIOS" },
+          responseNotIncludes: "mae/linha",
+          allResponsesNotInclude: "dados corretos de cada cria",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: false,
+          shouldNotWriteBusiness: true
+        }
+      },
+      {
         name: "importacao por dominio salva ponto real",
         module: "tabela-dominio-save",
         phone: BOT_TEST_ADMIN_PHONE,
