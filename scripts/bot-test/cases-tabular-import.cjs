@@ -313,9 +313,9 @@ module.exports = function loadBotTestSection(context) {
       "Maria;ordenha;83888888888;2200"
     ].join("\n");
     const newEmployeesTableMessage = [
-      "nome;cargo;telefone;salario",
-      "Ana;vaqueira;83991234567;2500",
-      "Carlos;ordenhador;83992345678;2200"
+      "Nome;Funcao;WhatsApp;Data admissao;Salario",
+      "Ana;Vaqueira;+55 83 99999-0001;2026-06-01;2500",
+      "Carlos;Ordenhador;+55 83 99999-0002;2026-06-01;2200"
     ].join("\n");
     const invalidEmployeePhoneTableMessage = [
       "nome;cargo;telefone;salario",
@@ -1468,7 +1468,7 @@ module.exports = function loadBotTestSection(context) {
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.funcionarios, BOT_TEST_TABLES.whatsappUsuarios],
-          shouldSaveValues: { nome: "Ana", telefone_e164: "5583991234567" },
+          shouldSaveValues: { nome: "Ana", telefone_e164: "5583999990001" },
           shouldNotWriteBusiness: false,
           ranchId: BOT_TEST_FARM_ID
         }

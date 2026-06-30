@@ -154,9 +154,19 @@ export default function WhatsAppPage() {
   }), [rows]);
   const initialLoadError = Boolean(error && !rows.length && !loading);
 
-  const firstActiveWhatsapp = useMemo(() => (
-    rows.find((row) => row.ativo !== false)?.telefone_e164
-  ), [rows]);
+  const preferredBotTestWhatsapp = useMemo(() => {
+    const activeRows = rows.filter((row) => row.ativo !== false);
+    const userId = String(dataContext.usuarioId || "");
+    const ownByUser = userId
+      ? activeRows.find((row) => String(row.usuario_id || "") === userId)
+      : null;
+    const profilePhone = normalizeWhatsappNumber(profile?.telefone);
+    const ownByPhone = profilePhone
+      ? activeRows.find((row) => whatsappNumbersMatch(row.telefone_e164, profilePhone))
+      : null;
+    const adminRow = activeRows.find((row) => row.papel_bot === "admin" && !row.funcionario_id);
+    return ownByUser?.telefone_e164 || ownByPhone?.telefone_e164 || adminRow?.telefone_e164 || activeRows[0]?.telefone_e164;
+  }, [dataContext.usuarioId, profile?.telefone, rows]);
 
   const simulatedWhatsappUser = useMemo(() => {
     const normalized = normalizeWhatsappNumber(botTestPhone);
@@ -165,10 +175,10 @@ export default function WhatsAppPage() {
   }, [botTestPhone, rows]);
 
   useEffect(() => {
-    if (!botTestPhone && firstActiveWhatsapp) {
-      setBotTestPhone(formatBrazilianPhone(firstActiveWhatsapp));
+    if (!botTestPhone && preferredBotTestWhatsapp) {
+      setBotTestPhone(formatBrazilianPhone(preferredBotTestWhatsapp));
     }
-  }, [botTestPhone, firstActiveWhatsapp]);
+  }, [botTestPhone, preferredBotTestWhatsapp]);
 
   function updateDraft(name: keyof typeof draft, value: string | boolean) {
     setDraft((current) => ({ ...current, [name]: value }));

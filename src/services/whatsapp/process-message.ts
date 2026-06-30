@@ -1512,7 +1512,7 @@ async function enrichDomainTableImport(supabase: SupabaseAdmin, owner: WhatsAppO
       if (key) tableKeys.add(key);
     } else if (domain === "FUNCIONARIOS") {
       const name = domainText(values.nome);
-      const phone = normalizeWhatsappNumber(values.telefone);
+      const phone = normalizeWhatsappNumber(values.telefone || values.contato_whatsapp || values.whatsapp);
       const cpf = domainText((values as AnyRecord).cpf);
       if (!name) errors.add("nome_funcionario_obrigatorio");
       if (!isValidBotPhone(phone)) errors.add("whatsapp_invalido");
