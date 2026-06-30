@@ -244,7 +244,7 @@ const BOT_INSERT_COLUMNS: Record<string, Set<string>> = {
   [TABLES.estoqueMovimentacoes]: new Set(["fazenda_id", "item_id", "tipo", "quantidade", "valor_unitario", "motivo", "responsavel_usuario_id", "origem", "source_type", "source_id", "producao_id"]),
   [TABLES.funcionarios]: new Set(["fazenda_id", "nome", "funcao", "cpf", "contato_whatsapp", "salario_base", "data_admissao", "carga_horaria_mensal", "valor_hora_extra", "ativo", "tipo_acesso", "papel_sistema"]),
   [TABLES.folhaPagamento]: new Set(["fazenda_id", "funcionario_id", "competencia", "salario_base", "horas_extras", "valor_horas_extras", "descontos", "adiantamentos", "total_liquido", "status", "pago_em"]),
-  [TABLES.whatsappUsuarios]: new Set(["fazenda_id", "telefone_e164", "funcionario_id", "usuario_id", "nome_exibicao", "ativo", "papel", "papel_bot"]),
+  [TABLES.whatsappUsuarios]: new Set(["fazenda_id", "telefone_e164", "funcionario_id", "usuario_id", "nome_exibicao", "ativo", "papel_bot"]),
   [TABLES.registrosPonto]: new Set(["fazenda_id", "funcionario_id", "tipo", "registrado_em", "observacao", "origem", "created_by"])
 };
 
@@ -1801,7 +1801,8 @@ async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOw
     const name = domainText(values.nome);
     const phone = normalizeWhatsappNumber(values.telefone || values.contato_whatsapp || values.whatsapp);
     const role = domainText(values.cargo || values.funcao || "Funcionario");
-    const salary = Number(values.salario ?? values.salario_base ?? 0);
+    const salary = Number(values.salario ?? values.salario_base ?? values.valor ?? values.valor_total ?? 0);
+    const admissionDate = domainDateOnly(values.data_admissao || values.admissao || values.data);
     if (!name) {
       stats.failed.push({ line: domainLine(row), reason: "nome ausente" });
       continue;
@@ -1823,7 +1824,7 @@ async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOw
       funcao: role || "Funcionario",
       contato_whatsapp: phone,
       salario_base: Number.isFinite(salary) ? salary : 0,
-      data_admissao: domainDateOnly(values.data_admissao),
+      data_admissao: admissionDate,
       carga_horaria_mensal: 220,
       valor_hora_extra: 0,
       ativo: domainStatusActive(values.status),
@@ -1838,7 +1839,6 @@ async function saveFuncionariosImport(supabase: SupabaseAdmin, owner: WhatsAppOw
       usuario_id: null,
       nome_exibicao: name,
       ativo: domainStatusActive(values.status),
-      papel: "funcionario",
       papel_bot: "funcionario"
     };
     await insertRealRecord(supabase, owner, TABLES.whatsappUsuarios, whatsappPayload);

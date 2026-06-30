@@ -2089,6 +2089,45 @@ test("executor import_table funcionarios aceita data.rows canonico da IA", async
   assert(result.parsed.dados?.total_linhas_parse_invalidas === 0, "nao deveria haver linha invalida");
 });
 
+test("executor import_table funcionarios normaliza campos genericos da IA", async () => {
+  const text = [
+    "Nome;Funcao;WhatsApp;Data admissao;Salario",
+    "Joao;Vaqueiro;+55 83 99999-0001;2026-06-01;1800",
+    "Maria;Ordenha;+55 83 99999-0002;2026-06-01;1700"
+  ].join("\n");
+  const result = await executeImportTableActionPlan({
+    text,
+    plan: {
+      action: "import_table",
+      domain: "funcionarios",
+      confidence: 0.94,
+      data: {
+        rows: [
+          { nome: "Joao", funcao: "Vaqueiro", whatsapp: "+55 83 99999-0001", data: "2026-06-01", valor: 1800 },
+          { nome: "Maria", funcao: "Ordenha", whatsapp: "+55 83 99999-0002", data: "2026-06-01", valor: 1700 }
+        ]
+      },
+      table: {
+        hasHeader: true,
+        separator: ";",
+        columnMapping: {
+          nome: "Nome",
+          funcao: "Funcao",
+          whatsapp: "WhatsApp",
+          data: "Data admissao",
+          valor: "Salario"
+        }
+      },
+      requiresConfirmation: true
+    }
+  });
+  assert(result.ok, `import_table funcionarios deveria executar: ${result.reason}`);
+  const first = result.parsed.dados?.linhas?.[0]?.parsedValues || {};
+  assert(first.contato_whatsapp === "+55 83 99999-0001", `WhatsApp esperado no campo canonico, recebido ${first.contato_whatsapp}`);
+  assert(first.data_admissao === "2026-06-01", `data_admissao esperada, recebida ${first.data_admissao}`);
+  assert(Number(first.salario_base) === 1800, `salario_base esperado 1800, recebido ${first.salario_base}`);
+});
+
 test("mensagens visiveis traduzem codigos internos e corrigem ortografia", () => {
   assert(userFacingCodeLabel("tarefa_com_data_passada") === "tarefa com data no passado", "codigo de tarefa deveria ser traduzido");
   assert(userFacingCodeLabel("novo_codigo_interno") === "novo codigo interno", "codigo desconhecido deveria perder underlines");

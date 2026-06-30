@@ -178,7 +178,11 @@ const FIELD_ALIASES_BY_DOMAIN: Record<string, Record<string, string>> = {
     telefone: "contato_whatsapp",
     whatsapp: "contato_whatsapp",
     salario: "salario_base",
-    admissao: "data_admissao"
+    pagamento: "salario_base",
+    valor: "salario_base",
+    valor_total: "salario_base",
+    admissao: "data_admissao",
+    data: "data_admissao"
   },
   ponto_funcionario: {
     funcionario: "funcionario_ref",
