@@ -1,7 +1,6 @@
 import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { generateStructuredAI, parseJsonObjectText, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
-import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 import {
   applyReproductionImportChildComplement,
   classifyReproductionImportChild,
@@ -962,7 +961,6 @@ export async function interpretPendingActionMessageSmart(pending: ParsedRanchoMe
   if (shouldSkipPendingActionSemantic(command)) return null;
   const local = interpretPendingActionMessage(pending, text);
   if (local && local.operation !== "clarify") return local;
-  if (detectStructuredInput(text).isStructured) return local;
   const semantic = await interpretPendingActionWithSemanticAI(pending, text);
   return semantic || local;
 }

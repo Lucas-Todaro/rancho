@@ -207,22 +207,25 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "parto 090 resposta contextual preenche sexo e codigo juntos",
+        name: "parto 090 resposta contextual preenche sexo codigo e pai juntos",
         module: "eventos",
         phone: BOT_TEST_ADMIN_PHONE,
-        extraAnimals: [{ id: "animal-090-contexto", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" }],
-        messages: ["090 pariu", "femea, codigo e C-00690", { text: "1", salvarReal: true }],
+        extraAnimals: [
+          { id: "animal-090-contexto", brinco: "090", nome: "Vaca 090", sexo: "femea", categoria: "vaca", fase: "gestante", status: "ativo" },
+          { id: "animal-t-50-contexto", brinco: "T-50", nome: "Touro 50", sexo: "macho", categoria: "touro", status: "ativo" }
+        ],
+        messages: ["090 pariu", "sexo:femea codigo:C-090 pai:T-50", { text: "1", salvarReal: true }],
         expected: {
           finalIntent: "PARTO",
           responseIncludes: "Registro salvo no sistema com sucesso",
-          allResponsesNotInclude: ["Qual e o codigo/brinco da cria", "Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
-          entities: { animal_codigo: "090", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "c-00690" },
+          allResponsesNotInclude: ["Nao consegui validar o plano", "Qual e o codigo/brinco da cria", "Nao consegui concluir o parto na etapa child", "Erro interno no Rancho"],
+          entities: { animal_codigo: "090", cria_sexo: "femea", cria_categoria: "bezerro", cria_codigo: "C-090", pai_id: "animal-t-50-contexto" },
           shouldAskConfirmation: true,
           shouldAskFollowUp: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.eventosAnimal, BOT_TEST_TABLES.animais],
-          shouldSaveValues: { brinco: "c-00690", categoria: "bezerro", sexo: "femea", mae_id: "animal-090-contexto", tipo: "parto", fase: "lactacao" },
+          shouldSaveValues: { brinco: "C-090", categoria: "bezerro", sexo: "femea", mae_id: "animal-090-contexto", pai_id: "animal-t-50-contexto", tipo: "parto", fase: "lactacao" },
           shouldNotSaveValues: { categoria: "bezerra", novo_valor: "parida" },
           shouldNotWriteBusiness: false,
           ranchId: BOT_TEST_FARM_ID

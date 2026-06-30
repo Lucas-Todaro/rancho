@@ -300,7 +300,7 @@ module.exports = function loadBotTestSection(context) {
         ]
       },
       {
-        name: "tabela estruturada substitui campo pendente sem virar observacao",
+        name: "tabela estruturada so vira nova acao depois de cancelar pendencia",
         phone: BOT_TEST_ADMIN_PHONE,
         expectNoBusinessWrites: true,
         initialSession: () => ({
@@ -309,10 +309,18 @@ module.exports = function loadBotTestSection(context) {
         }),
         messages: [
           {
+            text: "cancelar",
+            expected: {
+              estadoAnterior: "aguardando_dado",
+              estadoNovo: "livre",
+              responseIncludes: "cancelei"
+            }
+          },
+          {
             text: "Data;Observacoes;Animal;Evento\nontem;primeira inseminacao;B-002;Inseminada\nhoje;;B-003;Prenha",
             expected: {
               intent: "IMPORTACAO_EVENTOS_TABELA",
-              estadoAnterior: "aguardando_dado",
+              estadoAnterior: "livre",
               estadoNovo: "aguardando_confirmacao",
               dados: { total_linhas: 2 },
               responseIncludes: "Li a tabela de eventos"
@@ -874,7 +882,7 @@ module.exports = function loadBotTestSection(context) {
               intent: "PRODUCAO_LEITE",
               estadoAnterior: "aguardando_confirmacao",
               estadoNovo: "aguardando_confirmacao",
-              responseIncludes: "registro esperando"
+              responseIncludes: "Responda 1 para confirmar"
             }
           }
         ]

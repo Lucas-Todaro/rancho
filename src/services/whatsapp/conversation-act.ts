@@ -161,7 +161,7 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
     flags.push("pending_action_response", "references_previous_context");
   }
 
-  if (detectStructuredInput(input.text).isStructured) {
+  if (!base.hasPendingAction && detectStructuredInput(input.text).isStructured) {
     return {
       ...base,
       messageType: "new_action",
@@ -299,6 +299,19 @@ export function detectConversationAct(input: DetectConversationActInput): Conver
       flags: uniqueFlags([...flags, "pending_action_response", "references_previous_context"]),
       decision: "apply_correction",
       reason: "Resposta para preencher dado faltante da acao pendente."
+    };
+  }
+
+  if (base.hasPendingAction) {
+    return {
+      ...base,
+      messageType: "clarification",
+      intent: pending?.tipo || null,
+      confidence: 0.78,
+      correction: null,
+      flags: uniqueFlags([...flags, "pending_action_response", "references_previous_context"]),
+      decision: "apply_correction",
+      reason: "Mensagem tratada como continuidade da acao pendente."
     };
   }
 

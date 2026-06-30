@@ -1474,16 +1474,14 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "nova tabela substitui importacao pendente sem virar correcao de linhas",
+        name: "tabela durante importacao pendente nao inicia nova importacao automaticamente",
         module: "tabela-dominio",
         phone: BOT_TEST_ADMIN_PHONE,
         extraAnimals: tabularExtraAnimals,
         messages: [mixedBirthPendingEventsMessage, newEmployeesTableMessage],
         expected: {
-          finalIntent: "IMPORTACAO_TABELA_DOMINIO",
-          entities: { dominio_tabela: "FUNCIONARIOS" },
-          responseNotIncludes: "mae/linha",
-          allResponsesNotInclude: "dados corretos de cada cria",
+          finalIntent: "IMPORTACAO_EVENTOS_TABELA",
+          allResponsesNotInclude: ["Importação de funcionários", "Funcionários prontos", "Registro salvo no sistema com sucesso"],
           shouldAskConfirmation: true,
           shouldSaveBeforeConfirmation: false,
           savedAfterConfirmation: false,

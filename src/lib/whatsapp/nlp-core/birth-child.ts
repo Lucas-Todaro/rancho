@@ -37,7 +37,13 @@ export function hasBirthChildData(dados: AnyRecord = {}) {
 
 export function extractBirthChildData(originalText: string) {
   const normalized = normalizeRanchoText(originalText);
+  const keyedCriaCodigo = cleanRef(
+    originalText.match(/\b(?:codigo|c[oó]digo|brinco)\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9-]*)/i)?.[1]
+    || normalized.match(/\b(?:codigo|brinco)\s*[:=]\s*([a-z][a-z0-9]*-\d[a-z0-9-]*|\d+[a-z0-9-]*)\b/i)?.[1]
+  );
   const criaCodigo =
+    keyedCriaCodigo
+    ||
     cleanRef(normalized.match(/\b(?:codigo|brinco)\s+(?:e\s+|eh\s+)?([a-z][a-z0-9]*-\d[a-z0-9-]*|\d+[a-z0-9-]*)\b/i)?.[1])
     ||
     cleanRef(originalText.match(/\b(?:codigo|c[oó]digo|brinco)\s+(?:da\s+)?cria\s+([A-Za-z0-9][A-Za-z0-9-]*)/i)?.[1])
@@ -45,7 +51,8 @@ export function extractBirthChildData(originalText: string) {
     || cleanRef(originalText.match(/\bcria\s+([A-Za-z]+-\d[A-Za-z0-9-]*|[A-Za-z]*\d[A-Za-z0-9-]*-\w+)\b/i)?.[1]);
   const criaSexo = normalizeCalfSex(normalized);
   const explicitChildCue = /\b(?:cria|bezerra|bezerro|terneira|terneiro|filha|filho|nasceu)\b/.test(normalized);
-  const paiRef = cleanRef(
+  const keyedPaiRef = cleanRef(originalText.match(/\bpai\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9-]*)/i)?.[1]);
+  const paiRef = keyedPaiRef || cleanRef(
     originalText.match(/\bpai\s+(?:touro\s+)?([A-Za-z0-9À-ÿ][A-Za-z0-9À-ÿ\s-]*?)(?=\s*,|\s+cria\b|\s+filh[ao]\b|\s+hoje\b|\s+ontem\b|\s+dia\b|$)/i)?.[1]
   );
   const criaNome = cleanRef(

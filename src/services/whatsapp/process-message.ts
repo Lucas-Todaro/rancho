@@ -4723,7 +4723,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         parse_invalidas: tableParsedPreview?.dados?.total_linhas_parse_invalidas || null
       });
     }
-    const conversationAct: ConversationAct = tableParsedPreview || structuredDetection.isStructured ?{
+    const activePendingContext = Boolean(pendingFromSession(previousSession)?.tipo && previousSession.etapa && previousSession.etapa !== "livre");
+    const conversationAct: ConversationAct = !activePendingContext && (tableParsedPreview || structuredDetection.isStructured) ?{
       messageType: "new_action",
       intent: tableParsedPreview?.tipo || null,
       confidence: tableParsedPreview?.confianca || 0.9,
@@ -4742,7 +4743,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       pending: pendingFromSession(previousSession)
     });
     logConversationAct(message, conversationAct);
-    const generalConversationText = !structuredDetection.isStructured && !tableParsedPreview
+    const generalConversationText = !activePendingContext && !structuredDetection.isStructured && !tableParsedPreview
       ? composeGeneralConversationText(command, previousSession)
       : null;
     const pendingActionInterpretation = previousSession.etapa === "aguardando_confirmacao"
@@ -4757,7 +4758,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
     } else if (generalConversationText) {
       parsed = pendingFromSession(previousSession);
       response = generalConversationText;
-    } else if (structuredDetection.isStructured && !tableParsedPreview) {
+    } else if (!activePendingContext && structuredDetection.isStructured && !tableParsedPreview) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
       suppressPreviousPending = true;
       const interpreted = await withProcessingNotice(input, supabase, owner!, phone, "structured_interpreter", () => parseWithConfiguredInterpreter({
@@ -4790,7 +4791,7 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
         parsed = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, interpreted.parsed);
         response = await handleFreeText(supabase, owner, parserMessage, parsed);
       }
-    } else if (tableParsedPreview) {
+    } else if (!activePendingContext && tableParsedPreview) {
       parsed = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, tableParsedPreview);
       response = await handleFreeText(supabase, owner, parserMessage, parsed);
     } else if (isMenuCommand(command)) {
