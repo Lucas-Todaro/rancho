@@ -3394,7 +3394,13 @@ async function handleFreeText(supabase: SupabaseAdmin, owner: WhatsAppOwner, tex
     return tableExamples;
   }
 
-  const parsed = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, parsedMessage || parseRanchoMessage(text));
+  const baseParsed = parsedMessage || (isGeminiPrimaryMode()
+    ? finalize("DESCONHECIDO", {
+      origem_parser: "gemini_primary_missing_interpretation",
+      interpreter_final_usado: "gemini_primary_missing_interpretation"
+    }, [], 0.2)
+    : parseRanchoMessage(text));
+  const parsed = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, baseParsed);
   botLog("nlp_general", owner, {
     currentIntent: parsed.tipo,
     status: "livre",
@@ -4457,43 +4463,94 @@ async function handleConfirmation(
     return "Tudo bem. Nada foi salvo. Me mande de novo quando quiser.";
   }
 
-  const replacement = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, parseRanchoMessage(text));
+  let replacementPrefix = "";
+  let replacement = await (async () => {
+    if (!isGeminiPrimaryMode()) return enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, parseRanchoMessage(text));
+
+    const interpreted = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: finalize("DESCONHECIDO", {
+        origem_parser: "gemini_primary_replacement_no_local_parser",
+        interpreter_final_usado: "gemini_primary_replacement_no_local_parser"
+      }, [], 0.2),
+      owner,
+      supabase,
+      messageType: "new_action",
+      hasPendingAction: false
+    });
+
+    if (interpreted.kind === "clarify") {
+      return finalize("DESCONHECIDO", {
+        ...(interpreted.debug || {}),
+        interpreter_final_usado: interpreted.reason,
+        origem_parser: "gemini_action_plan",
+        action_plan_used: false,
+        resposta_substituicao_pendente: interpreted.message
+      }, [], 0.2);
+    }
+
+    if (interpreted.kind === "consultations") {
+      await saveSession(supabase, owner, { etapa: "livre", dados: {} });
+      replacementPrefix = await handleGeminiConsultationBatch(supabase, owner, interpreted.consultations);
+      return finalize("AJUDA", { consulta_executada: true }, [], 0.95);
+    }
+
+    if (interpreted.kind === "compound") {
+      replacementPrefix = interpreted.immediateConsultations.length
+        ?await handleGeminiConsultationBatch(supabase, owner, interpreted.immediateConsultations)
+        : "";
+      return enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, interpreted.pending);
+    }
+
+    return enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, interpreted.parsed);
+  })();
+
+  const withReplacementPrefix = (message: string) => [replacementPrefix, message].filter(Boolean).join("\n\n");
+
+  if (replacement.dados?.resposta_substituicao_pendente) {
+    return withReplacementPrefix(`${replacement.dados.resposta_substituicao_pendente}\n\nAinda tenho um registro aguardando confirmacao. Responda 1 para confirmar, 2 para corrigir ou cancelar para sair.`);
+  }
+
+  if (replacementPrefix && replacement.tipo === "AJUDA" && replacement.dados?.consulta_executada) {
+    return replacementPrefix;
+  }
+
   if (!["DESCONHECIDO", "AJUDA"].includes(replacement.tipo) && replacement.confianca >= 0.55) {
     if (CONSULT_INTENTS.has(replacement.tipo)) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return handleConsultation(supabase, owner, replacement);
+      return withReplacementPrefix(await handleConsultation(supabase, owner, replacement));
     }
 
     const denied = permissionDeniedMessage(owner, replacement);
     if (denied) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return denied;
+      return withReplacementPrefix(denied);
     }
 
     const genealogyBlock = relationBlockMessage(replacement);
     if (genealogyBlock) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return genealogyBlock;
+      return withReplacementPrefix(genealogyBlock);
     }
 
     const lotPreflight = await lotCreationPreflight(supabase, owner, replacement);
     if (lotPreflight) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return lotPreflight;
+      return withReplacementPrefix(lotPreflight);
     }
     const animalPreflight = await animalCreationPreflight(supabase, owner, replacement);
     if (animalPreflight) {
       await saveSession(supabase, owner, { etapa: "livre", dados: {} });
-      return animalPreflight;
+      return withReplacementPrefix(animalPreflight);
     }
 
     if (replacement.perguntas_faltantes.length) {
       await saveSession(supabase, owner, { etapa: "aguardando_dado", dados: { pending: replacement } });
-      return `Certo, deixei esse novo registro no lugar do anterior.\n${composeMissingDataText(replacement)}`;
+      return withReplacementPrefix(`Certo, deixei esse novo registro no lugar do anterior.\n${composeMissingDataText(replacement)}`);
     }
 
     await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: replacement } });
-    return `Certo, deixei esse novo registro no lugar do anterior.\n${confirmationText(replacement)}`;
+    return withReplacementPrefix(`Certo, deixei esse novo registro no lugar do anterior.\n${confirmationText(replacement)}`);
   }
 
   return "Responda 1 para confirmar ou 2 para corrigir. Se quiser parar, envie cancelar.";
@@ -4643,7 +4700,12 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       ? structuredMessage
       : originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const legacyParserCanDecide = !isGeminiPrimaryMode();
-    const localParsedPreview = parseRanchoMessage(parserMessage);
+    const localParsedPreview = legacyParserCanDecide
+      ? parseRanchoMessage(parserMessage)
+      : finalize("DESCONHECIDO", {
+        origem_parser: "gemini_primary_no_local_parser_preview",
+        interpreter_final_usado: "gemini_primary_no_local_parser_preview"
+      }, [], 0.2);
     const tableParsedPreview = legacyParserCanDecide && ["IMPORTACAO_EVENTOS_TABELA", "IMPORTACAO_ANIMAIS_TABELA", "IMPORTACAO_ESTOQUE_TABELA", "IMPORTACAO_TABELA_DOMINIO", "IMPORTACAO_TABELA_AMBIGUA"].includes(localParsedPreview.tipo)
       ?localParsedPreview
       : null;

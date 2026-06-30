@@ -3372,7 +3372,7 @@ test("Gemini-first 090 pariu usa ActionPlan create de reproducao", async () => {
   });
 });
 
-test("Gemini live JSON invalido usa fallback local seguro", async () => {
+test("Gemini live JSON invalido nao usa parser local no modo Gemini", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3389,15 +3389,16 @@ test("Gemini live JSON invalido usa fallback local seguro", async () => {
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "local", `JSON invalido recuperavel deveria usar fallback local, recebido ${result.kind}`);
-      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
-      assert(result.parsed.dados?.gemini_failure_reason === "invalid_json_basic_local_fallback", "motivo de fallback invalid_json ausente");
+      assert(result.kind === "clarify", `JSON invalido deveria pedir nova validacao, recebido ${result.kind}`);
+      assert(result.reason === "invalid_json", `motivo esperado invalid_json, recebido ${result.reason}`);
+      assert(result.debug?.error_classification === "contract", "JSON invalido deveria ser classificado como contrato");
+      assert(!String(result.debug?.interpreter_final_usado || "").includes("fallback"), "nao deveria marcar fallback local");
     });
     resetGeminiRuntimeStats();
   });
 });
 
-test("Gemini live HTTP 503 usa fallback local seguro quando possivel", async () => {
+test("Gemini live HTTP 503 nao usa parser local no modo Gemini", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3414,15 +3415,16 @@ test("Gemini live HTTP 503 usa fallback local seguro quando possivel", async () 
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "local", `HTTP 503 recuperavel deveria usar fallback local, recebido ${result.kind}`);
-      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
-      assert(result.parsed.dados?.gemini_failure_reason === "api_error_basic_local_fallback", "motivo de fallback api_error ausente");
+      assert(result.kind === "clarify", `HTTP 503 deveria retornar instabilidade controlada, recebido ${result.kind}`);
+      assert(result.reason === "api_error", `motivo esperado api_error, recebido ${result.reason}`);
+      assert(String(result.message).includes("instabilidade"), "HTTP 503 deveria orientar nova tentativa por instabilidade");
+      assert(!String(result.debug?.interpreter_final_usado || "").includes("fallback"), "nao deveria marcar fallback local");
     });
     resetGeminiRuntimeStats();
   });
 });
 
-test("Gemini live HTTP 429 usa fallback local seguro quando possivel", async () => {
+test("Gemini live HTTP 429 nao usa parser local no modo Gemini", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     GEMINI_MODE: "live",
@@ -3439,9 +3441,10 @@ test("Gemini live HTTP 429 usa fallback local seguro quando possivel", async () 
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      assert(result.kind === "local", `HTTP 429 recuperavel deveria usar fallback local, recebido ${result.kind}`);
-      assert(result.parsed.tipo === "PARTO", `fallback deveria preservar PARTO, recebido ${result.parsed.tipo}`);
-      assert(result.parsed.dados?.gemini_failure_reason === "rate_limit_basic_local_fallback", "motivo de fallback rate_limit ausente");
+      assert(result.kind === "clarify", `HTTP 429 deveria retornar instabilidade controlada, recebido ${result.kind}`);
+      assert(result.reason === "rate_limit", `motivo esperado rate_limit, recebido ${result.reason}`);
+      assert(String(result.message).includes("instabilidade"), "HTTP 429 deveria orientar nova tentativa por instabilidade");
+      assert(!String(result.debug?.interpreter_final_usado || "").includes("fallback"), "nao deveria marcar fallback local");
     });
     resetGeminiRuntimeStats();
   });
@@ -3897,7 +3900,7 @@ test("ActionPlan ligado sem fixture retorna mock_fixture_missing sem fallback le
   assertCleanVisibleText(result.message, "mensagem sem fixture");
 });
 
-test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture", async () => {
+test("Gemini-first nao usa parser local para mensagens basicas sem fixture", async () => {
   const cases = [
     {
       text: "adicionar entrada de mil reais",
@@ -3929,14 +3932,10 @@ test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture"
       owner: ADMIN_OWNER,
       supabase: createActionPlanSupabase({})
     });
-    const parsed = finalParsed(result);
-    assert(result.kind === "local", `${current.text}: esperado fallback local seguro, recebido ${result.kind}`);
-    assert(parsed?.tipo === current.intent, `${current.text}: intent esperado ${current.intent}, recebido ${parsed?.tipo}`);
-    assert(Number(parsed.dados?.valor) === current.valor, `${current.text}: valor esperado ${current.valor}, recebido ${parsed.dados?.valor}`);
-    assert(String(parsed.dados?.descricao || "") === current.descricao, `${current.text}: descricao esperada ${current.descricao}, recebida ${parsed.dados?.descricao}`);
-    assert(parsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", `${current.text}: fallback seguro nao marcado`);
-    assert(parsed.dados?.action_plan_used === false, `${current.text}: nao deveria marcar ActionPlan usado`);
-    assert(parsed.perguntas_faltantes.length === 0, `${current.text}: nao deveria ter pendencias`);
+    assert(result.kind === "clarify", `${current.text}: esperado clarify sem parser local, recebido ${result.kind}`);
+    assert(result.reason === "mock_fixture_missing", `${current.text}: reason esperado mock_fixture_missing, recebido ${result.reason}`);
+    assert(String(result.message).includes("resposta de teste"), `${current.text}: mensagem deveria orientar fixture de teste`);
+    assert(!String(result.debug?.interpreter_final_usado || "").includes("fallback"), `${current.text}: nao deveria marcar fallback local`);
   }
 
   const deathText = "morreu a 002";
@@ -3946,15 +3945,12 @@ test("Gemini-first usa fallback local seguro para mensagens basicas sem fixture"
     owner: ADMIN_OWNER,
     supabase: createActionPlanSupabase({})
   });
-  const deathParsed = finalParsed(deathResult);
-  assert(deathResult.kind === "local", `${deathText}: esperado fallback local seguro, recebido ${deathResult.kind}`);
-  assert(deathParsed?.tipo === "MORTE", `${deathText}: intent esperado MORTE, recebido ${deathParsed?.tipo}`);
-  assert(deathParsed.dados?.animal_codigo === "002", `${deathText}: animal esperado 002, recebido ${deathParsed.dados?.animal_codigo}`);
-  assert(deathParsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", `${deathText}: fallback seguro nao marcado`);
-  assert(deathParsed.dados?.action_plan_used === false, `${deathText}: nao deveria marcar ActionPlan usado`);
+  assert(deathResult.kind === "clarify", `${deathText}: esperado clarify sem parser local, recebido ${deathResult.kind}`);
+  assert(deathResult.reason === "mock_fixture_missing", `${deathText}: reason esperado mock_fixture_missing, recebido ${deathResult.reason}`);
+  assert(!String(deathResult.debug?.interpreter_final_usado || "").includes("fallback"), `${deathText}: nao deveria marcar fallback local`);
 });
 
-test("Gemini-first recupera JSON invalido com fallback local seguro em mensagem basica", async () => {
+test("Gemini-first nao recupera JSON invalido com parser local em mensagem basica", async () => {
   await withInterpreterEnv({
     BOT_INTERPRETER: "gemini",
     BOT_AI_PROVIDER: "openrouter",
@@ -3973,11 +3969,10 @@ test("Gemini-first recupera JSON invalido com fallback local seguro em mensagem 
         owner: ADMIN_OWNER,
         supabase: createActionPlanSupabase({})
       });
-      const parsed = finalParsed(result);
-      assert(result.kind === "local", `esperado fallback local seguro, recebido ${result.kind}`);
-      assert(parsed?.tipo === "RECEITA_VENDA", `intent esperado RECEITA_VENDA, recebido ${parsed?.tipo}`);
-      assert(Number(parsed.dados?.valor) === 1000, `valor esperado 1000, recebido ${parsed?.dados?.valor}`);
-      assert(parsed.dados?.interpreter_final_usado === "legacy_semantic_fallback", "fallback seguro nao marcado");
+      assert(result.kind === "clarify", `esperado clarify sem parser local, recebido ${result.kind}`);
+      assert(result.reason === "invalid_json", `reason esperado invalid_json, recebido ${result.reason}`);
+      assert(result.debug?.error_classification === "contract", "JSON invalido deveria ser classificado como contrato");
+      assert(!String(result.debug?.interpreter_final_usado || "").includes("fallback"), "nao deveria marcar fallback local");
     });
   });
 });
