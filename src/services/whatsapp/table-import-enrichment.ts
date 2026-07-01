@@ -50,16 +50,24 @@ export async function existingAnimalEventKeysForImport(supabase: SupabaseAdmin, 
 }
 
 function animalImportLotName(row: AnyRecord) {
+  const lotIdAsName = (value: unknown) => {
+    const text = String(value || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) ? "" : text;
+  };
+
   return String(
     row.lote_nome
     || row.lote
     || row.lote_ref
+    || lotIdAsName(row.lote_id)
     || row.values?.lote_nome
     || row.values?.lote
     || row.values?.lote_ref
+    || lotIdAsName(row.values?.lote_id)
     || row.parsedValues?.lote_nome
     || row.parsedValues?.lote
     || row.parsedValues?.lote_ref
+    || lotIdAsName(row.parsedValues?.lote_id)
     || ""
   ).trim();
 }

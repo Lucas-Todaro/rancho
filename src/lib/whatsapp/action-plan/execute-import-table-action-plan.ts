@@ -390,7 +390,8 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
     const values = row.parsedValues || {};
     const code = String(values.brinco || values.animal_ref || "").trim();
     const category = String(values.categoria || "").trim().toLowerCase();
-    const lotName = String(values.lote_ref || values.lote_nome || values.lote || "").trim();
+    const lotIdAsName = String(values.lote_id || "").trim();
+    const lotName = String(values.lote_ref || values.lote_nome || values.lote || (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lotIdAsName) ? "" : lotIdAsName) || "").trim();
     const problems = [...(row.problemas || [])];
     if (!code) problems.push("animal_sem_codigo");
     if (!category) problems.push("categoria_ausente");

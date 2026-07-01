@@ -29,18 +29,33 @@ function hasOnlyValidationIssue(row: AnyRecord, issue: string) {
 }
 
 function animalImportLotName(row: AnyRecord) {
+  const lotIdAsName = (value: unknown) => {
+    const text = String(value || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) ? "" : text;
+  };
+
   return String(
     row.lote_nome
     || row.lote
     || row.lote_ref
+    || lotIdAsName(row.lote_id)
     || row.values?.lote_nome
     || row.values?.lote
     || row.values?.lote_ref
+    || lotIdAsName(row.values?.lote_id)
     || row.parsedValues?.lote_nome
     || row.parsedValues?.lote
     || row.parsedValues?.lote_ref
+    || lotIdAsName(row.parsedValues?.lote_id)
     || ""
   ).trim();
+}
+
+function resolvedAnimalImportLotId(row: AnyRecord) {
+  const raw = String(row.lote_id || "").trim();
+  if (!raw) return null;
+  if (row.lote_resolvido?.id || row.lote_nome_resolvido) return raw;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
 }
 
 export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Promise<SaveResult> {
@@ -227,15 +242,33 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
           continue;
         }
 
-        const lot = await insertRealRecord(supabase, owner, TABLES.lotes, {
-          fazenda_id: owner.fazenda_id,
-          nome: lotName,
-          descricao: "Criado via importacao tabular do WhatsApp",
-          ativo: true
-        });
-        if (lot?.id) createdLots.set(exactAnimalImportCodeKey(lotName), String(lot.id));
-        savedTables.add(TABLES.lotes);
-        createdLotCount += 1;
+        let lotId = "";
+        try {
+          const lot = await insertRealRecord(supabase, owner, TABLES.lotes, {
+            fazenda_id: owner.fazenda_id,
+            nome: lotName,
+            descricao: "Criado via importacao tabular do WhatsApp",
+            ativo: true
+          });
+          lotId = String(lot?.id || "");
+          savedTables.add(TABLES.lotes);
+          createdLotCount += 1;
+        } catch (error) {
+          const errorMessage = safeErrorText(error);
+          if (!/duplicate|duplicad|unique|23505/i.test(errorMessage)) throw error;
+        }
+
+        if (!lotId) {
+          const resolvedAfterInsert = await findLot(supabase, owner, lotName);
+          if (resolvedAfterInsert?.row && (resolvedAfterInsert.exact || resolvedAfterInsert.score >= 0.86)) {
+            lotId = String(resolvedAfterInsert.row.id || "");
+          }
+        }
+
+        if (!lotId) {
+          throw new Error(`Nao foi possivel criar ou resolver o lote "${lotName}". Nenhum animal foi salvo.`);
+        }
+        createdLots.set(exactAnimalImportCodeKey(lotName), lotId);
       }
     }
 
@@ -246,7 +279,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
         continue;
       }
 
-      let lotId = row.lote_id || null;
+      let lotId = resolvedAnimalImportLotId(row);
       const lotName = animalImportLotName(row);
       if (!lotId && createMissingLots && lotName) {
         lotId = createdLots.get(exactAnimalImportCodeKey(lotName)) || null;

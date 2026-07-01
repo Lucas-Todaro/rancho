@@ -74,6 +74,13 @@ module.exports = function loadBotTestSection(context) {
       "396;Vaca 396;vaca;femea;Girolando;Teste Bot;02/02/2021;475;ativo;",
       "080;Vaca 080;vaca;femea;Girolando;Teste Bot;14/04/2020;485;ativo;"
     ].join("\n");
+    const allMissingLotBullsRegistrationTableMessage = [
+      "codigo;nome;categoria;sexo;raca;lote;nascimento;peso;status;observacoes",
+      "T-50;Touro 50;touro;macho;Girolando;Reprodutores;01/01/2019;720;ativo;",
+      "T-137;Touro 137;touro;macho;Girolando;Reprodutores;01/02/2019;740;ativo;",
+      "T-51;Touro 51;touro;macho;Girolando;Reprodutores;01/03/2019;710;ativo;",
+      "T-52;Touro 52;touro;macho;Girolando;Reprodutores;01/04/2019;730;ativo;"
+    ].join("\n");
     const minimalAnimalRegistrationTableMessage = [
       "Codigo;Categoria;Sexo",
       "IMP-201;boi;macho",
@@ -1882,6 +1889,72 @@ module.exports = function loadBotTestSection(context) {
           savedAfterConfirmation: true,
           savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
           shouldSaveValues: { brinco: "090", nome: "Teste Bot" },
+          allAnimalWritesMustHaveLotId: true,
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela de touros cria lote faltante e vincula todos os animais",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [allMissingLotBullsRegistrationTableMessage, { text: "2", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "Lotes criados: 1",
+          allResponsesNotInclude: ["NÃ£o foi possÃ­vel registrar os animais", "NÃ£o foi possÃ­vel importar os animais", "Nao foi possivel importar os animais"],
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { brinco: "T-50", nome: "Reprodutores" },
+          allAnimalWritesMustHaveLotId: true,
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela de animais com lote_id textual cria lote e nao usa texto como id",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        initialSession: () => ({
+          etapa: "aguardando_confirmacao",
+          dados: {
+            pending: {
+              tipo: "IMPORTACAO_ANIMAIS_TABELA",
+              confianca: 0.96,
+              dados: {
+                importacao_tabela_animais: true,
+                total_linhas: 2,
+                linhas: [
+                  { lineNumber: 1, animal_codigo: "AP-901", nome: "Touro AP 901", categoria: "touro", sexo: "macho", raca: "Girolando", lote_id: "Reprodutores", status: "ativo", problemas: [] },
+                  { lineNumber: 2, animal_codigo: "AP-902", nome: "Touro AP 902", categoria: "touro", sexo: "macho", raca: "Girolando", lote_id: "Reprodutores", status: "ativo", problemas: [] }
+                ],
+                linhas_validadas: [
+                  { lineNumber: 1, animal_codigo: "AP-901", nome: "Touro AP 901", categoria: "touro", sexo: "macho", raca: "Girolando", lote_id: "Reprodutores", status: "ativo", status_validacao: "invalido", problemas_validacao: ["lote_nao_encontrado"] },
+                  { lineNumber: 2, animal_codigo: "AP-902", nome: "Touro AP 902", categoria: "touro", sexo: "macho", raca: "Girolando", lote_id: "Reprodutores", status: "ativo", status_validacao: "invalido", problemas_validacao: ["lote_nao_encontrado"] }
+                ],
+                resumo_validacao: {
+                  total: 2,
+                  prontas: 0,
+                  invalidas: 2,
+                  lotes_nao_encontrados: 2,
+                  nomes_lotes_nao_encontrados: ["Reprodutores"]
+                }
+              },
+              perguntas_faltantes: [],
+              resumo: "importar animais com lote pendente"
+            }
+          }
+        }),
+        messages: [{ text: "2", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "Lotes criados: 1",
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { brinco: "AP-901", nome: "Reprodutores" },
+          shouldNotSaveValues: { lote_id: "Reprodutores" },
+          allAnimalWritesMustHaveLotId: true,
           shouldNotWriteBusiness: false,
           ranchId: BOT_TEST_FARM_ID
         }

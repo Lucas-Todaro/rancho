@@ -77,18 +77,33 @@ module.exports = function loadBotTestSection(context) {
     }
 
     function animalImportLotName(row) {
+      const lotIdAsName = (value) => {
+        const text = String(value || "").trim();
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) ? "" : text;
+      };
+
       return String(
         row?.lote_nome
         || row?.lote
         || row?.lote_ref
+        || lotIdAsName(row?.lote_id)
         || row?.values?.lote_nome
         || row?.values?.lote
         || row?.values?.lote_ref
+        || lotIdAsName(row?.values?.lote_id)
         || row?.parsedValues?.lote_nome
         || row?.parsedValues?.lote
         || row?.parsedValues?.lote_ref
+        || lotIdAsName(row?.parsedValues?.lote_id)
         || ""
       ).trim();
+    }
+
+    function resolvedAnimalImportLotId(row) {
+      const raw = String(row?.lote_id || "").trim();
+      if (!raw) return null;
+      if (row?.lote_resolvido?.id || row?.lote_nome_resolvido) return raw;
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
     }
 
     function createSupabaseForScenario(test = {}) {
@@ -493,7 +508,7 @@ module.exports = function loadBotTestSection(context) {
               categoria: row.categoria || "outro",
               sexo: row.sexo || "nao_informado",
               raca: row.raca || null,
-              lote_id: row.lote_id || null,
+              lote_id: resolvedAnimalImportLotId(row) || null,
               lote_nome: animalImportLotName(row) || null,
               data_nascimento: row.data_nascimento || null,
               peso: row.peso !== undefined && row.peso !== null && row.peso !== "" ? Number(row.peso) : null,
@@ -1006,6 +1021,10 @@ module.exports = function loadBotTestSection(context) {
       return actions.some((action) => sameValue(action.payload?.[field], expected));
     }
 
+    function actionsByTable(actions, table) {
+      return actions.filter((action) => action.table === table);
+    }
+
     function uniqueActionKey(action) {
       return `${action.type}:${action.table}:${JSON.stringify(action.payload || {})}`;
     }
@@ -1131,6 +1150,14 @@ module.exports = function loadBotTestSection(context) {
 
       for (const [field, value] of Object.entries(expected.shouldNotSaveValues || {})) {
         if (actionPayloadHas(capturedActions, field, value)) failures.push(`acao nao deveria salvar ${field}=${value}`);
+      }
+
+      if (expected.allAnimalWritesMustHaveLotId) {
+        const animalActions = actionsByTable(capturedActions, BOT_TEST_TABLES.animais);
+        const missingLotActions = animalActions.filter((action) => !action.payload?.lote_id);
+        if (missingLotActions.length) {
+          failures.push(`animais salvos sem lote_id: ${missingLotActions.map((action) => action.payload?.brinco || action.payload?.nome || "sem codigo").join(", ")}`);
+        }
       }
 
       if (expected.shouldClearSession && finalResult.estadoNovo !== "livre") {
