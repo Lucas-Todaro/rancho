@@ -49,6 +49,21 @@ export async function existingAnimalEventKeysForImport(supabase: SupabaseAdmin, 
   })));
 }
 
+function animalImportLotName(row: AnyRecord) {
+  return String(
+    row.lote_nome
+    || row.lote
+    || row.lote_ref
+    || row.values?.lote_nome
+    || row.values?.lote
+    || row.values?.lote_ref
+    || row.parsedValues?.lote_nome
+    || row.parsedValues?.lote
+    || row.parsedValues?.lote_ref
+    || ""
+  ).trim();
+}
+
 export async function enrichTabularAnimalEventImport(supabase: SupabaseAdmin, owner: WhatsAppOwner, parsed: ParsedRanchoMessage) {
   const dados = { ...(parsed.dados || {}) };
   const rows = Array.isArray(dados.linhas) ?dados.linhas as AnyRecord[] : [];
@@ -169,7 +184,8 @@ export async function enrichTabularAnimalImport(supabase: SupabaseAdmin, owner: 
       }
     }
 
-    const lotName = String(row.lote_nome || "").trim();
+    const lotName = animalImportLotName(row);
+    if (lotName && !next.lote_nome) next.lote_nome = lotName;
     if (lotName) {
       const lot = bestMatch(lots, lotName, (item) => [item.nome, item.descricao]);
       if (lot?.row && (lot.exact || lot.score >= 0.86)) {
@@ -200,7 +216,7 @@ export async function enrichTabularAnimalImport(supabase: SupabaseAdmin, owner: 
   const missingLotNames = Array.from(new Set(
     validatedRows
       .filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
-      .map((row) => String(row.lote_nome || "").trim())
+      .map(animalImportLotName)
       .filter(Boolean)
   ));
 

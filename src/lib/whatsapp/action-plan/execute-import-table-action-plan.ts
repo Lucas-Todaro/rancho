@@ -390,6 +390,7 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
     const values = row.parsedValues || {};
     const code = String(values.brinco || values.animal_ref || "").trim();
     const category = String(values.categoria || "").trim().toLowerCase();
+    const lotName = String(values.lote_ref || values.lote_nome || values.lote || "").trim();
     const problems = [...(row.problemas || [])];
     if (!code) problems.push("animal_sem_codigo");
     if (!category) problems.push("categoria_ausente");
@@ -404,7 +405,7 @@ function animalImportParsed(plan: ImportTableActionPlan, rows: AnyRecord[], prev
       sexo: values.sexo || "nao_informado",
       fase: values.fase || "nao_aplicavel",
       raca: values.raca || null,
-      lote_nome: values.lote_ref || null,
+      lote_nome: lotName || null,
       status: values.status || "ativo",
       peso: values.peso ?? null,
       data_nascimento: values.data_nascimento || null,

@@ -62,6 +62,35 @@ module.exports = function loadBotTestSection(context) {
       return failures;
     }
 
+    function validationIssues(row) {
+      const issues = Array.isArray(row?.problemas_validacao)
+        ? row.problemas_validacao
+        : Array.isArray(row?.problemas)
+          ? row.problemas
+          : [];
+      return Array.from(new Set(issues.map(String).filter(Boolean)));
+    }
+
+    function hasOnlyValidationIssue(row, issue) {
+      const issues = validationIssues(row);
+      return issues.length === 1 && issues[0] === issue;
+    }
+
+    function animalImportLotName(row) {
+      return String(
+        row?.lote_nome
+        || row?.lote
+        || row?.lote_ref
+        || row?.values?.lote_nome
+        || row?.values?.lote
+        || row?.values?.lote_ref
+        || row?.parsedValues?.lote_nome
+        || row?.parsedValues?.lote
+        || row?.parsedValues?.lote_ref
+        || ""
+      ).trim();
+    }
+
     function createSupabaseForScenario(test = {}) {
       const supabase = new BotTestSupabase();
       supabase.failMotherPhaseUpdate = Boolean(test.failMotherPhaseUpdate);
@@ -436,8 +465,8 @@ module.exports = function loadBotTestSection(context) {
         const actions = [];
         if (dados.criar_lotes_faltantes) {
           const lots = Array.from(new Set(rows
-            .filter((row) => row.status_validacao === "pronto" && Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
-            .map((row) => String(row.lote_nome || "").trim())
+            .filter((row) => hasOnlyValidationIssue(row, "lote_nao_encontrado") || (row.status_validacao === "pronto" && validationIssues(row).includes("lote_nao_encontrado")))
+            .map(animalImportLotName)
             .filter(Boolean)));
           for (const lotName of lots) {
             actions.push({
@@ -453,7 +482,7 @@ module.exports = function loadBotTestSection(context) {
           }
         }
 
-        for (const row of rows.filter((item) => item.status_validacao === "pronto")) {
+        for (const row of rows.filter((item) => item.status_validacao === "pronto" || (dados.criar_lotes_faltantes && hasOnlyValidationIssue(item, "lote_nao_encontrado")))) {
           actions.push({
             ...base,
             table: BOT_TEST_TABLES.animais,
@@ -465,7 +494,7 @@ module.exports = function loadBotTestSection(context) {
               sexo: row.sexo || "nao_informado",
               raca: row.raca || null,
               lote_id: row.lote_id || null,
-              lote_nome: row.lote_nome || null,
+              lote_nome: animalImportLotName(row) || null,
               data_nascimento: row.data_nascimento || null,
               peso: row.peso !== undefined && row.peso !== null && row.peso !== "" ? Number(row.peso) : null,
               status: row.status || "ativo",

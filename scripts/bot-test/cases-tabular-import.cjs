@@ -63,6 +63,17 @@ module.exports = function loadBotTestSection(context) {
       "B-002;Duplicada;vaca;femea;;;;;ativo;",
       "IMP-103;Lua;novilha;femea;Jersey;Lote Novo;01/02/2025;300;ativo;"
     ].join("\n");
+    const allMissingLotAnimalRegistrationTableMessage = [
+      "codigo;nome;categoria;sexo;raca;lote;nascimento;peso;status;observacoes",
+      "090;Mimosa;vaca;femea;Girolando;Teste Bot;10/03/2021;480;ativo;",
+      "316;Vaca 316;vaca;femea;Girolando;Teste Bot;12/05/2020;470;ativo;",
+      "387;Vaca 387;vaca;femea;Girolando;Teste Bot;08/08/2020;465;ativo;",
+      "395;Vaca 395;vaca;femea;Girolando;Teste Bot;15/09/2021;455;ativo;",
+      "5202;Vaca 5202;vaca;femea;Girolando;Teste Bot;20/01/2020;490;ativo;",
+      "397;Vaca 397;vaca;femea;Girolando;Teste Bot;11/11/2021;460;ativo;",
+      "396;Vaca 396;vaca;femea;Girolando;Teste Bot;02/02/2021;475;ativo;",
+      "080;Vaca 080;vaca;femea;Girolando;Teste Bot;14/04/2020;485;ativo;"
+    ].join("\n");
     const minimalAnimalRegistrationTableMessage = [
       "Codigo;Categoria;Sexo",
       "IMP-201;boi;macho",
@@ -1854,6 +1865,23 @@ module.exports = function loadBotTestSection(context) {
           savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
           shouldSaveValues: { brinco: "IMP-103", nome: "Lote Novo" },
           shouldNotSaveValues: { brinco: "B-002" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
+        name: "tabela de animais cria lote faltante para todas as linhas antes de cadastrar",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [allMissingLotAnimalRegistrationTableMessage, { text: "2", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "Lotes criados: 1",
+          allResponsesNotInclude: ["Não foi possível importar os animais", "Nao foi possivel importar os animais"],
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { brinco: "090", nome: "Teste Bot" },
           shouldNotWriteBusiness: false,
           ranchId: BOT_TEST_FARM_ID
         }

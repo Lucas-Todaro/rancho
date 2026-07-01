@@ -28,6 +28,21 @@ function hasOnlyValidationIssue(row: AnyRecord, issue: string) {
   return issues.length === 1 && issues[0] === issue;
 }
 
+function animalImportLotName(row: AnyRecord) {
+  return String(
+    row.lote_nome
+    || row.lote
+    || row.lote_ref
+    || row.values?.lote_nome
+    || row.values?.lote
+    || row.values?.lote_ref
+    || row.parsedValues?.lote_nome
+    || row.parsedValues?.lote
+    || row.parsedValues?.lote_ref
+    || ""
+  ).trim();
+}
+
 export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Promise<SaveResult> {
   const { supabase, owner, pending } = ctx;
   const {
@@ -201,7 +216,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       const missingLotNames = Array.from(new Set(
         rows
           .filter((row) => Array.isArray(row.problemas_validacao) && row.problemas_validacao.includes("lote_nao_encontrado"))
-          .map((row) => String(row.lote_nome || "").trim())
+          .map(animalImportLotName)
           .filter(Boolean)
       ));
 
@@ -232,8 +247,12 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       }
 
       let lotId = row.lote_id || null;
-      if (!lotId && createMissingLots && row.lote_nome) {
-        lotId = createdLots.get(exactAnimalImportCodeKey(row.lote_nome)) || null;
+      const lotName = animalImportLotName(row);
+      if (!lotId && createMissingLots && lotName) {
+        lotId = createdLots.get(exactAnimalImportCodeKey(lotName)) || null;
+      }
+      if (createMissingLots && hasOnlyValidationIssue(row, "lote_nao_encontrado") && !lotId) {
+        throw new Error(`Nao foi possivel criar ou vincular o lote "${lotName || "informado"}". Nenhum animal desta linha foi salvo.`);
       }
 
       await insertRealRecord(supabase, owner, TABLES.animais, {
