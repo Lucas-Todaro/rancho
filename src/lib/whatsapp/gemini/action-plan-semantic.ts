@@ -15,6 +15,24 @@ function firstValue(...values: unknown[]) {
   return values.find(hasValue);
 }
 
+export function isDomainSpecificOperationalReportText(value: unknown) {
+  const text = normalizeRanchoText(String(value ?? ""));
+  if (!text) return false;
+  const domains = "(?:eventos?|registros?|ocorrencias?|financeir[oa]s?|financas?|estoque|producao|leite|rebanho|animais?|vacas?|funcionarios?|ponto|lotes?|genealogia|saude|sanitario|reproducao)";
+  const reportWords = "(?:relatorios?|resumos?|fechamentos?|balancos?|extratos?|consultas?)";
+  return new RegExp(`\\b${reportWords}\\s+(?:do|da|de|dos|das)?\\s*${domains}\\b`).test(text)
+    || new RegExp(`\\b${domains}\\s+(?:do|da|de|dos|das)?\\s*${reportWords}\\b`).test(text)
+    || /\bcomo\s+(?:foi|esta|ta)\s+(?:o|a)?\s*(?:financeir[oa]|estoque|producao|leite|rebanho|ponto)\b/.test(text);
+}
+
+export function isExplicitGeneralOperationalReportText(value: unknown) {
+  const text = normalizeRanchoText(String(value ?? ""));
+  if (!text || isDomainSpecificOperationalReportText(text)) return false;
+  return /\b(?:relatorios?|resumos?|fechamentos?|balancos?)\s+(?:geral|do\s+dia|de\s+hoje|da\s+fazenda|do\s+rancho)\b/.test(text)
+    || /\b(?:como\s+foi|status\s+do\s+dia|o\s+que\s+aconteceu)\s+(?:hoje|no\s+rancho|na\s+fazenda)?\b/.test(text)
+    || /\b(?:manda|me\s+da|me\s+d[aá]|mostra|mostrar)\s+(?:um\s+)?(?:relatorio|relatorio|resumo|fechamento)\s+(?:de\s+hoje|do\s+dia|geral)\b/.test(text);
+}
+
 function entityValue(value: unknown): unknown {
   if (!isPlainObject(value)) return value;
   return firstValue(value.ref, value.codigo, value.brinco, value.nome, value.id, value.value);

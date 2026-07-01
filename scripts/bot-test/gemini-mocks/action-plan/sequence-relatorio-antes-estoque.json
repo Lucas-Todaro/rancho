@@ -3,7 +3,7 @@
   "input": "me mostra os eventos de hoje e registra 30kg de racao no estoque",
   "inputExamples": [
     "me mostra os eventos de hoje e registra 30kg de racao no estoque",
-    "manda o resumo de hoje e depois adiciona 30kg de racao no estoque"
+    "lista os eventos de hoje e depois adiciona 30kg de racao no estoque"
   ],
   "response": {
     "action": "sequence",

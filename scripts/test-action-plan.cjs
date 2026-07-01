@@ -1146,6 +1146,35 @@ test("ActionPlan execute consultar_eventos usa rota geral quando texto e amplo",
   assert(!result.parsed.dados?.action_plan_response, "execute consultar_eventos generico nao deve trazer resposta fechada de um dominio especifico");
 });
 
+test("ActionPlan relatorio operacional explicito nao vira lista de eventos mesmo em mensagem composta", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "observacoes",
+      operation: "eventos_gerais",
+      confidence: 0.94,
+      semantic: {
+        intent: "consultar_eventos",
+        scope: "eventos",
+        date: "hoje",
+        report: { type: "eventos", detailLevel: "resumo" }
+      },
+      filters: [{ field: "data", op: "last_days", value: 1 }],
+      limit: 100,
+      requiresConfirmation: false
+    },
+    originalText: "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-07-01",
+    supabase: createActionPlanSupabase({ [TABLES.eventosAnimal]: [] })
+  });
+
+  assert(result.ok, `relatorio operacional deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "CONSULTA_REGISTROS_HOJE", `intent esperado CONSULTA_REGISTROS_HOJE, recebeu ${result.parsed.tipo}`);
+  assert(result.parsed.dados?.consulta_registros === "relatorio", "relatorio do dia deveria virar relatorio geral, nao eventos");
+  assert(result.parsed.dados?.action_plan_domain === "eventos_gerais", "normalizacao deveria ficar auditavel");
+});
+
 test("ActionPlan execute consulta respeita dominio explicito de saude", async () => {
   const result = await executeActionPlan({
     plan: {
@@ -3495,6 +3524,7 @@ test("Gemini-first ActionPlan sequence adia consulta apos mutacao ate confirmaca
     const after = result.pending.dados?.gemini_consultas_apos_confirmacao || [];
     assert(after.length === 1, "consulta posterior deveria ficar anexada para depois da confirmacao");
     assert(after[0].tipo === "CONSULTA_REGISTROS_HOJE", `consulta posterior deveria ser registros de hoje, recebeu ${after[0]?.tipo}`);
+    assert(after[0].dados?.consulta_registros === "relatorio", "relatorio de hoje posterior deveria ser relatorio geral, nao eventos");
     assert(result.gemini.requiresConfirmation === true, "sequence com mutacao deve exigir confirmacao");
   });
 });
@@ -3515,6 +3545,7 @@ test("Gemini-first ActionPlan sequence executa consulta antes e deixa mutacao pe
     assert(result.kind === "compound", `sequence consulta+mutacao deveria ser compound, recebido ${result.kind}`);
     assert(result.immediateConsultations.length === 1, "consulta antes da mutacao deveria sair imediatamente");
     assert(result.immediateConsultations[0].tipo === "CONSULTA_REGISTROS_HOJE", "consulta imediata deveria ser registros de hoje");
+    assert(result.immediateConsultations[0].dados?.consulta_registros === "eventos", "pedido explicito de eventos deve continuar eventos");
     assert(result.pending.tipo === "ESTOQUE_ENTRADA", `pendencia deveria ser entrada de estoque, recebeu ${result.pending.tipo}`);
     assert((result.pending.dados?.gemini_consultas_apos_confirmacao || []).length === 0, "nao deveria haver consulta posterior");
   });

@@ -4,7 +4,7 @@
   "inputExamples": [
     "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque",
     "antes registra 30 kg de racao no estoque e depois manda o resumo de hoje",
-    "registra 30kg de racao no estoque e me mostra os eventos de hoje"
+    "registra 30kg de racao no estoque e depois manda o fechamento do dia"
   ],
   "response": {
     "action": "sequence",
@@ -44,13 +44,13 @@
         "operation": "eventos_gerais",
         "confidence": 0.94,
         "semantic": {
-          "intent": "consultar_eventos",
-          "scope": "eventos",
+          "intent": "consultar_relatorio_operacional",
+          "scope": "geral",
           "date": "hoje",
           "report": {
-            "type": "eventos",
+            "type": "relatorio",
             "detailLevel": "resumo",
-            "includeDomains": ["observacoes", "reproducao", "saude_sanitario"]
+            "includeDomains": ["financeiro", "estoque", "producao_leite", "animais", "reproducao", "saude_sanitario", "ponto_funcionario"]
           }
         },
         "filters": [{ "field": "data", "op": "last_days", "value": 1 }],

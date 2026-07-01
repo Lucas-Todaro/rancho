@@ -9,7 +9,11 @@ import { normalizeRanchoText } from "@/lib/whatsapp/nlp-text";
 import { extractAnimalCode } from "@/lib/whatsapp/nlp-core/extractors";
 import { detectReproductiveEventKind, reproductiveEventLabel } from "@/lib/whatsapp/nlp-core/reproductive-events";
 import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
-import { semanticPeriod, semanticReportType } from "@/lib/whatsapp/gemini/action-plan-semantic";
+import {
+  isExplicitGeneralOperationalReportText,
+  semanticPeriod,
+  semanticReportType
+} from "@/lib/whatsapp/gemini/action-plan-semantic";
 
 type QueryBuilderLike = AnyRecord;
 
@@ -143,6 +147,7 @@ function isFinanceQueryText(text: unknown) {
 function genericEventReportText(text: unknown) {
   const normalized = normalizedText(text);
   if (!normalized) return false;
+  if (isExplicitGeneralOperationalReportText(normalized)) return true;
   const hasGenericEventTopic = /\b(?:eventos?|registros?|ocorrencias?|ocorridos?|aconteceu|aconteceram|movimentacoes?|atividades?|fechamento|resumo|relatorio|tudo)\b/.test(normalized);
   const hasQueryShape = /\b(?:quais?|qual|como|me fala|mostra|mostrar|ver|teve|houve|lista|listar|resumo|relatorio|fechamento|hoje|ontem|semana|mes|ano|ultimos?)\b/.test(normalized);
   const hasSpecificTopic = /\b(?:vacinas?|vacinacao|tratamentos?|medicamentos?|vermifugos?|antibioticos?|doencas?|sanitario|saude|partos?|pariu|pariram|prenhas?|prenhez|inseminacoes?|inseminadas?|protocolos?|retestes?|cios?|financeiro|receitas?|despesas?|estoque|leite|ordenhas?|ponto|funcionarios?|lotes?|genealogia)\b/.test(normalized);
@@ -193,7 +198,10 @@ function executeGeneralEventReportQuery(input: ExecuteQueryActionPlanInput, plan
   const { period, days } = eventReportPeriod({ text: input.originalText, plan });
   const mode = genericEventReportMode(input.originalText);
   const reportType = semanticReportType(plan);
-  const consultaRegistros = reportType === "eventos"
+  const explicitGeneralReport = isExplicitGeneralOperationalReportText(input.originalText);
+  const consultaRegistros = explicitGeneralReport
+    ? "relatorio"
+    : reportType === "eventos"
     ? "eventos"
     : reportType === "relatorio"
       ? "relatorio"

@@ -9,6 +9,7 @@ import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, g
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
 import { interpretWithGemini } from "@/lib/whatsapp/gemini/interpreter";
 import { geminiMode } from "@/lib/whatsapp/gemini/runtime";
+import { isExplicitGeneralOperationalReportText } from "@/lib/whatsapp/gemini/action-plan-semantic";
 import type { GeminiStructuredAction, GeminiStructuredResult } from "@/lib/whatsapp/gemini/types";
 import { buildMissing, finalize } from "@/lib/whatsapp/nlp-core/result";
 import type { ParsedRanchoMessage, RanchoIntent } from "@/lib/whatsapp/nlp";
@@ -1236,6 +1237,8 @@ function sequenceStepExecutionText(step: SequenceActionPlan["steps"][number], fa
     .filter((part) => part !== undefined && part !== null && String(part).trim())
     .join(" ")
     .trim();
+  const isQueryStep = step.action === "query" || (step.action === "execute" && step.requiresConfirmation === false);
+  if (isQueryStep && isExplicitGeneralOperationalReportText(fallback)) return fallback;
   return text || fallback;
 }
 

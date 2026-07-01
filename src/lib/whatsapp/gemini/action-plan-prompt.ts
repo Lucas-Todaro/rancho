@@ -7,7 +7,7 @@ import {
 import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
 import { ACTION_PLAN_DESIGN_MEMORY } from "@/lib/whatsapp/gemini/action-plan-memory";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v9";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v10";
 
 const EXAMPLES = [
   {
@@ -111,7 +111,7 @@ const EXAMPLES = [
         domains: ["estoque", "observacoes"],
         effects: [
           { domain: "estoque", type: "entrada", target: "racao", value: 30 },
-          { domain: "observacoes", type: "consulta", target: "eventos_hoje" }
+          { domain: "observacoes", type: "consulta", target: "relatorio_geral_hoje" }
         ]
       },
       steps: [
@@ -131,10 +131,10 @@ const EXAMPLES = [
         {
           action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
           semantic: {
-            intent: "consultar_eventos",
-            scope: "eventos",
+            intent: "consultar_relatorio_operacional",
+            scope: "geral",
             date: "hoje",
-            report: { type: "eventos", detailLevel: "resumo", includeDomains: ["observacoes", "reproducao", "saude_sanitario"] }
+            report: { type: "relatorio", detailLevel: "resumo", includeDomains: ["financeiro", "estoque", "producao_leite", "animais", "reproducao", "saude_sanitario", "ponto_funcionario"] }
           },
           filters: [{ field: "data", op: "last_days", value: 1 }],
           limit: 100, requiresConfirmation: false
@@ -150,7 +150,7 @@ const EXAMPLES = [
       steps: [
         {
           action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
-          semantic: { intent: "consultar_eventos", scope: "eventos", date: "hoje", report: { type: "eventos", detailLevel: "resumo" } },
+          semantic: { intent: "consultar_relatorio_operacional", scope: "geral", date: "hoje", report: { type: "relatorio", detailLevel: "resumo" } },
           filters: [{ field: "data", op: "last_days", value: 1 }],
           limit: 100, requiresConfirmation: false
         },
