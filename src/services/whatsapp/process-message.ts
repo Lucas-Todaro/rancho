@@ -4,6 +4,7 @@ import type { AnyRecord } from "@/lib/types";
 import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { normalizeWhatsappNumber, whatsappNumbersMatch } from "@/lib/phone";
 import { applyReproductionImportChildComplement } from "@/lib/whatsapp/action-plan/reproduction-import-child";
+import { applyStockMissingItemRegistrationText } from "@/lib/whatsapp/action-plan/execute-import-table-action-plan";
 import {
   isOversizedText,
   isUnsafeOperationalMessage,
@@ -4362,6 +4363,16 @@ async function handleConfirmation(
         partos: next.dados?.resumo_partos || null
       });
       return `Atualizei os dados das crias no lote.\n${confirmationText(next)}`;
+    }
+  }
+
+  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && pendingStockSummary?.missingItems) {
+    const stockItemPatched = applyStockMissingItemRegistrationText(pending, text);
+    if (stockItemPatched) {
+      const next = await enrichWithCatalog(catalogEnrichmentDependencies(), supabase, owner, stockItemPatched);
+      await saveSession(supabase, owner, { etapa: "aguardando_confirmacao", dados: { pending: next } });
+      botTabularImportLog("stock_missing_items_patch_applied", owner, stockImportSummary(next));
+      return `Atualizei o cadastro dos itens faltantes.\n${confirmationText(next)}`;
     }
   }
 

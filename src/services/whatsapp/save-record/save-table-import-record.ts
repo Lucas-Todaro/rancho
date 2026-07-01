@@ -360,12 +360,13 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
         }
 
         const firstRow = missingItemRows.find((row) => normalizeCatalogText(row.item_nome || row.item_original) === normalizeCatalogText(itemName));
+        const initialQuantity = Number(firstRow?.quantidade_atual ?? (firstRow?.tipo_linha_estoque === "cadastro_item" ? firstRow?.quantidade : 0) ?? 0);
         const item = await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
           fazenda_id: owner.fazenda_id,
           nome: itemName,
-          categoria: stockCategoryFromName(itemName),
+          categoria: normalizeEnumValue(firstRow?.categoria || firstRow?.categoria_original || stockCategoryFromName(itemName), ["racao", "medicamento", "insumo", "equipamento", "outro"], "outro"),
           unidade_medida: firstRow?.unidade || "unidade",
-          quantidade_atual: 0,
+          quantidade_atual: Number.isFinite(initialQuantity) && initialQuantity > 0 ? initialQuantity : 0,
           quantidade_minima: 0,
           valor_unitario: firstRow?.valor ?Number(firstRow.valor) / Math.max(1, Number(firstRow.quantidade || 1)) : 0,
           fornecedor: null,

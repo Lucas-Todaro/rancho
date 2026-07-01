@@ -75,7 +75,9 @@ const { executeActionPlan } = require("../src/lib/whatsapp/action-plan/execute-a
 const { executeQueryActionPlan } = require("../src/lib/whatsapp/action-plan/execute-query-action-plan.ts");
 const {
   executeImportTableActionPlan,
-  parseStructuredTableForActionPlan
+  parseStructuredTableForActionPlan,
+  applyStockMissingItemRegistrationText,
+  stockItemRegistrationRowsFromText
 } = require("../src/lib/whatsapp/action-plan/execute-import-table-action-plan.ts");
 const {
   applyReproductionImportChildComplement
@@ -1666,6 +1668,36 @@ test("executor query financeiro preserva termo de gasto mesmo se IA omite filtro
   assert(result.response.toLowerCase().includes("racao"), "resposta deveria citar o termo racao");
 });
 
+test("executor query financeiro quanto gastei hoje filtra somente despesas do dia", async () => {
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "financeiro",
+      confidence: 0.9,
+      filters: [],
+      aggregations: [{ field: "valor", op: "sum", as: "total" }],
+      requiresConfirmation: false,
+      limit: 100,
+      userQuestion: "relatorio financeiro"
+    },
+    owner: ADMIN_OWNER,
+    currentDate: "2026-07-01",
+    originalText: "me mostra quanto eu gastei hoje",
+    supabase: createActionPlanSupabase({
+      [TABLES.transacoesFinanceiras]: [
+        { id: "saida-hoje", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 300, descricao: "racao", categoria: "insumo", data_transacao: "2026-07-01" },
+        { id: "entrada-hoje", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "entrada", valor: 900, descricao: "leite", categoria: "venda", data_transacao: "2026-07-01" },
+        { id: "saida-ontem", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 150, descricao: "sal", categoria: "insumo", data_transacao: "2026-06-30" }
+      ]
+    })
+  });
+
+  assert(result.ok, `query gasto hoje deveria executar: ${result.reason}`);
+  assert(result.rows.length === 1, `esperado somente despesas de hoje, recebido ${result.rows.length}`);
+  assert(result.rows[0]?.id === "saida-hoje", "consulta deveria retornar apenas a saida de hoje");
+  assert(result.response.includes("Total gasto: R$ 300,00."), `resposta deveria mostrar gasto do dia, recebeu: ${result.response}`);
+});
+
 test("executor query funcionarios retorna lista factual em vez de resposta generica", async () => {
   const result = await executeQueryActionPlan({
     plan: {
@@ -1737,6 +1769,36 @@ test("executor import_table producao gera preview sem salvar", async () => {
   assert(result.parsed.dados?.total_litros === 35, "total_litros deveria ser 35");
   assert(result.preview.includes("Li a tabela e preparei a importação"), "preview deveria ser texto final limpo");
   assertCleanVisibleText(result.preview, "preview import producao");
+});
+
+test("executor import_table producao reconstroi tabela colada em uma linha", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "producao_leite",
+    confidence: 0.94,
+    table: {
+      hasHeader: true,
+      separator: ";",
+      columnMapping: {
+        animal_ref: "Animal",
+        litros: "Litros",
+        data: "Data",
+        observacoes: "Observacoes"
+      },
+      defaultFields: {},
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const text = "Animal;Litros;Data;Observacoes;090;28,5;01/07/2026;Ordenha manha;080;31;01/07/2026;Ordenha manha;397;26;01/07/2026;Ordenha tarde;396;27;01/07/2026;Ordenha tarde";
+  const result = await executeImportTableActionPlan({ plan, text });
+
+  assert(result.ok, `tabela colada de producao deveria executar: ${result.reason}`);
+  assert(result.parsed.tipo === "LOTE_REGISTROS", `intent esperado LOTE_REGISTROS, recebido ${result.parsed.tipo}`);
+  assert(result.rows.length === 4, `esperado 4 linhas reconstruidas, recebido ${result.rows.length}`);
+  assert(result.parsed.dados?.total_registros === 4, "deveria gerar 4 registros de producao");
+  assert(result.parsed.dados?.total_litros === 112.5, `total_litros incorreto: ${result.parsed.dados?.total_litros}`);
 });
 
 test("executor import_table animais normaliza enums antes de salvar", async () => {
@@ -1873,6 +1935,38 @@ test("executor import_table estoque aceita cadastro inicial de itens", async () 
   const preview = confirmationText(result.parsed);
   assert(preview.includes("cadastro inicial"), "preview deveria explicar cadastro inicial");
   assert(preview.includes("Milho"), "preview deveria mostrar Milho");
+});
+
+test("complemento de itens de estoque faltantes interpreta varios itens em texto livre", () => {
+  const pending = {
+    tipo: "IMPORTACAO_ESTOQUE_TABELA",
+    confianca: 0.94,
+    perguntas_faltantes: [],
+    resumo: "",
+    dados: {
+      linhas: [
+        { item_nome: "Silagem", item_original: "Silagem", tipo_movimento: "entrada", quantidade: 3, unidade: "toneladas", problemas_validacao: ["item_nao_encontrado"], status_validacao: "invalido" },
+        { item_nome: "Sal mineral", item_original: "Sal mineral", tipo_movimento: "entrada", quantidade: 1, unidade: "sacos", problemas_validacao: ["item_nao_encontrado"], status_validacao: "invalido" }
+      ],
+      resumo_validacao: {
+        itens_nao_encontrados: 2,
+        nomes_itens_nao_encontrados: ["Silagem", "Sal mineral"]
+      }
+    }
+  };
+  const rows = stockItemRegistrationRowsFromText(
+    "SILAGEM: medida e toneladas, quantidade inicial e 18 e categoria e insumo. SAL MINERAL: medida e sacos, quantidade inicial e 1 e categoria e insumo.",
+    ["Silagem", "Sal mineral"]
+  );
+  assert(rows.length === 2, `esperado extrair 2 cadastros, recebido ${rows.length}`);
+  assert(rows[0].item_nome === "Silagem" && rows[0].quantidade_atual === 18 && rows[0].unidade === "toneladas", "Silagem nao foi extraida corretamente");
+  assert(rows[1].item_nome === "Sal mineral" && rows[1].quantidade_atual === 1 && rows[1].unidade === "sacos", "Sal mineral nao foi extraido corretamente");
+
+  const patched = applyStockMissingItemRegistrationText(pending, "SILAGEM: medida e toneladas, quantidade inicial e 18 e categoria e insumo. SAL MINERAL: medida e sacos, quantidade inicial e 1 e categoria e insumo.");
+  assert(patched, "complemento de itens faltantes deveria aplicar patch");
+  assert(patched.dados?.criar_itens_faltantes === true, "patch deveria marcar criacao de itens faltantes");
+  assert(patched.dados?.linhas?.[0]?.tipo_linha_estoque === "cadastro_item", "primeira linha deveria ser cadastro de item");
+  assert(patched.dados?.linhas?.[1]?.item_nome === "Sal mineral", "segunda linha deveria cadastrar Sal mineral");
 });
 
 test("executor import_table estoque normaliza columnMapping invertido da IA", async () => {
@@ -2719,6 +2813,34 @@ test("ActionPlan import_table reproducao aplica complemento de crias em lote", a
   assert(row204?.child_status === "complete" && row204.cria_sexo === "macho" && row204.cria_codigo === "C-204", "linha 204 nao recebeu cria completa");
   assert(row398?.child_status === "not_registered", "linha 398 deveria ficar sem cria cadastrada");
   assert(patched.dados?.resumo_partos?.partos_com_cria_completa === 2, "deveria contar 2 crias completas");
+});
+
+test("ActionPlan import_table reproducao aplica complemento compacto de varias crias", async () => {
+  const plan = {
+    action: "import_table",
+    domain: "reproducao",
+    confidence: 0.92,
+    data: { rows: [{ animal_ref: "5202", evento: "parto" }, { animal_ref: "090", evento: "parto" }] },
+    table: {
+      hasHeader: false,
+      columnMapping: { animal_ref: "animal_ref", evento: "evento" },
+      defaultFields: { data: "hoje" },
+      ignoredColumns: [],
+      ambiguousColumns: []
+    },
+    requiresConfirmation: true
+  };
+  const result = await executeImportTableActionPlan({ plan, text: "5202:PARTO\n090:PARTO" });
+  assert(result.ok, `partos compactos deveriam executar: ${result.reason}`);
+
+  const patched = applyReproductionImportChildComplement(result.parsed, "5202;C-5202;macho;T-15 090;C-090;femea;T-50");
+  assert(patched, "complemento compacto deveria aplicar patch");
+  const rows = patched.dados?.linhas || [];
+  const row5202 = rows.find((row) => row.animal_codigo === "5202");
+  const row090 = rows.find((row) => row.animal_codigo === "090");
+  assert(row5202?.child_status === "complete" && row5202.cria_codigo === "C-5202" && row5202.cria_sexo === "macho", "linha 5202 nao recebeu cria completa");
+  assert(row090?.child_status === "complete" && row090.cria_codigo === "C-090" && row090.cria_sexo === "femea", "linha 090 nao recebeu cria completa");
+  assert(patched.dados?.resumo_partos?.partos_com_cria_completa === 2, "deveria contar 2 crias completas no formato compacto");
 });
 
 test("ActionPlan import_table reproducao aceita variacoes de complemento de crias", async () => {
@@ -3820,7 +3942,7 @@ test("parse flags true usa ActionPlan query com Supabase mockado", async () => {
       });
       const parsed = finalParsed(result);
       assert(parsed?.dados?.action_plan_used === true, "ActionPlan query deveria ser usado");
-      assert(parsed.dados.action_plan_response.includes("Resumo financeiro"), "resposta financeira ausente");
+      assert(/(?:Resumo financeiro|Gastos)/.test(parsed.dados.action_plan_response), "resposta financeira ausente");
       assertCleanVisibleText(parsed.dados.action_plan_response, "action_plan_response");
     });
   });

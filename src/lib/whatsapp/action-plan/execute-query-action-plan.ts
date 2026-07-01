@@ -1167,6 +1167,24 @@ function buildResponse(domain: DomainManifestEntry, rows: AnyRecord[], metrics: 
     const total = Number(Object.values(metrics.totals || {})[0] || entradas + saidas);
     const period = periodText(plan);
     const search = plan.filters.find((filter) => ["descricao", "categoria"].includes(filter.field) && String(filter.value || "").trim())?.value;
+    const typeFilter = plan.filters.find((filter) => filter.field === "tipo");
+    const financeType = typeFilter ? normalizeFinanceType(typeFilter.value) : "";
+    if (financeType === "saida") {
+      const title = search ? `Gastos de ${search}` : "Gastos";
+      return [
+        `${title}${period ? ` ${period}` : ""}:`,
+        `Registros: ${rows.length}.`,
+        `Total gasto: ${money(saidas || total)}.`
+      ].join("\n");
+    }
+    if (financeType === "entrada") {
+      const title = search ? `Receitas de ${search}` : "Receitas";
+      return [
+        `${title}${period ? ` ${period}` : ""}:`,
+        `Registros: ${rows.length}.`,
+        `Total recebido: ${money(entradas || total)}.`
+      ].join("\n");
+    }
     const aggregateText = plan.aggregations?.length && total !== entradas + saidas ? `Total filtrado: ${money(total)}.` : "";
     const title = search
       ? `Resumo financeiro de ${search}${period ? ` ${period}` : ""}`

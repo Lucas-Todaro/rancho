@@ -3,7 +3,7 @@ import { getRanchTodayISO, parseUserDateToRanchDate } from "@/lib/dates/ranch-ti
 import type { ImportTableActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import { validateImportTableActionPlan, type ParsedTableForValidation } from "@/lib/whatsapp/gemini/action-plan-validator";
 import { getDomainManifest, type DomainManifestEntry } from "@/lib/whatsapp/gemini/domain-manifest";
-import type { ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
+import { refreshRanchoMessage, type ParsedRanchoMessage } from "@/lib/whatsapp/nlp";
 import { finalizeActionPlanParsed } from "@/lib/whatsapp/action-plan/action-plan-to-parsed";
 import {
   classifyReproductionImportChild,
@@ -66,14 +66,168 @@ function splitRows(text: string, separator?: string) {
   };
 }
 
-export function parseStructuredTableForActionPlan(text: string, separator?: string, hasHeader = true): ParsedTableForValidation {
+function normalizeHeaderText(value: unknown) {
+  return normalizeRanchoText(String(value || "").trim()).replace(/\s+/g, " ");
+}
+
+function inferCollapsedHeaderSize(cells: string[], columnMapping?: Record<string, string | number>) {
+  const mappedColumns = Object.values(columnMapping || {})
+    .filter((column): column is string => typeof column === "string" && Boolean(column.trim()))
+    .map(normalizeHeaderText);
+  if (!mappedColumns.length) return 0;
+
+  let maxIndex = -1;
+  for (const mappedColumn of mappedColumns) {
+    const index = cells.findIndex((cell) => normalizeHeaderText(cell) === mappedColumn);
+    if (index < 0) return 0;
+    maxIndex = Math.max(maxIndex, index);
+  }
+
+  const size = maxIndex + 1;
+  return size > 0 && cells.length > size ? size : 0;
+}
+
+function chunkCollapsedRows(cells: string[], size: number) {
+  const rows: string[][] = [];
+  for (let index = 0; index < cells.length; index += size) {
+    const chunk = cells.slice(index, index + size);
+    if (chunk.length === size && chunk.some((cell) => String(cell || "").trim())) rows.push(chunk);
+  }
+  return rows;
+}
+
+export function parseStructuredTableForActionPlan(
+  text: string,
+  separator?: string,
+  hasHeader = true,
+  columnMapping?: Record<string, string | number>
+): ParsedTableForValidation {
   const parsed = splitRows(text, separator);
   const firstRow = parsed.rows[0] || [];
+  if (hasHeader && parsed.rows.length === 1) {
+    const headerSize = inferCollapsedHeaderSize(firstRow, columnMapping);
+    if (headerSize) {
+      return {
+        headers: firstRow.slice(0, headerSize),
+        rows: chunkCollapsedRows(firstRow.slice(headerSize), headerSize),
+        hasHeader
+      };
+    }
+  }
   return {
     headers: hasHeader ? firstRow : firstRow.map((_cell, index) => index),
     rows: hasHeader ? parsed.rows.slice(1) : parsed.rows,
     hasHeader
   };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseStockInitialQuantity(text: string) {
+  const patterns = [
+    /\bquantidade\s+inicial\s*(?:e|eh|é|:)?\s*([0-9]+(?:[,.][0-9]+)?)/i,
+    /\bqtd\.?\s*inicial\s*(?:e|eh|é|:)?\s*([0-9]+(?:[,.][0-9]+)?)/i,
+    /\bcom\s*([0-9]+(?:[,.][0-9]+)?)\s*(?:iniciais|inicial)\b/i,
+    /\b([0-9]+(?:[,.][0-9]+)?)\s*(?:iniciais|inicial)\b/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const value = match?.[1] ? parseNumber(match[1]) : null;
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function parseStockUnitFromText(text: string) {
+  const parenthetical = text.match(/\(([^)]+)\)/)?.[1];
+  if (parenthetical) return parenthetical.trim();
+  const explicit = text.match(/\b(?:medida|unidade)\s*(?:e|eh|é|:)?\s*([a-zA-ZÀ-ÿ0-9\s-]+?)(?:,|\.|\be\b|\bquantidade\b|\bcategoria\b|$)/i)?.[1];
+  if (explicit) return explicit.trim();
+  const preposition = text.match(/\b(?:em|por)\s+([a-zA-ZÀ-ÿ0-9-]+)(?:,|\.|\be\b|\bcom\b|\bquantidade\b|\bcategoria\b|$)/i)?.[1];
+  if (preposition) return preposition.trim();
+  const common = text.match(/\b(sacos?|toneladas?|kg|quilos?|litros?|ml|doses?|unidades?|caixas?|frascos?)\b/i)?.[1];
+  return common ? common.trim() : "";
+}
+
+function parseStockCategoryFromText(text: string) {
+  const category = text.match(/\bcategoria\s*(?:e|eh|é|:)?\s*([a-zA-ZÀ-ÿ0-9_-]+)/i)?.[1];
+  if (!category) return "";
+  const normalized = normalizeRanchoText(category).replace(/\s+/g, "_");
+  if (["racao", "medicamento", "insumo", "equipamento", "outro"].includes(normalized)) return normalized;
+  return category.trim();
+}
+
+export function stockItemRegistrationRowsFromText(text: string, itemNames: string[]) {
+  const source = String(text || "").trim();
+  const names = itemNames.map((name) => String(name || "").trim()).filter(Boolean);
+  if (!source || !names.length) return [];
+
+  const matches = names
+    .map((name) => {
+      const pattern = new RegExp(escapeRegExp(name).replace(/\s+/g, "\\s+"), "i");
+      const match = source.match(pattern);
+      return match ? { name, index: match.index || 0 } : null;
+    })
+    .filter((item): item is { name: string; index: number } => Boolean(item))
+    .sort((left, right) => left.index - right.index);
+
+  return matches.map((match, index) => {
+    const next = matches[index + 1];
+    const segment = source.slice(match.index, next ? next.index : source.length).trim();
+    const unit = parseStockUnitFromText(segment);
+    const quantity = parseStockInitialQuantity(segment);
+    const category = parseStockCategoryFromText(segment);
+    const problems = [
+      !unit ? "unidade_ausente" : "",
+      quantity === null ? "quantidade_inicial_ausente" : "",
+      !category ? "categoria_ausente" : ""
+    ].filter(Boolean);
+    return {
+      lineNumber: index + 1,
+      rawText: segment,
+      tipo_linha_estoque: "cadastro_item",
+      item_original: match.name,
+      item_nome: match.name,
+      quantidade_original: quantity === null ? "" : String(quantity),
+      quantidade: quantity ?? 0,
+      quantidade_atual: quantity,
+      unidade_original: unit,
+      unidade: unit || null,
+      categoria_original: category,
+      categoria: category || null,
+      tipo_original: "",
+      tipo_movimento: null,
+      data_original: "",
+      data_referencia: null,
+      valor_original: "",
+      valor: null,
+      valor_unitario: null,
+      fornecedor: "",
+      ativo: true,
+      observacoes: "Item cadastrado a partir de complemento de importacao",
+      problemas: problems
+    };
+  });
+}
+
+export function applyStockMissingItemRegistrationText(parsed: ParsedRanchoMessage, text: string) {
+  if (parsed.tipo !== "IMPORTACAO_ESTOQUE_TABELA") return null;
+  const dados = { ...(parsed.dados || {}) };
+  const summary = dados.resumo_validacao && typeof dados.resumo_validacao === "object" ? dados.resumo_validacao as AnyRecord : {};
+  const missingNames = Array.isArray(summary.nomes_itens_nao_encontrados)
+    ? summary.nomes_itens_nao_encontrados.map(String)
+    : [];
+  const registrationRows = stockItemRegistrationRowsFromText(text, missingNames);
+  if (!registrationRows.length) return null;
+  const rows = Array.isArray(dados.linhas) ? dados.linhas as AnyRecord[] : [];
+  return refreshRanchoMessage(parsed, {
+    ...dados,
+    linhas: [...registrationRows, ...rows],
+    criar_itens_faltantes: true,
+    complemento_itens_estoque_aplicado: true
+  });
 }
 
 function columnIndex(headers: Array<string | number>, reference: string | number) {
@@ -580,7 +734,7 @@ export async function executeImportTableActionPlan(input: ExecuteImportTableActi
       rows: dataRows.map((row) => Object.values(row || {})),
       hasHeader: false
     }
-    : parseStructuredTableForActionPlan(input.text, table.separator, table.hasHeader);
+    : parseStructuredTableForActionPlan(input.text, table.separator, table.hasHeader, table.columnMapping);
   const validation = validateImportTableActionPlan(input.plan, parsedTable);
   if (!validation.ok) {
     return {

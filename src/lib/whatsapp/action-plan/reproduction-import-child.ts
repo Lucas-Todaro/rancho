@@ -165,6 +165,41 @@ function parseComplementLine(line: string) {
   return { animalRef, ...patch };
 }
 
+function parseComplementLines(text: string) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const parsed = lines.flatMap((line) => {
+    if (!line.includes(";")) {
+      const patch = parseComplementLine(line);
+      return patch ? [patch] : [];
+    }
+
+    const compactSegments = line
+      .split(/\s+(?=[a-zA-Z0-9-]+\s*;\s*[a-zA-Z0-9-]+\s*;\s*(?:macho|femea|fêmea|fem|f|m)\b)/i)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    if (compactSegments.length > 1) {
+      return compactSegments
+        .map((segment) => parseComplementLine(segment))
+        .filter((patch): patch is NonNullable<ReturnType<typeof parseComplementLine>> => Boolean(patch));
+    }
+
+    const cells = line.split(";").map((cell) => cell.trim()).filter((cell) => cell !== "");
+    if (cells.length > 4 && cells.length % 4 === 0) {
+      return Array.from({ length: cells.length / 4 }, (_item, index) => {
+        const chunk = cells.slice(index * 4, index * 4 + 4).join(";");
+        return parseComplementLine(chunk);
+      }).filter((patch): patch is NonNullable<ReturnType<typeof parseComplementLine>> => Boolean(patch));
+    }
+
+    const patch = parseComplementLine(line);
+    return patch ? [patch] : [];
+  });
+  return parsed;
+}
+
 function applyPatchToRows(rows: AnyRecord[], patches: Map<string, AnyRecord>) {
   let changed = false;
   const patchedRows = rows.map((row) => {
@@ -202,9 +237,7 @@ function applyPatchToRows(rows: AnyRecord[], patches: Map<string, AnyRecord>) {
 export function applyReproductionImportChildComplement(parsed: ParsedRanchoMessage, text: string) {
   if (parsed.tipo !== "IMPORTACAO_EVENTOS_TABELA") return null;
   const patches = new Map<string, AnyRecord>();
-  for (const line of String(text || "").split(/\r?\n/)) {
-    const patch = parseComplementLine(line);
-    if (!patch) continue;
+  for (const patch of parseComplementLines(text)) {
     const key = codeKey(patch.animalRef);
     if (key) patches.set(key, patch);
   }

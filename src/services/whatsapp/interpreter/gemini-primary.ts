@@ -1239,6 +1239,14 @@ function sequenceStepExecutionText(step: SequenceActionPlan["steps"][number], fa
     .trim();
   const isQueryStep = step.action === "query" || (step.action === "execute" && step.requiresConfirmation === false);
   if (isQueryStep && isExplicitGeneralOperationalReportText(fallback)) return fallback;
+  const isFinanceQueryStep = isQueryStep && (
+    ("domain" in step && step.domain === "financeiro")
+    || (step.action === "execute" && /financeiro/i.test(String(step.capability || "")))
+    || (Array.isArray(semantic?.domains) && semantic.domains.some((domain) => String(domain).toLowerCase() === "financeiro"))
+  );
+  if (isFinanceQueryStep && /\b(despesa|despesas|gasto|gastos|gastei|saida|saidas|paguei|pagamento|receita|receitas|entrada|entradas|faturamento|vendas?|recebi)\b/i.test(fallback)) {
+    return [text, fallback].filter(Boolean).join(" ");
+  }
   return text || fallback;
 }
 
