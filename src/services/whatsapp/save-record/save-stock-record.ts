@@ -9,6 +9,13 @@ import { whatsappNumbersMatch } from "@/lib/phone";
 import type { SaveRecordHandlerContext, SaveResult } from "@/services/whatsapp/save-record/types";
 import { createSaveRecordScope, prepareAnimalRecord } from "@/services/whatsapp/save-record/helpers";
 
+const STOCK_ITEM_CATEGORIES = new Set(["racao", "medicamento", "insumo", "equipamento", "outro", "vacina"]);
+
+function normalizedExplicitStockCategory(value: unknown) {
+  const normalized = normalizeRanchoText(String(value || ""));
+  return STOCK_ITEM_CATEGORIES.has(normalized) ? normalized : null;
+}
+
 export async function saveStockRecord(ctx: SaveRecordHandlerContext): Promise<SaveResult> {
   const { supabase, owner, pending } = ctx;
   const {
@@ -110,7 +117,7 @@ export async function saveStockRecord(ctx: SaveRecordHandlerContext): Promise<Sa
     await insertRealRecord(supabase, owner, TABLES.estoqueItens, {
       fazenda_id: owner.fazenda_id,
       nome: dados.item_nome,
-      categoria: stockCategoryFromName(String(dados.item_nome || "")),
+      categoria: normalizedExplicitStockCategory(dados.categoria) || stockCategoryFromName(String(dados.item_nome || "")),
       unidade_medida: dados.unidade || "unidade",
       quantidade_atual: Number(dados.quantidade || 0),
       quantidade_minima: 0,

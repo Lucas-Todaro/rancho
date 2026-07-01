@@ -1,0 +1,21 @@
+{
+  "id": "create-estoque-item-cadastro",
+  "inputExamples": [
+    "cadastrar item de estoque racao, categoria insumo, unidade kg",
+    "cadastrar produto racao no estoque categoria insumo unidade kg"
+  ],
+  "response": {
+    "action": "execute",
+    "capability": "cadastrar_item_estoque",
+    "confidence": 0.94,
+    "semantic": {
+      "intent": "cadastrar_item_estoque",
+      "scope": "estoque",
+      "entities": { "item": "racao" },
+      "attributes": { "categoria": "insumo", "unidade": "kg" },
+      "effects": [{ "domain": "estoque", "type": "cadastrar_item" }]
+    },
+    "data": { "item": "racao", "categoria": "insumo", "unidade": "kg" },
+    "requiresConfirmation": true
+  }
+}

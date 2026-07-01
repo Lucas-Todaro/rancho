@@ -684,6 +684,7 @@ module.exports = function loadBotTestSection(context) {
           payload: {
             fazenda_id: fazendaId,
             nome: dados.item_nome,
+            categoria: dados.categoria || "outro",
             quantidade_atual: Number(dados.quantidade || 0),
             unidade_medida: dados.unidade || "unidade"
           }

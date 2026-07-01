@@ -438,7 +438,8 @@ function capabilityMutationParsed(plan: ExecuteCapabilityActionPlan, currentDate
   if (plan.capability === "cadastrar_item_estoque") {
     const dados = {
       item_nome: firstValue(data, ["item", "item_nome", "produto", "nome"]),
-      quantidade: firstNumber(data, ["quantidade", "quantidade_inicial", "saldo_inicial"]) ?? 0,
+      categoria: data.categoria || undefined,
+      quantidade: firstNumber(data, ["quantidade", "quantidade_inicial", "saldo_inicial"]),
       unidade: firstValue(data, ["unidade", "unidade_medida"]),
       valor: firstNumber(data, ["valor", "valor_total", "preco"]),
       compra: data.compra || undefined,
@@ -687,7 +688,31 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
 
   if (plan.domain === "estoque") {
     const trade = actionPlanPhysicalStockTrade(plan, data, originalText);
+    const operationText = normalizeRanchoText([
+      plan.operation,
+      data.operacao,
+      data.acao,
+      data.tipo_movimento,
+      data.tipo,
+      data.movimento,
+      originalText
+    ].filter(Boolean).join(" "));
     const movement = normalizeRanchoText(String(data.tipo_movimento || data.tipo || plan.operation || ""));
+    const hasMovementCue = Boolean(trade)
+      || /\b(?:entrada|saida|baixa|uso|consumo|venda|vendi|vender|compra|comprei|comprar|reposicao|retirada)\b/.test(operationText);
+    const hasItemCreateCue = /\b(?:cadastr|criar|novo|nova|item|produto|insumo|material)\b/.test(operationText);
+    if (plan.action === "create" && !hasMovementCue && hasItemCreateCue) {
+      const dados = {
+        item_nome: firstValue(data, ["item", "item_ref", "item_nome", "produto", "nome"]),
+        categoria: data.categoria || undefined,
+        quantidade: parseActionPlanNumber(data.quantidade ?? data.quantidade_atual ?? data.quantidade_inicial ?? data.saldo_inicial),
+        unidade: data.unidade || data.unidade_medida || undefined,
+        valor: parseActionPlanNumber(data.valor_unitario ?? data.valor_total ?? data.valor ?? data.preco),
+        data_referencia: date,
+        ...metadata
+      };
+      return finalize("CRIAR_ITEM_ESTOQUE", dados, buildMissing("CRIAR_ITEM_ESTOQUE", dados), plan.confidence);
+    }
     const isOut = trade?.kind === "sale" || ["saida", "uso", "consumo", "venda", "venda_estoque"].some((value) => movement.includes(value));
     const value = parseActionPlanNumber(data.valor_total ?? data.valor) ?? trade?.value;
     const isPurchase = trade?.kind === "purchase"
@@ -698,6 +723,7 @@ function mutationParsed(plan: ActionPlan, currentDate?: string, originalText?: s
     const tipo = isOut ? "ESTOQUE_SAIDA" : "ESTOQUE_ENTRADA";
     const dados = {
       item_nome: data.item || data.item_ref || data.nome || trade?.item,
+      categoria: data.categoria || undefined,
       quantidade: parseActionPlanNumber(data.quantidade) ?? trade?.quantity ?? data.quantidade,
       unidade: data.unidade || data.unidade_medida || trade?.unit,
       valor: value,

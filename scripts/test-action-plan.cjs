@@ -720,6 +720,44 @@ test("ActionPlan compra e venda fisica geram estoque com reflexo financeiro", as
   assert(use.parsed.dados?.compra !== true, "saida comum nao deveria marcar compra");
 });
 
+test("ActionPlan cadastro de item de estoque nao vira movimento sem quantidade", async () => {
+  const itemCreate = await executeActionPlan({
+    plan: {
+      action: "create",
+      domain: "estoque",
+      confidence: 0.94,
+      data: { item: "ração", categoria: "insumo", unidade: "kg" },
+      requiresConfirmation: true
+    },
+    text: "cadastrar item de estoque ração, categoria insumo, unidade kg",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(itemCreate.ok, `cadastro de item deveria executar: ${itemCreate.reason}`);
+  assert(itemCreate.parsed.tipo === "CRIAR_ITEM_ESTOQUE", `cadastro de item deveria virar CRIAR_ITEM_ESTOQUE, recebeu ${itemCreate.parsed.tipo}`);
+  assert(itemCreate.parsed.dados?.item_nome === "ração", "cadastro de item deveria preservar nome");
+  assert(itemCreate.parsed.dados?.categoria === "insumo", "cadastro de item deveria preservar categoria explicita");
+  assert(itemCreate.parsed.dados?.unidade === "kg", "cadastro de item deveria preservar unidade");
+  assert(itemCreate.parsed.perguntas_faltantes?.some((question) => /quantidade inicial/i.test(String(question))), "cadastro sem quantidade deve perguntar quantidade inicial");
+
+  const capabilityCreate = await executeActionPlan({
+    plan: {
+      action: "execute",
+      capability: "cadastrar_item_estoque",
+      confidence: 0.94,
+      data: { item: "ração", categoria: "insumo", unidade: "kg" },
+      requiresConfirmation: true
+    },
+    text: "cadastrar item de estoque ração, categoria insumo, unidade kg",
+    owner: ADMIN_OWNER,
+    currentDate: "2026-06-24"
+  });
+  assert(capabilityCreate.ok, `capability cadastro de item deveria executar: ${capabilityCreate.reason}`);
+  assert(capabilityCreate.parsed.tipo === "CRIAR_ITEM_ESTOQUE", `capability deveria virar CRIAR_ITEM_ESTOQUE, recebeu ${capabilityCreate.parsed.tipo}`);
+  assert(capabilityCreate.parsed.dados?.categoria === "insumo", "capability deve preservar categoria explicita");
+  assert(capabilityCreate.parsed.perguntas_faltantes?.some((question) => /quantidade inicial/i.test(String(question))), "capability sem quantidade deve perguntar quantidade inicial");
+});
+
 test("ActionPlan de morte vira MORTE e nao cadastro generico", async () => {
   const healthDeath = await executeActionPlan({
     plan: {
@@ -3881,6 +3919,25 @@ test("runtime encontra fixture ActionPlan racao 90 dias por texto normalizado", 
   assert(parsed?.dados?.action_plan_domain === "financeiro", "domain financeiro ausente");
   assert(filters.some((filter) => filter.field === "descricao" && filter.op === "contains" && /ra[cç]ão|ra[cç]ao/i.test(filter.value)), "filtro contains racao ausente");
   assert(filters.some((filter) => filter.field === "data" && filter.op === "last_days" && filter.value === 90), "filtro last_days 90 ausente");
+});
+
+test("runtime encontra fixture ActionPlan cadastro de item de estoque", async () => {
+  const text = "cadastrar item de estoque racao, categoria insumo, unidade kg";
+  const fixture = findGeminiMockFixture({ text });
+  assert(fixture?.id === "create-estoque-item-cadastro", "fixture errada: " + (fixture?.id || "nenhuma"));
+
+  const result = await parseWithConfiguredInterpreter({
+    text,
+    localParsed: parseRanchoMessage(text),
+    owner: ADMIN_OWNER,
+    supabase: createActionPlanSupabase({})
+  });
+  const parsed = finalParsed(result);
+  assert(parsed?.tipo === "CRIAR_ITEM_ESTOQUE", `cadastro deveria virar CRIAR_ITEM_ESTOQUE, recebeu ${parsed?.tipo}`);
+  assert(parsed.dados?.action_plan_used === true, "cadastro deveria usar ActionPlan");
+  assert(parsed.dados?.action_plan_capability === "cadastrar_item_estoque", "capability cadastro ausente");
+  assert(parsed.dados?.categoria === "insumo", "categoria explicita deveria ser preservada");
+  assert(parsed.perguntas_faltantes?.some((question) => /quantidade inicial/i.test(String(question))), "cadastro sem quantidade deve perguntar quantidade inicial");
 });
 
 test("runtime encontra fixture ActionPlan producao Mimosa sem animal_codigo LEITE", async () => {

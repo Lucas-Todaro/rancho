@@ -241,7 +241,7 @@ export const RANCHO_DOMAIN_MANIFEST = {
       ativo: field("boolean")
     },
     requiredFieldsByAction: {
-      create: ["item", "quantidade"],
+      create: ["item"],
       update: ["item_ref"],
       import_table: ["item"]
     },
