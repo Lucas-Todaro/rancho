@@ -2,10 +2,11 @@ import {
   parseRanchoMessage,
   parseTabularAnimalEventsMessageAs
 } from "@/lib/whatsapp/nlp";
-import { detectStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
+import { detectStructuredInput, looksLikeCollapsedStructuredInput } from "@/lib/whatsapp/nlp-core/tabular-events";
 
 export {
   detectStructuredInput,
+  looksLikeCollapsedStructuredInput,
   parseRanchoMessage,
   parseTabularAnimalEventsMessageAs
 };

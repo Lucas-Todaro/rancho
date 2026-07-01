@@ -1088,7 +1088,6 @@ function canUseStructuredLocalFallback(
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
 ) {
-  if (!localSemanticFallbackEnabled()) return false;
   const parsed = input.localParsed;
   if (route !== "structured_input" || !structuredDetection.isStructured) return false;
   if (input.hasPendingAction) return false;

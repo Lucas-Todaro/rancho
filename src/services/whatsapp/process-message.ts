@@ -60,7 +60,7 @@ import {
 import { calfCategoryForSex, hasBirthChildData, normalizeCalfSex } from "@/lib/whatsapp/nlp-core/birth-child";
 import { finalize } from "@/lib/whatsapp/nlp-core/result";
 import { domainFromUserChoice, manualDomainChoiceOptionsText, tabularDomainLabel } from "@/lib/whatsapp/nlp-core/tabular-domain-router";
-import { detectStructuredInput, parseRanchoMessage, parseTabularAnimalEventsMessageAs } from "@/services/whatsapp/local-parser-gate";
+import { detectStructuredInput, looksLikeCollapsedStructuredInput, parseRanchoMessage, parseTabularAnimalEventsMessageAs } from "@/services/whatsapp/local-parser-gate";
 import { polishBotResponse, userFacingCodeLabel } from "@/lib/whatsapp/user-facing-text";
 import { dateFromReference, dateOnlyFromReference, isoFromReference } from "@/services/whatsapp/date-utils";
 import { formatMoney, formatNumber } from "@/services/whatsapp/message-format";
@@ -861,6 +861,34 @@ function safeBotPayload(table: string, payload: AnyRecord) {
   return cleaned;
 }
 
+function validationIssues(row: AnyRecord) {
+  const issues = Array.isArray(row.problemas_validacao)
+    ?row.problemas_validacao
+    : Array.isArray(row.problemas)
+      ?row.problemas
+      : [];
+  return Array.from(new Set(issues.map(String).filter(Boolean)));
+}
+
+function hasOnlyValidationIssue(row: AnyRecord, issue: string) {
+  const issues = validationIssues(row);
+  return issues.length === 1 && issues[0] === issue;
+}
+
+function animalImportHasCreatableLotRows(pending: ParsedRanchoMessage) {
+  const summary = animalImportSummary(pending);
+  if (summary.ready > 0) return true;
+  if (!summary.createMissingLots) return false;
+  return animalImportRows(pending).some((row) => hasOnlyValidationIssue(row, "lote_nao_encontrado"));
+}
+
+function stockImportHasCreatableItemRows(pending: ParsedRanchoMessage) {
+  const summary = stockImportSummary(pending);
+  if (summary.ready > 0) return true;
+  if (!summary.createMissingItems) return false;
+  return stockImportRows(pending).some((row) => row.criar_item_estoque || hasOnlyValidationIssue(row, "item_nao_encontrado"));
+}
+
 function validatePendingForSave(pending: ParsedRanchoMessage) {
   if (pending.tipo === "IMPORTACAO_TABELA_AMBIGUA") return "Preciso que voce escolha o dominio da tabela antes de continuar.";
   const dados = pending.dados || {};
@@ -868,8 +896,8 @@ function validatePendingForSave(pending: ParsedRanchoMessage) {
   if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO" && domainImportCriticalRows(pending).length > 0) return "Corrija os erros criticos da tabela antes de salvar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_TABELA_DOMINIO" && domainTableSummary(pending).ready <= 0 && domainTableSummary(pending).domain !== "AGENDA_TAREFAS") return "Nao encontrei linhas validas nesse dominio para salvar. Nada foi salvo.";
   if (pending.tipo === "IMPORTACAO_EVENTOS_TABELA" && tabularImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas para importar. Nada foi salvo.";
-  if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
-  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA" && animalImportSummary(pending).ready <= 0 && !animalImportHasCreatableLotRows(pending)) return "Não encontrei animais válidos para cadastrar. Nada foi salvo.";
+  if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA" && stockImportSummary(pending).ready <= 0 && !stockImportHasCreatableItemRows(pending)) return "Não encontrei linhas válidas de estoque para importar. Nada foi salvo.";
   if (pending.tipo === "PRODUCAO_LEITE" && invalidPositiveNumber(dados.litros)) return "Informe uma quantidade de litros válida antes de salvar.";
   if (pending.tipo === "PARTO" && partoWithChild(dados) && !normalizeCalfSex(dados.cria_sexo)) return "Informe se a cria nasceu macho ou femea antes de salvar.";
   if (pending.tipo === "PARTO" && partoWithChild(dados) && !dados.cria_codigo && !dados.gerar_cria_codigo_temporario) return "Informe o codigo/brinco da cria antes de salvar.";
@@ -4700,7 +4728,8 @@ export async function processWhatsappMessage(input: ProcessWhatsappMessageInput)
       ? structuredMessage
       : originalMessage.includes(";") && /[\r\n]/.test(originalMessage) ?originalMessage : message;
     const legacyParserCanDecide = !isGeminiPrimaryMode();
-    const localParsedPreview = legacyParserCanDecide
+    const localStructuredFallbackCanRead = structuredDetection.isStructured || looksLikeCollapsedStructuredInput(structuredMessage);
+    const localParsedPreview = legacyParserCanDecide || localStructuredFallbackCanRead
       ? parseRanchoMessage(parserMessage)
       : finalize("DESCONHECIDO", {
         origem_parser: "gemini_primary_no_local_parser_preview",

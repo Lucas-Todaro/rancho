@@ -1842,6 +1842,23 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
+        name: "tabela de animais cria lote faltante em confirmacao real",
+        module: "tabela-animais",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [animalRegistrationTableMessage, { text: "2", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ANIMAIS_TABELA",
+          responseIncludes: "animal",
+          shouldAskConfirmation: true,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.animais, BOT_TEST_TABLES.lotes],
+          shouldSaveValues: { brinco: "IMP-103", nome: "Lote Novo" },
+          shouldNotSaveValues: { brinco: "B-002" },
+          shouldNotWriteBusiness: false,
+          ranchId: BOT_TEST_FARM_ID
+        }
+      },
+      {
         name: "tabela minima de animais cadastra sem nome",
         module: "tabela-animais",
         phone: BOT_TEST_ADMIN_PHONE,
@@ -2070,6 +2087,22 @@ module.exports = function loadBotTestSection(context) {
           savedTables: [BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.estoqueMovimentacoes],
           shouldSaveValues: { nome: "Arroz" },
           shouldNotWriteBusiness: true
+        }
+      },
+      {
+        name: "tabela de estoque cria item faltante em confirmacao real",
+        module: "tabela-estoque",
+        phone: BOT_TEST_ADMIN_PHONE,
+        messages: [missingStockItemTableMessage, { text: "1", salvarReal: true }],
+        expected: {
+          finalIntent: "IMPORTACAO_ESTOQUE_TABELA",
+          responseIncludes: "Importa",
+          shouldAskConfirmation: true,
+          shouldSaveBeforeConfirmation: false,
+          savedAfterConfirmation: true,
+          savedTables: [BOT_TEST_TABLES.estoqueItens, BOT_TEST_TABLES.estoqueMovimentacoes],
+          shouldSaveValues: { nome: "Arroz" },
+          shouldNotWriteBusiness: false
         }
       },
       {

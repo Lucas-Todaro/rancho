@@ -14,6 +14,20 @@ function normalizeEnumValue(value: unknown, allowedValues: string[], fallback: s
   return allowedValues.find((item) => normalizeRanchoText(item).replace(/\s+/g, "_") === normalized) || fallback;
 }
 
+function validationIssues(row: AnyRecord) {
+  const issues = Array.isArray(row.problemas_validacao)
+    ?row.problemas_validacao
+    : Array.isArray(row.problemas)
+      ?row.problemas
+      : [];
+  return Array.from(new Set(issues.map(String).filter(Boolean)));
+}
+
+function hasOnlyValidationIssue(row: AnyRecord, issue: string) {
+  const issues = validationIssues(row);
+  return issues.length === 1 && issues[0] === issue;
+}
+
 export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Promise<SaveResult> {
   const { supabase, owner, pending } = ctx;
   const {
@@ -167,7 +181,8 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
   }
 
   if (pending.tipo === "IMPORTACAO_ANIMAIS_TABELA") {
-    const rows = animalImportRows(pending).filter((row) => row.status_validacao === "pronto");
+    const createMissingLots = Boolean(dados.criar_lotes_faltantes);
+    const rows = animalImportRows(pending).filter((row) => row.status_validacao === "pronto" || (createMissingLots && hasOnlyValidationIssue(row, "lote_nao_encontrado")));
     if (!rows.length) return { response: "Não encontrei animais válidos para cadastrar. Nada foi salvo." };
 
     const animals = await listAnimals(supabase, owner);
@@ -176,7 +191,6 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
         .map((animal) => exactAnimalImportCodeKey(animal.brinco))
         .filter(Boolean)
     );
-    const createMissingLots = Boolean(dados.criar_lotes_faltantes);
     const createdLots = new Map<string, string>();
     const savedTables = new Set<string>();
     let saved = 0;
@@ -264,10 +278,10 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
   }
 
   if (pending.tipo === "IMPORTACAO_ESTOQUE_TABELA") {
-    const rows = stockImportRows(pending).filter((row) => row.status_validacao === "pronto");
+    const createMissingItems = Boolean(dados.criar_itens_faltantes);
+    const rows = stockImportRows(pending).filter((row) => row.status_validacao === "pronto" || (createMissingItems && (row.criar_item_estoque || hasOnlyValidationIssue(row, "item_nao_encontrado"))));
     if (!rows.length) return { response: "Não encontrei linhas válidas de estoque para importar. Nada foi salvo." };
 
-    const createMissingItems = Boolean(dados.criar_itens_faltantes);
     const createdItems = new Map<string, AnyRecord>();
     const resolvedItems = new Map<string, AnyRecord>();
     const balanceByItemId = new Map<string, number>();
@@ -279,7 +293,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
     const insufficientStockItems: string[] = [];
 
     if (createMissingItems) {
-      const missingItemRows = rows.filter((row) => row.criar_item_estoque);
+      const missingItemRows = rows.filter((row) => row.criar_item_estoque || hasOnlyValidationIssue(row, "item_nao_encontrado"));
       const missingItemNames = Array.from(new Set(
         missingItemRows
           .map((row) => String(row.item_nome || row.item_original || "").trim())
@@ -345,7 +359,7 @@ export async function saveTableImportRecord(ctx: SaveRecordHandlerContext): Prom
       let unit = row.unidade_resolvida || row.unidade || "unidade";
       let itemRecord: AnyRecord | null = null;
 
-      if (!itemId && createMissingItems && row.criar_item_estoque) {
+      if (!itemId && createMissingItems && (row.criar_item_estoque || hasOnlyValidationIssue(row, "item_nao_encontrado"))) {
         const createdItem = createdItems.get(normalizeCatalogText(row.item_nome || row.item_original));
         itemId = createdItem?.id || null;
         itemName = createdItem?.nome || itemName;
