@@ -3475,6 +3475,77 @@ test("Gemini-first consulta composta de vacas prenhas e inseminadas via ActionPl
   });
 });
 
+test("Gemini-first ActionPlan sequence adia consulta apos mutacao ate confirmacao", async () => {
+  const text = "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque";
+  const fixture = fixtureByName("sequence-estoque-relatorio-hoje");
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.eventosAnimal]: [],
+        [TABLES.animais]: []
+      })
+    });
+    assert(result.kind === "compound", `sequence com mutacao+consulta deveria ser compound, recebido ${result.kind}`);
+    assert(result.immediateConsultations.length === 0, "consulta depois da mutacao nao deve sair antes da confirmacao");
+    assert(result.pending.tipo === "ESTOQUE_ENTRADA", `pendencia deveria ser entrada de estoque, recebeu ${result.pending.tipo}`);
+    assert(result.pending.dados?.action_plan_sequence_used === true, "pendencia deveria marcar sequence");
+    const after = result.pending.dados?.gemini_consultas_apos_confirmacao || [];
+    assert(after.length === 1, "consulta posterior deveria ficar anexada para depois da confirmacao");
+    assert(after[0].tipo === "CONSULTA_REGISTROS_HOJE", `consulta posterior deveria ser registros de hoje, recebeu ${after[0]?.tipo}`);
+    assert(result.gemini.requiresConfirmation === true, "sequence com mutacao deve exigir confirmacao");
+  });
+});
+
+test("Gemini-first ActionPlan sequence executa consulta antes e deixa mutacao pendente", async () => {
+  const text = "me mostra os eventos de hoje e registra 30kg de racao no estoque";
+  const fixture = fixtureByName("sequence-relatorio-antes-estoque");
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.eventosAnimal]: [],
+        [TABLES.animais]: []
+      })
+    });
+    assert(result.kind === "compound", `sequence consulta+mutacao deveria ser compound, recebido ${result.kind}`);
+    assert(result.immediateConsultations.length === 1, "consulta antes da mutacao deveria sair imediatamente");
+    assert(result.immediateConsultations[0].tipo === "CONSULTA_REGISTROS_HOJE", "consulta imediata deveria ser registros de hoje");
+    assert(result.pending.tipo === "ESTOQUE_ENTRADA", `pendencia deveria ser entrada de estoque, recebeu ${result.pending.tipo}`);
+    assert((result.pending.dados?.gemini_consultas_apos_confirmacao || []).length === 0, "nao deveria haver consulta posterior");
+  });
+});
+
+test("Gemini-first ActionPlan sequence so de consultas nao pede confirmacao", async () => {
+  const text = "quanto tem de milho no estoque e como foi o financeiro desse mes";
+  const fixture = fixtureByName("sequence-consultas-estoque-financeiro");
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.estoqueItens]: [
+          { id: "item-milho", fazenda_id: ADMIN_OWNER.fazenda_id, nome: "Milho", categoria: "racao", unidade_medida: "saco", quantidade_atual: 20, quantidade_minima: 5, ativo: true }
+        ],
+        [TABLES.estoqueMovimentacoes]: [],
+        [TABLES.transacoesFinanceiras]: [
+          { id: "fin-1", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "entrada", valor: 320, descricao: "milho", categoria: "milho", data: "2026-07-01", created_at: "2026-07-01T10:00:00.000Z" },
+          { id: "fin-2", fazenda_id: ADMIN_OWNER.fazenda_id, tipo: "saida", valor: 120, descricao: "racao", categoria: "racao", data: "2026-07-01", created_at: "2026-07-01T11:00:00.000Z" }
+        ]
+      })
+    });
+    assert(result.kind === "consultations", `sequence so consulta deveria retornar consultations, recebido ${result.kind}`);
+    assert(result.consultations.length === 2, `esperava 2 consultas, recebeu ${result.consultations.length}`);
+    assert(result.consultations.every((item) => item.dados?.action_plan_sequence_used === true), "consultas deveriam marcar sequence");
+    assert(result.gemini.requiresConfirmation === false, "sequence so de consulta nao deve exigir confirmacao");
+  });
+});
+
 test("Gemini-first parto 306 com cria usa ActionPlan create sem sobrescrever pelo parser local", async () => {
   const text = "306 pariu fêmea código B-306 hoje";
   const fixture = fixtureByName("create-parto-306-femea-codigo");

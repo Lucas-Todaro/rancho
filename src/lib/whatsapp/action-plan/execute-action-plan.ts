@@ -1006,6 +1006,16 @@ export async function executeActionPlan(input: ExecuteActionPlanInput): Promise<
     };
   }
 
+  if (input.plan.action === "sequence") {
+    return {
+      ok: false,
+      status: "clarify",
+      reason: "action_plan_sequence_requires_coordinator",
+      message: "Preciso coordenar esses passos antes de continuar.",
+      logEvent: "action_plan_invalid"
+    };
+  }
+
   if (input.plan.action === "execute") {
     const validation = validateActionPlan(input.plan);
     if (!validation.ok) {

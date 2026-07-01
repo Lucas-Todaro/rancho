@@ -1,0 +1,49 @@
+{
+  "id": "sequence-consultas-estoque-financeiro",
+  "input": "quanto tem de milho no estoque e como foi o financeiro desse mes",
+  "inputExamples": [
+    "quanto tem de milho no estoque e como foi o financeiro desse mes",
+    "me mostra milho no estoque e o financeiro do mes"
+  ],
+  "response": {
+    "action": "sequence",
+    "confidence": 0.94,
+    "requiresConfirmation": false,
+    "semantic": {
+      "intent": "consultar_multiplas_areas",
+      "scope": "consulta",
+      "domains": ["estoque", "financeiro"]
+    },
+    "steps": [
+      {
+        "action": "query",
+        "domain": "estoque",
+        "confidence": 0.94,
+        "semantic": {
+          "intent": "consultar_estoque",
+          "scope": "estoque",
+          "entities": { "item": "milho" }
+        },
+        "filters": [{ "field": "item", "op": "contains", "value": "milho" }],
+        "limit": 20,
+        "requiresConfirmation": false
+      },
+      {
+        "action": "query",
+        "domain": "financeiro",
+        "confidence": 0.94,
+        "semantic": {
+          "intent": "consultar_financeiro",
+          "scope": "financeiro",
+          "period": "mes",
+          "report": { "type": "financeiro", "detailLevel": "resumo" }
+        },
+        "filters": [{ "field": "data", "op": "current_month" }],
+        "aggregations": [{ "field": "valor", "op": "sum", "as": "total" }],
+        "groupBy": ["tipo"],
+        "limit": 100,
+        "requiresConfirmation": false
+      }
+    ]
+  }
+}

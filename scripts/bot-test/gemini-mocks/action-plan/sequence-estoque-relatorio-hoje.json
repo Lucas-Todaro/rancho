@@ -1,0 +1,62 @@
+{
+  "id": "sequence-estoque-relatorio-hoje",
+  "input": "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque",
+  "inputExamples": [
+    "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque",
+    "antes registra 30 kg de racao no estoque e depois manda o resumo de hoje",
+    "registra 30kg de racao no estoque e me mostra os eventos de hoje"
+  ],
+  "response": {
+    "action": "sequence",
+    "confidence": 0.94,
+    "requiresConfirmation": true,
+    "semantic": {
+      "intent": "executar_passos_em_ordem",
+      "scope": "composto",
+      "domains": ["estoque", "observacoes"]
+    },
+    "steps": [
+      {
+        "action": "execute",
+        "capability": "registrar_movimento_estoque",
+        "operation": "entrada_estoque",
+        "confidence": 0.93,
+        "semantic": {
+          "intent": "registrar_entrada_estoque",
+          "scope": "estoque",
+          "entities": { "item": "racao" },
+          "quantity": { "value": 30, "unit": "kg" },
+          "date": "hoje",
+          "effects": [{ "domain": "estoque", "type": "entrada" }]
+        },
+        "data": {
+          "tipo_movimento": "entrada",
+          "item_ref": "racao",
+          "quantidade": 30,
+          "unidade": "kg",
+          "data": "hoje"
+        },
+        "requiresConfirmation": true
+      },
+      {
+        "action": "query",
+        "domain": "observacoes",
+        "operation": "eventos_gerais",
+        "confidence": 0.94,
+        "semantic": {
+          "intent": "consultar_eventos",
+          "scope": "eventos",
+          "date": "hoje",
+          "report": {
+            "type": "eventos",
+            "detailLevel": "resumo",
+            "includeDomains": ["observacoes", "reproducao", "saude_sanitario"]
+          }
+        },
+        "filters": [{ "field": "data", "op": "last_days", "value": 1 }],
+        "limit": 100,
+        "requiresConfirmation": false
+      }
+    ]
+  }
+}

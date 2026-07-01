@@ -7,7 +7,7 @@ import {
 import { ACTION_PLAN_CAPABILITIES } from "@/lib/whatsapp/gemini/action-plan-capabilities";
 import { ACTION_PLAN_DESIGN_MEMORY } from "@/lib/whatsapp/gemini/action-plan-memory";
 
-export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v8";
+export const ACTION_PLAN_PROMPT_VERSION = "rancho-gemini-action-plan-v9";
 
 const EXAMPLES = [
   {
@@ -99,6 +99,68 @@ const EXAMPLES = [
       },
       filters: [{ field: "data", op: "last_days", value: 1 }],
       limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque",
+    plan: {
+      action: "sequence", confidence: 0.94, requiresConfirmation: true,
+      semantic: {
+        intent: "executar_passos_em_ordem",
+        scope: "composto",
+        domains: ["estoque", "observacoes"],
+        effects: [
+          { domain: "estoque", type: "entrada", target: "racao", value: 30 },
+          { domain: "observacoes", type: "consulta", target: "eventos_hoje" }
+        ]
+      },
+      steps: [
+        {
+          action: "execute", capability: "registrar_movimento_estoque", operation: "entrada_estoque", confidence: 0.92,
+          semantic: {
+            intent: "registrar_entrada_estoque",
+            scope: "estoque",
+            entities: { item: "racao" },
+            quantity: { value: 30, unit: "kg" },
+            date: "hoje",
+            effects: [{ domain: "estoque", type: "entrada" }]
+          },
+          data: { tipo_movimento: "entrada", item_ref: "racao", quantidade: 30, unidade: "kg", data: "hoje" },
+          requiresConfirmation: true
+        },
+        {
+          action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
+          semantic: {
+            intent: "consultar_eventos",
+            scope: "eventos",
+            date: "hoje",
+            report: { type: "eventos", detailLevel: "resumo", includeDomains: ["observacoes", "reproducao", "saude_sanitario"] }
+          },
+          filters: [{ field: "data", op: "last_days", value: 1 }],
+          limit: 100, requiresConfirmation: false
+        }
+      ]
+    }
+  },
+  {
+    user: "relatorio de hoje e quanto tem de milho no estoque",
+    plan: {
+      action: "sequence", confidence: 0.94, requiresConfirmation: false,
+      semantic: { intent: "consultar_multiplas_areas", scope: "consulta", domains: ["observacoes", "estoque"] },
+      steps: [
+        {
+          action: "query", domain: "observacoes", operation: "eventos_gerais", confidence: 0.94,
+          semantic: { intent: "consultar_eventos", scope: "eventos", date: "hoje", report: { type: "eventos", detailLevel: "resumo" } },
+          filters: [{ field: "data", op: "last_days", value: 1 }],
+          limit: 100, requiresConfirmation: false
+        },
+        {
+          action: "query", domain: "estoque", confidence: 0.94,
+          semantic: { intent: "consultar_estoque", scope: "estoque", entities: { item: "milho" } },
+          filters: [{ field: "item", op: "contains", value: "milho" }],
+          limit: 20, requiresConfirmation: false
+        }
+      ]
     }
   },
   {
@@ -373,7 +435,7 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     `ActionPlan prompt version: ${ACTION_PLAN_PROMPT_VERSION}`,
     "Retorne somente um objeto JSON ActionPlan. Nao retorne markdown, texto livre, bloco ```json, intent legado ou SQL.",
     "Voce interpreta a intencao. O backend valida e executa. Voce nunca acessa o banco e nunca decide salvar.",
-    "Use somente action=query|create|update|execute|import_table|clarify|block e somente dominios, campos e enums do manifest.",
+    "Use somente action=query|create|update|execute|import_table|sequence|clarify|block e somente dominios, campos e enums do manifest.",
     "Para mensagens comuns de operacao do usuario, prefira action=execute com uma capability permitida. Isso da liberdade sem inventar intent legado.",
     "Capabilities permitidas: " + ACTION_PLAN_CAPABILITIES.join(", ") + ".",
     "Todo plano deve incluir semantic sempre que a mensagem tiver uma intencao operacional ou consulta. semantic e um bloco semantico, nao uma permissao para executar.",
@@ -383,6 +445,9 @@ export function buildActionPlanPromptFragment(input: { manifest?: DomainManifest
     "O backend so executa capabilities e dominios permitidos, valida campos pelo manifest e exige confirmacao para mutacoes. Nunca use semantic para escapar dessas regras.",
     "Em action=execute, use capability, semantic, data, confidence e requiresConfirmation. Mutacoes exigem requiresConfirmation=true; consultas exigem false.",
     "Use action=query quando precisar de filtros/agregacoes mais ricos. Use action=import_table para tabelas.",
+    "Use action=sequence quando o usuario pedir duas ou mais acoes/consultas independentes na mesma mensagem. steps deve manter a ordem pedida e conter apenas query, create, update, execute ou import_table.",
+    "Em sequence, cada step segue as mesmas regras de confirmacao. O requiresConfirmation do plano principal deve ser true se qualquer step for mutacao; se todos forem consulta, false.",
+    "Se algum passo de uma sequence estiver inseguro ou com dado obrigatorio faltando, nao coloque clarify/block dentro de steps; use clarify ou block no plano principal.",
     "Nao invente IDs, valores, sexo da cria, pai, codigo, data, resultado financeiro, tabela ou coluna Supabase.",
     "query exige requiresConfirmation=false. create, update, execute mutacional e import_table exigem requiresConfirmation=true.",
     "Se faltar dado obrigatorio, use clarify, missingFields e userQuestion. Nao complete o dado por suposicao.",

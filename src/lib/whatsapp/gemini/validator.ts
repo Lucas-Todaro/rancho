@@ -111,15 +111,23 @@ function actionPlanShell(
   };
 }
 
+function importTablePlanForParsedTable(plan: unknown): AnyRecord | null {
+  if (!isPlainObject(plan)) return null;
+  if (plan.action === "import_table") return plan;
+  if (plan.action !== "sequence" || !Array.isArray(plan.steps)) return null;
+  return plan.steps.find((step) => isPlainObject(step) && step.action === "import_table") || null;
+}
+
 function parsedTableForActionPlan(plan: unknown, originalText?: string): ParsedTableForValidation | null {
-  if (!isPlainObject(plan) || plan.action !== "import_table" || !originalText) return null;
+  const tablePlan = importTablePlanForParsedTable(plan);
+  if (!tablePlan || !originalText) return null;
   const lines = String(originalText || "")
     .replace(/\\r\\n|\\n|\\r/g, "\n")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
   if (!lines.length) return null;
-  const table = isPlainObject(plan.table) ? plan.table : {};
+  const table = isPlainObject(tablePlan.table) ? tablePlan.table : {};
   const separator = typeof table.separator === "string"
     ? table.separator
     : lines[0].includes(";") ? ";" : lines[0].includes("|") ? "|" : lines[0].includes("\t") ? "\t" : lines[0].includes(":") ? ":" : ",";

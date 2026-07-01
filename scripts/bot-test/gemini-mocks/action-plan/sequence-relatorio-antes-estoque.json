@@ -1,0 +1,57 @@
+{
+  "id": "sequence-relatorio-antes-estoque",
+  "input": "me mostra os eventos de hoje e registra 30kg de racao no estoque",
+  "inputExamples": [
+    "me mostra os eventos de hoje e registra 30kg de racao no estoque",
+    "manda o resumo de hoje e depois adiciona 30kg de racao no estoque"
+  ],
+  "response": {
+    "action": "sequence",
+    "confidence": 0.94,
+    "requiresConfirmation": true,
+    "semantic": {
+      "intent": "executar_passos_em_ordem",
+      "scope": "composto",
+      "domains": ["observacoes", "estoque"]
+    },
+    "steps": [
+      {
+        "action": "query",
+        "domain": "observacoes",
+        "operation": "eventos_gerais",
+        "confidence": 0.94,
+        "semantic": {
+          "intent": "consultar_eventos",
+          "scope": "eventos",
+          "date": "hoje",
+          "report": { "type": "eventos", "detailLevel": "resumo" }
+        },
+        "filters": [{ "field": "data", "op": "last_days", "value": 1 }],
+        "limit": 100,
+        "requiresConfirmation": false
+      },
+      {
+        "action": "execute",
+        "capability": "registrar_movimento_estoque",
+        "operation": "entrada_estoque",
+        "confidence": 0.93,
+        "semantic": {
+          "intent": "registrar_entrada_estoque",
+          "scope": "estoque",
+          "entities": { "item": "racao" },
+          "quantity": { "value": 30, "unit": "kg" },
+          "date": "hoje",
+          "effects": [{ "domain": "estoque", "type": "entrada" }]
+        },
+        "data": {
+          "tipo_movimento": "entrada",
+          "item_ref": "racao",
+          "quantidade": 30,
+          "unidade": "kg",
+          "data": "hoje"
+        },
+        "requiresConfirmation": true
+      }
+    ]
+  }
+}

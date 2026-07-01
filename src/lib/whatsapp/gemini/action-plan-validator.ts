@@ -10,6 +10,8 @@ import {
   type FilterPlan,
   type ImportTableActionPlan,
   type QueryActionPlan,
+  type SequenceActionPlan,
+  type SingleActionPlan,
   type UpdateActionPlan
 } from "@/lib/whatsapp/gemini/action-plan-types";
 import {
@@ -58,6 +60,7 @@ export type ActionPlanValidationResult =
     };
 
 const DEFAULT_MIN_CONFIDENCE = 0.55;
+const MAX_SEQUENCE_STEPS = 8;
 const TEMPORAL_GROUPS = new Set(["day", "week", "month", "year"]);
 const FORBIDDEN_SCOPE_FIELDS = new Set([
   "fazenda_id",
@@ -1065,6 +1068,82 @@ function validateExecuteCapability(plan: AnyRecord, minConfidence: number, warni
   };
 }
 
+function planRequiresConfirmation(plan: ActionPlan) {
+  if (plan.action === "query" || plan.action === "clarify" || plan.action === "block") return false;
+  if (plan.action === "execute") return Boolean(plan.requiresConfirmation);
+  if (plan.action === "sequence") return plan.steps.some(planRequiresConfirmation);
+  return true;
+}
+
+function validateSequencePlan(
+  plan: AnyRecord,
+  context: ActionPlanValidationContext,
+  manifest: DomainManifest,
+  minConfidence: number,
+  warnings: string[]
+): ActionPlanValidationResult {
+  const errors: string[] = [];
+  validateConfidence(plan, minConfidence, errors);
+
+  if (!Array.isArray(plan.steps)) {
+    errors.push("sequence.steps deve ser array");
+  } else {
+    if (plan.steps.length < 2) errors.push("sequence.steps precisa de pelo menos 2 passos");
+    if (plan.steps.length > MAX_SEQUENCE_STEPS) errors.push(`sequence.steps excede limite de ${MAX_SEQUENCE_STEPS}`);
+  }
+
+  if (errors.length) return invalid(errors.join("; "), warnings);
+
+  const steps: SingleActionPlan[] = [];
+  for (let index = 0; index < plan.steps.length; index += 1) {
+    const step = plan.steps[index];
+    if (!isPlainObject(step)) {
+      return invalid(`sequence.steps[${index}] deve ser objeto`, warnings);
+    }
+    const action = String(step.action || "").trim();
+    if (action === "sequence") {
+      return invalid(`sequence.steps[${index}] nao pode ser sequence aninhada`, warnings);
+    }
+    if (action === "clarify") {
+      return invalid(`sequence.steps[${index}] nao pode ser clarify; use clarify no plano principal`, warnings);
+    }
+    if (action === "block") {
+      return invalid(`sequence.steps[${index}] bloqueado: ${String(step.reason || step.safety?.reason || "pedido inseguro")}`, warnings, true);
+    }
+
+    const validation = validateActionPlan(step, {
+      ...context,
+      manifest,
+      minConfidence
+    });
+    warnings.push(...validation.warnings.map((warning) => `sequence.steps[${index}].${warning}`));
+    if (!validation.ok) {
+      return invalid(`sequence.steps[${index}]: ${validation.reason}`, warnings, validation.status === "blocked");
+    }
+    if (validation.value.action === "sequence") {
+      return invalid(`sequence.steps[${index}] nao pode ser sequence aninhada`, warnings);
+    }
+    steps.push(validation.value as SingleActionPlan);
+  }
+
+  const requiresConfirmation = steps.some(planRequiresConfirmation);
+  if (plan.requiresConfirmation !== requiresConfirmation) {
+    warnings.push(`sequence teve requiresConfirmation normalizado para ${requiresConfirmation}`);
+  }
+
+  return {
+    ok: true,
+    status: "valid",
+    value: {
+      ...plan,
+      steps,
+      requiresConfirmation
+    } as SequenceActionPlan,
+    warnings,
+    executable: true
+  };
+}
+
 export function validateImportTableActionPlan(
   plan: unknown,
   parsedTable: ParsedTableForValidation,
@@ -1093,6 +1172,7 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
   if (action === "clarify") return validateClarify(normalizedInput, warnings);
   if (action === "block") return validateBlock(normalizedInput, warnings);
   if (action === "execute") return validateExecuteCapability(normalizedInput, minConfidence, warnings);
+  if (action === "sequence") return validateSequencePlan(normalizedInput, context, manifest, minConfidence, warnings);
 
   const rawDomainName = String(normalizedInput.domain || "").trim();
   const domainName = normalizeDomainNameForPlan(normalizedInput, rawDomainName, manifest);

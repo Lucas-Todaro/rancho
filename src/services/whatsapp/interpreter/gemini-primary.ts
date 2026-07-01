@@ -3,7 +3,7 @@ import { getRanchTodayISO } from "@/lib/dates/ranch-time";
 import { configuredAIModel, configuredAIProviderName, providerApiKeyConfigured } from "@/lib/whatsapp/ai-provider";
 import { executeActionPlan, type ExecuteActionPlanResult } from "@/lib/whatsapp/action-plan/execute-action-plan";
 import { recordActionPlanRuntime } from "@/lib/whatsapp/action-plan/runtime";
-import type { ActionPlan, ImportTableActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
+import type { ActionPlan, ImportTableActionPlan, SequenceActionPlan } from "@/lib/whatsapp/gemini/action-plan-types";
 import type { ActionPlanSupabaseLike } from "@/lib/whatsapp/action-plan/execute-query-action-plan";
 import { botAllowsLegacyRollback, botInterpreterMode, geminiActionPlanEnabled, geminiTableActionPlanEnabled, GEMINI_SAFE_FAILURE_MESSAGE } from "@/lib/whatsapp/gemini/config";
 import { GEMINI_CONSULT_INTENTS, mapGeminiIntentToRancho, normalizeGeminiIntent } from "@/lib/whatsapp/gemini/allowed-intents";
@@ -1152,6 +1152,215 @@ function actionPlanGeminiMeta(interpretation: GeminiStructuredResult, result: Ex
   };
 }
 
+function isActionPlanSequence(plan: ActionPlan): plan is SequenceActionPlan {
+  return plan.action === "sequence";
+}
+
+function actionPlanSequenceGeminiMeta(
+  interpretation: GeminiStructuredResult,
+  requiresConfirmation: boolean,
+  userResponse = ""
+) {
+  return {
+    confidence: interpretation.confidence,
+    requiresConfirmation,
+    reason: "action_plan_sequence_used",
+    risk_flags: interpretation.warnings || [],
+    actions: [],
+    userResponse: userResponse || interpretation.response_hint || ""
+  };
+}
+
+function markActionPlanSequenceParsed(
+  parsed: ParsedRanchoMessage,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>,
+  stepIndex?: number
+) {
+  return {
+    ...parsed,
+    dados: {
+      ...(parsed.dados || {}),
+      origem_parser: "gemini_action_plan",
+      interpreter_final_usado: "action_plan_sequence",
+      action_plan_used: true,
+      action_plan_sequence_used: true,
+      ...(CONSULT_RANCHO_INTENTS.has(parsed.tipo) ? { consulta_executada: "action_plan" } : {}),
+      ...(stepIndex !== undefined ? { action_plan_sequence_step_index: stepIndex } : {}),
+      route,
+      structuredDetection
+    }
+  };
+}
+
+function sequencePendingFromMutations(mutations: ParsedRanchoMessage[], interpretation: GeminiStructuredResult) {
+  return mutations.length === 1 ? mutations[0] : makeBatchParsed(mutations, interpretation);
+}
+
+function flattenPrimitiveValues(value: unknown, limit = 30): string[] {
+  if (limit <= 0 || value === undefined || value === null) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    const text = String(value).trim();
+    return text ? [text] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenPrimitiveValues(item, limit - 1)).slice(0, limit);
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.values(value as AnyRecord).flatMap((item) => flattenPrimitiveValues(item, limit - 1)).slice(0, limit);
+}
+
+function sequenceStepExecutionText(step: SequenceActionPlan["steps"][number], fallback: string) {
+  const semantic = "semantic" in step && step.semantic ? step.semantic : null;
+  const data = "data" in step && step.data ? step.data : null;
+  const filters = "filters" in step && Array.isArray(step.filters) ? step.filters : [];
+  const parts = [
+    step.action,
+    step.operation,
+    step.action === "execute" ? step.capability : null,
+    semantic?.intent,
+    semantic?.scope,
+    semantic?.operation,
+    semantic?.date,
+    semantic?.period,
+    semantic?.report?.type,
+    semantic?.report?.detailLevel,
+    ...(Array.isArray(semantic?.domains) ? semantic.domains : []),
+    ...flattenPrimitiveValues(semantic?.entities),
+    ...flattenPrimitiveValues(semantic?.quantity),
+    ...flattenPrimitiveValues(semantic?.money),
+    ...flattenPrimitiveValues(data),
+    ...filters.flatMap((filter) => [filter.field, filter.op, ...flattenPrimitiveValues(filter.value)])
+  ];
+  const text = parts
+    .filter((part) => part !== undefined && part !== null && String(part).trim())
+    .join(" ")
+    .trim();
+  return text || fallback;
+}
+
+async function convertActionPlanSequenceInterpretation(
+  input: ParseWithInterpreterInput,
+  interpretation: GeminiStructuredResult,
+  plan: SequenceActionPlan,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+): Promise<GeminiFallbackParseResult> {
+  const parsedSteps: ParsedRanchoMessage[] = [];
+  const userResponses: string[] = [];
+
+  for (let index = 0; index < plan.steps.length; index += 1) {
+    const step = plan.steps[index];
+    const result = await executeActionPlan({
+      plan: step,
+      text: sequenceStepExecutionText(step, input.text),
+      owner: {
+        fazenda_id: input.owner.fazenda_id,
+        usuario_id: input.owner.usuario_id
+      },
+      supabase: input.supabase || null,
+      currentDate: getRanchTodayISO()
+    });
+
+    if (!result.ok) {
+      recordActionPlanRuntime(result.status === "blocked" ? "blocked" : "invalid");
+      logActionPlan(result.logEvent, {
+        reason: result.reason,
+        action: step.action,
+        sequenceAction: plan.action,
+        sequenceStep: index,
+        domain: "domain" in step ? step.domain : null,
+        route
+      });
+      if (result.status !== "blocked") {
+        logNonExternalErrorNotMappedToInstability({
+          error_classification: step.action === "import_table" ? "import_table" : "validation",
+          reason: result.reason,
+          action: step.action,
+          domain: "domain" in step ? step.domain : null,
+          messageLength: input.text.length
+        });
+      }
+      return {
+        kind: "clarify",
+        threshold: 0.7,
+        reason: result.reason,
+        message: result.message,
+        debug: {
+          ...actionPlanDebug(plan, structuredDetection, result.reason),
+          error_classification: result.status === "blocked" ? "safety" : step.action === "import_table" ? "import_table" : "validation",
+          action_plan_validation_error: result.reason,
+          domain: "domain" in step ? step.domain : null,
+          action: step.action,
+          sequence_action: plan.action,
+          sequence_step: index,
+          reason: result.reason,
+          route
+        }
+      };
+    }
+
+    parsedSteps.push(markActionPlanSequenceParsed(result.parsed, route, structuredDetection, index));
+    if (result.response) userResponses.push(result.response);
+  }
+
+  const consultations = parsedSteps.filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
+  const mutations = parsedSteps.filter((item) => !CONSULT_RANCHO_INTENTS.has(item.tipo));
+
+  recordActionPlanRuntime("actionPlanUsed");
+  logActionPlan("action_plan_sequence_used", {
+    action: plan.action,
+    steps: plan.steps.map((step) => ({
+      action: step.action,
+      capability: step.action === "execute" ? step.capability : null,
+      domain: "domain" in step ? step.domain : null
+    })),
+    route,
+    finalIntent: mutations[0]?.tipo || consultations[0]?.tipo || null,
+    mutations: mutations.length,
+    consultations: consultations.length
+  });
+  logActionPlan("action_plan_priority_used", {
+    action: plan.action,
+    steps: plan.steps.length
+  });
+
+  if (!mutations.length) {
+    return {
+      kind: "consultations",
+      threshold: 0.7,
+      consultations,
+      gemini: actionPlanSequenceGeminiMeta(interpretation, false, userResponses.join("\n\n"))
+    };
+  }
+
+  if (!consultations.length) {
+    return {
+      kind: "parsed",
+      threshold: 0.7,
+      parsed: markActionPlanSequenceParsed(sequencePendingFromMutations(mutations, interpretation), route, structuredDetection),
+      gemini: actionPlanSequenceGeminiMeta(interpretation, true, userResponses.join("\n\n"))
+    };
+  }
+
+  const firstMutationIndex = parsedSteps.findIndex((item) => !CONSULT_RANCHO_INTENTS.has(item.tipo));
+  const immediateConsultations = parsedSteps.slice(0, firstMutationIndex).filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
+  const postConfirmationConsultations = parsedSteps.slice(firstMutationIndex + 1).filter((item) => CONSULT_RANCHO_INTENTS.has(item.tipo));
+  const pending = attachPostConfirmationConsultations(
+    markActionPlanSequenceParsed(sequencePendingFromMutations(mutations, interpretation), route, structuredDetection),
+    postConfirmationConsultations
+  );
+
+  return {
+    kind: "compound",
+    threshold: 0.7,
+    immediateConsultations,
+    pending,
+    postConfirmationConsultations,
+    gemini: actionPlanSequenceGeminiMeta(interpretation, true, userResponses.join("\n\n"))
+  };
+}
+
 async function convertActionPlanInterpretation(
   input: ParseWithInterpreterInput,
   interpretation: GeminiStructuredResult,
@@ -1281,6 +1490,10 @@ async function convertActionPlanInterpretation(
   }
 
   if (!plan) return null;
+
+  if (isActionPlanSequence(plan)) {
+    return convertActionPlanSequenceInterpretation(input, interpretation, plan, route, structuredDetection);
+  }
 
   const result = await executeActionPlan({
     plan,
