@@ -74,6 +74,7 @@ function addEntityData(data: AnyRecord, semantic: SemanticActionPlanBlock, allow
   const employee = firstValue(entities.funcionario, entities.funcionaria, entities.colaborador, entities.funcionario_ref);
   const item = firstValue(entities.item, entities.produto, entities.insumo, entities.item_ref);
   const lot = firstValue(entities.lote, entities.piquete, entities.lote_ref);
+  const category = firstValue(entities.categoria, entities.categoria_animal, entities.tipo_animal);
 
   put(data, "animal_ref", entityText(animal) || entityText(mother), allowedFields);
   put(data, "animal_codigo", entityText(animal) || entityText(mother), allowedFields);
@@ -88,6 +89,7 @@ function addEntityData(data: AnyRecord, semantic: SemanticActionPlanBlock, allow
   put(data, "nome", entityText(item), allowedFields);
   put(data, "lote_ref", entityText(lot), allowedFields);
   put(data, "lote_nome", entityText(lot), allowedFields);
+  put(data, "categoria", entityText(category), allowedFields);
 
   if (isPlainObject(child)) {
     put(data, "cria_ref", entityText(child), allowedFields);
@@ -250,6 +252,10 @@ export function normalizeActionPlanSemantic<T extends ActionPlan>(plan: T, manif
     return {
       ...plan,
       operation,
+      data: {
+        ...data,
+        ...(isPlainObject((plan as unknown as AnyRecord).data) ? (plan as unknown as AnyRecord).data : {})
+      },
       filters: Array.isArray(plan.filters) && plan.filters.length
         ? plan.filters
         : dateFilter ? [dateFilter] : plan.filters

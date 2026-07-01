@@ -1,0 +1,16 @@
+{
+  "id": "query-animal-status-090",
+  "inputExamples": [
+    "como ta a vaca 090?",
+    "como está a vaca 090?",
+    "status da vaca 090"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "animais",
+    "confidence": 0.95,
+    "filters": [{ "field": "animal_ref", "op": "eq", "value": "090" }],
+    "limit": 20,
+    "requiresConfirmation": false
+  }
+}

@@ -814,15 +814,15 @@ test("ActionPlan execute valida capacidades genericas com confirmacao correta", 
   });
   assert(query.ok, `execute consulta deveria validar: ${query.reason}`);
 
-  const invalid = validateActionPlan({
+  const normalizedMutation = validateActionPlan({
     action: "execute",
     capability: "registrar_financeiro",
     confidence: 0.9,
     data: { valor: 100 },
     requiresConfirmation: false
   });
-  assert(!invalid.ok, "execute mutacional sem confirmacao deveria ser invalido");
-  assert(invalid.reason.includes("requiresConfirmation=true"), `motivo inesperado: ${invalid.reason}`);
+  assert(normalizedMutation.ok, `execute mutacional deveria normalizar confirmacao: ${normalizedMutation.reason}`);
+  assert(normalizedMutation.value.requiresConfirmation === true, "execute mutacional deve continuar exigindo confirmacao apos normalizacao");
 });
 
 test("ActionPlan validator aceita confidence string numerica e enum com acento", () => {
@@ -1379,14 +1379,15 @@ test("delete nao e suportado e block nao e executavel", () => {
   assert(result.status === "blocked" && result.executable === false, "block deveria ser bloqueado e nao executavel");
 });
 
-test("query nunca exige confirmacao", () => {
-  assertInvalid("query com confirmacao", {
+test("query normaliza confirmacao para nao bloquear consulta segura", () => {
+  const result = assertValid("query com confirmacao", {
     action: "query",
     domain: "financeiro",
     confidence: 0.9,
     filters: [],
     requiresConfirmation: true
-  }, "requiresConfirmation=false");
+  });
+  assert(result.value.requiresConfirmation === false, "query deve executar sem confirmacao apos normalizacao");
 });
 
 test("create update e import_table exigem confirmacao", () => {
@@ -3395,6 +3396,83 @@ test("Gemini-first responde vacas prenhas via ActionPlan reproducao", async () =
   const after = actionStatsSnapshot();
   assert(after.actionPlanUsed === before.actionPlanUsed + 1, "ActionPlan deveria ser contabilizado");
   assert(after.legacyFallback === before.legacyFallback, "fallback legado nao deveria ser contabilizado");
+});
+
+test("Gemini-first consulta animal especifico com linguagem natural via ActionPlan", async () => {
+  const text = "como ta a vaca 090?";
+  const fixture = fixtureByName("query-animal-status-090");
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.animais]: [
+          { id: "animal-090", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "090", nome: "Mimosa", categoria: "vaca", sexo: "femea", fase: "lactacao", status: "ativo", peso: 480 }
+        ]
+      })
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.dados?.action_plan_used === true, "consulta natural deveria usar ActionPlan");
+    assert(parsed.tipo === "CONSULTA_ANIMAL" || parsed.tipo === "CONSULTA_REBANHO", `consulta animal deveria ser executada, recebeu ${parsed?.tipo}`);
+    assert(parsed.dados?.action_plan_response?.includes("Mimosa"), "resposta deveria trazer a vaca encontrada");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "nao deve parecer parser local");
+  });
+});
+
+test("ActionPlan query animais repara touros coletivos e retorna categoria touro", async () => {
+  const supabase = createActionPlanSupabase({
+    [TABLES.animais]: [
+      { id: "touro-50", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "T-50", nome: "Touro 50", categoria: "touro", sexo: "macho", status: "ativo" },
+      { id: "touro-51", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "T-51", nome: "Touro 51", categoria: "touro", sexo: "macho", status: "ativo" },
+      { id: "vaca-090", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "090", nome: "Mimosa", categoria: "vaca", sexo: "femea", status: "ativo" }
+    ]
+  });
+  const result = await executeQueryActionPlan({
+    plan: {
+      action: "query",
+      domain: "animais",
+      confidence: 0.94,
+      filters: [{ field: "animal_ref", op: "eq", value: "touros cadastrados" }],
+      requiresConfirmation: false
+    },
+    originalText: "quais touros cadastrados?",
+    owner: ADMIN_OWNER,
+    supabase
+  });
+  assert(result.ok, `consulta touros deveria executar: ${result.reason}`);
+  assert(result.rows.length === 2, `consulta touros deveria retornar 2, recebeu ${result.rows.length}`);
+  assert(result.response.includes("Touro 50") && result.response.includes("Touro 51"), "resposta deveria listar os touros");
+});
+
+test("Gemini-first consulta composta de vacas prenhas e inseminadas via ActionPlan", async () => {
+  const text = "me manda a lista das vacas prenhas e das inseminadas";
+  const fixture = fixtureByName("query-vacas-prenhas-e-inseminadas");
+  await withGeminiMock(() => clone(fixture.plan), async () => {
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({
+        [TABLES.animais]: [
+          { id: "animal-306", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "306", nome: "Estrela", categoria: "vaca", fase: "gestante", status: "ativo" },
+          { id: "animal-307", fazenda_id: ADMIN_OWNER.fazenda_id, brinco: "307", nome: "Lua", categoria: "vaca", fase: "lactacao", status: "ativo" }
+        ],
+        [TABLES.eventosAnimal]: [
+          { id: "evt-prenhez-306", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-306", tipo: "prenhez", data_evento: "2026-06-20", descricao: "prenhez confirmada" },
+          { id: "evt-ins-307", fazenda_id: ADMIN_OWNER.fazenda_id, animal_id: "animal-307", tipo: "inseminacao", data_evento: "2026-06-21", descricao: "inseminacao registrada" }
+        ]
+      })
+    });
+    const parsed = finalParsed(result);
+    assert(parsed?.dados?.action_plan_used === true, "consulta composta deveria usar ActionPlan");
+    assert(Array.isArray(parsed.dados?.resultado?.tipo_reprodutivo), "tipo reprodutivo composto deveria ser array");
+    assert(parsed.dados.resultado.tipo_reprodutivo.includes("prenhez"), "prenhez ausente no resultado composto");
+    assert(parsed.dados.resultado.tipo_reprodutivo.includes("inseminacao"), "inseminacao ausente no resultado composto");
+    assert(parsed.dados?.action_plan_response?.includes("Estrela"), "resposta deveria trazer vaca prenha");
+    assert(parsed.dados?.action_plan_response?.includes("Lua"), "resposta deveria trazer vaca inseminada");
+    assert(parsed.dados?.interpreter_final_usado === "action_plan", "nao deve parecer parser local");
+  });
 });
 
 test("Gemini-first parto 306 com cria usa ActionPlan create sem sobrescrever pelo parser local", async () => {

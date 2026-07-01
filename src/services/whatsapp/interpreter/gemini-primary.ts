@@ -1019,8 +1019,7 @@ function anyActionPlanFlagEnabled() {
 }
 
 function localSemanticFallbackEnabled() {
-  if (botInterpreterMode() !== "gemini") return true;
-  return String(process.env.BOT_ALLOW_LOCAL_SEMANTIC_FALLBACK || "").trim().toLowerCase() === "true";
+  return botInterpreterMode() !== "gemini";
 }
 
 const BASIC_LOCAL_FALLBACK_INTENTS = new Set<RanchoIntent>([
@@ -1088,6 +1087,7 @@ function canUseStructuredLocalFallback(
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
 ) {
+  if (!localSemanticFallbackEnabled()) return false;
   const parsed = input.localParsed;
   if (route !== "structured_input" || !structuredDetection.isStructured) return false;
   if (input.hasPendingAction) return false;

@@ -4,6 +4,7 @@ export type FilterOperator =
   | "eq"
   | "neq"
   | "contains"
+  | "in"
   | "gte"
   | "lte"
   | "between"
@@ -193,6 +194,7 @@ export const FILTER_OPERATORS: readonly FilterOperator[] = [
   "eq",
   "neq",
   "contains",
+  "in",
   "gte",
   "lte",
   "between",

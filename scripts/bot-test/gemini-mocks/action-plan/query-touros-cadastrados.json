@@ -1,0 +1,16 @@
+{
+  "id": "query-touros-cadastrados",
+  "inputExamples": [
+    "quais touros cadastrados?",
+    "me mostra os touros",
+    "lista dos touros cadastrados"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "animais",
+    "confidence": 0.95,
+    "filters": [{ "field": "categoria", "op": "eq", "value": "touro" }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

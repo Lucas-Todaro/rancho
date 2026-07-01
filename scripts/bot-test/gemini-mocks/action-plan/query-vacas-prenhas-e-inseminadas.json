@@ -1,0 +1,16 @@
+{
+  "id": "query-vacas-prenhas-e-inseminadas",
+  "inputExamples": [
+    "me manda a lista das vacas prenhas e das inseminadas",
+    "lista das prenhas e inseminadas",
+    "quais vacas estão prenhas e inseminadas?"
+  ],
+  "response": {
+    "action": "query",
+    "domain": "reproducao",
+    "confidence": 0.95,
+    "filters": [{ "field": "status_reprodutivo", "op": "in", "value": ["prenhe", "inseminada"] }],
+    "limit": 100,
+    "requiresConfirmation": false
+  }
+}

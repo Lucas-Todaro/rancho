@@ -279,7 +279,8 @@ function normalizeColumnMappingForDomain(domainName: string, columnMapping: unkn
   return normalized;
 }
 
-function normalizeReproductionValue(fieldName: string, value: unknown) {
+function normalizeReproductionValue(fieldName: string, value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizeReproductionValue(fieldName, item));
   if (["evento", "tipo"].includes(fieldName)) return normalizeReproductionEvent(value) || value;
   if (["data", "data_evento"].includes(fieldName)) return normalizeDate(value) || value;
   if (["cria_sexo", "sexo_cria"].includes(fieldName)) return normalizeSex(value) || value;
@@ -302,6 +303,47 @@ function normalizeReproductionData(data: unknown) {
     normalized[fieldName] = normalizeReproductionValue(fieldName, value);
   }
   return normalized;
+}
+
+function normalizeQueryDataToFilters(
+  plan: QueryActionPlan & { data?: unknown },
+  domainName: string,
+  domain: DomainManifestEntry
+): QueryActionPlan {
+  const filters: FilterPlan[] = Array.isArray(plan.filters)
+    ? plan.filters.map((filter) => {
+      if (!isPlainObject(filter)) return filter as FilterPlan;
+      const field = fieldNameForDomain(domainName, domain, filter.field) || String(filter.field || "");
+      return {
+        ...filter,
+        field,
+        op: (filter.op || "eq") as FilterPlan["op"],
+        value: domainName === "reproducao" ? normalizeReproductionValue(field, filter.value) : filter.value
+      };
+    })
+    : [];
+
+  const data = stripDataMetaFields(plan.data);
+  if (isPlainObject(data)) {
+    for (const [rawField, rawValue] of Object.entries(data)) {
+      if (!hasValue(rawValue)) continue;
+      const field = fieldNameForDomain(domainName, domain, rawField);
+      if (!field) continue;
+      if (!domain.searchableFields.includes(field) && !domain.dateFields.includes(field) && !domain.relationFields.includes(field)) continue;
+      if (filters.some((filter) => filter.field === field)) continue;
+      filters.push({
+        field,
+        op: "eq",
+        value: domainName === "reproducao" ? normalizeReproductionValue(field, rawValue) : rawValue
+      });
+    }
+  }
+
+  return {
+    ...plan,
+    requiresConfirmation: false,
+    filters
+  };
 }
 
 function normalizeLooseText(value: unknown) {
@@ -363,6 +405,12 @@ function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPla
       data: normalizeImportRowsForDomain(plan.data || {}, domainName) as ImportTableActionPlan["data"]
     };
   }
+  if (plan.action === "query") {
+    const domain = domainFromContext(domainName, RANCHO_DOMAIN_MANIFEST);
+    if (domain) {
+      plan = normalizeQueryDataToFilters(plan as QueryActionPlan & { data?: unknown }, domainName, domain) as ActionPlan;
+    }
+  }
 
   if (domainName === "saude_sanitario" && (plan.action === "create" || plan.action === "update")) {
     const data = { ...plan.data };
@@ -377,13 +425,7 @@ function normalizePlanForDomain(plan: ActionPlan, domainName: string): ActionPla
   if (domainName !== "reproducao") return plan;
 
   if (plan.action === "query") {
-    return {
-      ...plan,
-      filters: plan.filters.map((filter) => ({
-        ...filter,
-        value: normalizeReproductionValue(filter.field, filter.value)
-      }))
-    };
+    return plan;
   }
 
   if (plan.action === "create" || plan.action === "update") {
@@ -534,6 +576,25 @@ function validateEnumValue(
   }
 }
 
+function validateEnumFilterValue(
+  domain: DomainManifestEntry,
+  fieldName: string,
+  definition: DomainFieldDefinition | null,
+  value: unknown,
+  errors: string[],
+  path: string
+) {
+  const values = Array.isArray(value) ? value : [value];
+  values.forEach((item, index) => validateEnumValue(
+    domain,
+    fieldName,
+    definition,
+    item,
+    errors,
+    Array.isArray(value) ? `${path}[${index}]` : path
+  ));
+}
+
 function validateFilterOperator(
   domain: DomainManifestEntry,
   filter: FilterPlan,
@@ -560,11 +621,17 @@ function validateFilterOperator(
   if (["gte", "lte", "between"].includes(filter.op) && !isDate && !isNumber) {
     errors.push(`${path}.${filter.op} exige campo numerico ou data`);
   }
-  if (enumValues.length && !["eq", "neq"].includes(filter.op)) {
+  if (enumValues.length && !["eq", "neq", "in"].includes(filter.op)) {
     errors.push(`${path}.${filter.op} nao e compativel com enum`);
   }
-  if (["eq", "neq"].includes(filter.op)) {
-    validateEnumValue(domain, filter.field, definition, filter.value, errors, `${path}.value`);
+  if (["eq", "neq", "in"].includes(filter.op)) {
+    validateEnumFilterValue(domain, filter.field, definition, filter.value, errors, `${path}.value`);
+  }
+  if (filter.op === "in") {
+    const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+    if (!values.length || values.some((item) => !hasValue(item))) {
+      errors.push(`${path}.value deve informar ao menos um valor para in`);
+    }
   }
   if (["last_days", "last_months"].includes(filter.op)) {
     if (typeof filter.value !== "number" || !Number.isInteger(filter.value) || filter.value <= 0) {
@@ -901,6 +968,27 @@ function validateBlock(plan: AnyRecord, warnings: string[]): ActionPlanValidatio
   };
 }
 
+function queryLooksReproductive(plan: AnyRecord) {
+  if (plan.action !== "query") return false;
+  const raw = [
+    plan.operation,
+    plan.userQuestion,
+    plan.semantic?.intent,
+    plan.semantic?.scope,
+    plan.semantic?.operation,
+    plan.semantic?.report?.type,
+    ...(Array.isArray(plan.filters)
+      ? plan.filters.flatMap((filter) => isPlainObject(filter) ? [filter.field, filter.value] : [])
+      : [])
+  ].flat().filter(Boolean).join(" ");
+  return /\b(?:prenhas?|prenhe|prenhez|gestantes?|inseminad[ao]s?|inseminacao|iatf|protocolo|reteste|paridas?|partos?|cio|reproducao|status_reprodutivo)\b/.test(normalizeLooseText(raw));
+}
+
+function normalizeDomainNameForPlan(plan: AnyRecord, domainName: string, manifest: DomainManifest) {
+  if (domainName === "animais" && queryLooksReproductive(plan) && manifest.reproducao) return "reproducao";
+  return domainName;
+}
+
 function validateDomainList(list: unknown, manifest: DomainManifest, errors: string[], path: string) {
   if (list === undefined) return;
   if (!Array.isArray(list)) {
@@ -958,7 +1046,8 @@ function validateExecuteCapability(plan: AnyRecord, minConfidence: number, warni
   if (capability) {
     const requiresConfirmation = capabilityRequiresConfirmation(capability);
     if (plan.requiresConfirmation !== requiresConfirmation) {
-      errors.push(`execute.${capability} exige requiresConfirmation=${requiresConfirmation}`);
+      warnings.push(`execute.${capability} teve requiresConfirmation normalizado para ${requiresConfirmation}`);
+      plan.requiresConfirmation = requiresConfirmation;
     }
   }
   if (errors.length) return invalid(errors.join("; "), warnings);
@@ -1005,7 +1094,9 @@ export function validateActionPlan(plan: unknown, context: ActionPlanValidationC
   if (action === "block") return validateBlock(normalizedInput, warnings);
   if (action === "execute") return validateExecuteCapability(normalizedInput, minConfidence, warnings);
 
-  const domainName = String(normalizedInput.domain || "").trim();
+  const rawDomainName = String(normalizedInput.domain || "").trim();
+  const domainName = normalizeDomainNameForPlan(normalizedInput, rawDomainName, manifest);
+  if (domainName !== rawDomainName) normalizedInput.domain = domainName;
   if (!domainName) errors.push("domain obrigatorio");
   const domain = domainName ? domainFromContext(domainName, manifest) : null;
   if (!domain) errors.push(`domain ${domainName || "(vazio)"} nao existe no manifest`);

@@ -388,12 +388,32 @@ function compareText(left: unknown, right: unknown) {
   return normalizedText(left) === normalizedText(right);
 }
 
-function filterMatches(row: AnyRecord, domain: DomainManifestEntry, filter: FilterPlan, relations: AnyRecord, baseDate: Date) {
+function animalCategoryMatches(row: AnyRecord, target: unknown) {
+  const requested = animalCategoryFromQueryText(target) || normalizedText(target);
+  const rowCategory = animalCategoryFromQueryText(row.categoria) || normalizedText(row.categoria);
+  if (!requested) return true;
+  if (rowCategory === requested) return true;
+  if (requested === "bezerro" && ["bezerro", "bezerra"].includes(rowCategory)) return true;
+  const name = normalizedText(row.nome);
+  return requested.length >= 3 && name.includes(requested);
+}
+
+function filterMatches(row: AnyRecord, domain: DomainManifestEntry, filter: FilterPlan, relations: AnyRecord, baseDate: Date): boolean {
   const value = rowValue(row, domain, filter.field, relations);
   const text = normalizedText(value);
   const target = domain.domain === "financeiro" && filter.field === "tipo"
     ? normalizeFinanceType(filter.value)
     : normalizedText(filter.value);
+
+  if (filter.op === "in") {
+    const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+    return values.some((item) => filterMatches(row, domain, { ...filter, op: "eq", value: item }, relations, baseDate));
+  }
+
+  if (domain.domain === "animais" && filter.field === "categoria") {
+    if (filter.op === "eq") return animalCategoryMatches(row, filter.value);
+    if (filter.op === "neq") return !animalCategoryMatches(row, filter.value);
+  }
 
   const relationCandidates = relationCandidateValues(row, domain, filter.field, relations);
   if (relationCandidates.length) {
@@ -538,7 +558,10 @@ function animalCategoryPlural(category: unknown) {
 
 function isCollectiveAnimalRef(value: unknown) {
   const text = normalizedText(value);
-  return /^(?:vaca|vacas|vaga|vagas|animal|animais|rebanho|gado|boi|bois|touro|touros|bezerro|bezerros|bezerra|bezerras|novilha|novilhas|meus animais|minhas vacas)$/.test(text);
+  if (/^(?:vaca|vacas|vaga|vagas|animal|animais|rebanho|gado|boi|bois|touro|touros|bezerro|bezerros|bezerra|bezerras|novilha|novilhas|meus animais|minhas vacas)$/.test(text)) return true;
+  const hasCollectiveCategory = /\b(?:vacas?|vagas?|animais|rebanho|gado|bois?|touros?|bezerros?|bezerras?|novilhas?)\b/.test(text);
+  const hasQueryQualifier = /\b(?:quais?|lista|listar|dados|relatorio|resumo|cadastrados?|cadastradas?|meus|minhas|todos?|todas?)\b/.test(text);
+  return hasCollectiveCategory && hasQueryQualifier;
 }
 
 function hasSpecificAnimalRefFilter(plan: QueryActionPlan) {
@@ -550,7 +573,7 @@ function specificAnimalRefFromQueryText(text?: string | null) {
   if (!normalized) return null;
   const code = extractAnimalCode(normalized, "CONSULTA_ANIMAL");
   const codeText = normalizedText(code);
-  if (code && !isCollectiveAnimalRef(code) && !/^(?:dados|lista|listar|relatorio|resumo|consulta|vaca|vacas|vaga|vagas|animal|animais|rebanho|gado)$/.test(codeText)) return code;
+  if (code && !isCollectiveAnimalRef(code) && !/^(?:dados|lista|listar|relatorio|resumo|consulta|quais|qual|meus|minhas|todos|todas|cadastrado|cadastrados|cadastrada|cadastradas|vaca|vacas|vaga|vagas|animal|animais|rebanho|gado|boi|bois|touro|touros|bezerro|bezerros|bezerra|bezerras|novilha|novilhas)$/.test(codeText)) return code;
   return null;
 }
 
@@ -559,6 +582,7 @@ function normalizeAnimalQueryPlan(plan: QueryActionPlan, originalText?: string):
 
   const text = normalizedText([originalText, plan.userQuestion].filter(Boolean).join(" "));
   const collectiveText = /\b(?:dados|lista|listar|relatorio|resumo|rebanho|gado|animais|vacas?|vagas?|bois?|touros?|bezerros?|bezerras?|novilhas?|cadastrados?|cadastradas?)\b/.test(text);
+  const collectiveFilterText = plan.filters.some((filter) => filter.field === "animal_ref" && isCollectiveAnimalRef(filter.value));
   const cleanedFilters = plan.filters.filter((filter) => !(filter.field === "animal_ref" && isCollectiveAnimalRef(filter.value)));
   const explicitAnimalRef = !cleanedFilters.some((filter) => filter.field === "animal_ref")
     ? specificAnimalRefFromQueryText(text)
@@ -567,7 +591,7 @@ function normalizeAnimalQueryPlan(plan: QueryActionPlan, originalText?: string):
   const existingCategory = cleanedFilters.find((filter) => filter.field === "categoria")?.value;
   const category = existingCategory || animalCategoryFromQueryText(text || plan.filters.map((filter) => filter.value).join(" "));
 
-  if (!explicitAnimalRef && collectiveText && category && !cleanedFilters.some((filter) => filter.field === "categoria")) {
+  if (!explicitAnimalRef && (collectiveText || collectiveFilterText) && category && !cleanedFilters.some((filter) => filter.field === "categoria")) {
     cleanedFilters.push({ field: "categoria", op: "eq", value: category });
   }
 
@@ -716,6 +740,33 @@ function targetReproductionKind(plan: QueryActionPlan, originalText?: string) {
   return detectReproductiveEventKind(text);
 }
 
+function addReproductionKindsFromText(target: Set<string>, value: unknown) {
+  const text = normalizedText(value);
+  if (!text) return;
+  if (/\b(?:prenhas?|prenhes|prenhe|prenhez|gestantes?|gestacao)\b/.test(text)) target.add("prenhez");
+  if (/\b(?:inseminad[ao]s?|inseminacao|ia|iatf)\b/.test(text)) target.add("inseminacao");
+  if (/\b(?:paridas?|pariram|partos?|pariu|recem parida)\b/.test(text)) target.add("parto");
+  if (/\bprotocolo\b/.test(text) || text.includes("em_protocolo")) target.add("protocolo");
+  if (/\breteste\b/.test(text) || text.includes("em_reteste")) target.add("reteste");
+  const detected = detectReproductiveEventKind(text);
+  if (detected) target.add(detected);
+}
+
+function targetReproductionKinds(plan: QueryActionPlan, originalText?: string) {
+  const kinds = new Set<string>();
+  for (const filter of plan.filters) {
+    const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+    values.forEach((value) => addReproductionKindsFromText(kinds, value));
+  }
+  addReproductionKindsFromText(kinds, originalText || plan.userQuestion || "");
+  if (!kinds.size) {
+    const kind = targetReproductionKind(plan, originalText);
+    if (kind) kinds.add(kind);
+  }
+  const order = ["prenhez", "inseminacao", "parto", "protocolo", "reteste", "pre_parto", "cio", "aborto"];
+  return order.filter((kind) => kinds.has(kind));
+}
+
 function reproductionTitle(kind?: string) {
   if (kind === "prenhez") return "Vacas prenhas";
   if (kind === "inseminacao") return "Vacas inseminadas";
@@ -725,6 +776,12 @@ function reproductionTitle(kind?: string) {
   return "Eventos reprodutivos";
 }
 
+function reproductionTitleForKinds(kinds: string[]) {
+  if (kinds.length <= 1) return reproductionTitle(kinds[0]);
+  const labels = kinds.map((kind) => reproductionTitle(kind).replace(/^Vacas\s+/i, "").toLowerCase());
+  return `Vacas ${labels.join(" e ")}`;
+}
+
 function emptyReproductionText(kind?: string) {
   if (kind === "prenhez") return "Não encontrei vacas prenhas registradas no momento.";
   if (kind === "inseminacao") return "Não encontrei vacas inseminadas registradas no momento.";
@@ -732,6 +789,11 @@ function emptyReproductionText(kind?: string) {
   if (kind === "protocolo") return "Não encontrei vacas em protocolo registradas no momento.";
   if (kind === "reteste") return "Não encontrei vacas em reteste registradas no momento.";
   return "Não encontrei eventos reprodutivos para esse período.";
+}
+
+function emptyReproductionTextForKinds(kinds: string[]) {
+  if (kinds.length <= 1) return emptyReproductionText(kinds[0]);
+  return `Não encontrei registros ativos para ${reproductionTitleForKinds(kinds).toLowerCase()} no momento.`;
 }
 
 async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan: QueryActionPlan, domain: DomainManifestEntry): Promise<ExecuteQueryActionPlanResult> {
@@ -747,7 +809,8 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
   const baseDate = currentDate(input.currentDate);
   const dateFilter = plan.filters.find((filter) => domain.dateFields.includes(filter.field));
   const range = dateFilter ? dateRangeFor(dateFilter, baseDate) : null;
-  const kind = targetReproductionKind(plan, input.originalText);
+  const kinds = targetReproductionKinds(plan, input.originalText);
+  const kind = kinds.length === 1 ? kinds[0] : undefined;
   const limit = Math.min(plan.limit || domain.maxLimit, domain.maxLimit);
 
   let query = input.supabase
@@ -776,7 +839,7 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
     .sort((left: AnyRecord, right: AnyRecord) => String(right.data_evento || right.created_at || "").localeCompare(String(left.data_evento || left.created_at || "")));
 
   let rows: AnyRecord[];
-  if (kind) {
+  if (kinds.length) {
     const eventsByAnimal = new Map<string, AnyRecord[]>();
     for (const event of allEvents) {
       const animalId = String(event.animal_id || "");
@@ -784,9 +847,9 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
       eventsByAnimal.set(animalId, [...(eventsByAnimal.get(animalId) || []), event]);
     }
     rows = Array.from(eventsByAnimal.values())
-      .map((events) => activeReproductionEventForKind(events, kind))
+      .flatMap((events) => kinds.map((item) => activeReproductionEventForKind(events, item)))
       .filter((event): event is AnyRecord => Boolean(event));
-    if (kind === "prenhez") {
+    if (kinds.includes("prenhez")) {
       const existing = new Set(rows.map((event) => String(event.animal_id || "")));
       for (const animal of (animalData || []) as AnyRecord[]) {
         if (existing.has(String(animal.id))) continue;
@@ -796,11 +859,19 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
       }
     }
   } else {
-    rows = allEvents.filter((event) => !kind || event.kind === kind);
+    rows = allEvents;
   }
 
-  rows = rows.slice(0, limit);
-  const title = reproductionTitle(kind);
+  const seenRows = new Set<string>();
+  rows = rows
+    .filter((row) => {
+      const key = [row.id || "", row.animal_id || "", row.kind || row.tipo || "", row.data_evento || ""].join(":");
+      if (seenRows.has(key)) return false;
+      seenRows.add(key);
+      return true;
+    })
+    .slice(0, limit);
+  const title = reproductionTitleForKinds(kinds);
   const response = rows.length
     ? [
         `${title}:`,
@@ -814,12 +885,12 @@ async function executeReproductionQuery(input: ExecuteQueryActionPlanInput, plan
         }),
         rows.length > 12 ? `...e mais ${rows.length - 12} registro(s).` : ""
       ].filter(Boolean).join("\n")
-    : emptyReproductionText(kind);
+    : emptyReproductionTextForKinds(kinds);
 
   const parsed = finalizeActionPlanParsed(QUERY_INTENT_BY_DOMAIN[domain.domain] || "CONSULTA_REGISTROS_HOJE", {
     consulta: true,
     action_plan_response: response,
-    resultado: { registros: rows.length, tipo_reprodutivo: kind || null }
+    resultado: { registros: rows.length, tipo_reprodutivo: kinds.length > 1 ? kinds : kind || null }
   }, [], plan.confidence, plan, { interpreterFinal: "action_plan_query" });
 
   return { ok: true, parsed, response, rows };

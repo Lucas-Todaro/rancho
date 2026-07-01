@@ -46,6 +46,30 @@ const EXAMPLES = [
     }
   },
   {
+    user: "como ta a vaca 090?",
+    plan: {
+      action: "query", domain: "animais", confidence: 0.94,
+      filters: [{ field: "animal_ref", op: "eq", value: "090" }],
+      limit: 20, requiresConfirmation: false
+    }
+  },
+  {
+    user: "quais touros cadastrados?",
+    plan: {
+      action: "query", domain: "animais", confidence: 0.94,
+      filters: [{ field: "categoria", op: "eq", value: "touro" }],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
+    user: "me manda a lista das vacas prenhas e das inseminadas",
+    plan: {
+      action: "query", domain: "reproducao", confidence: 0.94,
+      filters: [{ field: "status_reprodutivo", op: "in", value: ["prenhe", "inseminada"] }],
+      limit: 100, requiresConfirmation: false
+    }
+  },
+  {
     user: "relatorio financeiro dos ultimos 6 meses",
     plan: {
       action: "query", domain: "financeiro", confidence: 0.94,
