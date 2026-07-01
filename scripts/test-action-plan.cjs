@@ -4463,6 +4463,58 @@ test("runtime reconhece tabela producao com separador pipe", async () => {
   assert(parsed?.dados?.table_action_plan_used === true, "tabela pipe deveria usar ActionPlan");
 });
 
+test("parser estrutural reconhece tabela de producao colapsada em uma linha", () => {
+  const text = "Animal;Litros;Data;Observacoes 090;28,5;01/07/2026;Ordenha manha 080;31;01/07/2026;Ordenha manha 397;26;01/07/2026;Ordenha tarde 396;27;01/07/2026;Ordenha tarde";
+  const parsed = parseRanchoMessage(text);
+  const registros = parsed.dados?.registros || [];
+  assert(parsed.tipo === "LOTE_REGISTROS", `tabela colapsada deveria virar LOTE_REGISTROS, recebeu ${parsed.tipo}`);
+  assert(parsed.dados?.tipo_tabela === "milk_production", "tipo_tabela deveria ser milk_production");
+  assert(registros.length === 4, `esperava 4 registros, recebeu ${registros.length}`);
+  assert(registros[0].dados?.animal_codigo === "090" && Number(registros[0].dados?.litros) === 28.5, "primeira linha de producao incorreta");
+  assert(registros[3].dados?.animal_codigo === "396" && Number(registros[3].dados?.litros) === 27, "ultima linha de producao incorreta");
+});
+
+test("validador normaliza consulta reprodutiva com aliases de status", () => {
+  const validation = validateActionPlan({
+    action: "query",
+    domain: "animais",
+    confidence: 0.9,
+    filters: [{ field: "status", op: "in", value: ["prenha", "inseminacao"] }],
+    requiresConfirmation: false,
+    limit: 50
+  });
+  assert(validation.ok, `consulta reprodutiva com aliases deveria validar: ${validation.ok ? "" : validation.reason}`);
+  assert(validation.value.domain === "reproducao", "consulta de status reprodutivo deveria normalizar para dominio reproducao");
+  const filter = validation.value.filters?.[0];
+  assert(filter?.field === "status_reprodutivo", `field esperado status_reprodutivo, recebido ${filter?.field}`);
+  assert(JSON.stringify(filter.value) === JSON.stringify(["prenhe", "inseminada"]), `valores normalizados incorretos: ${JSON.stringify(filter.value)}`);
+});
+
+test("mutacao com pedido explicito de relatorio agenda consulta para apos confirmacao", async () => {
+  await withGeminiMock(() => ({
+    action: "execute",
+    capability: "registrar_movimento_estoque",
+    operation: "entrada_estoque",
+    confidence: 0.92,
+    data: { item: "racao", quantidade: 30, unidade: "kg", tipo_movimento: "entrada", data: "hoje" },
+    requiresConfirmation: true
+  }), async () => {
+    const text = "me da o relatorio de hoje, mas antes registra 30kg de racao no estoque";
+    const result = await parseWithConfiguredInterpreter({
+      text,
+      localParsed: parseRanchoMessage(text),
+      owner: ADMIN_OWNER,
+      supabase: createActionPlanSupabase({})
+    });
+    const parsed = finalParsed(result);
+    const consultations = parsed?.dados?.gemini_consultas_apos_confirmacao || [];
+    assert(parsed?.tipo === "ESTOQUE_ENTRADA", `mutacao deveria ser ESTOQUE_ENTRADA, recebeu ${parsed?.tipo}`);
+    assert(consultations.length === 1, `esperava uma consulta pos-confirmacao, recebeu ${consultations.length}`);
+    assert(consultations[0].tipo === "CONSULTA_REGISTROS_HOJE", `consulta esperada CONSULTA_REGISTROS_HOJE, recebeu ${consultations[0].tipo}`);
+    assert(consultations[0].dados?.consulta_registros === "relatorio", "consulta posterior deveria ser relatorio geral");
+  });
+});
+
 test("Gemini live calls permanecem zeradas", () => {
   const stats = geminiRuntimeStats();
   assert(stats.liveCalls === 0, `Gemini live calls esperado 0, recebido ${stats.liveCalls}`);

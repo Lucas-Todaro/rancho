@@ -435,11 +435,16 @@ module.exports = function loadBotTestSection(context) {
         }
       },
       {
-        name: "tabela real colada em uma linha nao entra como structured input",
+        name: "tabela real colada em uma linha preserva linhas estruturadas",
         module: "tabela-eventos",
         phrase: flatSingleLineTabularAnimalEventsMessage,
         expected: {
-          tipo: "DESCONHECIDO"
+          exactTipo: true,
+          tipo: "IMPORTACAO_EVENTOS_TABELA",
+          total_linhas: 31,
+          total_linhas_parse_validas: 30,
+          total_linhas_parse_invalidas: 1,
+          tableRow: { lineNumber: 2, animal: "001", evento_tipo: "inseminacao", data_referencia: "2026-01-01" }
         }
       },
       {

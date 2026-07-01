@@ -706,6 +706,49 @@ function attachPostConfirmationConsultations(pending: ParsedRanchoMessage, consu
   };
 }
 
+function reportPeriodFromText(text: string) {
+  const normalized = normalizeRanchoText(text);
+  if (/\bontem\b/.test(normalized)) return "ontem";
+  if (/\bsemana\b/.test(normalized)) return "semana";
+  if (/\bmes\b/.test(normalized)) return "mes";
+  if (/\bano\b/.test(normalized)) return "ano";
+  return "hoje";
+}
+
+function generalReportConsultationFromText(
+  text: string,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+) {
+  if (!isExplicitGeneralOperationalReportText(text)) return null;
+  const period = reportPeriodFromText(text);
+  return markActionPlanSequenceParsed(finalize("CONSULTA_REGISTROS_HOJE", {
+    consulta: true,
+    consulta_registros: "relatorio",
+    data_referencia: period,
+    periodo: period,
+    origem_parser: "gemini_action_plan",
+    interpreter_final_usado: "action_plan_sequence",
+    action_plan_used: true,
+    action_plan_domain: "eventos_gerais",
+    action_plan_query_normalized: true
+  }, [], 0.9), route, structuredDetection);
+}
+
+function attachExplicitReportAfterMutation(
+  parsed: ParsedRanchoMessage,
+  text: string,
+  route: "normal_message" | "structured_input",
+  structuredDetection: ReturnType<typeof detectStructuredInput>
+) {
+  if (CONSULT_RANCHO_INTENTS.has(parsed.tipo)) return parsed;
+  if (Array.isArray(parsed.dados?.gemini_consultas_apos_confirmacao) && parsed.dados.gemini_consultas_apos_confirmacao.length) {
+    return parsed;
+  }
+  const consultation = generalReportConsultationFromText(text, route, structuredDetection);
+  return consultation ? attachPostConfirmationConsultations(parsed, [consultation]) : parsed;
+}
+
 function hasUnsupportedInterleaving(parsedActions: ParsedRanchoMessage[]) {
   let sawMutation = false;
   let sawConsultAfterMutation = false;
@@ -1088,7 +1131,6 @@ function canUseStructuredLocalFallback(
   route: "normal_message" | "structured_input",
   structuredDetection: ReturnType<typeof detectStructuredInput>
 ) {
-  if (!localSemanticFallbackEnabled()) return false;
   const parsed = input.localParsed;
   if (route !== "structured_input" || !structuredDetection.isStructured) return false;
   if (input.hasPendingAction) return false;
@@ -1576,10 +1618,8 @@ async function convertActionPlanInterpretation(
     });
   }
 
-  return {
-    kind: "parsed",
-    threshold: 0.7,
-    parsed: {
+  const parsedWithReport = attachExplicitReportAfterMutation(
+    {
       ...result.parsed,
       dados: {
         ...(result.parsed.dados || {}),
@@ -1591,6 +1631,15 @@ async function convertActionPlanInterpretation(
         structuredDetection
       }
     },
+    input.text,
+    route,
+    structuredDetection
+  );
+
+  return {
+    kind: "parsed",
+    threshold: 0.7,
+    parsed: parsedWithReport,
     gemini: actionPlanGeminiMeta(interpretation, result)
   };
 }

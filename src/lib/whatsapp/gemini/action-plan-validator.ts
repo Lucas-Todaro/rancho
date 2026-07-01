@@ -206,6 +206,10 @@ const FIELD_ALIASES_BY_DOMAIN: Record<string, Record<string, string>> = {
     codigo: "animal_ref",
     mae: "mae_ref",
     pai: "pai_ref",
+    status: "status_reprodutivo",
+    situacao: "status_reprodutivo",
+    estado: "status_reprodutivo",
+    fase: "status_reprodutivo",
     evento_reprodutivo: "evento",
     cria: "cria_codigo",
     codigo_cria: "cria_codigo",
@@ -285,6 +289,16 @@ function normalizeColumnMappingForDomain(domainName: string, columnMapping: unkn
 function normalizeReproductionValue(fieldName: string, value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => normalizeReproductionValue(fieldName, item));
   if (["evento", "tipo"].includes(fieldName)) return normalizeReproductionEvent(value) || value;
+  if (fieldName === "status_reprodutivo") {
+    const normalized = normalizeLooseText(value).replace(/\s+/g, "_");
+    if (["prenhe", "prenha", "prenhas", "prenhes", "prenhez", "gestante", "gestacao"].includes(normalized)) return "prenhe";
+    if (["inseminada", "inseminado", "inseminacao", "ia", "iatf"].includes(normalized)) return "inseminada";
+    if (["pre_parto", "preparto", "pre_partos", "prepartos"].includes(normalized)) return "pre_parto";
+    if (["protocolo", "em_protocolo", "protocolada", "protocolado"].includes(normalized)) return "em_protocolo";
+    if (["reteste", "em_reteste"].includes(normalized)) return "em_reteste";
+    if (["parida", "pariu", "parto"].includes(normalized)) return "parida";
+    return value;
+  }
   if (["data", "data_evento"].includes(fieldName)) return normalizeDate(value) || value;
   if (["cria_sexo", "sexo_cria"].includes(fieldName)) return normalizeSex(value) || value;
   return value;

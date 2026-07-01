@@ -261,7 +261,7 @@ function hasConsistentPairList(lines: string[], separator: ":" | " - ") {
 }
 
 export function detectStructuredInput(text: string): StructuredInputDetection {
-  const lines = usefulLinesFromText(normalizeTabularAnimalEventsText(text, { preserveSingleLine: true }));
+  const lines = usefulLinesFromText(normalizeTabularAnimalEventsText(text));
   if (lines.length <= 1) {
     return {
       isStructured: false,
@@ -316,7 +316,7 @@ export function looksLikeCollapsedStructuredInput(text: string) {
 }
 
 function normalizedStructuredTableText(text: string) {
-  const normalizedBase = normalizeTabularAnimalEventsText(text, { preserveSingleLine: true });
+  const normalizedBase = normalizeTabularAnimalEventsText(text);
   const detection = detectStructuredInput(normalizedBase);
   if (!detection.isStructured || !detection.separator || detection.separator === ";") return normalizedBase;
 
@@ -492,6 +492,7 @@ function detectTableKindFromHeader(headerLine: string): TableKind {
 
   const header = buildHeaderMap(headerLine);
   if (hasBirthChildHeaderShape(header)) return "birth_child_events";
+  if (header.code !== undefined && header.liters !== undefined && header.date !== undefined) return "milk_production";
 
   const classified = classifyHeaderDomain(headerLine);
   if (classified.domain === "DESCONHECIDO" && classified.needsUserClarification) {
@@ -1031,6 +1032,14 @@ function splitNotesHeaderAndFirstCode(value: string) {
     };
   }
 
+  const codeAtEnd = text.match(/^(.+?)\s+([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (codeAtEnd?.[1] && codeAtEnd?.[2] && looksLikeFlatAnimalCode(codeAtEnd[2])) {
+    return {
+      notesHeader: codeAtEnd[1].trim(),
+      firstCode: codeAtEnd[2].trim()
+    };
+  }
+
   return { notesHeader: text, firstCode: "" };
 }
 
@@ -1064,6 +1073,61 @@ function isFlatAnimalEventStart(cells: string[], index: number) {
 
   const date = (cells[index + 2] || "").trim();
   return !date || Boolean(parseTableDate(date));
+}
+
+function isFlatMilkProductionStart(cells: string[], index: number) {
+  if (!cells[index]?.trim()) return false;
+  if (parsePositiveTableNumber(cells[index + 1] || "") === null) return false;
+  return Boolean(parseTableDate(cells[index + 2] || ""));
+}
+
+function isFlatKnownTableStart(kind: TableKind, cells: string[], index: number) {
+  if (kind === "animal_events") return isFlatAnimalEventStart(cells, index);
+  if (kind === "milk_production") return isFlatMilkProductionStart(cells, index);
+  return false;
+}
+
+function unfoldSingleLineKnownFourColumnTable(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.includes("\n") || !trimmed.includes(";")) return text;
+
+  const cells = trimmed.split(";").map((cell) => cell.trim());
+  if (cells.length < 8) return text;
+
+  const { notesHeader, firstCode } = splitNotesHeaderAndFirstCode(cells[3] || "");
+  const headerLine = [cells[0], cells[1], cells[2], notesHeader || "Observacoes"].join(";");
+  const kind = detectTableKindFromHeader(headerLine);
+  if (kind !== "animal_events" && kind !== "milk_production") return text;
+
+  const lines = [headerLine];
+  let index = 4;
+  let pendingCode = firstCode;
+
+  while (pendingCode || index < cells.length) {
+    const code = pendingCode || cells[index++] || "";
+    pendingCode = "";
+    if (!code.trim() && index >= cells.length) break;
+
+    const value = cells[index++] || "";
+    const date = cells[index++] || "";
+    let notes = "";
+
+    if (index < cells.length) {
+      if (isFlatKnownTableStart(kind, cells, index)) {
+        const split = splitObservationAndNextCode(cells[index] || "");
+        notes = split.observacoes;
+        pendingCode = split.nextCode;
+        index += 1;
+      } else {
+        notes = cells.slice(index).join(";").trim();
+        index = cells.length;
+      }
+    }
+
+    lines.push([code, value, date, notes].join(";"));
+  }
+
+  return lines.length > 1 ? lines.join("\n") : text;
 }
 
 function unfoldSingleLineAnimalEventsTable(text: string) {
@@ -1123,6 +1187,7 @@ export function normalizeTabularAnimalEventsText(text: string, options?: { prese
   }
 
   if (!options?.preserveSingleLine && !normalized.includes("\n") && normalized.includes(";")) {
+    normalized = unfoldSingleLineKnownFourColumnTable(normalized);
     normalized = unfoldSingleLineAnimalEventsTable(normalized);
   }
 
